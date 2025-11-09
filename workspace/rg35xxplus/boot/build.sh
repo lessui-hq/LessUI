@@ -7,6 +7,22 @@ TARGET=dmenu.bin
 # SOURCE=test.sh
 # TARGET=launch.sh
 
+# Boot assets are copied to this directory during HOST setup phase
+# (see Makefile setup target - copies from skeleton/SYSTEM/res/)
+# Rename from @Nx format to platform-specific names
+cp installing@2x.bmp installing.bmp
+cp updating@2x.bmp updating.bmp
+cp bootlogo@2x.bmp bootlogo.bmp
+cp installing@2x-rotated.bmp installing-r.bmp
+cp updating@2x-rotated.bmp updating-r.bmp
+cp bootlogo@2x-rotated.bmp bootlogo-r.bmp
+cp installing@2x-square.bmp installing-s.bmp
+cp updating@2x-square.bmp updating-s.bmp
+cp bootlogo@2x-square.bmp bootlogo-s.bmp
+cp installing@2x-wide.bmp installing-w.bmp
+cp updating@2x-wide.bmp updating-w.bmp
+cp bootlogo@2x-wide.bmp bootlogo-w.bmp
+
 mkdir -p output
 if [ ! -f output/installing ]; then
 	dd skip=54 iflag=skip_bytes if=installing.bmp of=output/installing

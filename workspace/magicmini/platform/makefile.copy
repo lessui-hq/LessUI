@@ -1,5 +1,8 @@
 $(PLATFORM):
 	# $@
+	# copy boot assets from central location
+	cp ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/$@/install/installing.bmp
+	cp ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/$@/install/updating.bmp
 	cp ./workspace/$@/other/351files/351Files ./build/EXTRAS/Tools/$@/Files.pak/
 	cp -r ./workspace/$@/other/351files/res ./build/EXTRAS/Tools/$@/Files.pak/
 	# update

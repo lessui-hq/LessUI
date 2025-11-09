@@ -25,6 +25,7 @@ clean:
 	cd ./overclock && make clean
 	cd ./boot && rm -rf ./output
 	cd other/DinguxCommander && make clean
+	rm -f ./boot/*.bmp ./boot/boot_logo.png
 	
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch minui-rg35xx https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)

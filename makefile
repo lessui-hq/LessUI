@@ -124,6 +124,7 @@ common: build system cores
 # Remove build artifacts
 clean:
 	rm -rf ./build
+	rm -rf ./workspace/readmes
 
 # Prepare fresh build directory and skeleton
 setup: name
@@ -145,7 +146,29 @@ setup: name
 	mkdir -p ./workspace/readmes
 	cp ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
 	cp ./skeleton/EXTRAS/README.md ./workspace/readmes/EXTRAS-in.txt
-	
+
+	# Copy boot assets to workspace for platforms that build them in Docker
+	mkdir -p ./workspace/rg35xx/boot
+	cp ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/rg35xx/boot/
+	cp ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/rg35xx/boot/
+	cp ./skeleton/SYSTEM/res/bootlogo@2x.png ./workspace/rg35xx/boot/boot_logo.png
+	mkdir -p ./workspace/rg35xxplus/boot
+	cp ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/bootlogo@2x.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/installing@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/updating@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/bootlogo@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/installing@2x-square.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/updating@2x-square.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/bootlogo@2x-square.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/installing@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/updating@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	cp ./skeleton/SYSTEM/res/bootlogo@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	mkdir -p ./workspace/m17/boot
+	cp ./skeleton/SYSTEM/res/installing@1x-wide.bmp ./workspace/m17/boot/
+	cp ./skeleton/SYSTEM/res/updating@1x-wide.bmp ./workspace/m17/boot/
+
 # Signal build completion (macOS only - harmless on Linux)
 done:
 	say "done" 2>/dev/null || true

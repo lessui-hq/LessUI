@@ -66,6 +66,7 @@ clean:
 	cd boot && rm -rf output
 	cd $(REQUIRES_UNZIP60) && make -f unix/Makefile.trimuismart clean
 	cd $(REQUIRES_FBSET) && make clean
+	rm -f ./boot/*.bmp
 	
 $(REQUIRES_UNZIP60):
 	git clone --depth 1 https://github.com/shauninman/unzip60.git $(REQUIRES_UNZIP60)

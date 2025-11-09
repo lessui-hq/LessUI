@@ -1,4 +1,7 @@
 $(PLATFORM):
+	# copy boot assets from central location
+	cp ./skeleton/SYSTEM/res/installing@1x.bmp ./workspace/$@/boot/installing.bmp
+	cp ./skeleton/SYSTEM/res/updating@1x.bmp ./workspace/$@/boot/updating.bmp
 	cp ./workspace/$@/install/install.sh ./build/SYSTEM/$@/bin/
 	cp ./workspace/$@/boot/boot.sh ./build/SYSTEM/$@/dat/
 	cp -r ./workspace/$@/boot/ ./build/BASE/$@/

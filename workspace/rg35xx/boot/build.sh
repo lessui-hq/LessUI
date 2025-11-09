@@ -2,13 +2,16 @@
 
 TARGET=dmenu.bin
 
+# Boot assets are copied to this directory during HOST setup phase
+# (see Makefile setup target - copies from skeleton/SYSTEM/res/)
+
 mkdir -p output
-# TODO: shouldn't this be skipping 54 bytes (the size of the bitmap format header)?
+# Skip standard 54-byte BMP header (now using 24-bit BMPs)
 if [ ! -f output/installing ]; then
-	dd skip=64 iflag=skip_bytes if=installing.bmp of=output/installing
+	dd skip=54 iflag=skip_bytes if=installing.bmp of=output/installing
 fi
 if [ ! -f output/updating ]; then
-	dd skip=64 iflag=skip_bytes if=updating.bmp of=output/updating
+	dd skip=54 iflag=skip_bytes if=updating.bmp of=output/updating
 fi
 
 convert boot_logo.png -type truecolor output/boot_logo.bmp && gzip -f -n output/boot_logo.bmp

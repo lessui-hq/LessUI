@@ -21,7 +21,7 @@ if [ -f $UPDATE_PATH ]; then
 	fi
 	
 	# show action
-	dd if=/usr/config/minui/$ACTION.bmp of=/dev/fb0 bs=71 skip=1
+	dd if=/usr/config/minui/$ACTION.bmp of=/dev/fb0 bs=1 skip=54
 	echo 0,0 > /sys/class/graphics/fb0/pan
 
 	unzip -o $UPDATE_PATH -d $SDCARD_PATH >> $SDCARD_PATH/log.txt

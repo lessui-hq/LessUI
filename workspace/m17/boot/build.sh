@@ -4,6 +4,12 @@
 
 TARGET=em_ui.sh
 
+# Boot assets are copied to this directory during HOST setup phase
+# (see Makefile setup target - copies from skeleton/SYSTEM/res/)
+# Rename from @Nx format to standard names
+cp installing@1x-wide.bmp installing.bmp
+cp updating@1x-wide.bmp updating.bmp
+
 # remove header from bitmaps
 mkdir -p output
 if [ ! -f output/installing ]; then

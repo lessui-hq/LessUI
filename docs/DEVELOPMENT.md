@@ -235,14 +235,23 @@ Note: Some platforms share cores (e.g., my282 copies cores from rg35xx due to sa
 
 ### Updating Assets
 
-Assets live in `skeleton/SYSTEM/res/`:
-- `assets@1x.png` - UI sprites for 1x scale (320x240)
-- `assets@2x.png` - UI sprites for 2x scale (640x480)
-- `assets@3x.png` - UI sprites for 3x scale (960x720)
-- `assets@4x.png` - UI sprites for 4x scale (1280x960+)
-- `BPreplayBold-unhinted.otf` - UI font
+MinUI uses a **source + generated** asset system for easy maintenance.
 
-Edit with pixel editor. Keep sprites on grid defined in `workspace/all/common/api.c`.
+**Source assets** live in `skeleton/SYSTEM/res-src/`:
+- `assets.png` - UI sprite sheet (512×512)
+- `installing.png`, `updating.png`, `bootlogo.png`, `charging.png` - Boot screens (640×480)
+
+**To update assets:**
+```bash
+# 1. Edit source file in skeleton/SYSTEM/res-src/
+# 2. Regenerate all variants:
+./scripts/generate-assets.sh
+# 3. Commit both source and generated files
+```
+
+This generates 40+ variants (PNGs at different scales, BMPs for different platforms) automatically.
+
+See [`skeleton/SYSTEM/res-src/README.md`](../skeleton/SYSTEM/res-src/README.md) for detailed asset guidelines and ideal resolutions.
 
 ## Troubleshooting
 

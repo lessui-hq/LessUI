@@ -18,6 +18,7 @@ early:
 
 clean:
 	cd ./overclock && make clean
+	rm -f ./boot/*.bmp
 
 ###########################################################
 
