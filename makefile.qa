@@ -1,5 +1,18 @@
-# Quality Assurance Makefile
-# Run static analysis and tests
+# MinUI Quality Assurance
+# Static analysis, testing, and code formatting
+#
+# This makefile provides quality assurance tools for the MinUI codebase:
+#   - Unit tests (Docker-based, using Debian Buster + GCC 8.3.0)
+#   - Static analysis (cppcheck for C code, shellcheck for scripts)
+#   - Code formatting (clang-format with project style)
+#
+# Quick start:
+#   make test    - Run all unit tests (recommended)
+#   make lint    - Run all linting checks
+#   make format  - Auto-format code (modifies files)
+#
+# The main makefile forwards to this file for test/lint/format targets.
+# Run 'make -f makefile.qa help' for complete target list.
 
 .PHONY: help lint lint-code lint-full lint-shell test test-native format format-check clean-qa docker-build docker-test docker-shell
 
@@ -30,9 +43,10 @@ help:
 	@echo "  macOS:  brew install cppcheck llvm shellcheck"
 	@echo "  Linux:  sudo apt-get install cppcheck clang-format shellcheck"
 
-# Check for critical issues: warnings, performance, style
-# workspace/all/ is fully cleaned - zero issues
-# Device-specific code has targeted style suppressions
+# cppcheck configuration
+# Checks for: warnings, performance issues, style problems
+# workspace/all/ has zero issues (fully cleaned)
+# Platform-specific code uses targeted suppressions
 CPPCHECK_FLAGS = --enable=warning \
                  --suppressions-list=.cppcheck-suppressions \
                  --inline-suppr \
@@ -46,23 +60,23 @@ check-cppcheck:
 check-shellcheck:
 	@which shellcheck > /dev/null || (echo "Error: shellcheck not installed. Run 'brew install shellcheck' or 'apt-get install shellcheck'" && exit 1)
 
-# Main lint target - runs all linting checks
+# Run all linting checks (code, format, shell scripts)
 lint: check-cppcheck check-clang-format check-shellcheck
 	@echo "=================================" && \
 	echo "Running ALL linting checks..." && \
 	echo "=================================" && \
 	echo "" && \
-	$(MAKE) -f Makefile.qa lint-code && \
+	$(MAKE) -f makefile.qa lint-code && \
 	echo "" && \
-	$(MAKE) -f Makefile.qa format-check && \
+	$(MAKE) -f makefile.qa format-check && \
 	echo "" && \
-	$(MAKE) -f Makefile.qa lint-shell && \
+	$(MAKE) -f makefile.qa lint-shell && \
 	echo "" && \
 	echo "=================================" && \
 	echo "✓ All linting checks passed" && \
 	echo "================================="
 
-# Lint common code (most important, least platform-specific)
+# Run cppcheck on common code (platform-independent, highest priority)
 lint-code: check-cppcheck
 	@echo "Running cppcheck on workspace/all/ (common code)..."
 	@echo "Checking for: NULL dereferences, memory leaks, buffer overflows, uninitialized variables"
@@ -79,19 +93,20 @@ lint-code: check-cppcheck
 	@echo ""
 	@echo "✓ Static analysis complete"
 
-# More thorough check (all workspace code)
+# Run cppcheck on entire workspace (includes platform-specific code)
 lint-full: check-cppcheck
 	@echo "Running cppcheck on entire workspace..."
 	cppcheck $(CPPCHECK_FLAGS) \
 		-I workspace/all/common \
 		workspace/
 
-# Test configuration
+###########################################################
+# Test Configuration
 TEST_CFLAGS = -std=c99 -Wall -Wextra -Wno-unused-parameter
 TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
-# List of test executables
+# All test executables (built from tests/unit/)
 TEST_EXECUTABLES = tests/utils_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test
 
 # Default test target: use Docker
@@ -184,7 +199,8 @@ tests/binary_file_utils_test: tests/unit/all/common/test_binary_file_utils.c wor
 clean-tests:
 	rm -f $(TEST_EXECUTABLES) tests/*.o tests/**/*.o
 
-# Code formatting with clang-format
+###########################################################
+# Code Formatting
 CLANG_FORMAT = clang-format
 FORMAT_PATHS = workspace/all/minui/*.c \
                workspace/all/minarch/*.c \
@@ -210,11 +226,13 @@ format: check-clang-format
 format-check: check-clang-format
 	@echo "Checking code formatting..."
 	@$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_PATHS) 2>&1 || \
-		(echo "✗ Code is not formatted. Run 'make -f Makefile.qa format' to fix." && exit 1)
+		(echo "✗ Code is not formatted. Run 'make -f makefile.qa format' to fix." && exit 1)
 	@echo "✓ Code is properly formatted"
 
-# Shell script linting with shellcheck
-# Exclude cores, toolchains, and scripts with embedded binary data
+###########################################################
+# Shell Script Linting
+
+# Find all shell scripts (exclude cores, toolchains, embedded binaries)
 SHELL_SCRIPTS = $(shell find skeleton workspace -name "*.sh" -type f \
                  -not -path "*/cores/*" \
                  -not -path "*/toolchains/*" \
@@ -240,11 +258,14 @@ lint-shell: check-shellcheck
 		echo "✓ All shell scripts passed"; \
 	fi
 
+###########################################################
+# Reporting and Cleanup
+
 clean-qa:
 	@echo "Cleaning QA artifacts..."
 	rm -f cppcheck-report.txt
 
-# Generate a report file
+# Generate static analysis report file
 report: check-cppcheck
 	@echo "Generating static analysis report..."
 	cppcheck $(CPPCHECK_FLAGS) --template="{file}:{line}: {severity}: {message}" \
@@ -253,7 +274,8 @@ report: check-cppcheck
 	@echo "Report saved to cppcheck-report.txt"
 	@wc -l cppcheck-report.txt
 
-# Docker-based testing targets
+###########################################################
+# Docker Testing (recommended for consistency)
 DOCKER_IMAGE = minui-test
 DOCKER_RUN = docker run --rm -v $(shell pwd):/minui -w /minui $(DOCKER_IMAGE)
 
@@ -265,11 +287,11 @@ docker-build:
 docker-test: docker-build
 	@echo "Running tests in Docker container (Debian Buster)..."
 	@echo ""
-	$(DOCKER_RUN) make -f Makefile.qa clean-tests test-native
+	$(DOCKER_RUN) make -f makefile.qa clean-tests test-native
 
 docker-lint: docker-build
 	@echo "Running linting in Docker container..."
-	$(DOCKER_RUN) make -f Makefile.qa lint
+	$(DOCKER_RUN) make -f makefile.qa lint
 
 docker-shell: docker-build
 	@echo "Entering Docker container shell..."

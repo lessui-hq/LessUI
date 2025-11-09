@@ -24,4 +24,4 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /minui
 
 # Default command shows available test targets
-CMD ["make", "-f", "Makefile.qa", "help"]
+CMD ["make", "-f", "makefile.qa", "help"]

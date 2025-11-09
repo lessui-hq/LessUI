@@ -118,10 +118,10 @@ Tests run in a Debian Buster ARM64 container that matches the platform toolchain
 make test
 
 # Enter Docker container for debugging
-make -f Makefile.qa docker-shell
+make -f makefile.qa docker-shell
 
 # Rebuild Docker image
-make -f Makefile.qa docker-build
+make -f makefile.qa docker-build
 ```
 
 ### Native Testing (Advanced)
@@ -130,7 +130,7 @@ Run tests directly on your host system (not recommended on macOS due to architec
 
 ```bash
 # Run all tests natively
-make -f Makefile.qa test-native
+make -f makefile.qa test-native
 
 # Run individual test executables
 ./tests/utils_test         # Timing tests (2 tests)
@@ -154,7 +154,7 @@ make -f Makefile.qa test-native
 
 ### Clean and Rebuild
 ```bash
-make -f Makefile.qa clean-tests
+make -f makefile.qa clean-tests
 make test
 ```
 
@@ -197,7 +197,7 @@ int main(void) {
 }
 ```
 
-### 3. Update Makefile.qa
+### 3. Update makefile.qa
 
 Add your test to the build:
 
@@ -896,10 +896,10 @@ CI systems should have Docker available. The test environment will automatically
 ### Debug in Docker Container
 ```bash
 # Enter the test container
-make -f Makefile.qa docker-shell
+make -f makefile.qa docker-shell
 
 # Inside container, build and run tests
-make -f Makefile.qa clean-tests test-native
+make -f makefile.qa clean-tests test-native
 
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \

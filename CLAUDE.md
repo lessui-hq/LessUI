@@ -109,7 +109,7 @@ Active platforms (as of most recent): miyoomini, trimuismart, rg35xx, rg35xxplus
 
 ## Development Commands
 
-### Quality Assurance (Makefile.qa)
+### Quality Assurance (makefile.qa)
 
 ```bash
 # Quick commands (recommended)
@@ -118,12 +118,12 @@ make lint                          # Run static analysis
 make format                        # Format code
 
 # Additional QA targets
-make -f Makefile.qa docker-shell   # Enter container for debugging
-make -f Makefile.qa test-native    # Run natively (not recommended on macOS)
-make -f Makefile.qa lint-full      # Lint entire workspace (verbose)
-make -f Makefile.qa lint-shell     # Lint shell scripts
-make -f Makefile.qa format-check   # Check formatting only
-make -f Makefile.qa clean-tests    # Clean test artifacts
+make -f makefile.qa docker-shell   # Enter container for debugging
+make -f makefile.qa test-native    # Run natively (not recommended on macOS)
+make -f makefile.qa lint-full      # Lint entire workspace (verbose)
+make -f makefile.qa lint-shell     # Lint shell scripts
+make -f makefile.qa format-check   # Check formatting only
+make -f makefile.qa clean-tests    # Clean test artifacts
 ```
 
 **Note:** Tests run in Docker by default, using a Debian Buster ARM64 container that matches the platform toolchains (GCC 8.3.0). This eliminates macOS-specific build issues and ensures consistency with the actual build environment.
@@ -227,7 +227,7 @@ All paths use forward slashes (`/`), even for Windows cross-compilation. Platfor
 - **Braces on same line** - `if (x) {` not `if (x)\n{`
 - **Left-aligned pointers** - `char* name` not `char *name`
 - **100 character line limit**
-- Run `make -f Makefile.qa format` before committing
+- Run `make -f makefile.qa format` before committing
 
 See `.clang-format` for complete style definition.
 
@@ -257,7 +257,7 @@ See `.clang-format` for complete style definition.
 | Common definitions | `workspace/all/common/defines.h` |
 | Test suite | `tests/unit/all/common/test_utils.c` |
 | Build orchestration | `Makefile` (host-side) |
-| QA tools | `Makefile.qa` |
+| QA tools | `makefile.qa` |
 
 ## Documentation
 
@@ -268,11 +268,36 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-```
-✅ workspace/all/common/utils.c - 52 tests (100% coverage)
-⏳ workspace/all/common/api.c - TODO
-⏳ workspace/all/minui/minui.c - TODO (needs SDL mocks)
-⏳ workspace/all/minarch/minarch.c - TODO (integration tests)
-```
+**Total: 342 tests across 15 test suites** ✅
 
-See `docs/testing-checklist.md` for detailed testing plan.
+### Extracted and Tested Modules
+
+To enable comprehensive testing, complex logic has been extracted from large files into focused, testable modules:
+
+| Module | Tests | Extracted From | Purpose |
+|--------|-------|----------------|---------|
+| utils.c (split into 6 modules) | 100 | (original) | String, file, name, date, math utilities |
+| pad.c | 21 | api.c | Button state machine, analog input |
+| collections.c | 30 | minui.c | Array, Hash data structures |
+| gfx_text.c | 32 | api.c | Text truncation, wrapping, sizing |
+| audio_resampler.c | 18 | api.c | Bresenham sample rate conversion |
+| minarch_paths.c | 16 | minarch.c | Save file path generation |
+| minui_utils.c | 17 | minui.c | Index char, console dir detection |
+| m3u_parser.c | 20 | minui.c | M3U playlist parsing |
+| minui_file_utils.c | 25 | minui.c | File/dir checking utilities |
+| map_parser.c | 22 | minui.c/minarch.c | ROM display name aliasing |
+| collection_parser.c | 11 | minui.c | Custom ROM list parsing |
+| recent_file.c | 18 | minui.c | Recent games read/write |
+| binary_file_utils.c | 12 | minarch.c | Binary file read/write |
+
+### Testing Technologies
+
+- **fff (Fake Function Framework)** - Header-only library for mocking SDL functions
+- **GCC --wrap** - Link-time file system function mocking (read operations)
+- **Real temp files** - For write operations and binary I/O (mkstemp, mkdtemp)
+- **Unity** - Test framework with assertions and test runner
+- **Docker** - Debian Buster ARM64 container matching platform toolchains (GCC 8.3.0)
+
+All tests run in Docker by default to ensure consistency with the cross-compilation environment.
+
+See `tests/README.md` for comprehensive testing guide and examples.
