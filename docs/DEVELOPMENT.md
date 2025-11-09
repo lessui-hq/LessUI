@@ -222,6 +222,8 @@ First line is summary (imperative mood). Body explains why and what changed.
 3. Create emulator pak with launch script
 4. Test on target hardware
 
+See [CORES.md](CORES.md) for details on how the core build system works.
+
 Note: Some platforms share cores (e.g., my282 copies cores from rg35xx due to same CPU).
 
 ### Fixing a Bug
@@ -283,6 +285,7 @@ Then check logs on device.
 ## Resources
 
 - [Architecture Guide](ARCHITECTURE.md) - How MinUI works internally
+- [Cores Guide](CORES.md) - How libretro cores work
 - [Pak Development](PAKS.md) - Creating custom emulator paks
 - [Platform READMEs](../workspace/) - Platform-specific docs
 - [Main Project Docs](../CLAUDE.md) - Comprehensive reference

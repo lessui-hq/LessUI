@@ -10,7 +10,7 @@ Some platforms have multiple devices with unique qualities. MinUI differentiates
 
 # The types of emulator pak
 
-There are three basic types of emulator paks, which you chose depends on your goals and your desired level of MinUI integration.
+There are three basic types of emulator paks, which you chose depends on your goals and your desired level of MinUI integration. See [CORES.md](CORES.md) for details on how libretro cores work in MinUI.
 
 The first type reuses a libretro core included with a base MinUI install. This takes advantage of a known working core but allows customizing the default options and separating user configs. An example of this type is the extra GG.pak which uses the default picodrive core.
 
@@ -119,3 +119,10 @@ But if a binary takes more than one second to initialize you might need to just 
 # Caveats
 
 MinUI currently only supports the RGB565 pixel format and does not implement the OpenGL libretro APIs. It may be possible to use the stock firmware's retroarch instead of MinUI's minarch to run certain cores but that is left as an exercise for the reader.
+
+## Resources
+
+- [Architecture Guide](ARCHITECTURE.md) - How MinUI works internally
+- [Cores Guide](CORES.md) - How libretro cores work
+- [Development Guide](DEVELOPMENT.md) - Building and testing
+- [Main Project Docs](../CLAUDE.md) - Comprehensive reference

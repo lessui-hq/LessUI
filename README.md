@@ -106,5 +106,6 @@ Want to build MinUI, create custom paks, or understand how it works?
 
 - **[Development Guide](docs/DEVELOPMENT.md)** - Building, testing, and contributing
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - How MinUI works internally
+- **[Cores Guide](docs/CORES.md)** - How libretro cores are built and loaded
 - **[Pak Development Guide](docs/PAKS.md)** - Creating custom emulator and tool paks
 - **[Platform Documentation](workspace/)** - Technical hardware details for each device
