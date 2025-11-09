@@ -680,7 +680,7 @@ static void RTC_write(void) {
 
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	printf("rtc path (write) size(%u): %s\n", rtc_size, filename);
+	printf("rtc path (write) size(%zu): %s\n", rtc_size, filename);
 
 	FILE* rtc_file = fopen(filename, "w");
 	if (!rtc_file) {

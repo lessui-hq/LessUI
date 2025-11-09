@@ -47,7 +47,7 @@ help:
 # Checks for: warnings, performance issues, style problems
 # workspace/all/ has zero issues (fully cleaned)
 # Platform-specific code uses targeted suppressions
-CPPCHECK_FLAGS = --enable=warning,performance \
+CPPCHECK_FLAGS = --enable=warning,performance,portability \
                  --suppressions-list=.cppcheck-suppressions \
                  --inline-suppr \
                  --error-exitcode=0 \
