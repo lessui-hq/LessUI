@@ -368,7 +368,8 @@ void getDisplayName(const char* in_name, char* out_name) {
 	// Special case: hide platform suffix from Tools paths
 	if (suffixMatch("/" PLATFORM, work_name)) {
 		tmp = strrchr(work_name, '/');
-		tmp[0] = '\0';
+		if (tmp)
+			tmp[0] = '\0';
 	}
 
 	// Extract just the filename if we have a full path

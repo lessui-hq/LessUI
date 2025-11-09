@@ -7,6 +7,10 @@
 // Platform identification
 #define PLATFORM "test"
 
+// Build information (for linting/testing)
+#define BUILD_DATE "2025-01-01"
+#define BUILD_HASH "test-build"
+
 // Path definitions
 #define SDCARD_PATH "/tmp/test"
 

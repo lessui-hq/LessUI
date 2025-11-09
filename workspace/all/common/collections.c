@@ -23,9 +23,16 @@
  */
 Array* Array_new(void) {
 	Array* self = malloc(sizeof(Array));
+	if (!self)
+		return NULL;
+
 	self->count = 0;
 	self->capacity = 8;
 	self->items = malloc(sizeof(void*) * self->capacity);
+	if (!self->items) {
+		free(self);
+		return NULL;
+	}
 	return self;
 }
 
@@ -145,8 +152,22 @@ void StringArray_free(Array* self) {
  */
 Hash* Hash_new(void) {
 	Hash* self = malloc(sizeof(Hash));
+	if (!self)
+		return NULL;
+
 	self->keys = Array_new();
+	if (!self->keys) {
+		free(self);
+		return NULL;
+	}
+
 	self->values = Array_new();
+	if (!self->values) {
+		Array_free(self->keys);
+		free(self);
+		return NULL;
+	}
+
 	return self;
 }
 

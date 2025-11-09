@@ -680,7 +680,7 @@ static void RTC_write(void) {
 
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	printf("rtc path (write) size(%u): %s\n", rtc_size, filename);
+	printf("rtc path (write) size(%zu): %s\n", rtc_size, filename);
 
 	FILE* rtc_file = fopen(filename, "w");
 	if (!rtc_file) {
@@ -1360,6 +1360,13 @@ static void Config_init(void) {
 
 		// TODO: test this without a final line return
 		tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
+		if (!tmp2) {
+			for (int j = 0; j < i; j++) {
+				if (core_button_mapping[j].name)
+					free(core_button_mapping[j].name);
+			}
+			return;
+		}
 		strcpy(tmp2, button_name);
 		ButtonMapping* button = &core_button_mapping[i++];
 		button->name = tmp2;
@@ -3803,6 +3810,8 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 		}
 
 		OptionEmulator_menu.items = calloc(config.core.enabled_count + 1, sizeof(MenuItem));
+		if (!OptionEmulator_menu.items)
+			return MENU_CALLBACK_NOP;
 		for (int j = 0; j < config.core.enabled_count; j++) {
 			Option* option = config.core.enabled_options[j];
 			MenuItem* item = &OptionEmulator_menu.items[j];
@@ -3846,7 +3855,7 @@ int OptionControls_bind(MenuList* list, int i) {
 
 		// NOTE: off by one because of the initial NONE value
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
-			if (PAD_justPressed(1 << (id - 1))) {
+			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
 				button->local = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
@@ -3963,7 +3972,7 @@ static int OptionShortcuts_bind(MenuList* list, int i) {
 
 		// NOTE: off by one because of the initial NONE value
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
-			if (PAD_justPressed(1 << (id - 1))) {
+			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
 				button->local = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
@@ -4709,7 +4718,7 @@ static void Menu_loadState(void) {
 	}
 }
 
-static char* getAlias(char* path, char* alias) {
+static void getAlias(char* path, char* alias) {
 	// LOG_info("alias path: %s\n", path);
 	char* tmp;
 	char map_path[256];

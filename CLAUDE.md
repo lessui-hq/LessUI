@@ -245,6 +245,12 @@ See `.clang-format` for complete style definition.
 
 6. **Shell scripts** - Use `.shellcheckrc` configuration for linting. Many legacy scripts have disabled warnings; new scripts should be cleaner.
 
+7. **Editing files with tabs** - This codebase uses **tabs for indentation**. When using the Edit tool, ensure your `old_string` matches the exact whitespace (tabs, not spaces) from the file. If Edit fails with "String to replace not found":
+   - Use `sed -n 'X,Yp' file.c | od -c` to see actual whitespace characters (tabs show as `\t`)
+   - Copy the exact text from Read tool output (preserving tabs after line numbers)
+   - If multiple identical blocks exist, use `replace_all: true` parameter
+   - Never use Python scripts or sed for editing - use the Edit or Write tools only
+
 ## File Locations Reference
 
 | Purpose | Location |

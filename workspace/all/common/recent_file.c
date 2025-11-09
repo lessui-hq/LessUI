@@ -56,8 +56,21 @@ Recent_Entry** Recent_parse(char* recent_path, const char* sdcard_path, int* ent
 			// Only include ROMs that exist
 			if (exists(sd_path)) {
 				Recent_Entry* entry = malloc(sizeof(Recent_Entry));
+				if (!entry)
+					continue; // Skip this entry if allocation fails
+
 				entry->path = strdup(path); // Store relative path
+				if (!entry->path) {
+					free(entry);
+					continue; // Skip this entry if strdup fails
+				}
+
 				entry->alias = alias ? strdup(alias) : NULL;
+				if (alias && !entry->alias) {
+					free(entry->path);
+					free(entry);
+					continue; // Skip this entry if strdup fails
+				}
 
 				entries[*entry_count] = entry;
 				(*entry_count)++;

@@ -90,8 +90,19 @@ static Entry* Entry_new(char* path, int type) {
 	char display_name[256];
 	getDisplayName(path, display_name);
 	Entry* self = malloc(sizeof(Entry));
+	if (!self)
+		return NULL;
 	self->path = strdup(path);
+	if (!self->path) {
+		free(self);
+		return NULL;
+	}
 	self->name = strdup(display_name);
+	if (!self->name) {
+		free(self->path);
+		free(self);
+		return NULL;
+	}
 	self->unique = NULL;
 	self->type = type;
 	self->alpha = 0;
@@ -185,6 +196,8 @@ typedef struct IntArray {
  */
 static IntArray* IntArray_new(void) {
 	IntArray* self = malloc(sizeof(IntArray));
+	if (!self)
+		return NULL;
 	self->count = 0;
 	memset(self->items, 0, sizeof(int) * INT_ARRAY_MAX);
 	return self;
@@ -308,6 +321,10 @@ static void Directory_index(Directory* self) {
 		FILE* file = fopen(map_path, "r");
 		if (file) {
 			map = Hash_new();
+			if (!map) {
+				fclose(file);
+				return;
+			}
 			char line[256];
 			while (fgets(line, 256, file) != NULL) {
 				normalizeNewline(line);
@@ -334,8 +351,11 @@ static void Directory_index(Directory* self) {
 				char* filename = strrchr(entry->path, '/') + 1;
 				char* alias = Hash_get(map, filename);
 				if (alias) {
+					char* new_name = strdup(alias);
+					if (!new_name)
+						continue;
 					free(entry->name);
-					entry->name = strdup(alias);
+					entry->name = new_name;
 					resort = 1;
 					// Check if any alias starts with '.' (hidden)
 					if (!filter && hide(entry->name))
@@ -346,6 +366,10 @@ static void Directory_index(Directory* self) {
 			// Remove hidden entries (those with aliases starting with '.')
 			if (filter) {
 				Array* entries = Array_new();
+				if (!entries) {
+					Hash_free(map);
+					return;
+				}
 				for (int i = 0; i < self->entries->count; i++) {
 					Entry* entry = self->entries->items[i];
 					if (hide(entry->name)) {
@@ -373,8 +397,11 @@ static void Directory_index(Directory* self) {
 			char* filename = strrchr(entry->path, '/') + 1;
 			char* alias = Hash_get(map, filename);
 			if (alias) {
-				free(entry->name);
-				entry->name = strdup(alias);
+				char* new_name = strdup(alias);
+				if (new_name) {
+					free(entry->name);
+					entry->name = new_name;
+				}
 			}
 		}
 
@@ -396,12 +423,30 @@ static void Directory_index(Directory* self) {
 				getUniqueName(prior, prior_unique);
 				getUniqueName(entry, entry_unique);
 
-				prior->unique = strdup(prior_unique);
-				entry->unique = strdup(entry_unique);
+				char* prior_str = strdup(prior_unique);
+				char* entry_str = strdup(entry_unique);
+				if (prior_str && entry_str) {
+					prior->unique = prior_str;
+					entry->unique = entry_str;
+				} else {
+					free(prior_str);
+					free(entry_str);
+					prior->unique = NULL;
+					entry->unique = NULL;
+				}
 			} else {
 				// Different filenames - show them
-				prior->unique = strdup(prior_filename);
-				entry->unique = strdup(entry_filename);
+				char* prior_str = strdup(prior_filename);
+				char* entry_str = strdup(entry_filename);
+				if (prior_str && entry_str) {
+					prior->unique = prior_str;
+					entry->unique = entry_str;
+				} else {
+					free(prior_str);
+					free(entry_str);
+					prior->unique = NULL;
+					entry->unique = NULL;
+				}
 			}
 		}
 
@@ -452,8 +497,19 @@ static Directory* Directory_new(char* path, int selected) {
 	getDisplayName(path, display_name);
 
 	Directory* self = malloc(sizeof(Directory));
+	if (!self)
+		return NULL;
 	self->path = strdup(path);
+	if (!self->path) {
+		free(self);
+		return NULL;
+	}
 	self->name = strdup(display_name);
+	if (!self->name) {
+		free(self->path);
+		free(self);
+		return NULL;
+	}
 	if (exactMatch(path, SDCARD_PATH)) {
 		self->entries = getRoot();
 	} else if (exactMatch(path, FAUX_RECENT_PATH)) {
@@ -467,6 +523,13 @@ static Directory* Directory_new(char* path, int selected) {
 		self->entries = getEntries(path);
 	}
 	self->alphas = IntArray_new();
+	if (!self->alphas) {
+		EntryArray_free(self->entries);
+		free(self->name);
+		free(self->path);
+		free(self);
+		return NULL;
+	}
 	self->selected = selected;
 	Directory_index(self);
 	return self;
@@ -539,6 +602,8 @@ static int hasEmu(char* emu_name);
  */
 static Recent* Recent_new(char* path, char* alias) {
 	Recent* self = malloc(sizeof(Recent));
+	if (!self)
+		return NULL;
 
 	// Need full path to determine emulator
 	char sd_path[256];
@@ -548,7 +613,16 @@ static Recent* Recent_new(char* path, char* alias) {
 	getEmuName(sd_path, emu_name);
 
 	self->path = strdup(path);
+	if (!self->path) {
+		free(self);
+		return NULL;
+	}
 	self->alias = alias ? strdup(alias) : NULL;
+	if (alias && !self->alias) {
+		free(self->path);
+		free(self);
+		return NULL;
+	}
 	self->available = hasEmu(emu_name);
 	return self;
 }
@@ -658,7 +732,9 @@ static void addRecent(char* path, char* alias) {
 		while (recents->count >= MAX_RECENTS) {
 			Recent_free(Array_pop(recents));
 		}
-		Array_unshift(recents, Recent_new(path, alias));
+		Recent* new_recent = Recent_new(path, alias);
+		if (new_recent)
+			Array_unshift(recents, new_recent);
 	} else if (id > 0) { // bump existing entry to top
 		for (int i = id; i > 0; i--) {
 			void* tmp = recents->items[i - 1];
@@ -784,15 +860,19 @@ static int hasRecents(void) {
 		if (exists(sd_path)) {
 			char* disc_path = sd_path + strlen(SDCARD_PATH); // makes path platform agnostic
 			Recent* recent = Recent_new(disc_path, NULL);
-			if (recent->available)
-				has += 1;
-			Array_push(recents, recent);
+			if (recent) {
+				if (recent->available)
+					has += 1;
+				Array_push(recents, recent);
 
-			char parent_path[256];
-			strcpy(parent_path, disc_path);
-			char* tmp = strrchr(parent_path, '/') + 1;
-			tmp[0] = '\0';
-			Array_push(parent_paths, strdup(parent_path));
+				char parent_path[256];
+				strcpy(parent_path, disc_path);
+				char* tmp = strrchr(parent_path, '/') + 1;
+				tmp[0] = '\0';
+				char* parent_copy = strdup(parent_path);
+				if (parent_copy)
+					Array_push(parent_paths, parent_copy);
+			}
 		}
 		unlink(CHANGE_DISC_PATH);
 	}
@@ -839,15 +919,19 @@ static int hasRecents(void) {
 						if (found)
 							continue;
 
-						Array_push(parent_paths, strdup(parent_path));
+						char* parent_copy = strdup(parent_path);
+						if (parent_copy)
+							Array_push(parent_paths, parent_copy);
 					}
 
 					// LOG_info("path:%s alias:%s\n", path, alias);
 
 					Recent* recent = Recent_new(path, alias);
-					if (recent->available)
-						has += 1;
-					Array_push(recents, recent);
+					if (recent) {
+						if (recent->available)
+							has += 1;
+						Array_push(recents, recent);
+					}
 				}
 			}
 		}
@@ -985,6 +1069,12 @@ static Array* getRoot(void) {
 		FILE* file = fopen(map_path, "r");
 		if (file) {
 			Hash* map = Hash_new();
+			if (!map) {
+				fclose(file);
+				EntryArray_free(entries);
+				Array_free(root);
+				return root;
+			}
 			char line[256];
 			while (fgets(line, 256, file) != NULL) {
 				normalizeNewline(line);
@@ -1008,9 +1098,12 @@ static Array* getRoot(void) {
 				char* filename = strrchr(entry->path, '/') + 1;
 				char* alias = Hash_get(map, filename);
 				if (alias) {
-					free(entry->name);
-					entry->name = strdup(alias);
-					resort = 1;
+					char* new_name = strdup(alias);
+					if (new_name) {
+						free(entry->name);
+						entry->name = new_name;
+						resort = 1;
+					}
 				}
 			}
 			if (resort)
@@ -1082,9 +1175,14 @@ static Array* getRecents(void) {
 		sprintf(sd_path, "%s%s", SDCARD_PATH, recent->path);
 		int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM;
 		Entry* entry = Entry_new(sd_path, type);
+		if (!entry)
+			continue;
 		if (recent->alias) {
-			free(entry->name);
-			entry->name = strdup(recent->alias);
+			char* new_name = strdup(recent->alias);
+			if (new_name) {
+				free(entry->name);
+				entry->name = new_name;
+			}
 		}
 		Array_push(entries, entry);
 	}
@@ -1160,10 +1258,16 @@ static Array* getDiscs(char* path) {
 			if (exists(disc_path)) {
 				disc += 1;
 				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
+				if (!entry)
+					continue;
 				free(entry->name);
 				char name[16];
 				sprintf(name, "Disc %i", disc);
 				entry->name = strdup(name);
+				if (!entry->name) {
+					Entry_free(entry);
+					continue;
+				}
 				Array_push(entries, entry);
 			}
 		}
@@ -1663,6 +1767,7 @@ static void Entry_open(Entry* self) {
 	recent_alias = self->name; // Passed to addRecent via global
 	if (self->type == ENTRY_ROM) {
 		char* last = NULL;
+		char last_path[256]; // Moved outside if block to fix invalidLifetime bug
 		// Collection ROMs use collection path for state restoration
 		if (prefixMatch(COLLECTIONS_PATH, top->path)) {
 			char* tmp;
@@ -1672,7 +1777,6 @@ static void Entry_open(Entry* self) {
 			if (tmp)
 				strcpy(filename, tmp + 1);
 
-			char last_path[256];
 			sprintf(last_path, "%s/%s", top->path, filename);
 			last = last_path;
 		}
@@ -1738,7 +1842,9 @@ static void loadLast(void) {
 
 	Array* last = Array_new();
 	while (!exactMatch(last_path, SDCARD_PATH)) {
-		Array_push(last, strdup(last_path));
+		char* path_copy = strdup(last_path);
+		if (path_copy)
+			Array_push(last, path_copy);
 
 		char* slash = strrchr(last_path, '/');
 		last_path[(slash - last_path)] = '\0';
