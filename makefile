@@ -1,7 +1,22 @@
-# MinUI
-
-# NOTE: this runs on the host system (eg. macOS) not in a docker image
-# it has to, otherwise we'd be running a docker in a docker and oof
+# MinUI Build System
+# Main makefile for orchestrating multi-platform builds
+#
+# This makefile runs on the HOST system (macOS/Linux), not in Docker.
+# It manages Docker-based cross-compilation for multiple ARM platforms.
+#
+# Common targets:
+#   make shell PLATFORM=<platform>  - Enter platform's build environment
+#   make test                       - Run unit tests (uses Docker)
+#   make lint                       - Run static analysis
+#   make format                     - Format code with clang-format
+#   make all                        - Build all platforms (creates release ZIPs)
+#
+# Platform-specific build:
+#   make build PLATFORM=<platform>  - Build binaries for specific platform
+#   make system PLATFORM=<platform> - Copy binaries to build directory
+#
+# See makefile.qa for quality assurance targets
+# See makefile.toolchain for Docker/cross-compilation setup
 
 # prevent accidentally triggering a full build with invalid calls
 ifneq (,$(PLATFORM))
@@ -10,11 +25,13 @@ $(error found PLATFORM arg but no target, did you mean "make PLATFORM=$(PLATFORM
 endif
 endif
 
+# Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
 PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 gkdpixel my282 magicmini
 endif
 
 ###########################################################
+# Release versioning
 
 BUILD_HASH:=$(shell git rev-parse --short HEAD)
 RELEASE_TIME:=$(shell TZ=GMT date +%Y%m%d)
@@ -24,34 +41,40 @@ RELEASE_DOT:=$(shell find -E ./releases/. -regex ".*/${RELEASE_BASE}-[0-9]+-base
 RELEASE_NAME=$(RELEASE_BASE)-$(RELEASE_DOT)
 
 ###########################################################
+# Build configuration
 
-.PHONY: build test lint format
+.PHONY: build test lint format all shell name clean setup done
 
 export MAKEFLAGS=--no-print-directory
 
+# Build everything: all platforms, create release ZIPs
 all: setup $(PLATFORMS) special package done
 
+# Enter Docker build environment for a specific platform
 shell:
 	make -f makefile.toolchain PLATFORM=$(PLATFORM)
 
+# Print release name (useful for CI/scripts)
 name:
 	@echo $(RELEASE_NAME)
 
-# QA convenience targets (forward to Makefile.qa)
+# QA convenience targets (forward to makefile.qa)
 test:
-	@make -f Makefile.qa test
+	@make -f makefile.qa test
 
 lint:
-	@make -f Makefile.qa lint
+	@make -f makefile.qa lint
 
 format:
-	@make -f Makefile.qa format
+	@make -f makefile.qa format
 
+# Build all components for a specific platform (in Docker)
 build:
 	# ----------------------------------------------------
 	make build -f makefile.toolchain PLATFORM=$(PLATFORM)
 	# ----------------------------------------------------
 
+# Copy platform binaries to build directory
 system:
 	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	
@@ -65,7 +88,9 @@ system:
 	cp ./workspace/all/clock/build/$(PLATFORM)/clock.elf ./build/EXTRAS/Tools/$(PLATFORM)/Clock.pak/
 	cp ./workspace/all/minput/build/$(PLATFORM)/minput.elf ./build/EXTRAS/Tools/$(PLATFORM)/Input.pak/
 
-cores: # TODO: can't assume every platform will have the same stock cores (platform should be responsible for copy too)
+# Copy libretro cores to build directory
+# TODO: can't assume every platform will have the same stock cores (platform should be responsible for copy too)
+cores:
 	# stock cores
 	cp ./workspace/$(PLATFORM)/cores/output/fceumm_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
 	cp ./workspace/$(PLATFORM)/cores/output/gambatte_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
@@ -93,17 +118,20 @@ ifneq ($(PLATFORM),gkdpixel)
 	cp ./workspace/$(PLATFORM)/cores/output/mednafen_vb_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/VB.pak
 endif
 
+# Build everything for a platform: binaries, system files, cores
 common: build system cores
-	
+
+# Remove build artifacts
 clean:
 	rm -rf ./build
 
+# Prepare fresh build directory and skeleton
 setup: name
 	# ----------------------------------------------------
-	# make sure we're running in an input device
+	# Make sure we're running in an interactive terminal (not piped/redirected)
 	tty -s 
 	
-	# ready fresh build
+	# Create fresh build directory
 	rm -rf ./build
 	mkdir -p ./releases
 	cp -R ./skeleton ./build
@@ -113,14 +141,16 @@ setup: name
 	cd ./build && find . -type f -name '*.meta' -delete
 	echo $(BUILD_HASH) > ./workspace/hash.txt
 	
-	# copy readmes to workspace so we can use Linux fmt instead of host's
+	# Copy READMEs to workspace for formatting (uses Linux fmt in Docker)
 	mkdir -p ./workspace/readmes
 	cp ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
 	cp ./skeleton/EXTRAS/README.md ./workspace/readmes/EXTRAS-in.txt
 	
+# Signal build completion (macOS only - harmless on Linux)
 done:
 	say "done" 2>/dev/null || true
 
+# Platform-specific packaging for Miyoo/Trimui family
 special:
 	# setup miyoomini/trimui/magicx family .tmp_update in BOOT
 	mv ./build/BOOT/common ./build/BOOT/.tmp_update
@@ -138,9 +168,10 @@ ifneq (,$(findstring my355, $(PLATFORMS)))
 	cp -r ./workspace/my355/other/squashfs/output/* ./build/BASE/miyoo355/app/my355/payload/
 endif
 
+# Backward compatibility for platforms that were merged
 tidy:
 	# ----------------------------------------------------
-	# copy update from merged platform to old pre-merge platform bin so old cards update properly
+	# Copy update scripts to old platform directories for smooth upgrades
 ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
 	mkdir -p ./build/SYSTEM/rg40xxcube/bin/
 	cp ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/
@@ -150,11 +181,12 @@ ifneq (,$(findstring tg5040, $(PLATFORMS)))
 	cp ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/MinUI.pak/launch.sh
 endif
 
+# Create final release ZIP files
 package: tidy
 	# ----------------------------------------------------
-	# zip up build
+	# Package everything into distributable ZIPs
 		
-	# move formatted readmes from workspace to build
+	# Move formatted READMEs from workspace to build
 	cp ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt
 	cp ./workspace/readmes/EXTRAS-out.txt ./build/EXTRAS/README.txt
 	rm -rf ./workspace/readmes
@@ -175,7 +207,9 @@ package: tidy
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 	
 ###########################################################
+# Dynamic platform targets
 
+# Match any platform name and build it
 .DEFAULT:
 	# ----------------------------------------------------
 	# $@

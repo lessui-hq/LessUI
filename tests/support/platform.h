@@ -30,4 +30,11 @@
 #define CODE_MENU CODE_NA
 #define JOY_MENU JOY_NA
 
+// Modifier button definitions (required by pad.c)
+// Set these to BTN_NONE to indicate no modifier button configuration
+#define BTN_MOD_VOLUME BTN_NONE
+#define BTN_MOD_BRIGHTNESS BTN_NONE
+#define BTN_MOD_PLUS BTN_NONE
+#define BTN_MOD_MINUS BTN_NONE
+
 #endif
