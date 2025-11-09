@@ -2,12 +2,12 @@
 
 This directory contains the test suite for MinUI, organized to mirror the source code structure.
 
-**Current Status: 342 tests, all passing** ✅
+**Current Status: 364 tests, all passing** ✅
 
 ## Quick Start
 
 ```bash
-make test   # Run all 342 tests in Docker (recommended)
+make test   # Run all 364 tests in Docker (recommended)
 ```
 
 Tests run in a Debian Buster ARM64 container that matches the platform toolchains exactly. This ensures consistency across development environments and catches platform-specific issues.
@@ -582,7 +582,9 @@ void test_getEmuName_with_parens(void) {
 
 ## Test Summary
 
-**Total: 342 tests across 15 test suites**
+**Total: 364 tests across 16 test suites**
+- **342 unit tests** - Testing individual modules in isolation
+- **22 integration tests** - Testing modules working together with real file I/O
 
 ### Extracted Modules (Testable Logic)
 
@@ -888,34 +890,41 @@ The main launcher and frontend code is tightly coupled to SDL rendering and even
 
 ### Available Integration Tests
 
-**File:** `tests/integration/test_workflows.c`
+**File:** `tests/integration/test_workflows.c` - **22 comprehensive tests**
 
-1. **test_multi_disc_game_complete_workflow**
-   - Creates multi-disc PS1 game with M3U, ROM files, and map.txt
-   - Tests M3U_getAllDiscs() parsing all discs
-   - Tests Map_getAlias() retrieving custom disc names
-   - Tests Recent_save() writing recent games
-   - Tests Recent_parse() loading recent games
-   - Verifies end-to-end multi-disc workflow
+**Multi-Disc Workflows (5 tests):**
+1. `test_multi_disc_game_complete_workflow` - M3U + Map + Recent end-to-end
+2. `test_multi_disc_detection` - hasM3u + hasCue together
+3. `test_m3u_first_vs_all_consistency` - getFirstDisc/getAllDiscs match
+4. `test_m3u_with_multiple_cues` - M3U + individual CUE files
+5. `test_nested_directories` - Deep directory structures
 
-2. **test_multi_disc_detection**
-   - Tests MinUI_hasM3u() and MinUI_hasCue() detection
-   - Verifies both M3U and CUE can be detected together
-   - Tests file utilities integration
+**Collection Workflows (4 tests):**
+6. `test_collection_with_aliases` - Multi-system with map.txt
+7. `test_collection_with_m3u_games` - Collection of multi-disc games
+8. `test_multi_system_collection_workflow` - GB + NES + PS1 mixed features
+9. `test_empty_directory_collection` - Empty directory handling
 
-3. **test_collection_with_aliases**
-   - Creates collection with ROMs from multiple systems (GB, NES, SNES)
-   - Creates map.txt files per system with custom names
-   - Tests Collection_parse() reading collection
-   - Tests Map_getAlias() works across different ROM directories
-   - Verifies cross-system workflow
+**Recent Games Workflows (2 tests):**
+10. `test_recent_games_roundtrip` - Save/load/modify persistence
+11. `test_recent_with_save_states` - Recent + save state integration
 
-4. **test_recent_games_roundtrip**
-   - Creates multiple recent game entries
-   - Tests Recent_save() writing to recent.txt
-   - Tests Recent_parse() reading back
-   - Modifies list and saves again
-   - Verifies data persistence and order
+**MinArch Save File Workflows (4 tests):**
+12. `test_minarch_save_state_workflow` - Save state path + binary I/O
+13. `test_minarch_sram_rtc_workflow` - SRAM + RTC file handling
+14. `test_all_save_slots` - All 10 slots (0-9)
+15. `test_auto_resume_slot_9` - Auto-resume workflow
+
+**Config File Workflows (2 tests):**
+16. `test_minarch_config_file_integration` - Game vs global configs
+17. `test_config_device_tags` - Device-specific config isolation
+
+**Advanced Integration (5 tests):**
+18. `test_file_detection_integration` - All file detection utilities together
+19. `test_hidden_roms_in_map` - Hidden ROM handling (alias starts with '.')
+20. `test_rom_with_all_features` - M3U + CUE + alias + save + recent
+21. `test_multi_platform_save_isolation` - Cross-platform userdata
+22. `test_error_handling_integration` - Missing files, empty collections
 
 ### Running Integration Tests
 
@@ -982,9 +991,7 @@ These utilities make it easy to set up realistic test scenarios.
 
 ### Todo
 - [ ] Additional api.c GFX rendering functions (mostly SDL pixel operations)
-- [x] Integration tests for MinUI workflows (4 tests implemented, 1 passing, 3 need fixes)
-- [ ] Fix integration test path handling issues
-- [ ] Add more integration test scenarios (emulator detection, nested collections)
+- [x] Integration tests for MinUI/MinArch workflows (22 tests implemented, all passing)
 
 ## Continuous Integration
 

@@ -64,6 +64,17 @@ int create_test_map(const char* path, const char** rom_names,
 int create_test_collection(const char* path, const char** rom_paths, int count);
 
 /**
+ * Creates parent directories for a file path.
+ *
+ * Extracts the directory from a file path and creates it recursively.
+ * Example: "/tmp/foo/bar/file.txt" creates "/tmp/foo/bar/"
+ *
+ * @param file_path Full path to file
+ * @return 1 on success, 0 on failure
+ */
+int create_parent_dir(const char* file_path);
+
+/**
  * Recursively removes a directory and all its contents.
  *
  * @param path Directory to remove

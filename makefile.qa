@@ -204,6 +204,8 @@ tests/integration_workflows_test: tests/integration/test_workflows.c \
 	workspace/all/common/collection_parser.c \
 	workspace/all/common/recent_file.c \
 	workspace/all/common/minui_file_utils.c \
+	workspace/all/common/binary_file_utils.c \
+	workspace/all/common/minarch_paths.c \
 	workspace/all/common/utils.c \
 	$(TEST_UNITY)
 	@echo "Building integration tests..."

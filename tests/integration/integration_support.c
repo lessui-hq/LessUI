@@ -62,6 +62,16 @@ char* create_test_minui_structure(char* template) {
 	if (!mkdir_recursive(path))
 		return NULL;
 
+	// Emus directory (for emulator paks)
+	snprintf(path, sizeof(path), "%s/Emus", template);
+	if (!mkdir_recursive(path))
+		return NULL;
+
+	// Paks directory (for emulator detection)
+	snprintf(path, sizeof(path), "%s/Paks/Emus", template);
+	if (!mkdir_recursive(path))
+		return NULL;
+
 	return template;
 }
 
@@ -158,6 +168,22 @@ int create_test_collection(const char* path, const char** rom_paths, int count) 
 
 	fclose(f);
 	return 1;
+}
+
+int create_parent_dir(const char* file_path) {
+	char dir[512];
+	snprintf(dir, sizeof(dir), "%s", file_path);
+
+	// Find last slash
+	char* last_slash = strrchr(dir, '/');
+	if (!last_slash)
+		return 0;
+
+	// Truncate to get directory
+	*last_slash = '\0';
+
+	// Create directory recursively
+	return mkdir_recursive(dir);
 }
 
 int rmdir_recursive(const char* path) {
