@@ -92,7 +92,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # List of test executables
-TEST_EXECUTABLES = tests/utils_test
+TEST_EXECUTABLES = tests/utils_test tests/pad_test
 
 # Default test target: use Docker
 test: docker-test
@@ -109,6 +109,11 @@ test-native: $(TEST_EXECUTABLES)
 # Build comprehensive utils tests
 tests/utils_test: tests/unit/all/common/test_utils.c workspace/all/common/utils.c $(TEST_UNITY)
 	@echo "Building comprehensive utils tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build PAD (input) tests
+tests/pad_test: tests/unit/all/common/test_api_pad.c workspace/all/common/pad.c $(TEST_UNITY)
+	@echo "Building PAD input tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 clean-tests:
