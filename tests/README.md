@@ -869,9 +869,122 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Note:** Extracted from `minarch.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
 
+## Integration Tests
+
+**Location:** `tests/integration/`
+
+Integration tests verify that multiple extracted modules work together correctly with real file I/O. Unlike unit tests that test individual functions in isolation, integration tests exercise realistic workflows that span multiple components.
+
+### Approach: Component Integration
+
+Integration tests use a **component integration** approach:
+- Test extracted modules working together (M3U parser + Map parser + Recent file, etc.)
+- Use real temp directories and files (created with mkdtemp/mkstemp)
+- No mocking - tests real file I/O and data flow between components
+- Easy to maintain - follows same pattern as existing 342 unit tests
+
+**Why not test the full minui.c/minarch.c applications?**
+The main launcher and frontend code is tightly coupled to SDL rendering and event loops. Testing these would require complex subprocess management or invasive code changes. Instead, we test the extracted business logic modules working together - this provides excellent coverage with minimal complexity.
+
+### Available Integration Tests
+
+**File:** `tests/integration/test_workflows.c`
+
+1. **test_multi_disc_game_complete_workflow**
+   - Creates multi-disc PS1 game with M3U, ROM files, and map.txt
+   - Tests M3U_getAllDiscs() parsing all discs
+   - Tests Map_getAlias() retrieving custom disc names
+   - Tests Recent_save() writing recent games
+   - Tests Recent_parse() loading recent games
+   - Verifies end-to-end multi-disc workflow
+
+2. **test_multi_disc_detection**
+   - Tests MinUI_hasM3u() and MinUI_hasCue() detection
+   - Verifies both M3U and CUE can be detected together
+   - Tests file utilities integration
+
+3. **test_collection_with_aliases**
+   - Creates collection with ROMs from multiple systems (GB, NES, SNES)
+   - Creates map.txt files per system with custom names
+   - Tests Collection_parse() reading collection
+   - Tests Map_getAlias() works across different ROM directories
+   - Verifies cross-system workflow
+
+4. **test_recent_games_roundtrip**
+   - Creates multiple recent game entries
+   - Tests Recent_save() writing to recent.txt
+   - Tests Recent_parse() reading back
+   - Modifies list and saves again
+   - Verifies data persistence and order
+
+### Running Integration Tests
+
+Integration tests run automatically with `make test` (Docker-based):
+
+```bash
+make test                          # Run all tests (unit + integration)
+make -f makefile.qa test-native    # Run natively (advanced)
+```
+
+Integration tests are included in the standard test suite and run in Docker like all other tests.
+
+### Adding New Integration Tests
+
+Follow the same pattern as existing integration tests:
+
+```c
+// 1. Include required modules
+#include "../../workspace/all/common/m3u_parser.h"
+#include "../../workspace/all/common/map_parser.h"
+#include "../support/unity/unity.h"
+#include "integration_support.h"
+
+// 2. Use setUp/tearDown for temp directory management
+static char test_dir[256];
+
+void setUp(void) {
+    strcpy(test_dir, "/tmp/minui_integration_XXXXXX");
+    create_test_minui_structure(test_dir);
+}
+
+void tearDown(void) {
+    rmdir_recursive(test_dir);
+}
+
+// 3. Write integration test
+void test_my_workflow(void) {
+    // Setup: Create real files
+    char path[512];
+    snprintf(path, sizeof(path), "%s/Roms/GB/game.gb", test_dir);
+    create_test_rom(path);
+
+    // Test: Call multiple modules
+    // Assert: Verify integration works
+
+    // Cleanup: Handled by tearDown()
+}
+```
+
+### Integration Test Support Utilities
+
+**File:** `tests/integration/integration_support.h/c`
+
+Helper functions for creating test data structures:
+
+- `create_test_minui_structure()` - Creates temp MinUI directory structure
+- `create_test_rom()` - Creates placeholder ROM file
+- `create_test_m3u()` - Creates M3U file with disc entries
+- `create_test_map()` - Creates map.txt with ROM aliases
+- `create_test_collection()` - Creates collection .txt file
+- `rmdir_recursive()` - Cleans up temp directories
+
+These utilities make it easy to set up realistic test scenarios.
+
 ### Todo
 - [ ] Additional api.c GFX rendering functions (mostly SDL pixel operations)
-- [ ] Integration tests for minui.c/minarch.c workflows
+- [x] Integration tests for MinUI workflows (4 tests implemented, 1 passing, 3 need fixes)
+- [ ] Fix integration test path handling issues
+- [ ] Add more integration test scenarios (emulator detection, nested collections)
 
 ## Continuous Integration
 

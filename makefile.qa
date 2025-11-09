@@ -106,8 +106,8 @@ TEST_CFLAGS = -std=c99 -Wall -Wextra -Wno-unused-parameter
 TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
-# All test executables (built from tests/unit/)
-TEST_EXECUTABLES = tests/utils_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test
+# All test executables (built from tests/unit/ and tests/integration/)
+TEST_EXECUTABLES = tests/utils_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/integration_workflows_test
 
 # Default test target: use Docker
 test: docker-test
@@ -196,8 +196,21 @@ tests/binary_file_utils_test: tests/unit/all/common/test_binary_file_utils.c wor
 	@echo "Building binary file I/O tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
+# Build integration tests (tests multiple components working together with real file I/O)
+tests/integration_workflows_test: tests/integration/test_workflows.c \
+	tests/integration/integration_support.c \
+	workspace/all/common/m3u_parser.c \
+	workspace/all/common/map_parser.c \
+	workspace/all/common/collection_parser.c \
+	workspace/all/common/recent_file.c \
+	workspace/all/common/minui_file_utils.c \
+	workspace/all/common/utils.c \
+	$(TEST_UNITY)
+	@echo "Building integration tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I tests/integration $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE
+
 clean-tests:
-	rm -f $(TEST_EXECUTABLES) tests/*.o tests/**/*.o
+	rm -f $(TEST_EXECUTABLES) tests/*.o tests/**/*.o tests/integration/*.o
 
 ###########################################################
 # Code Formatting
