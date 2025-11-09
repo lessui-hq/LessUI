@@ -26,6 +26,43 @@ make PLATFORM=miyoomini
 
 Available platforms: `miyoomini`, `my282`, `my355`, `trimuismart`, `rg35xx`, `rg35xxplus`, `rgb30`, `tg5040`, `m17`, `gkdpixel`, `magicmini`, `zero28`
 
+### macOS Native Development (Fastest Workflow)
+
+For rapid UI development on macOS, build and run natively without Docker:
+
+```bash
+# First-time setup: Install SDL2 libraries
+brew install sdl2 sdl2_image sdl2_ttf
+
+# Build and run minui
+make dev-run
+```
+
+This gives you:
+- **Instant builds** (native compiler, no Docker overhead)
+- **Live debugging** with AddressSanitizer
+- **Visual testing** in SDL2 window (640×480 or 854×480)
+- **Keyboard controls**: Arrow keys (D-pad), A/S/W/Q (buttons), Enter (Start), Space (Menu)
+- **Quit**: Hold Backspace/Delete
+
+The fake SD card lives at `workspace/macos/FAKESD/`. Add test ROMs there:
+```bash
+mkdir -p workspace/macos/FAKESD/Roms/GB
+cp ~/Downloads/game.gb workspace/macos/FAKESD/Roms/GB/
+```
+
+**Development commands:**
+```bash
+make dev        # Build minui for macOS
+make dev-run    # Build and run minui
+make dev-clean  # Clean macOS build artifacts
+```
+
+**Limitations:**
+- macOS platform is for **launcher (minui) development only**
+- Cannot test libretro cores (minarch) - use actual hardware
+- Hardware features stubbed (brightness, volume, power)
+
 ### Platform Shell (for development)
 
 Drop into a build environment for interactive development:

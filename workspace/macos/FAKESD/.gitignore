@@ -1,0 +1,15 @@
+# Ignore ROM files and user data, but keep directory structure
+*
+
+# Keep directory structure
+!.gitignore
+!README.md
+!Roms/
+!Roms/.gitkeep
+!.userdata/
+!.userdata/.gitkeep
+!.system/
+!.system/.gitkeep
+!.system/res/
+!.system/res/*.png
+!.system/res/*.otf

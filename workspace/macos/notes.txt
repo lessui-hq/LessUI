@@ -1,8 +1,39 @@
-This is not a full version of MinUI for macOS. It's a dummy platform to allow using more modern tools to compile and find issues in MinUI's source code without the roundtrip to a device.
+macOS Development Platform
+=========================
 
-BUILD MINUI
+This is a development platform for testing LessUI minui (launcher) on macOS.
+It allows rapid UI development without deploying to physical hardware.
+
+QUICK START
 -----------
-cd workspace/all/minui
-mkdir -p build/macos
+From project root:
 
-gcc minui.c -o build/macos/minui -I. -I../common/ -I../../macos/platform/ -I/opt/homebrew/include -L/opt/homebrew/lib ../common/scaler.c ../common/utils.c ../common/api.c ../../macos/platform/platform.c -fomit-frame-pointer -DPLATFORM=\"macos\" -DUSE_SDL2 -Ofast -std=gnu99 -ldl -flto -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address -fno-common -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths && build/macos/minui
+  make dev-run        # Build and run minui (4:3 aspect ratio)
+  make dev-run-16x9   # Build and run minui (16:9 widescreen)
+
+SETUP
+-----
+First time only:
+
+  brew install sdl2 sdl2_image sdl2_ttf
+
+CONTROLS
+--------
+- Arrow keys: D-pad navigation
+- A, S, W, Q: Face buttons (B, A, X, Y)
+- Enter: Start
+- 4: Select
+- Space: Menu
+- Hold Backspace/Delete: Quit
+
+TEST ROMS
+---------
+Add ROMs to workspace/macos/FAKESD/Roms/<console>/
+
+Example:
+  cp ~/Downloads/game.gb workspace/macos/FAKESD/Roms/GB/
+
+MORE INFO
+---------
+See docs/DEVELOPMENT.md for full documentation.
+See makefile.dev for build configuration.

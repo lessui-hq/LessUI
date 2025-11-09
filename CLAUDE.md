@@ -109,6 +109,58 @@ Active platforms (as of most recent): miyoomini, trimuismart, rg35xx, rg35xxplus
 
 ## Development Commands
 
+### macOS Native Development (makefile.dev)
+
+For rapid UI development on macOS, use native builds instead of Docker cross-compilation:
+
+```bash
+# First-time setup
+brew install sdl2 sdl2_image sdl2_ttf
+
+# Development workflow
+make dev           # Build minui for macOS (native, with AddressSanitizer)
+make dev-run       # Build and run minui in SDL2 window (4x3 default)
+make dev-run-4x3   # Run in 4:3 aspect ratio (640×480)
+make dev-run-16x9  # Run in 16:9 aspect ratio (854×480)
+make dev-clean     # Clean macOS build artifacts
+```
+
+**How it works:**
+- Compiles minui natively on macOS using system gcc/clang
+- Links against Homebrew SDL2 libraries
+- Runs in SDL2 window (640×480 for 4x3, 854×480 for 16x9)
+- Uses fake SD card at `workspace/macos/FAKESD/` instead of actual device storage
+- Keyboard input: Arrow keys (D-pad), A/S/W/Q (face buttons), Enter (Start), 4 (Select), Space (Menu)
+- Quit: Hold Backspace/Delete
+
+**Setting up test ROMs:**
+```bash
+# Create console directories
+mkdir -p workspace/macos/FAKESD/Roms/GB
+mkdir -p workspace/macos/FAKESD/Roms/GBA
+
+# Add test ROMs
+cp ~/Downloads/game.gb workspace/macos/FAKESD/Roms/GB/
+```
+
+**Use cases:**
+- UI iteration (instant feedback vs. SD card deploy)
+- Visual testing of menus, text rendering, graphics
+- Debugging with sanitizers (-fsanitize=address)
+- Integration testing with file I/O and ROM browsing
+
+**Limitations:**
+- **minui (launcher) only** - Cannot test minarch (libretro cores)
+- Hardware features stubbed (brightness, volume, power management)
+- Performance differs from ARM devices
+- Path handling: SDCARD_PATH is `../../macos/FAKESD` relative to `workspace/all/minui/` working directory
+
+**Implementation details:**
+- Source files: Same as production minui build (from `workspace/all/minui/makefile`)
+- Platform code: `workspace/macos/platform/platform.{h,c}` provides macOS-specific stubs
+- Build output: `workspace/all/minui/build/macos/minui` binary
+- See `workspace/macos/FAKESD/README.md` for SD card structure
+
 ### Quality Assurance (makefile.qa)
 
 ```bash

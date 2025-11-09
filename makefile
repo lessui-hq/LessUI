@@ -9,6 +9,8 @@
 #   make test                       - Run unit tests (uses Docker)
 #   make lint                       - Run static analysis
 #   make format                     - Format code with clang-format
+#   make dev                        - Build minui for macOS (native, for development)
+#   make dev-run                    - Build and run minui on macOS
 #   make all                        - Build all platforms (creates release ZIPs)
 #
 # Platform-specific build:
@@ -43,7 +45,7 @@ RELEASE_NAME=$(RELEASE_BASE)-$(RELEASE_DOT)
 ###########################################################
 # Build configuration
 
-.PHONY: build test lint format all shell name clean setup done
+.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done
 
 export MAKEFLAGS=--no-print-directory
 
@@ -67,6 +69,22 @@ lint:
 
 format:
 	@make -f makefile.qa format
+
+# macOS development targets (forward to makefile.dev)
+dev:
+	@make -f makefile.dev dev
+
+dev-run:
+	@make -f makefile.dev dev-run
+
+dev-clean:
+	@make -f makefile.dev dev-clean
+
+dev-run-4x3:
+	@make -f makefile.dev dev-run-4x3
+
+dev-run-16x9:
+	@make -f makefile.dev dev-run-16x9
 
 # Build all components for a specific platform (in Docker)
 build:
