@@ -10,7 +10,7 @@ Platform implementation for the Trimui Smart retro handheld device.
 - **UI Scale**: 1x (uses `assets.png`)
 - **Display Engine**: Allwinner Display Engine 2.0 (DE2) with hardware layer composition
 - **Rotation**: Software 90-degree rotation for portrait-to-landscape conversion
-- **Orientation**: Physical screen is landscape, MinUI renders portrait (then rotates)
+- **Orientation**: Physical screen is landscape, LessUI renders portrait (then rotates)
 
 ### SoC & Architecture
 - **SoC**: Allwinner F1C100s
@@ -160,7 +160,7 @@ Note: Unlike most platforms, Trimui Smart has no SDL dependency in its platform 
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -169,7 +169,7 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── bin/              Utilities (keymon, etc.)
 │   │   │   └── install.sh    Post-update installation script
 │   │   └── paks/             Applications and emulators
-│   │       └── MinUI.pak/    Main launcher
+│   │       └── LessUI.pak/    Main launcher
 │   └── res/                  Shared UI assets
 │       ├── assets.png        UI sprite sheet (1x scale, 320x240)
 │       └── BPreplayBold-unhinted.otf
@@ -181,26 +181,26 @@ MinUI installs to the SD card with the following structure:
 │       ├── unzip             Update extraction utility
 │       └── leds_off          LED control utility
 ├── Roms/                     ROM files organized by system
-└── MinUI.zip                 Update package (if present)
+└── LessUI.zip                 Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `trimuismart.sh` from `.tmp_update/`
 2. Script sets CPU governor to "performance" mode
-3. If `MinUI.zip` exists:
+3. If `LessUI.zip` exists:
    - Turn off LEDs (`leds_off`)
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract `MinUI.zip` to SD card using custom `unzip` utility
-   - Delete `MinUI.zip` after successful extraction
+   - Extract `LessUI.zip` to SD card using custom `unzip` utility
+   - Delete `LessUI.zip` after successful extraction
    - Run `.system/trimuismart/bin/install.sh` to complete setup
-4. Launch MinUI via `.system/trimuismart/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/trimuismart/paks/LessUI.pak/launch.sh`
 5. If launcher exits, poweroff device (prevents stock firmware from accessing card)
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
@@ -212,7 +212,7 @@ To update MinUI on device:
 The Trimui Smart uses Allwinner's advanced Display Engine 2.0 with multi-layer composition:
 
 **Hardware Layers**:
-- **Channel 0 (FB_CH)**: Stock framebuffer layer (disabled by MinUI)
+- **Channel 0 (FB_CH)**: Stock framebuffer layer (disabled by LessUI)
 - **Channel 1 (SCALER_CH)**: Main game display with rotation and scaling
 - **Channel 2 (OVERLAY_CH)**: UI overlay with alpha blending (currently unused)
 
@@ -242,7 +242,7 @@ Software performs 90-degree rotation before hardware scaling:
 rotate_16bpp(src_buffer, dst_buffer, width, height);
 ```
 
-**Reason**: MinUI renders in portrait orientation for UI consistency across devices, but the Trimui Smart physical screen is landscape. Rotation happens in the render pipeline.
+**Reason**: LessUI renders in portrait orientation for UI consistency across devices, but the Trimui Smart physical screen is landscape. Rotation happens in the render pipeline.
 
 ### CPU Performance
 
@@ -347,7 +347,7 @@ The Trimui Smart supports 12 libretro cores:
 
 ### Hardware Quirks
 1. **No L2/R2 Buttons**: Hardware only has L1 and R1 shoulder buttons
-2. **Compact Screen**: 320x240 is the smallest resolution among MinUI platforms
+2. **Compact Screen**: 320x240 is the smallest resolution among LessUI platforms
 3. **1x UI Scale**: No scaling applied to UI assets (uses base `assets.png`)
 4. **No Dedicated Power Button**: POWER button not accessible in platform.h
 5. **No Battery Monitor**: Unlike other platforms, no battery overlay daemon
@@ -363,7 +363,7 @@ The Trimui Smart supports 12 libretro cores:
 1. **No L3/R3**: Platform lacks clickable analog sticks
 2. **NEON Optimizations**: Platform supports ARM NEON SIMD - use `HAS_NEON` define
 3. **Simple Keymon**: Simpler than other platforms (no jack detection, no HDMI, no power monitoring)
-4. **Shutdown on Exit**: Boot script forces poweroff if MinUI exits (prevents stock firmware access)
+4. **Shutdown on Exit**: Boot script forces poweroff if LessUI exits (prevents stock firmware access)
 5. **SDL Pre-installed**: Stock firmware provides SDL libraries (no SDL build needed)
 
 ### Input Limitations
@@ -401,7 +401,7 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform represents a **compact, low-resolution** implementation in MinUI:
+This platform represents a **compact, low-resolution** implementation in LessUI:
 - Smallest screen resolution (320x240) among active platforms
 - 1x UI scaling (no @2x assets)
 - Advanced display architecture (Allwinner DE2) vs simple framebuffer

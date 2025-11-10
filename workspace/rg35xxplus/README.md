@@ -42,7 +42,7 @@ Platform implementation for the Anbernic RG35XX Plus series retro handheld devic
 
 ### Storage
 - **TF1 (Internal)**: `/mnt/mmc` - Boot partition and stock OS
-- **TF2 (External)**: `/mnt/sdcard` - MinUI and ROMs
+- **TF2 (External)**: `/mnt/sdcard` - LessUI and ROMs
 - Automatic fallback: If TF2 is missing or empty, symlink to TF1
 
 ## Platform Variants
@@ -202,12 +202,12 @@ The platform automatically clones required dependencies on first build:
 
 ### File System Layout
 
-MinUI installs across two SD cards:
+LessUI installs across two SD cards:
 
 **TF1 (Internal) - `/mnt/mmc`**:
 ```
 /mnt/mmc/
-├── dmenu.bin              Updated from MinUI (stock menu binary)
+├── dmenu.bin              Updated from LessUI (stock menu binary)
 ├── .minstalled            Flag file (prevents bootlogo reinstall)
 └── log.txt                Installation/boot log
 ```
@@ -222,14 +222,14 @@ MinUI installs across two SD cards:
 │   │   ├── dat/
 │   │   │   └── dmenu.bin  Updated stock menu binary
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
 ├── .userdata/
 │   └── rg35xxplus/        User settings and saves
 ├── Roms/                  ROM files organized by system
-└── MinUI.zip              Update package (if present)
+└── LessUI.zip              Update package (if present)
 ```
 
 ### Boot Process
@@ -237,8 +237,8 @@ MinUI installs across two SD cards:
 1. Stock firmware boots from TF1 (`/mnt/mmc`)
 2. Custom boot script runs (`boot.sh` embedded in bootloader)
 3. Script mounts TF2 (`/mnt/sdcard`) at `/dev/mmcblk1p1`
-4. If TF2 mount fails or doesn't contain MinUI: symlink `/mnt/sdcard` → `/mnt/mmc`
-5. Check for `MinUI.zip` on TF2:
+4. If TF2 mount fails or doesn't contain LessUI: symlink `/mnt/sdcard` → `/mnt/mmc`
+5. Check for `LessUI.zip` on TF2:
    - Detect device variant by reading `/mnt/vendor/bin/dmenu.bin`
    - Detect framebuffer orientation from `/sys/class/graphics/fb0/modes`
    - Select appropriate boot image suffix:
@@ -247,17 +247,17 @@ MinUI installs across two SD cards:
      - `-w`: Widescreen display (RG34xx)
      - (none): Standard 640x480
    - Display `installing.bmp` (first install) or `updating.bmp` (update)
-   - Extract `MinUI.zip` to `/mnt/sdcard`
+   - Extract `LessUI.zip` to `/mnt/sdcard`
    - Delete ZIP file
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
-6. Launch MinUI via `.system/rg35xxplus/paks/MinUI.pak/launch.sh`
+6. Launch LessUI via `.system/rg35xxplus/paks/LessUI.pak/launch.sh`
 7. If launcher exits, shutdown device (prevents stock firmware from accessing card)
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in TF2 root (`/mnt/sdcard/`)
+To update LessUI on device:
+1. Place `LessUI.zip` in TF2 root (`/mnt/sdcard/`)
 2. Reboot device
 3. Boot script auto-detects ZIP, determines variant, and performs update
 4. ZIP is deleted after successful extraction
@@ -373,7 +373,7 @@ These adjustments maximize visible content while maintaining consistent UI appea
 
 ## Included Tools
 
-Tools are provided via the shared MinUI .pak system:
+Tools are provided via the shared LessUI .pak system:
 - **Clock.pak**: System clock/time display
 - **Input.pak**: Input configuration utility
 - **Files.pak**: File manager (if included in build)
@@ -403,7 +403,7 @@ Tools are provided via the shared MinUI .pak system:
 ### Boot Process Quirks
 1. **dmenu.bin Update**: Install script copies updated `dmenu.bin` to TF1 for stock menu compatibility
 2. **Bootlogo One-Time Install**: `.minstalled` flag prevents bootlogo from being reinstalled on updates
-3. **Shutdown on Exit**: Boot script shutdowns device if MinUI exits (safety measure)
+3. **Shutdown on Exit**: Boot script shutdowns device if LessUI exits (safety measure)
 4. **Automatic Symlink**: If TF2 is missing/empty, automatically symlinks to TF1 for single-card operation
 
 ## Testing
@@ -429,7 +429,7 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform demonstrates MinUI's **advanced runtime adaptation**:
+This platform demonstrates LessUI's **advanced runtime adaptation**:
 - Single binary supporting three distinct hardware variants
 - Runtime display resolution and UI layout configuration
 - Hot-plug HDMI detection with automatic routing

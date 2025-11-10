@@ -1,7 +1,7 @@
-# MinUI Quality Assurance
+# LessUI Quality Assurance
 # Static analysis, testing, and code formatting
 #
-# This makefile provides quality assurance tools for the MinUI codebase:
+# This makefile provides quality assurance tools for the LessUI codebase:
 #   - Unit tests (Docker-based, using Debian Buster + GCC 8.3.0)
 #   - Static analysis (cppcheck for C code, shellcheck for scripts)
 #   - Code formatting (clang-format with project style)
@@ -17,7 +17,7 @@
 .PHONY: help lint lint-code lint-full lint-shell test test-native format format-check clean-qa docker-build docker-test docker-shell
 
 help:
-	@echo "MinUI Quality Assurance Tools"
+	@echo "LessUI Quality Assurance Tools"
 	@echo ""
 	@echo "Main targets (use these):"
 	@echo "  make test          - Run unit tests (Docker, recommended)"
@@ -152,9 +152,9 @@ tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/a
 	@echo "Building MinArch path generation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build MinUI launcher utility tests (pure string logic)
+# Build LessUI launcher utility tests (pure string logic)
 tests/minui_utils_test: tests/unit/all/common/test_minui_utils.c workspace/all/common/minui_utils.c workspace/all/common/utils.c $(TEST_UNITY)
-	@echo "Building MinUI launcher utility tests..."
+	@echo "Building LessUI launcher utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build M3U parser tests (uses file mocking with GCC --wrap, Docker-only)
@@ -162,9 +162,9 @@ tests/m3u_parser_test: tests/unit/all/common/test_m3u_parser.c workspace/all/com
 	@echo "Building M3U parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
-# Build MinUI file utility tests (uses file mocking with GCC --wrap, Docker-only)
+# Build LessUI file utility tests (uses file mocking with GCC --wrap, Docker-only)
 tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c workspace/all/common/minui_file_utils.c workspace/all/common/utils.c tests/support/fs_mocks.c $(TEST_UNITY)
-	@echo "Building MinUI file utility tests..."
+	@echo "Building LessUI file utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build map.txt parser tests (uses file mocking with GCC --wrap, Docker-only)

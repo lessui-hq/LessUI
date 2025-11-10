@@ -10,7 +10,7 @@ echo 0 > /sys/devices/virtual/vtconsole/vtcon1/bind
 
 SDCARD_PATH=/media/roms
 SYSTEM_PATH=$SDCARD_PATH/.system/gkdpixel
-UPDATE_PATH=$SDCARD_PATH/MinUI.zip
+UPDATE_PATH=$SDCARD_PATH/LessUI.zip
 
 # is there an update available?
 if [ -f $UPDATE_PATH ]; then
@@ -18,10 +18,10 @@ if [ -f $UPDATE_PATH ]; then
 	
 	if [ ! -d $SYSTEM_PATH ]; then
 		ACTION=installing
-		echo "install MinUI" >> $SDCARD_PATH/log.txt
+		echo "install LessUI" >> $SDCARD_PATH/log.txt
 	else
 		ACTION=updating
-		echo "update MinUI" >> $SDCARD_PATH/log.txt
+		echo "update LessUI" >> $SDCARD_PATH/log.txt
 	fi
 	
 	# show action

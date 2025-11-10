@@ -1,6 +1,6 @@
 # GitHub Actions CI Workflows
 
-This directory contains the continuous integration workflows for MinUI.
+This directory contains the continuous integration workflows for LessUI.
 
 ## Workflows
 
@@ -68,15 +68,15 @@ make all
 Add to README.md:
 
 ```markdown
-[![QA](https://github.com/nchapman/MinUI/actions/workflows/qa.yml/badge.svg)](https://github.com/nchapman/MinUI/actions/workflows/qa.yml)
-[![Build](https://github.com/nchapman/MinUI/actions/workflows/build.yml/badge.svg)](https://github.com/nchapman/MinUI/actions/workflows/build.yml)
+[![QA](https://github.com/nchapman/LessUI/actions/workflows/qa.yml/badge.svg)](https://github.com/nchapman/LessUI/actions/workflows/qa.yml)
+[![Build](https://github.com/nchapman/LessUI/actions/workflows/build.yml/badge.svg)](https://github.com/nchapman/LessUI/actions/workflows/build.yml)
 ```
 
 ## Future Enhancements
 
 ### ARM64 Runners
 
-GitHub now supports ARM64 runners which could significantly speed up builds since MinUI compiles for ARM devices. To use ARM64 runners:
+GitHub now supports ARM64 runners which could significantly speed up builds since LessUI compiles for ARM devices. To use ARM64 runners:
 
 1. Enable ARM64 runners in repository settings
 2. Update workflow files to use `runs-on: [self-hosted, linux, arm64]` or `runs-on: ubuntu-24.04-arm64` (when available)

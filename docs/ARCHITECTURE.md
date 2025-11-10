@@ -1,10 +1,10 @@
-# MinUI Architecture
+# LessUI Architecture
 
-This document explains how MinUI is structured and how the pieces fit together.
+This document explains how LessUI is structured and how the pieces fit together.
 
 ## Core Concept
 
-MinUI uses a **platform abstraction layer** to run the same code on 20+ different handheld devices. Write once, compile for each platform with hardware-specific constants.
+LessUI uses a **platform abstraction layer** to run the same code on 20+ different handheld devices. Write once, compile for each platform with hardware-specific constants.
 
 ## The Three Layers
 
@@ -73,13 +73,13 @@ Device-specific daemons and utilities:
 
 1. Device boots → runs platform boot script (`workspace/<platform>/install/boot.sh`)
 2. Boot script displays splash screen (installing/updating if needed)
-3. Launches MinUI via `.system/<platform>/paks/MinUI.pak/launch.sh`
-4. MinUI reads ROM folders and displays launcher
+3. Launches LessUI via `.system/<platform>/paks/LessUI.pak/launch.sh`
+4. LessUI reads ROM folders and displays launcher
 
 ### Launching a Game
 
 1. User selects ROM in launcher
-2. MinUI calls the appropriate pak's `launch.sh` script
+2. LessUI calls the appropriate pak's `launch.sh` script
 3. Pak script runs `minarch.elf <core> <rom>`
 4. Minarch loads the libretro core and starts emulation
 5. User presses MENU → in-game menu appears
@@ -143,7 +143,7 @@ build/
 
 ## The Pak System
 
-MinUI is extended through "paks" - folders ending in `.pak` with a `launch.sh` script inside.
+LessUI is extended through "paks" - folders ending in `.pak` with a `launch.sh` script inside.
 
 ### Emulator Paks
 
@@ -176,14 +176,14 @@ See [PAKS.md](PAKS.md) for complete pak development guide.
 
 ## Multi-Resolution Support
 
-MinUI supports devices from 320x240 to 1280x720 using a scale factor:
+LessUI supports devices from 320x240 to 1280x720 using a scale factor:
 
 - **1x**: 320x240 devices (trimuismart, gkdpixel)
 - **2x**: 640x480 devices (most platforms)
 - **3x**: 960x720 devices (tg5040 brick)
 - **4x**: 1280x960+ devices (future)
 
-Each platform defines `FIXED_SCALE` in `platform.h`. At startup, MinUI loads the appropriate sprite sheet:
+Each platform defines `FIXED_SCALE` in `platform.h`. At startup, LessUI loads the appropriate sprite sheet:
 
 ```c
 sprintf(asset_path, RES_PATH "/assets@%ix.png", FIXED_SCALE);
@@ -198,7 +198,7 @@ This way UI code is resolution-independent.
 
 ## Input Handling
 
-MinUI supports three input methods (platforms use one or more):
+LessUI supports three input methods (platforms use one or more):
 
 1. **SDL Keyboard**: `BUTTON_A = SDLK_SPACE`
 2. **SDL Joystick**: `JOY_A = 0`
@@ -224,7 +224,7 @@ The platform layer handles the actual hardware polling.
 
 ### Rendering
 
-MinUI uses double-buffering:
+LessUI uses double-buffering:
 ```c
 GFX_clear(screen);              // Clear back buffer
 GFX_blitText(...);              // Draw UI elements
@@ -246,7 +246,7 @@ GFX_blitAsset(ASSET_BATTERY, screen, x, y, width, height, rotation);
 
 ## Save States
 
-MinUI has 9 save state slots per game:
+LessUI has 9 save state slots per game:
 - **Slots 0-8**: Manual saves (accessible in-game menu)
 - **Slot 9**: Auto-save (created on quit, loaded on resume)
 
@@ -264,7 +264,7 @@ Save states are shared across all platforms (unlike per-game configs which are p
 
 ### Stack vs Heap
 
-MinUI prefers stack allocation for speed:
+LessUI prefers stack allocation for speed:
 ```c
 char path[MAX_PATH];  // 512 bytes on stack
 ```
@@ -317,10 +317,10 @@ Launcher shows these first for quick access.
 1. Device hardware boots
 2. Runs boot script from device-specific location
 3. Boot script:
-   - Checks for `MinUI.zip` (update)
+   - Checks for `LessUI.zip` (update)
    - Displays splash screen if updating
-   - Extracts update or launches MinUI
-4. MinUI launcher starts
+   - Extracts update or launches LessUI
+4. LessUI launcher starts
 5. User navigates and plays games
 6. On quit, device reboots or powers off (prevents stock firmware access)
 
@@ -355,7 +355,7 @@ Minarch maintains 60fps by:
 
 ## Thread Safety
 
-MinUI is mostly single-threaded except:
+LessUI is mostly single-threaded except:
 - Some platforms use background threads for HDMI monitoring
 - Keymon runs as separate process
 - Settings use shared memory or files for IPC

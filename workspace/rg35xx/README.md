@@ -72,13 +72,13 @@ The RG35XX uses a flexible dual-partition approach:
 - **TF1** (`/mnt/mmc`): Primary ROMS partition
 - **TF2** (`/mnt/sdcard`): Optional secondary partition
 
-Boot script detects which partition contains MinUI (`.system/rg35xx` or `MinUI.zip`) and creates symlinks accordingly. This allows MinUI to work with single or dual TF card setups.
+Boot script detects which partition contains LessUI (`.system/rg35xx` or `LessUI.zip`) and creates symlinks accordingly. This allows LessUI to work with single or dual TF card setups.
 
 ### Boot Firmware Integration
-MinUI runs through a custom ramdisk (`ramdisk.img`) and boot script (`dmenu.bin`) installed in the `/misc` partition:
+LessUI runs through a custom ramdisk (`ramdisk.img`) and boot script (`dmenu.bin`) installed in the `/misc` partition:
 - Ramdisk provides chroot environment with ext2 filesystem (`rootfs.ext2`)
-- Boot script mounts SD cards and launches MinUI
-- Falls back to stock `dmenu.bin` if MinUI is not installed
+- Boot script mounts SD cards and launches LessUI
+- Falls back to stock `dmenu.bin` if LessUI is not installed
 
 ## Directory Structure
 
@@ -166,7 +166,7 @@ The platform automatically clones required dependencies on first build:
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/sdcard/  (or /mnt/mmc if single partition)
@@ -174,55 +174,55 @@ MinUI installs to the SD card with the following structure:
 │   ├── rg35xx/             Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, overclock, install.sh)
 │   │   ├── paks/           Applications and emulators
-│   │   │   └── MinUI.pak/  Main launcher
+│   │   │   └── LessUI.pak/  Main launcher
 │   │   ├── dat/            Boot partition files (ramdisk.img, dmenu.bin)
 │   │   └── rootfs.ext2     Chroot filesystem image
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
 ├── Roms/                   ROM files organized by system
-└── MinUI.zip               Update package (if present)
+└── LessUI.zip               Update package (if present)
 ```
 
 ### Boot Partition Layout (`/misc`)
 
-MinUI modifies the `/misc` partition during installation:
+LessUI modifies the `/misc` partition during installation:
 
 ```
 /misc/
-├── dmenu.bin          MinUI boot script (boot.sh)
-├── ramdisk.img        Custom ramdisk with MinUI environment
+├── dmenu.bin          LessUI boot script (boot.sh)
+├── ramdisk.img        Custom ramdisk with LessUI environment
 ├── boot_logo.bmp.gz   Boot splash (only installed, never updated)
 ├── charging.png       Custom charging graphic (only installed, never updated)
-└── .minstalled        Flag file indicating MinUI is installed
+└── .minstalled        Flag file indicating LessUI is installed
 ```
 
 ### Boot Process
 
-1. Stock firmware boots and runs `/misc/dmenu.bin` (MinUI's boot.sh)
+1. Stock firmware boots and runs `/misc/dmenu.bin` (LessUI's boot.sh)
 2. Script mounts SD card partitions (TF1 at `/mnt/mmc`, TF2 at `/mnt/sdcard`)
-3. Detects which partition contains MinUI by checking for `.system/rg35xx` or `MinUI.zip`
+3. Detects which partition contains LessUI by checking for `.system/rg35xx` or `LessUI.zip`
 4. Creates symlink if needed to unify partition access
-5. If `MinUI.zip` exists:
+5. If `LessUI.zip` exists:
    - Display splash screen based on install state (installing.bmp or updating.bmp)
    - Set framebuffer to 640x480x16
    - Extract splash images from uuencoded data in boot script
    - Display appropriate splash to `/dev/fb0`
-   - Extract `MinUI.zip` to SD card
+   - Extract `LessUI.zip` to SD card
    - Delete ZIP file
    - Run `.system/rg35xx/bin/install.sh` to update `/misc` partition
    - Reboot device
-6. Check for `rootfs.ext2` (required for MinUI)
+6. Check for `rootfs.ext2` (required for LessUI)
 7. If missing, fall back to stock `dmenu.bin`
 8. Setup loopback device and mount rootfs as chroot environment
 9. Bind mount system directories (`/dev`, `/proc`, `/sys`, etc.)
-10. `chroot` into rootfs and launch MinUI via `launch.sh`
+10. `chroot` into rootfs and launch LessUI via `launch.sh`
 11. On exit: unmount, detach loopback, reboot device
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. Install script checks MD5 checksums of `/misc` files
@@ -280,11 +280,11 @@ The overclock utility provides direct CMU register manipulation:
 Voltage formula: `((volts - 700000) / 25000) << 7 | 0xe04e`
 
 ### Chroot Environment
-MinUI runs in a chroot environment from `rootfs.ext2`:
+LessUI runs in a chroot environment from `rootfs.ext2`:
 - Loopback mounted at `/cfw` via `/dev/block/loop7`
 - Provides isolated userspace with necessary libraries
 - System directories bind-mounted from host (`/dev`, `/proc`, `/sys`)
-- Allows MinUI to use different library versions than stock OS
+- Allows LessUI to use different library versions than stock OS
 
 ### Custom Charging Screen
 The ramdisk is patched to use a custom charging graphic:
@@ -299,15 +299,15 @@ DinguxCommander-based file manager with:
 - File operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ## Known Issues / Quirks
 
 ### Hardware Quirks
 1. **Japanese Key Mappings**: SDL buttons use unusual Japanese input key codes (Katakana, Hiragana, etc.)
 2. **Dual Partition Detection**: Complex boot logic to support single or dual TF card configurations
-3. **Chroot Requirement**: MinUI requires `rootfs.ext2` and cannot run directly on stock firmware
-4. **Reboot on Exit**: Boot script forces reboot if MinUI exits to prevent system instability
+3. **Chroot Requirement**: LessUI requires `rootfs.ext2` and cannot run directly on stock firmware
+4. **Reboot on Exit**: Boot script forces reboot if LessUI exits to prevent system instability
 
 ### Development Notes
 1. **No L3/R3**: Platform lacks clickable analog sticks
@@ -357,7 +357,7 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform demonstrates several **unique architectural patterns** in MinUI:
+This platform demonstrates several **unique architectural patterns** in LessUI:
 
 1. **Chroot-based execution**: Only platform that runs entirely in a chrooted environment
 2. **Boot partition modification**: Directly modifies `/misc` partition for firmware integration

@@ -214,7 +214,7 @@ The platform automatically clones required dependencies on first build:
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -224,7 +224,7 @@ MinUI installs to the SD card with the following structure:
 │   │   │   └── install.sh  Post-update script
 │   │   ├── dat/            Data files (runtrimui.sh)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale - standard)
 │       ├── assets@3x.png   UI sprite sheet (3x scale - Brick)
@@ -241,7 +241,7 @@ MinUI installs to the SD card with the following structure:
 ├── .userdata/              User settings and saves
 │   └── tg5040/             Platform-specific settings
 ├── Roms/                   ROM files organized by system
-└── MinUI.zip               Update package (if present)
+└── LessUI.zip               Update package (if present)
 ```
 
 ### Boot Process
@@ -250,21 +250,21 @@ MinUI installs to the SD card with the following structure:
 2. Script remounts SD cards as read-write (Brick has `/mnt/UDISK` too)
 3. Sets CPU governor to "userspace" and frequency to 2.0 GHz
 4. Detects variant by checking MainUI binary for "Trimui Brick" string
-5. If `MinUI.zip` exists:
+5. If `LessUI.zip` exists:
    - Disables LED animations (standard + Brick-specific LEDs if applicable)
    - Displays variant-appropriate splash screen:
      - Standard: `installing.png` or `updating.png` (1280x720)
      - Brick: `brick/installing.png` or `brick/updating.png` (1024x768)
-   - Extracts `MinUI.zip` to SD card
+   - Extracts `LessUI.zip` to SD card
    - Deletes ZIP file
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
-6. Launches MinUI via `.system/tg5040/paks/MinUI.pak/launch.sh`
+6. Launches LessUI via `.system/tg5040/paks/LessUI.pak/launch.sh`
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root (`/mnt/SDCARD/`)
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. Displays variant-appropriate update splash
@@ -400,7 +400,7 @@ DinguxCommander-sdl2 file manager with:
 - Full file operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ### evtest
 Hardware input testing utility:
@@ -424,7 +424,7 @@ Joystick testing utility:
 5. **GPIO Polling**: Mute switch requires constant GPIO polling (no interrupt support)
 6. **Headphone Boot State**: Cannot detect headphone jack state at boot, only detects change events (separate speaker/headphone volumes less useful)
 7. **WiFi Limitations**: Stock `wget` lacks SSL support; Splore.pak cannot download carts from BBS (workaround: use `curl` instead)
-8. **PSP/NDS Setup**: Requires copying assets from stock firmware (not included with MinUI)
+8. **PSP/NDS Setup**: Requires copying assets from stock firmware (not included with LessUI)
 
 ### Platform Differences
 - **L3/R3 Support**: Only Brick variant has clickable analog sticks

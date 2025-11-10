@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MinUI is a focused, custom launcher and libretro frontend for retro handheld gaming devices. It provides a simple, distraction-free interface for playing retro games across multiple hardware platforms (Miyoo Mini, Trimui Smart, Anbernic RG35xx series, etc.).
+LessUI is a focused, custom launcher and libretro frontend for retro handheld gaming devices. It provides a simple, distraction-free interface for playing retro games across multiple hardware platforms (Miyoo Mini, Trimui Smart, Anbernic RG35xx series, etc.).
 
 **Key Design Philosophy:**
 - Simplicity: No configuration, no boxart, no themes
@@ -15,7 +15,7 @@ MinUI is a focused, custom launcher and libretro frontend for retro handheld gam
 
 ### Multi-Platform Build System
 
-MinUI uses a **platform abstraction layer** to support 15+ different handheld devices with a single codebase:
+LessUI uses a **platform abstraction layer** to support 15+ different handheld devices with a single codebase:
 
 ```
 workspace/
@@ -81,7 +81,7 @@ The common code in `workspace/all/common/defines.h` uses these to create derived
 
 ### Docker-Based Cross-Compilation
 
-MinUI uses Docker containers with platform-specific toolchains to cross-compile for ARM devices:
+LessUI uses Docker containers with platform-specific toolchains to cross-compile for ARM devices:
 
 ```bash
 # Enter platform build environment
@@ -108,6 +108,58 @@ make PLATFORM=miyoomini build
 Active platforms (as of most recent): miyoomini, trimuismart, rg35xx, rg35xxplus, my355, tg5040, zero28, rgb30, m17, gkdpixel, my282, magicmini
 
 ## Development Commands
+
+### macOS Native Development (makefile.dev)
+
+For rapid UI development on macOS, use native builds instead of Docker cross-compilation:
+
+```bash
+# First-time setup
+brew install sdl2 sdl2_image sdl2_ttf
+
+# Development workflow
+make dev           # Build minui for macOS (native, with AddressSanitizer)
+make dev-run       # Build and run minui in SDL2 window (4x3 default)
+make dev-run-4x3   # Run in 4:3 aspect ratio (640×480)
+make dev-run-16x9  # Run in 16:9 aspect ratio (854×480)
+make dev-clean     # Clean macOS build artifacts
+```
+
+**How it works:**
+- Compiles minui natively on macOS using system gcc/clang
+- Links against Homebrew SDL2 libraries
+- Runs in SDL2 window (640×480 for 4x3, 854×480 for 16x9)
+- Uses fake SD card at `workspace/macos/FAKESD/` instead of actual device storage
+- Keyboard input: Arrow keys (D-pad), A/S/W/Q (face buttons), Enter (Start), 4 (Select), Space (Menu)
+- Quit: Hold Backspace/Delete
+
+**Setting up test ROMs:**
+```bash
+# Create console directories
+mkdir -p workspace/macos/FAKESD/Roms/GB
+mkdir -p workspace/macos/FAKESD/Roms/GBA
+
+# Add test ROMs
+cp ~/Downloads/game.gb workspace/macos/FAKESD/Roms/GB/
+```
+
+**Use cases:**
+- UI iteration (instant feedback vs. SD card deploy)
+- Visual testing of menus, text rendering, graphics
+- Debugging with sanitizers (-fsanitize=address)
+- Integration testing with file I/O and ROM browsing
+
+**Limitations:**
+- **minui (launcher) only** - Cannot test minarch (libretro cores)
+- Hardware features stubbed (brightness, volume, power management)
+- Performance differs from ARM devices
+- Path handling: SDCARD_PATH is `../../macos/FAKESD` relative to `workspace/all/minui/` working directory
+
+**Implementation details:**
+- Source files: Same as production minui build (from `workspace/all/minui/makefile`)
+- Platform code: `workspace/macos/platform/platform.{h,c}` provides macOS-specific stubs
+- Build output: `workspace/all/minui/build/macos/minui` binary
+- See `workspace/macos/FAKESD/README.md` for SD card structure
 
 ### Quality Assurance (makefile.qa)
 
@@ -179,7 +231,7 @@ This pattern appears in `getEmuName()` and was the source of a critical bug.
 
 ### Display Name Processing
 
-MinUI automatically cleans up ROM filenames for display:
+LessUI automatically cleans up ROM filenames for display:
 - Removes file extensions (`.gb`, `.nes`, `.p8.png`)
 - Strips region codes and version info in parentheses: `Game (USA) (v1.2)` → `Game`
 - Trims whitespace

@@ -63,7 +63,7 @@ Platform implementation for the Mini Zero 28 retro handheld device.
 The Zero 28 platform uses several unique features:
 
 ### SDL2 Joystick Input
-Unlike many MinUI platforms that use SDL keyboard events, the Zero28 uses SDL_Joystick API for all gamepad input. The D-pad uses joystick HAT events rather than discrete button events.
+Unlike many LessUI platforms that use SDL keyboard events, the Zero28 uses SDL_Joystick API for all gamepad input. The D-pad uses joystick HAT events rather than discrete button events.
 
 ### Hardware-Accelerated Rendering
 The platform leverages SDL2's hardware-accelerated renderer with support for:
@@ -162,13 +162,13 @@ make
 The platform automatically clones required dependencies on first build:
 - **DinguxCommander-sdl2**: `github.com/shauninman/DinguxCommander-sdl2.git` (SDL2 fork of file manager)
 
-Note: The Zero28 uses SDL2 (unlike many MinUI platforms that use SDL 1.2).
+Note: The Zero28 uses SDL2 (unlike many LessUI platforms that use SDL 1.2).
 
 ## Installation
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -177,7 +177,7 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── bin/            Utilities (keymon, bl_enable, bl_disable, etc.)
 │   │   │   └── install.sh  Post-update installation script (no-op)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Line effect overlays (2-8px)
@@ -189,26 +189,26 @@ MinUI installs to the SD card with the following structure:
 │       ├── installing.png  Initial install splash
 │       └── updating.png    Update splash
 ├── Roms/                   ROM files organized by system
-└── MinUI.zip               Update package (if present)
+└── LessUI.zip               Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `zero28.sh` (from `.tmp_update/`)
 2. Script sets CPU governor to "performance" (600 MHz)
-3. If `MinUI.zip` exists:
+3. If `LessUI.zip` exists:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Rename `.tmp_update` to `.tmp_update-old`
-   - Extract `MinUI.zip` to SD card
+   - Extract `LessUI.zip` to SD card
    - Delete ZIP and old update directory
    - Run `.system/zero28/bin/install.sh` to complete setup
-4. Launch MinUI via `.system/zero28/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/zero28/paks/LessUI.pak/launch.sh`
 5. If launcher exits, power off device (prevents stock firmware from accessing card)
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
@@ -289,7 +289,7 @@ DinguxCommander-based file manager (SDL2 fork) with:
 - File operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ### Clock.pak
 System clock/time display tool
@@ -304,10 +304,10 @@ Input configuration utility
 2. **Inverted Volume**: Volume scale is inverted (63 = mute, 0 = max) unlike most platforms
 3. **Joystick-Only**: No SDL keyboard support - all input via joystick API
 4. **HAT D-Pad**: D-pad uses HAT events instead of discrete button events
-6. **Power-Off on Exit**: Boot script powers off if MinUI exits (prevents stock firmware access)
+6. **Power-Off on Exit**: Boot script powers off if LessUI exits (prevents stock firmware access)
 
 ### Development Notes
-1. **SDL2 Platform**: Uses SDL2 (not SDL 1.2 like many MinUI platforms)
+1. **SDL2 Platform**: Uses SDL2 (not SDL 1.2 like many LessUI platforms)
 2. **Hardware Rendering**: Leverages SDL2 hardware-accelerated renderer with texture targets
 3. **Effect System**: Sophisticated overlay system with multiple effect types and scales
 4. **Dual Input Devices**: Monitors two separate `/dev/input/event*` devices for complete input
@@ -352,15 +352,15 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform represents several **unique characteristics** in MinUI:
+This platform represents several **unique characteristics** in LessUI:
 - **SDL2 adoption**: One of few platforms using SDL2 instead of SDL 1.2
 - **Hardware rendering**: Leverages GPU-accelerated rendering with texture targets
-- **Effects system**: Most sophisticated visual effects implementation in MinUI
+- **Effects system**: Most sophisticated visual effects implementation in LessUI
 - **Joystick-centric**: Pure joystick input (no keyboard fallback)
 - **AXP2202 PMIC**: Different battery monitoring IC than most platforms
 - **Display rotation**: Automatic portrait mode detection and rotation
 
-This platform demonstrates MinUI's flexibility in adapting to:
+This platform demonstrates LessUI's flexibility in adapting to:
 - Modern SDL2 graphics stack
 - Joystick-based input systems
 - Advanced rendering features (effects, crisp mode, rotation)

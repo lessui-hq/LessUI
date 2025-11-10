@@ -133,7 +133,7 @@ The platform automatically clones required dependencies on first build:
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -141,7 +141,7 @@ MinUI installs to the SD card with the following structure:
 │   ├── miyoomini/          Platform-specific binaries
 │   │   ├── bin/           Utilities (batmon, lumon, overclock, etc.)
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
@@ -151,26 +151,26 @@ MinUI installs to the SD card with the following structure:
 │       ├── installing.png Initial install splash
 │       └── updating.png   Update splash
 ├── Roms/                  ROM files organized by system
-└── MinUI.zip              Update package (if present)
+└── LessUI.zip              Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `miyoomini.sh` from `.tmp_update/`
 2. Script sets CPU governor to "performance"
-3. If `MinUI.zip` exists:
+3. If `LessUI.zip` exists:
    - Initialize backlight (PWM)
    - Initialize LCD (trigger `/proc/ls`)
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract `MinUI.zip` to SD card
+   - Extract `LessUI.zip` to SD card
    - Run `.system/miyoomini/bin/install.sh` to complete setup
-4. Launch MinUI via `.system/miyoomini/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/miyoomini/paks/LessUI.pak/launch.sh`
 5. If launcher exits, reboot (prevents stock firmware from accessing card)
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
@@ -223,7 +223,7 @@ DinguxCommander-based file manager with:
 - File operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ### Remove Loading.pak
 Utility to disable the stock "loading" screen animation that appears before game launch.
@@ -264,7 +264,7 @@ When testing changes:
 
 ## Maintainer Notes
 
-This is one of the most popular MinUI platforms and serves as a reference implementation for:
+This is one of the most popular LessUI platforms and serves as a reference implementation for:
 - Multi-variant runtime detection
 - Hybrid input handling (SDL + evdev)
 - Battery monitoring abstraction (ADC vs I2C)

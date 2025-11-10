@@ -28,15 +28,8 @@ if ! command -v magick &> /dev/null && ! command -v convert &> /dev/null; then
     exit 1
 fi
 
-# Check for pngquant (optional but recommended)
-if ! command -v pngquant &> /dev/null; then
-    echo "WARNING: pngquant not found - PNG files will not be compressed"
-    echo "Install with: brew install pngquant"
-    echo ""
-    HAS_PNGQUANT=false
-else
-    HAS_PNGQUANT=true
-fi
+# pngquant removed - caused color degradation on boot screens
+# PNG files are small enough without compression
 
 # Use magick if available (v7+), fallback to convert (v6)
 if command -v magick &> /dev/null; then
@@ -50,10 +43,11 @@ for ASSET in installing updating bootlogo charging; do
     echo "Processing $ASSET..."
 
     # PNG variants (for show.elf platforms - simple scaling, maintain 4:3)
+    # IMPORTANT: png:color-type=2 forces RGB (no palette), prevents indexed color
     echo "  Generating PNG variants..."
-    $MAGICK $SRC/$ASSET.png -resize 320x240! $OUT/$ASSET@1x.png
-    $MAGICK $SRC/$ASSET.png -resize 640x480! $OUT/$ASSET@2x.png
-    $MAGICK $SRC/$ASSET.png -resize 960x720! $OUT/$ASSET@3x.png
+    $MAGICK $SRC/$ASSET.png -resize 320x240! -define png:color-type=2 $OUT/$ASSET@1x.png
+    $MAGICK $SRC/$ASSET.png -resize 640x480! -define png:color-type=2 $OUT/$ASSET@2x.png
+    $MAGICK $SRC/$ASSET.png -resize 960x720! -define png:color-type=2 $OUT/$ASSET@3x.png
 
     # BMP variants (for dd platforms - 24-bit, standard 54-byte header)
     echo "  Generating BMP variants..."
@@ -106,30 +100,6 @@ $MAGICK $SRC/assets.png -resize 384x384! $OUT/assets@3x.png
 $MAGICK $SRC/assets.png -resize 512x512! $OUT/assets@4x.png
 echo "  ✓ Generated all variants for assets"
 echo ""
-
-# Compress PNG files with pngquant
-if [ "$HAS_PNGQUANT" = true ]; then
-    echo "Compressing PNG files with pngquant..."
-
-    # Get sizes before compression
-    BEFORE=$(du -sk $OUT/*@*.png | awk '{sum+=$1} END {print sum}')
-
-    # Compress all generated PNGs (not source files!)
-    # --quality=85-95: High quality, minimal visual loss
-    # --skip-if-larger: Only replace if compressed version is smaller
-    # --force: Overwrite existing files
-    # --ext .png: Replace original files
-    pngquant --quality=85-95 --skip-if-larger --force --ext .png $OUT/*@*.png
-
-    # Get sizes after compression
-    AFTER=$(du -sk $OUT/*@*.png | awk '{sum+=$1} END {print sum}')
-    SAVED=$((BEFORE - AFTER))
-    PERCENT=$((SAVED * 100 / BEFORE))
-
-    echo "  ✓ PNG compression complete"
-    echo "  Before: ${BEFORE}KB, After: ${AFTER}KB, Saved: ${SAVED}KB (${PERCENT}%)"
-    echo ""
-fi
 
 echo "All assets generated successfully!"
 echo ""

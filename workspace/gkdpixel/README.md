@@ -3,11 +3,11 @@
 Platform implementation for the GKD Pixel retro handheld device.
 
 > [!WARNING]
-> **This platform is deprecated and will be removed in a future MinUI release.**
+> **This platform is deprecated and will be removed in a future LessUI release.**
 >
 > **Reason**: Unique chipset (Ingenic X1830) with limited community support value.
 >
-> While the platform will continue to work with current MinUI releases, it will not receive new features or platform-specific bug fixes.
+> While the platform will continue to work with current LessUI releases, it will not receive new features or platform-specific bug fixes.
 
 ## Hardware Specifications
 
@@ -164,13 +164,13 @@ make
 - **Optimization**: LTO enabled (`-flto`)
 - **Toolchain**: GCW0 (same as other OpenDingux devices)
 
-No external dependencies are cloned - platform uses stock MinUI shared code.
+No external dependencies are cloned - platform uses stock LessUI shared code.
 
 ## Installation
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /media/roms/
@@ -181,23 +181,23 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── dat/           Platform data files
 │   │   │   └── boot.sh    Boot handler script
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets.png     UI sprite sheet (1x scale)
 │       └── BPreplayBold-unhinted.otf
-├── MinUI.zip              Update package (if present)
+├── LessUI.zip              Update package (if present)
 └── log.txt                Installation/update log
 ```
 
 ### Stock OS Integration
 
-MinUI integrates with the stock firmware through system hooks:
+LessUI integrates with the stock firmware through system hooks:
 
 **On system partition** (`/usr`):
 ```
 /usr/
 ├── sbin/
-│   ├── frontend_start          MinUI's boot.sh (copied here)
+│   ├── frontend_start          LessUI's boot.sh (copied here)
 │   └── frontend_start.original Stock launcher (backed up)
 └── share/
     └── minui/
@@ -205,23 +205,23 @@ MinUI integrates with the stock firmware through system hooks:
         └── updating.bmp        Update splash (320x240)
 ```
 
-The stock OS calls `/usr/sbin/frontend_start` on boot, which MinUI replaces with its own boot handler.
+The stock OS calls `/usr/sbin/frontend_start` on boot, which LessUI replaces with its own boot handler.
 
 ### Boot Process
 
 1. Device boots stock OS
-2. Stock OS runs `/usr/sbin/frontend_start` (MinUI's boot script)
+2. Stock OS runs `/usr/sbin/frontend_start` (LessUI's boot script)
 3. Script performs console cleanup:
    - Unlocks virtual terminal
    - Resets console
    - Deactivates console on framebuffer
-4. Script checks for `MinUI.zip` on `/media/roms`
+4. Script checks for `LessUI.zip` on `/media/roms`
 5. If ZIP found:
    - Display splash to framebuffer (`installing.bmp` or `updating.bmp`)
    - Extract ZIP to `/media/roms`
    - Delete ZIP file
    - Run `.system/gkdpixel/bin/install.sh` to complete setup
-6. Launch MinUI via `.system/gkdpixel/paks/MinUI.pak/launch.sh`
+6. Launch LessUI via `.system/gkdpixel/paks/LessUI.pak/launch.sh`
 7. If launcher not found, fallback to stock launcher (`frontend_start.original`)
 
 #### Boot Image Display
@@ -282,7 +282,7 @@ All scalers use:
 Uses **shared memory architecture** for settings:
 - **Shared Memory Key**: `/SharedSettings`
 - **Host**: keymon daemon (creates and manages settings)
-- **Clients**: MinUI, emulators (read/write shared settings)
+- **Clients**: LessUI, emulators (read/write shared settings)
 - **Persistence**: Binary file at `$USERDATA_PATH/msettings.bin`
 
 #### Settings Schema
@@ -326,7 +326,7 @@ Simplified battery reporting via sysfs:
 
 ## Included Tools
 
-The following MinUI standard tools are available:
+The following LessUI standard tools are available:
 
 ### Clock.pak
 System clock/time display
@@ -414,7 +414,7 @@ The utility provides two modes:
 
 ## Maintainer Notes
 
-This platform demonstrates several unique MinUI characteristics:
+This platform demonstrates several unique LessUI characteristics:
 
 ### Pure Evdev Input Architecture
 - **No SDL keyboard or joystick**: All input via direct kernel event codes
@@ -428,13 +428,13 @@ This platform demonstrates several unique MinUI characteristics:
 - **Temporal coherence**: SNES scaler maintains row state for efficiency
 
 ### Minimal Dependencies
-- **No external repos**: Uses stock MinUI shared code only
+- **No external repos**: Uses stock LessUI shared code only
 - **Small footprint**: Compact platform suitable for resource-constrained device
 - **GCW0 toolchain**: Leverages existing OpenDingux infrastructure
 
 ### Integration Pattern
 - **Stock OS hook**: Replaces frontend_start rather than full OS replacement
-- **Fallback support**: Can return to stock launcher if MinUI not found
+- **Fallback support**: Can return to stock launcher if LessUI not found
 - **Clean framebuffer**: Demonstrates proper console management
 
 Changes to this platform should preserve the evdev-only input architecture and maintain the custom scaler optimizations that provide high-quality output on the small 320x240 display.

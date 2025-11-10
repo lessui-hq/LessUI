@@ -1,8 +1,8 @@
-# MinUI Extras
+# LessUI Extras
 
-Optional emulator cores and tools for MinUI. These supplement the base installation with additional systems and utilities.
+Optional emulator cores and tools for LessUI. These supplement the base installation with additional systems and utilities.
 
-**Source:** https://github.com/shauninman/minui
+**Source:** https://github.com/nchapman/LessUI
 
 ---
 
@@ -27,7 +27,7 @@ Optional emulator cores and tools for MinUI. These supplement the base installat
 
 ## Installation
 
-Copy the desired folders from this archive to the corresponding locations on your MinUI SD card:
+Copy the desired folders from this archive to the corresponding locations on your LessUI SD card:
 
 - `Emus/<platform>/` → `/Emus/<platform>/` (emulator paks)
 - `Tools/<platform>/` → `/Tools/<platform>/` (tool paks)
@@ -66,7 +66,7 @@ Some extra cores require BIOS files. Place them in `Bios/<TAG>/`:
 - **PKM** (Pokémon mini): `bios.min`
 - **SGB** (Super Game Boy): `sgb.bios`
 
-**Note:** Filenames are case-sensitive. MinUI is strictly BYOB (bring your own BIOS).
+**Note:** Filenames are case-sensitive. LessUI is strictly BYOB (bring your own BIOS).
 
 ---
 
@@ -88,7 +88,7 @@ Run official PICO-8 natively (faster than libretro core).
 - **Exit P8-NATIVE**: Press START → select "SHUTDOWN"
 - **Exit Splore**: Press START (in-game) → "EXIT TO SPLORE" → (in splore) START → "OPTIONS" → "SHUTDOWN PICO-8"
 
-**Limitations:** No MinUI features (in-game menu, save states, auto-resume, sleep).
+**Limitations:** No LessUI features (in-game menu, save states, auto-resume, sleep).
 
 #### Wi-Fi.pak
 
@@ -113,7 +113,7 @@ Enable WiFi for Splore and other network features.
 
 #### Remove Loading.pak
 
-Removes "LOADING" text between boot logo and MinUI.
+Removes "LOADING" text between boot logo and LessUI.
 
 **Warning:** Patches NAND memory (read-only root filesystem). Takes ~5 minutes. Stay connected to power. Do not power off during operation.
 
@@ -137,21 +137,21 @@ Swaps MENU and SELECT buttons system-wide (makes MENU more accessible).
 
 ## Creating Your Own Paks
 
-Want to add more systems or tools? Check out the [Pak Development Guide](https://github.com/shauninman/minui/blob/main/docs/PAKS.md) to learn how to create custom emulator and tool paks for MinUI.
+Want to add more systems or tools? Check out the [Pak Development Guide](https://github.com/shauninman/minui/blob/main/docs/PAKS.md) to learn how to create custom emulator and tool paks for LessUI.
 
 **Pak types:**
 1. **Reuse existing cores** - Customize options for bundled cores
 2. **Bundle new cores** - Add new libretro cores
-3. **Standalone emulators** - Maximum performance (no MinUI integration)
+3. **Standalone emulators** - Maximum performance (no LessUI integration)
 
 ---
 
 ## Support
 
-**Important:** Third-party paks are not officially supported. If a console or core isn't included in MinUI's base or extras, there's usually a good reason:
+**Important:** Third-party paks are not officially supported. If a console or core isn't included in LessUI's base or extras, there's usually a good reason:
 - Poor libretro integration
 - Unreliable save states
 - Performance issues
 - Complexity (arcade cores with arcane ROM requirements)
 
-For help with MinUI itself, check the GitHub repository.
+For help with LessUI itself, check the GitHub repository.

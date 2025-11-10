@@ -1,4 +1,4 @@
-# ShellCheck configuration for MinUI
+# ShellCheck configuration for LessUI
 # Start forgiving, tighten over time
 
 # Disable these common warnings that are too noisy for now

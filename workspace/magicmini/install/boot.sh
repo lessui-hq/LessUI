@@ -4,7 +4,7 @@
 
 SDCARD_PATH=/storage/TF2
 SYSTEM_FRAG=/.system/magicmini
-UPDATE_FRAG=/MinUI.zip
+UPDATE_FRAG=/LessUI.zip
 SYSTEM_PATH=${SDCARD_PATH}${SYSTEM_FRAG}
 UPDATE_PATH=${SDCARD_PATH}${UPDATE_FRAG}
 
@@ -14,10 +14,10 @@ if [ -f $UPDATE_PATH ]; then
 	
 	if [ ! -d $SYSTEM_PATH ]; then
 		ACTION=installing
-		echo "install MinUI" >> $SDCARD_PATH/log.txt
+		echo "install LessUI" >> $SDCARD_PATH/log.txt
 	else
 		ACTION=updating
-		echo "update MinUI" >> $SDCARD_PATH/log.txt
+		echo "update LessUI" >> $SDCARD_PATH/log.txt
 	fi
 	
 	# show action

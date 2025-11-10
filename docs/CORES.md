@@ -1,10 +1,10 @@
-# MinUI Cores
+# LessUI Cores
 
-How libretro cores work in MinUI - their organization, build system, runtime loading, and platform differences.
+How libretro cores work in LessUI - their organization, build system, runtime loading, and platform differences.
 
 ## What Are Cores?
 
-MinUI uses **libretro cores** to emulate different gaming systems. Libretro is a simple API that allows emulator cores to be used across different frontends. MinUI's libretro frontend is called **minarch** (`workspace/all/minarch/`).
+LessUI uses **libretro cores** to emulate different gaming systems. Libretro is a simple API that allows emulator cores to be used across different frontends. LessUI's libretro frontend is called **minarch** (`workspace/all/minarch/`).
 
 **Core**: A compiled `.so` library implementing a specific emulator (e.g., `gambatte_libretro.so` for Game Boy)
 
@@ -98,7 +98,7 @@ workspace/all/cores/patches/
     └── 001-export-dmg-grid-color-on-change.patch
 ```
 
-These patches add MinUI-specific features (like DMG palette color export for color palettes).
+These patches add LessUI-specific features (like DMG palette color export for color palettes).
 
 ---
 
@@ -106,7 +106,7 @@ These patches add MinUI-specific features (like DMG palette color export for col
 
 ### Two-Tier Makefile Architecture
 
-MinUI uses a templated build system with platform-specific and shared components:
+LessUI uses a templated build system with platform-specific and shared components:
 
 #### 1. Platform-Specific Makefile
 
@@ -185,7 +185,7 @@ The build process follows these steps:
 
 1. **Clone** upstream libretro core repository
 2. **Apply platform-specific patch** (adds platform definition to core's Makefile)
-3. **Apply shared patches** (MinUI-specific features)
+3. **Apply shared patches** (LessUI-specific features)
 4. **Cross-compile** using Docker toolchain with `platform=<platform>` flag
 5. **Copy** compiled `.so` file to `output/` directory
 
@@ -229,7 +229,7 @@ This tells the core:
 
 #### Shared Patches
 
-These add MinUI-specific features across all platforms. Example: `workspace/all/cores/patches/gambatte/001-export-dmg-grid-color-on-change.patch` adds support for exporting palette color changes for color palette swapping.
+These add LessUI-specific features across all platforms. Example: `workspace/all/cores/patches/gambatte/001-export-dmg-grid-color-on-change.patch` adds support for exporting palette color changes for color palette swapping.
 
 ### Cross-Compilation Toolchain
 
@@ -432,7 +432,7 @@ nice -20 minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" \
     &> "$LOGS_PATH/$EMU_TAG.txt"
 ```
 
-Environment variables (set by `MinUI.pak/launch.sh`):
+Environment variables (set by `LessUI.pak/launch.sh`):
 - `PLATFORM`: `"miyoomini"`, `"trimuismart"`, `"rgb30"`, etc.
 - `SDCARD_PATH`: `"/mnt/SDCARD"`
 - `SYSTEM_PATH`: `"$SDCARD_PATH/.system/$PLATFORM"`
@@ -593,7 +593,7 @@ These callbacks are implemented by MinArch and called by the core during `retro_
 ```c
 // Video: Core calls this to display a frame
 typedef void (*retro_video_refresh_t)(
-    const void* data,      // Frame buffer (RGB565 in MinUI)
+    const void* data,      // Frame buffer (RGB565 in LessUI)
     unsigned width,
     unsigned height,
     size_t pitch           // Bytes per scanline
@@ -635,7 +635,7 @@ static bool environment_callback(unsigned cmd, void* data) {
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
         // Core says: "I want to output RGB565"
         if (*(enum retro_pixel_format*)data != RETRO_PIXEL_FORMAT_RGB565)
-            return false;  // MinUI only supports RGB565!
+            return false;  // LessUI only supports RGB565!
         return true;
 
     case RETRO_ENVIRONMENT_GET_VARIABLE:
@@ -706,21 +706,21 @@ static bool environment_callback(unsigned cmd, void* data) {
      |<--------- dlclose() ----------------|
 ```
 
-### Key MinUI-Specific Requirements
+### Key LessUI-Specific Requirements
 
-1. **Pixel Format**: MinUI **only** supports RGB565 (16-bit color)
+1. **Pixel Format**: LessUI **only** supports RGB565 (16-bit color)
    - Cores that output RGB888 or XRGB8888 are rejected
    - This is for performance on low-end ARM devices
 
-2. **Sample Rate**: MinUI resamples audio to platform-native sample rate
+2. **Sample Rate**: LessUI resamples audio to platform-native sample rate
    - Most cores output 32040 Hz or 48000 Hz
-   - MinUI's audio resampler converts to device sample rate (often 44100 Hz)
+   - LessUI's audio resampler converts to device sample rate (often 44100 Hz)
 
-3. **Save State Paths**: MinUI manages save state paths
+3. **Save State Paths**: LessUI manages save state paths
    - Slot 9 is special: auto-resume slot (saved on quit, loaded on launch)
    - Slots 0-8 are user-accessible save slots
 
-4. **Fast-Forward**: MinUI implements fast-forward by calling `retro_run()` multiple times per frame
+4. **Fast-Forward**: LessUI implements fast-forward by calling `retro_run()` multiple times per frame
    - Skips video refresh callback for intermediate frames
    - Plays audio at accelerated rate
 
@@ -775,9 +775,9 @@ static bool environment_callback(unsigned cmd, void* data) {
 | `workspace/<platform>/platform/platform.h` | Hardware constants (buttons, screen size) |
 | `workspace/all/common/defines.h` | Derived path constants |
 
-## Adding a Core to MinUI
+## Adding a Core to LessUI
 
-Quick steps for adding a new core to the official MinUI distribution:
+Quick steps for adding a new core to the official LessUI distribution:
 
 1. **Decide placement** - Stock (base install) or extras (optional download)
 2. **Add to platform makefiles** - Edit `workspace/<platform>/cores/makefile`
@@ -795,7 +795,7 @@ Quick steps for adding a new core to the official MinUI distribution:
 6. **Test on hardware** - Verify save states, auto-resume, and in-game menu work correctly
 7. **Repeat for other platforms** - Each platform needs patches and paks
 
-Core quality matters: Cores should reliably support save states, have acceptable performance, and integrate cleanly with MinUI's features (auto-resume, in-game menu, consistent behavior).
+Core quality matters: Cores should reliably support save states, have acceptable performance, and integrate cleanly with LessUI's features (auto-resume, in-game menu, consistent behavior).
 
 ## Potential Improvements
 
@@ -830,7 +830,7 @@ Some areas that could be simplified or improved:
 
 ## Resources
 
-- [Architecture Guide](ARCHITECTURE.md) - How MinUI works internally
+- [Architecture Guide](ARCHITECTURE.md) - How LessUI works internally
 - [Development Guide](DEVELOPMENT.md) - Building and testing
 - [Pak Development](PAKS.md) - Creating custom emulator paks
 - [CLAUDE.md](../CLAUDE.md) - Comprehensive technical reference

@@ -3,11 +3,11 @@
 Platform implementation for the Magic Mini retro handheld device.
 
 > [!WARNING]
-> **This platform is deprecated and will be removed in a future MinUI release.**
+> **This platform is deprecated and will be removed in a future LessUI release.**
 >
 > **Reason**: RK3326 chipset scandal and supplier fraud issues affecting device availability and support.
 >
-> While the platform will continue to work with current MinUI releases, it will not receive new features or platform-specific bug fixes.
+> While the platform will continue to work with current LessUI releases, it will not receive new features or platform-specific bug fixes.
 
 ## Hardware Specifications
 
@@ -41,15 +41,15 @@ Platform implementation for the Magic Mini retro handheld device.
 
 ### Storage
 - **Primary SD Card**: `/mnt/SDCARD` (internal/stock OS)
-- **Secondary SD Card**: `/storage/TF2` (MinUI installation location)
+- **Secondary SD Card**: `/storage/TF2` (LessUI installation location)
 
 ## Platform Architecture
 
 The Magic Mini uses a unique dual-SD-card setup where:
 - **Internal SD** (`/mnt/SDCARD`): Contains stock OS and boot configuration
-- **External SD** (`/storage/TF2`): Contains all MinUI files, ROMs, and data
+- **External SD** (`/storage/TF2`): Contains all LessUI files, ROMs, and data
 
-This allows MinUI to coexist with the stock firmware by keeping all files on the second card.
+This allows LessUI to coexist with the stock firmware by keeping all files on the second card.
 
 ## Directory Structure
 
@@ -130,7 +130,7 @@ Note: Unlike most platforms, Magic Mini has no SDL dependency in its makefile.
 
 ### File System Layout
 
-MinUI installs to the **secondary SD card** (`/storage/TF2`) with this structure:
+LessUI installs to the **secondary SD card** (`/storage/TF2`) with this structure:
 
 ```
 /storage/TF2/
@@ -139,18 +139,18 @@ MinUI installs to the **secondary SD card** (`/storage/TF2`) with this structure
 │   │   ├── bin/            Utilities (keymon, etc.)
 │   │   │   └── install.sh  Post-update installation script
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
 ├── Roms/                   ROM files organized by system
-├── MinUI.zip               Update package (if present)
+├── LessUI.zip               Update package (if present)
 └── log.txt                 Installation/update log
 ```
 
 ### Stock OS Integration
 
-MinUI integrates with the stock firmware through boot scripts:
+LessUI integrates with the stock firmware through boot scripts:
 
 **On internal SD** (`/mnt/SDCARD`):
 ```
@@ -164,19 +164,19 @@ SYSTEM.squashfs/
 │           └── updating.bmp    # Copied from install/updating.bmp
 ```
 
-The `autostart.sh` script runs on device boot and checks for MinUI updates on the secondary card.
+The `autostart.sh` script runs on device boot and checks for LessUI updates on the secondary card.
 
 ### Boot Process
 
 1. Device boots stock OS from internal SD
-2. Stock OS runs `/usr/bin/autostart.sh` (MinUI's boot.sh)
-3. Script checks for `MinUI.zip` on `/storage/TF2`
+2. Stock OS runs `/usr/bin/autostart.sh` (LessUI's boot.sh)
+3. Script checks for `LessUI.zip` on `/storage/TF2`
 4. If ZIP found:
    - Display splash screen to framebuffer (`installing.bmp` or `updating.bmp`)
    - Extract ZIP to `/storage/TF2`
    - Delete ZIP file
    - Run `.system/magicmini/bin/install.sh` to complete setup
-5. Launch MinUI via `.system/magicmini/paks/MinUI.pak/launch.sh`
+5. Launch LessUI via `.system/magicmini/paks/LessUI.pak/launch.sh`
 6. If launcher exits, shutdown device (prevents stock OS from interfering)
 
 #### Boot Image Display
@@ -199,12 +199,12 @@ echo 0,0 > /sys/class/graphics/fb0/pan
 
 ### Dual SD Card Architecture
 The Magic Mini's dual SD card setup provides:
-- **Isolation**: MinUI completely separate from stock OS
-- **Safety**: Stock firmware never touches MinUI data
+- **Isolation**: LessUI completely separate from stock OS
+- **Safety**: Stock firmware never touches LessUI data
 - **Flexibility**: Can remove secondary SD to boot stock OS normally
 
 ### Direct Framebuffer Access
-Boot images are written directly to `/dev/fb0` using `dd` command rather than using SDL or other graphics libraries. This allows splash screens before MinUI fully initializes.
+Boot images are written directly to `/dev/fb0` using `dd` command rather than using SDL or other graphics libraries. This allows splash screens before LessUI fully initializes.
 
 ### Audio Configuration
 Custom audio buffer size (`SAMPLES 400`) to reduce audio underruns in fceumm (NES emulator).
@@ -238,8 +238,8 @@ Input configuration utility
 ## Known Issues / Quirks
 
 ### Platform Quirks
-1. **Deprecated Status**: Platform marked as deprecated - newer MinUI features may not be supported
-2. **Dual SD Required**: Requires secondary SD card slot for MinUI installation
+1. **Deprecated Status**: Platform marked as deprecated - newer LessUI features may not be supported
+2. **Dual SD Required**: Requires secondary SD card slot for LessUI installation
 3. **Portrait Boot Images**: Boot splash BMPs must be rotated 90 degrees
 4. **BMP Header Offset**: Uses `bs=71` instead of `bs=70` to correct color shifting issue
 5. **Joystick API Unused**: Despite having joystick indices defined, platform doesn't currently use SDL joystick input
@@ -252,7 +252,7 @@ Input configuration utility
 2. **Simplified Input**: No SDL keyboard support, limited evdev codes
 3. **MENU Code Difference**: Kernel MENU button code (704) differs from typical SDL codes
 4. **Stock OS Dependency**: Requires stock firmware to handle initial boot sequence
-5. **Shutdown on Exit**: Boot script shutdowns device if MinUI exits (safety measure)
+5. **Shutdown on Exit**: Boot script shutdowns device if LessUI exits (safety measure)
 
 ### Input Limitations
 - Joystick button mappings are defined but **not currently used**
@@ -266,7 +266,7 @@ When testing changes:
 2. Test on **secondary SD card** (`/storage/TF2`)
 3. Check volume control with PLUS/MINUS buttons
 4. Verify brightness control with MENU+PLUS/MINUS
-5. Confirm MinUI launches after update extraction
+5. Confirm LessUI launches after update extraction
 6. Test shutdown behavior when launcher exits
 
 ## Related Documentation
@@ -280,10 +280,10 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform represents an **alternative architecture** in MinUI:
-- Dual SD card installation (unique among MinUI platforms)
+This platform represents an **alternative architecture** in LessUI:
+- Dual SD card installation (unique among LessUI platforms)
 - Direct framebuffer rendering for boot images
 - No SDL keyboard input (joystick or alternative method)
 - Integration with stock firmware rather than replacement
 
-While deprecated, it demonstrates MinUI's flexibility in adapting to different hardware constraints and installation methods. This approach may be useful reference for future platforms with similar dual-storage architectures.
+While deprecated, it demonstrates LessUI's flexibility in adapting to different hardware constraints and installation methods. This approach may be useful reference for future platforms with similar dual-storage architectures.

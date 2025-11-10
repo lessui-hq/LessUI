@@ -1,6 +1,6 @@
-# MinUI Test Suite
+# LessUI Test Suite
 
-This directory contains the test suite for MinUI, organized to mirror the source code structure.
+This directory contains the test suite for LessUI, organized to mirror the source code structure.
 
 **Current Status: 364 tests, all passing** ✅
 
@@ -221,7 +221,7 @@ See `support/unity/unity.h` for full list.
 
 ## SDL Function Mocking
 
-MinUI uses SDL extensively for graphics, input, and audio. Testing SDL-dependent code requires **mocking** SDL functions. We use the **Fake Function Framework (fff)** for this.
+LessUI uses SDL extensively for graphics, input, and audio. Testing SDL-dependent code requires **mocking** SDL functions. We use the **Fake Function Framework (fff)** for this.
 
 ### Infrastructure Overview
 
@@ -450,7 +450,7 @@ void test_parse_m3u_file(void) {
 #### Available Mock Functions
 
 **Currently wrapped:**
-- `exists(char* path)` - MinUI's file existence check
+- `exists(char* path)` - LessUI's file existence check
 - `fopen(const char* path, const char* mode)` - Open files (read mode only)
 - `fclose(FILE* stream)` - Close files
 - `fgets(char* s, int size, FILE* stream)` - Read lines
@@ -757,11 +757,11 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 ### workspace/all/common/minui_utils.c - ✅ 17 tests
 **File:** `tests/unit/all/common/test_minui_utils.c`
 
-- MinUI_getIndexChar() - Alphabetical indexing for ROM navigation (7 tests)
-- MinUI_isConsoleDir() - Console directory classification (8 tests)
+- LessUI_getIndexChar() - Alphabetical indexing for ROM navigation (7 tests)
+- LessUI_isConsoleDir() - Console directory classification (8 tests)
 - Integration tests (2 tests)
 
-**Coverage:** Complete coverage of MinUI helper utilities.
+**Coverage:** Complete coverage of LessUI helper utilities.
 
 **Note:** Extracted from `minui.c`, pure string logic.
 
@@ -786,13 +786,13 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 - `tests/unit/all/common/test_directory_utils.c` (7 tests)
 
 **File existence checking (18 tests):**
-- MinUI_hasEmu() - Emulator availability checking (5 tests)
-- MinUI_hasCue() - CUE file detection for disc games (4 tests)
-- MinUI_hasM3u() - M3U playlist detection (5 tests)
+- LessUI_hasEmu() - Emulator availability checking (5 tests)
+- LessUI_hasCue() - CUE file detection for disc games (4 tests)
+- LessUI_hasM3u() - M3U playlist detection (5 tests)
 - Integration tests (multi-disc workflow) (4 tests)
 
 **Directory content checking (7 tests):**
-- MinUI_hasNonHiddenFiles() - Directory content checking
+- LessUI_hasNonHiddenFiles() - Directory content checking
 - Empty directory detection
 - Hidden file filtering (.dotfiles, .DS_Store, etc.)
 - Mixed content (hidden + visible files)
@@ -980,7 +980,7 @@ void test_my_workflow(void) {
 
 Helper functions for creating test data structures:
 
-- `create_test_minui_structure()` - Creates temp MinUI directory structure
+- `create_test_minui_structure()` - Creates temp LessUI directory structure
 - `create_test_rom()` - Creates placeholder ROM file
 - `create_test_m3u()` - Creates M3U file with disc entries
 - `create_test_map()` - Creates map.txt with ROM aliases
@@ -991,7 +991,7 @@ These utilities make it easy to set up realistic test scenarios.
 
 ### Todo
 - [ ] Additional api.c GFX rendering functions (mostly SDL pixel operations)
-- [x] Integration tests for MinUI/MinArch workflows (22 tests implemented, all passing)
+- [x] Integration tests for LessUI/MinArch workflows (22 tests implemented, all passing)
 
 ## Continuous Integration
 

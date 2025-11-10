@@ -155,7 +155,7 @@
 // Platform-Specific Paths and Settings
 ///////////////////////////////
 
-#define SDCARD_PATH "/Users/shauninman/Projects/Personal/MinUI/workspace/macos/FAKESD"
+#define SDCARD_PATH "../../macos/FAKESD"
 #define MUTE_VOLUME_RAW 63         // Volume scale is inverted: 63 = mute, 0 = max volume
 
 ///////////////////////////////

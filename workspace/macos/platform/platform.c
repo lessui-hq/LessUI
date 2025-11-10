@@ -130,15 +130,24 @@ SDL_Surface* PLAT_initVideo(void) {
 	// 	LOG_info("- %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
 	// }
 	SDL_GetCurrentDisplayMode(0, &mode);
-	// Rotate display to simulate vertical handheld
-	rotate = 1;
+	// Rotate display to simulate vertical handheld (disabled for macOS)
+	rotate = 0;
 	LOG_info("Current display mode: %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
 	
-	int w = FIXED_WIDTH;
-	int h = FIXED_HEIGHT;
-	int p = FIXED_PITCH;
-	// Create window with swapped dimensions (h,w) for rotated display
-	vid.window   = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, h,w, SDL_WINDOW_SHOWN);
+	// Use DEV_SCREEN_* if set (for aspect ratio switching), otherwise use FIXED_*
+	#ifdef DEV_SCREEN_WIDTH
+		int w = DEV_SCREEN_WIDTH;
+	#else
+		int w = FIXED_WIDTH;
+	#endif
+	#ifdef DEV_SCREEN_HEIGHT
+		int h = DEV_SCREEN_HEIGHT;
+	#else
+		int h = FIXED_HEIGHT;
+	#endif
+	int p = w * FIXED_BPP;  // Calculate pitch from width
+	// Create window with normal dimensions (w,h) - no rotation on macOS
+	vid.window   = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w,h, SDL_WINDOW_SHOWN);
 	vid.renderer = SDL_CreateRenderer(vid.window,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
 	
 	// SDL_RendererInfo info;

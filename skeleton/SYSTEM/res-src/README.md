@@ -1,6 +1,6 @@
 # Source Assets
 
-This directory contains the master source files for all MinUI visual assets. These high-resolution sources are used to generate all variants (PNG and BMP) at different scales and aspect ratios.
+This directory contains the master source files for all LessUI visual assets. These high-resolution sources are used to generate all variants (PNG and BMP) at different scales and aspect ratios.
 
 ## Source Files
 
@@ -13,9 +13,9 @@ This directory contains the master source files for all MinUI visual assets. The
 ### Boot Screens
 These 4:3 images are displayed during system operations:
 
-- **`installing.png`** - "Installing MinUI" boot screen
-- **`updating.png`** - "Updating MinUI" boot screen
-- **`bootlogo.png`** - MinUI splash screen/logo
+- **`installing.png`** - "Installing LessUI" boot screen
+- **`updating.png`** - "Updating LessUI" boot screen
+- **`bootlogo.png`** - LessUI splash screen/logo
 - **`charging.png`** - Battery charging indicator
 
 **Ideal resolution:** 960×720 (4:3 aspect ratio, RGB)

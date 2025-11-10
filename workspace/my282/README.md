@@ -180,7 +180,7 @@ MY282 shares libretro cores with the rg35xx platform due to similar ARM Cortex-A
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -189,7 +189,7 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── bin/           Utilities (keymon, overclock, etc.)
 │   │   │   └── install.sh Post-update installation script
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
@@ -203,32 +203,32 @@ MinUI installs to the SD card with the following structure:
 │   └── my282/
 │       └── msettings.bin Settings persistence file
 ├── Roms/                 ROM files organized by system
-└── MinUI.zip             Update package (if present)
+└── LessUI.zip             Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs boot script from `.tmp_update/my282.sh`
 2. Script sets CPU governor to "performance" for optimal speed
-3. If `MinUI.zip` exists:
+3. If `LessUI.zip` exists:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Move old update directory to backup location
-   - Extract `MinUI.zip` to SD card using unzip utility
+   - Extract `LessUI.zip` to SD card using unzip utility
    - Delete ZIP file
    - Remove backup directory
    - Run `.system/my282/bin/install.sh` to complete setup
-4. Launch MinUI via `.system/my282/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/my282/paks/LessUI.pak/launch.sh`
 5. Keep relaunching while launcher exists (infinite loop)
 6. If launcher removed, execute `poweroff` to prevent stock firmware access
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root (`/mnt/SDCARD/MinUI.zip`)
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/LessUI.zip`)
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
-5. MinUI launches automatically
+5. LessUI launches automatically
 
 ## Platform-Specific Features
 
@@ -292,7 +292,7 @@ void Stick_quit(void);
 void Stick_get(int* x, int* y);  // Returns -32768 to 32767
 ```
 
-This is unique compared to other MinUI platforms which typically only have D-pad input.
+This is unique compared to other LessUI platforms which typically only have D-pad input.
 
 ### Display Rotation Support
 
@@ -326,7 +326,7 @@ DinguxCommander-SDL2 based file manager with:
 - Full file operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - SDL2 graphics rendering
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ### Clock.pak
 System clock/time display tool
@@ -341,12 +341,12 @@ Input configuration utility
 2. **MENU Code Variance**: Keymon must handle both code 1 and 354 for MENU button
 3. **Shared Cores**: Uses rg35xx cores (same ARM Cortex-A53 architecture)
 4. **Infinite Launch Loop**: Boot script loops indefinitely to prevent stock OS access
-5. **Forced Poweroff**: Device powers off if MinUI launcher removed
+5. **Forced Poweroff**: Device powers off if LessUI launcher removed
 
 ### Development Notes
 1. **No L3/R3**: Platform lacks clickable analog sticks
 2. **NEON Support**: HAS_NEON defined - use SIMD optimizations for performance-critical code
-3. **Joystick Input**: Unlike most MinUI platforms which use keyboard, MY282 uses joystick API
+3. **Joystick Input**: Unlike most LessUI platforms which use keyboard, MY282 uses joystick API
 4. **Settings Architecture**: Shared memory approach is more complex than simple file-based settings
 5. **60Hz Polling**: Keymon runs at 60Hz (16.666ms) for responsive button detection
 
@@ -371,7 +371,7 @@ When testing changes:
 5. Test headphone jack detection and volume switching
 6. Verify analog stick input if used by applications
 7. Confirm splash screens display correctly during install/update
-8. Test boot process with and without MinUI.zip present
+8. Test boot process with and without LessUI.zip present
 
 ## Related Documentation
 
@@ -386,7 +386,7 @@ When testing changes:
 The MY282 platform is notable for several unique characteristics:
 
 ### Architectural Distinctions
-1. **Joystick-first input**: One of the few MinUI platforms using SDL joystick API instead of keyboard
+1. **Joystick-first input**: One of the few LessUI platforms using SDL joystick API instead of keyboard
 2. **Shared memory settings**: More sophisticated than file-only persistence
 3. **Dual input monitoring**: Keymon watches two event devices simultaneously
 4. **Analog stick support**: Unique among handheld platforms (via libmstick)
@@ -407,4 +407,4 @@ When modifying platform code, pay attention to:
 - Non-linear brightness curve optimized for perceived brightness
 - 60Hz polling rate balances responsiveness vs CPU usage
 
-This platform demonstrates MinUI's flexibility in adapting to diverse input architectures (joystick vs keyboard) while maintaining consistent user experience across all supported devices.
+This platform demonstrates LessUI's flexibility in adapting to diverse input architectures (joystick vs keyboard) while maintaining consistent user experience across all supported devices.

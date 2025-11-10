@@ -1,15 +1,15 @@
-# MinUI
+# LessUI
 
-MinUI is a focused, custom launcher and libretro frontend for retro handheld devices. One SD card works across 20+ different handhelds from multiple manufacturers.
+LessUI is a focused, custom launcher and libretro frontend for retro handheld devices. One SD card works across 20+ different handhelds from multiple manufacturers.
 
-**Source:** https://github.com/shauninman/minui
+**Source:** https://github.com/nchapman/LessUI
 
 ---
 
 ## What's Included
 
 This package contains:
-- MinUI launcher and emulator frontend
+- LessUI launcher and emulator frontend
 - Base emulator cores (GB, GBC, GBA, NES, SNES, Genesis, PlayStation)
 - Installation files for supported devices
 - Sample ROM and BIOS folders
@@ -23,7 +23,7 @@ This package contains:
 **SD Card Setup:**
 - Use a reputable brand SD card
 - Format as FAT32 (MBR partition table)
-- For dual-SD devices: Install MinUI on the **second card** (TF2)
+- For dual-SD devices: Install LessUI on the **second card** (TF2)
 
 **Important:** Some devices require one-time NAND or TF1 modifications. Follow your device's specific instructions below.
 
@@ -34,7 +34,7 @@ This package contains:
 **Setup:**
 1. Use stock Anbernic firmware on TF1 (quality is fine, no userdata stored there)
 2. Copy `rg35xxplus/dmenu.bin` to root of TF1's "NO NAME" partition (has "anbernic" folder)
-3. Copy `MinUI.zip` to root of TF2 card
+3. Copy `LessUI.zip` to root of TF2 card
 4. Insert both cards and boot
 
 **Note:** Different stock TF1 versions for different models (Plus/H/2024/SP vs 28XX/40XXH). Don't mix them.
@@ -44,19 +44,19 @@ This package contains:
 **Setup:**
 1. Use stock Anbernic firmware on TF1
 2. Copy `rg35xx/dmenu.bin` to root of MISC partition on TF1
-3. Copy `MinUI.zip` to root of TF2 card
+3. Copy `LessUI.zip` to root of TF2 card
 4. Insert both cards and boot
 
 ### Miyoo Mini / Miyoo Mini Plus
 
 **Standard Mini:**
 1. Copy `miyoo` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 
 **Mini Plus:**
 1. Copy `miyoo354` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 4. Optional: Enable RTC by creating empty file `/.userdata/miyoomini/enable-rtc`
 
@@ -64,21 +64,21 @@ This package contains:
 
 **Setup:**
 1. Copy `miyoo` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 
 ### Miyoo Mini Flip
 
 **Setup:**
 1. Copy `miyoo285` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 
 ### Miyoo Flip
 
 **Setup:**
 1. Copy `miyoo355` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Insert SD card in **right slot** (beneath power button)
 4. Boot device
 
@@ -86,14 +86,14 @@ This package contains:
 
 **Setup:**
 1. Copy `trimui` folder to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 
 ### Powkiddy RGB30
 
 **Setup:**
 1. Download and flash Moss to **left slot** (TF-OS): https://github.com/shauninman/Moss/releases
-2. Copy `MinUI.zip` to root of **right slot** (TFGAME) SD card
+2. Copy `LessUI.zip` to root of **right slot** (TFGAME) SD card
 3. Boot device
 
 ### MagicX Mini Zero 28
@@ -101,31 +101,31 @@ This package contains:
 **Setup:**
 1. Download and flash Moss to **left slot** (TF1/INT): https://github.com/shauninman/Moss-zero28/releases
 2. Copy `magicx` folder to root of **right slot** (TF2/EXT) SD card
-3. Copy `MinUI.zip` to root of TF2/EXT SD card
+3. Copy `LessUI.zip` to root of TF2/EXT SD card
 4. Boot device
 
 ### MagicX XU Mini M (Deprecated)
 
 **Setup:**
 1. Download and flash modified stock to **left slot** (TF1/INT): https://github.com/shauninman/Moss-magicmini/releases
-2. Copy `MinUI.zip` to root of **right slot** (TF2/EXT) SD card
+2. Copy `LessUI.zip` to root of **right slot** (TF2/EXT) SD card
 3. Boot device
 
 ### M17 (Deprecated)
 
 **Setup:**
 1. Copy `em_ui.sh` to SD card root
-2. Copy `MinUI.zip` to SD card root
+2. Copy `LessUI.zip` to SD card root
 3. Boot device
 
 ### GKD Pixel / GKD Mini (Deprecated)
 
-**Important:** Not cross-compatible with other MinUI devices. Firmware lives on SD card.
+**Important:** Not cross-compatible with other LessUI devices. Firmware lives on SD card.
 
 **Setup:**
 1. Backup entire stock SD card (or copy everything to "stock" folder on ROMS partition)
 2. Copy `gkdpixel` folder to root of ROMS partition
-3. Copy `MinUI.zip` to root of ROMS partition
+3. Copy `LessUI.zip` to root of ROMS partition
 4. Boot stock firmware
 5. Navigate to APP folder, launch "file manager"
 6. Navigate to `/media/roms/gkdpixel`
@@ -133,13 +133,13 @@ This package contains:
 
 ---
 
-## Updating MinUI
+## Updating LessUI
 
-Copy `MinUI.zip` to the root of your SD card (the one with your Roms folder). Reboot. MinUI will detect the ZIP and auto-update.
+Copy `LessUI.zip` to the root of your SD card (the one with your Roms folder). Reboot. LessUI will detect the ZIP and auto-update.
 
 ---
 
-## Using MinUI
+## Using LessUI
 
 ### Controls
 
@@ -172,7 +172,7 @@ Copy `MinUI.zip` to the root of your SD card (the one with your Roms folder). Re
 
 ### Save States and Auto-Resume
 
-**Quicksave:** MinUI automatically saves when you power off in-game. Next time you boot, it resumes exactly where you left off.
+**Quicksave:** LessUI automatically saves when you power off in-game. Next time you boot, it resumes exactly where you left off.
 
 **Manual Save States:** Press MENU in-game to access 9 save state slots (0-8).
 
@@ -191,7 +191,7 @@ Copy `MinUI.zip` to the root of your SD card (the one with your Roms folder). Re
 
 ### ROM Folders
 
-MinUI maps ROM folders to emulators using **tags in parentheses**:
+LessUI maps ROM folders to emulators using **tags in parentheses**:
 
 ```
 Roms/
@@ -227,7 +227,7 @@ Harmful Park (English v1.0)/
 └── Harmful Park (English v1.0).cue
 ```
 
-MinUI launches the .cue file when you select the folder.
+LessUI launches the .cue file when you select the folder.
 
 **Multi-disc games:**
 ```

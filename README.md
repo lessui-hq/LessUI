@@ -1,6 +1,8 @@
-# MinUI
+# LessUI
 
-MinUI is a focused, custom launcher and libretro frontend for [a variety of retro handhelds](#supported-devices).
+> **Built on the shoulders of giants:** LessUI is a fork of [MinUI](https://github.com/shauninman/MinUI), the brilliant work of [Shaun Inman](https://github.com/shauninman). Shaun's vision of a distraction-free, beautifully simple retro gaming experience is what makes this project possible. This fork exists to explore new directions while honoring the elegance and philosophy of the original.
+
+LessUI is a focused, custom launcher and libretro frontend for [a variety of retro handhelds](#supported-devices).
 
 <img src="github/minui-main.png" width=320 /> <img src="github/minui-menu-gbc.png" width=320 />
 
@@ -32,7 +34,7 @@ MinUI is a focused, custom launcher and libretro frontend for [a variety of retr
   multiple devices from different
   manufacturers
 
-**[Download the latest release](https://github.com/shauninman/MinUI/releases)**
+**[Download the latest release](https://github.com/nchapman/LessUI/releases)**
 
 ## Installation
 
@@ -96,16 +98,16 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 | **MagicX** | XU Mini M | May 2024 | Deprecated |
 
 > [!NOTE]
-> Deprecated devices will continue to work with current MinUI releases but will not receive new features or platform-specific fixes.
+> Deprecated devices will continue to work with current LessUI releases but will not receive new features or platform-specific fixes.
 
 ---
 
 ## For Developers
 
-Want to build MinUI, create custom paks, or understand how it works?
+Want to build LessUI, create custom paks, or understand how it works?
 
 - **[Development Guide](docs/DEVELOPMENT.md)** - Building, testing, and contributing
-- **[Architecture Guide](docs/ARCHITECTURE.md)** - How MinUI works internally
+- **[Architecture Guide](docs/ARCHITECTURE.md)** - How LessUI works internally
 - **[Cores Guide](docs/CORES.md)** - How libretro cores are built and loaded
 - **[Pak Development Guide](docs/PAKS.md)** - Creating custom emulator and tool paks
 - **[Platform Documentation](workspace/)** - Technical hardware details for each device

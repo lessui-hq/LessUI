@@ -1,4 +1,4 @@
-# MinUI Build System
+# LessUI Build System
 # Main makefile for orchestrating multi-platform builds
 #
 # This makefile runs on the HOST system (macOS/Linux), not in Docker.
@@ -9,6 +9,8 @@
 #   make test                       - Run unit tests (uses Docker)
 #   make lint                       - Run static analysis
 #   make format                     - Format code with clang-format
+#   make dev                        - Build minui for macOS (native, for development)
+#   make dev-run                    - Build and run minui on macOS
 #   make all                        - Build all platforms (creates release ZIPs)
 #
 # Platform-specific build:
@@ -36,14 +38,14 @@ endif
 BUILD_HASH:=$(shell git rev-parse --short HEAD)
 RELEASE_TIME:=$(shell TZ=GMT date +%Y%m%d)
 RELEASE_BETA=
-RELEASE_BASE=MinUI-$(RELEASE_TIME)$(RELEASE_BETA)
+RELEASE_BASE=LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
 RELEASE_DOT:=$(shell find -E ./releases/. -regex ".*/${RELEASE_BASE}-[0-9]+-base\.zip" | wc -l | sed 's/ //g')
 RELEASE_NAME=$(RELEASE_BASE)-$(RELEASE_DOT)
 
 ###########################################################
 # Build configuration
 
-.PHONY: build test lint format all shell name clean setup done
+.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done
 
 export MAKEFLAGS=--no-print-directory
 
@@ -67,6 +69,22 @@ lint:
 
 format:
 	@make -f makefile.qa format
+
+# macOS development targets (forward to makefile.dev)
+dev:
+	@make -f makefile.dev dev
+
+dev-run:
+	@make -f makefile.dev dev-run
+
+dev-clean:
+	@make -f makefile.dev dev-clean
+
+dev-run-4x3:
+	@make -f makefile.dev dev-run-4x3
+
+dev-run-16x9:
+	@make -f makefile.dev dev-run-16x9
 
 # Build all components for a specific platform (in Docker)
 build:
@@ -221,11 +239,11 @@ package: tidy
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
 	cp -R ./build/BOOT/.tmp_update ./build/PAYLOAD/
 	
-	cd ./build/PAYLOAD && zip -r MinUI.zip .system .tmp_update
-	mv ./build/PAYLOAD/MinUI.zip ./build/BASE
+	cd ./build/PAYLOAD && zip -r LessUI.zip .system .tmp_update
+	mv ./build/PAYLOAD/LessUI.zip ./build/BASE
 	
 	# TODO: can I just add everything in BASE to zip?
-	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME)-base.zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus gkdpixel miyoo355 magicx miyoo285 em_ui.sh MinUI.zip README.txt
+	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME)-base.zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus gkdpixel miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt
 	cd ./build/EXTRAS && zip -r ../../releases/$(RELEASE_NAME)-extras.zip Bios Emus Roms Saves Tools README.txt
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 	

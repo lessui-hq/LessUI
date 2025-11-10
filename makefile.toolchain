@@ -1,10 +1,10 @@
-# MinUI Docker Toolchain Manager
+# LessUI Docker Toolchain Manager
 # Manages platform-specific cross-compilation toolchains
 #
 # This makefile is called by the main makefile to:
 #   1. Clone platform-specific toolchain repositories (from union-* repos)
 #   2. Build Docker images with ARM cross-compilers
-#   3. Launch Docker containers for building MinUI components
+#   3. Launch Docker containers for building LessUI components
 #
 # Toolchains are cloned to: toolchains/<platform>-toolchain/
 # Each toolchain contains a Dockerfile with the cross-compiler setup.

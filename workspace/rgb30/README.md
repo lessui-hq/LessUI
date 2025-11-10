@@ -153,7 +153,7 @@ Both dependencies use custom toolchain configurations for the RGB30 hardware.
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /storage/roms/
@@ -161,7 +161,7 @@ MinUI installs to the SD card with the following structure:
 │   ├── rgb30/              Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, show, etc.)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── BPreplayBold-unhinted.otf
@@ -169,7 +169,7 @@ MinUI installs to the SD card with the following structure:
 │   └── rgb30/              Platform-specific settings
 │       └── msettings.bin   Volume/brightness preferences
 ├── Roms/                   ROM files organized by system
-└── MinUI.zip               Update package (if present)
+└── LessUI.zip               Update package (if present)
 ```
 
 ### Settings Management
@@ -280,7 +280,7 @@ DinguxCommander-based file manager (custom RGB30 build):
 - Full file operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ## Known Issues / Quirks
 
@@ -327,10 +327,10 @@ When testing changes:
 
 ## Maintainer Notes
 
-This platform demonstrates several advanced MinUI features:
+This platform demonstrates several advanced LessUI features:
 
 **Unique Characteristics**:
-- Square display (720x720) - unique aspect ratio among MinUI platforms
+- Square display (720x720) - unique aspect ratio among LessUI platforms
 - HDMI output support with automatic switching
 - Dual menu modifier buttons (L3/R3)
 - Hybrid input system (joystick + keyboard + evdev)

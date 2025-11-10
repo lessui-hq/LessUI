@@ -3,11 +3,11 @@
 Platform implementation for the M17 retro handheld device.
 
 > [!WARNING]
-> **This platform is deprecated and will be removed in a future MinUI release.**
+> **This platform is deprecated and will be removed in a future LessUI release.**
 >
 > **Reason**: Old/weak Cortex-A7 chipset, ultra-budget outlier with limited performance.
 >
-> While the platform will continue to work with current MinUI releases, it will not receive new features or platform-specific bug fixes.
+> While the platform will continue to work with current LessUI releases, it will not receive new features or platform-specific bug fixes.
 
 ## Hardware Specifications
 
@@ -151,7 +151,7 @@ These are automatically extracted from the toolchain during the build process an
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /sdcard/
@@ -162,31 +162,31 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── lib/            Additional libraries (extracted from extra-libs.tar)
 │   │   ├── dat/            Data files (extra-libs.tar)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets.png      UI sprite sheet (1x scale)
 │       └── BPreplayBold-unhinted.otf
-├── em_ui.sh                Boot script (MinUI entry point)
+├── em_ui.sh                Boot script (LessUI entry point)
 ├── Roms/                   ROM files organized by system
-├── MinUI.zip               Update package (if present)
+├── LessUI.zip               Update package (if present)
 └── log.txt                 Installation/update log (optional)
 ```
 
 ### Boot Process
 
-1. Device boots and runs `/sdcard/em_ui.sh` (MinUI's boot.sh)
-2. Script checks for `MinUI.zip` on SD card root
+1. Device boots and runs `/sdcard/em_ui.sh` (LessUI's boot.sh)
+2. Script checks for `LessUI.zip` on SD card root
 3. If ZIP found:
    - Initialize framebuffer (`/dev/fb0`)
    - Extract embedded splash images from boot script using `uudecode`
    - Display `installing` (first install) or `updating` (update) to framebuffer
-   - Extract `MinUI.zip` to `/sdcard`
+   - Extract `LessUI.zip` to `/sdcard`
    - Delete ZIP file
    - Run `.system/m17/bin/install.sh` to complete setup:
      - Extract `extra-libs.tar` to `.system/m17/lib/`
      - Copy updated boot script to `/sdcard/em_ui.sh`
    - Clear framebuffer
-4. Launch MinUI via taskset: `taskset 8 /sdcard/.system/m17/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via taskset: `taskset 8 /sdcard/.system/m17/paks/LessUI.pak/launch.sh`
 5. Loop: relaunch if launcher exits normally
 6. Poweroff if launcher script is deleted (prevents stock OS from interfering)
 
@@ -202,8 +202,8 @@ This allows splash images to be embedded directly in the boot script without req
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in `/sdcard/` root
+To update LessUI on device:
+1. Place `LessUI.zip` in `/sdcard/` root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
@@ -257,9 +257,9 @@ The keymon daemon monitors **four input devices**:
 
 ### CPU Affinity
 
-MinUI launcher runs pinned to CPU core 3:
+LessUI launcher runs pinned to CPU core 3:
 ```bash
-taskset 8 /sdcard/.system/m17/paks/MinUI.pak/launch.sh
+taskset 8 /sdcard/.system/m17/paks/LessUI.pak/launch.sh
 ```
 
 This may improve performance on this multi-core device by dedicating a core to the launcher.
@@ -330,7 +330,7 @@ dd conv=notrunc if=/sdcard/logo-h.bmp of=/dev/block/by-name/boot bs=1 seek=40448
 
 ## Included Tools
 
-Standard MinUI tools are available:
+Standard LessUI tools are available:
 - **Clock.pak**: System clock/time display
 - **Input.pak**: Input configuration utility
 

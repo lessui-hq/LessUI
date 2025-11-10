@@ -57,7 +57,7 @@ Platform implementation for the Miyoo Flip retro handheld device.
 
 ## Platform Architecture
 
-The MY355 (Miyoo Flip) is unique in MinUI's platform lineup due to:
+The MY355 (Miyoo Flip) is unique in LessUI's platform lineup due to:
 
 1. **Clamshell Design**: Features hall sensor for lid detection, enabling automatic sleep when closed
 2. **Dual Display Support**: Seamlessly switches between built-in 640x480 screen and 720p HDMI output
@@ -81,7 +81,7 @@ my355/
 ├── show/              Boot splash screen display utility
 │   └── show.c         SDL2-based PNG image display (with rotation)
 ├── init/              Initial device setup (first install only)
-│   └── init.sh        Rootfs modification script for MinUI integration
+│   └── init.sh        Rootfs modification script for LessUI integration
 ├── install/           Installation assets and boot script
 │   ├── boot.sh        Boot/update handler
 │   ├── installing.png Boot splash for fresh install (640x480)
@@ -183,7 +183,7 @@ These are automatically cloned and built on first run.
 
 ### File System Layout
 
-MinUI installs to the SD card with the following structure:
+LessUI installs to the SD card with the following structure:
 
 ```
 /mnt/SDCARD/
@@ -192,7 +192,7 @@ MinUI installs to the SD card with the following structure:
 │   │   ├── bin/            Utilities (keymon, etc.)
 │   │   │   └── install.sh  Post-update installation script
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Scanline overlay effects (various scales)
@@ -204,19 +204,19 @@ MinUI installs to the SD card with the following structure:
 │       ├── installing.png  Initial install splash
 │       └── updating.png    Update splash
 ├── Roms/                   ROM files organized by system
-└── MinUI.zip               Update package (if present)
+└── LessUI.zip               Update package (if present)
 ```
 
 ### Initial Installation
 
-The MY355 requires a **one-time rootfs modification** to integrate MinUI with the stock system:
+The MY355 requires a **one-time rootfs modification** to integrate LessUI with the stock system:
 
 1. Place installation files in `/miyoo355/app/355/` directory
 2. Run `init.sh` script which:
    - Extracts current rootfs from `/dev/mtd3ro`
    - Unpacks squashfs filesystem
    - Backs up original `runmiyoo.sh` to `runmiyoo-original.sh`
-   - Injects MinUI launcher hook
+   - Injects LessUI launcher hook
    - Repacks and flashes modified rootfs to `/dev/mtd3`
    - Reboots device
 
@@ -228,19 +228,19 @@ After initialization, device boots as follows:
 
 1. Stock system runs modified `runmiyoo.sh` boot script
 2. Script sets CPU governor to "performance" mode
-3. If `MinUI.zip` exists on SD card:
+3. If `LessUI.zip` exists on SD card:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Extract ZIP to SD card root
    - Delete ZIP file
    - Run `.system/my355/bin/install.sh` to complete setup
-4. Launch MinUI via `.system/my355/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/my355/paks/LessUI.pak/launch.sh`
 5. Loop: if launcher exits, relaunch (prevents stock firmware access)
 6. On critical failure: power off device
 
 ### Update Process
 
-To update MinUI on device:
-1. Place `MinUI.zip` in SD card root (`/mnt/SDCARD/`)
+To update LessUI on device:
+1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction
@@ -436,7 +436,7 @@ DinguxCommander-SDL2 based file manager with:
 - File operations (copy, cut, paste, delete, rename)
 - Directory navigation
 - Image preview support
-- Integrated with MinUI launcher
+- Integrated with LessUI launcher
 
 ## Known Issues / Quirks
 
@@ -496,10 +496,10 @@ When testing changes:
 
 ## Maintainer Notes
 
-The MY355 (Miyoo Flip) represents one of the most **feature-complete** implementations in MinUI:
+The MY355 (Miyoo Flip) represents one of the most **feature-complete** implementations in LessUI:
 
 ### Advanced Features
-- Hall sensor lid detection (unique among MinUI platforms)
+- Hall sensor lid detection (unique among LessUI platforms)
 - Runtime HDMI hotplug with automatic reconfiguration
 - Multi-pass rendering for crisp pixel scaling
 - Overlay effects system (scanlines/grids)
@@ -529,4 +529,4 @@ Changes to this platform should be thoroughly tested across all feature combinat
 - Video pipeline performance with overlay effects
 - Lid detection reliability
 
-This platform showcases MinUI's ability to support sophisticated hardware features while maintaining the project's core philosophy of simplicity and cross-platform consistency.
+This platform showcases LessUI's ability to support sophisticated hardware features while maintaining the project's core philosophy of simplicity and cross-platform consistency.
