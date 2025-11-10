@@ -13,3 +13,8 @@
 !.system/res/
 !.system/res/*.png
 !.system/res/*.otf
+!.system/macos/
+!.system/macos/paks/
+!.system/macos/paks/Emus/
+!.system/macos/paks/Emus/*.pak/
+!.system/macos/paks/Emus/*.pak/launch.sh

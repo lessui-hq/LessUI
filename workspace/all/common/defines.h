@@ -61,7 +61,7 @@
 /**
  * Path to the main UI font file.
  */
-#define FONT_PATH RES_PATH "/Geist-Bold.otf"
+#define FONT_PATH RES_PATH "/BPreplayBold-unhinted.otf"
 
 /**
  * Platform-specific user data directory.
