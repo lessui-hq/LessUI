@@ -24,7 +24,9 @@ Build for one platform:
 make PLATFORM=miyoomini
 ```
 
-Available platforms: `miyoomini`, `my282`, `my355`, `trimuismart`, `rg35xx`, `rg35xxplus`, `rgb30`, `tg5040`, `m17`, `gkdpixel`, `magicmini`, `zero28`
+Available platforms: `miyoomini`, `my282`, `my355`, `trimuismart`, `rg35xx`, `rg35xxplus`, `rgb30`, `tg5040`, `m17`, `magicmini`, `zero28`
+
+Deprecated platforms: `gkdpixel` (no longer supported)
 
 ### macOS Native Development (Fastest Workflow)
 

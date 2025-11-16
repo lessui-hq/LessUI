@@ -1,6 +1,6 @@
 #!/bin/sh
 
-EMU_EXE=mednafen_pce_fast
+EMU_EXE=beetle-pce-fast
 CORES_PATH=$(dirname "$0")
 
 ###############################

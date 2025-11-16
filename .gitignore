@@ -10,8 +10,13 @@ releases
 toolchains
 libretro-common
 
+# Old per-platform cores (no longer used - migrated to shared cores)
 **/cores/src
 **/cores/output
+workspace/shared/*/cores/
+
+# New shared cores architecture
+build/.system/cores/
 **/boot/output
 **/squashfs/output
 

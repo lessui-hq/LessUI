@@ -43,7 +43,7 @@ Copy the desired folders from this archive to the corresponding locations on you
 - `rgb30` - RGB30
 - `zero28` - MagicX Mini Zero 28
 - `m17` - M17 (deprecated)
-- `gkdpixel` - GKD Pixel/Mini (deprecated)
+- `gkdpixel` - GKD Pixel/Mini (**DEPRECATED - no longer supported**)
 - `magicmini` - MagicX XU Mini M (deprecated)
 
 ---

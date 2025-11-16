@@ -178,7 +178,7 @@ See [PAKS.md](PAKS.md) for complete pak development guide.
 
 LessUI supports devices from 320x240 to 1280x720 using a scale factor:
 
-- **1x**: 320x240 devices (trimuismart, gkdpixel)
+- **1x**: 320x240 devices (trimuismart)
 - **2x**: 640x480 devices (most platforms)
 - **3x**: 960x720 devices (tg5040 brick)
 - **4x**: 1280x960+ devices (future)

@@ -29,7 +29,9 @@ endif
 
 # Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
-PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 gkdpixel my282 magicmini
+# TEMP: Only building miyoomini for testing new core architecture
+PLATFORMS = miyoomini
+# PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini
 endif
 
 ###########################################################
@@ -45,7 +47,11 @@ RELEASE_NAME=$(RELEASE_BASE)-$(RELEASE_DOT)
 ###########################################################
 # Build configuration
 
-.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done
+# Pre-built cores from minarch-cores repository (nightly builds)
+MINARCH_CORES_VERSION ?= nightly
+CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
+
+.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done cores-download
 
 export MAKEFLAGS=--no-print-directory
 
@@ -106,38 +112,26 @@ system:
 	cp ./workspace/all/clock/build/$(PLATFORM)/clock.elf ./build/EXTRAS/Tools/$(PLATFORM)/Clock.pak/
 	cp ./workspace/all/minput/build/$(PLATFORM)/minput.elf ./build/EXTRAS/Tools/$(PLATFORM)/Input.pak/
 
-# Copy libretro cores to build directory
-# TODO: can't assume every platform will have the same stock cores (platform should be responsible for copy too)
-cores:
-	# stock cores
-	cp ./workspace/$(PLATFORM)/cores/output/fceumm_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	cp ./workspace/$(PLATFORM)/cores/output/gambatte_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	cp ./workspace/$(PLATFORM)/cores/output/gpsp_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	cp ./workspace/$(PLATFORM)/cores/output/picodrive_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	cp ./workspace/$(PLATFORM)/cores/output/snes9x2005_plus_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	cp ./workspace/$(PLATFORM)/cores/output/pcsx_rearmed_libretro.so ./build/SYSTEM/$(PLATFORM)/cores
-	
-	# extras
-ifeq ($(PLATFORM), trimuismart)
-	cp ./workspace/miyoomini/cores/output/fake08_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/P8.pak
-else ifeq ($(PLATFORM), m17)
-	cp ./workspace/miyoomini/cores/output/fake08_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/P8.pak
-else ifneq ($(PLATFORM),gkdpixel)
-	cp ./workspace/$(PLATFORM)/cores/output/fake08_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/P8.pak
-endif
-	cp ./workspace/$(PLATFORM)/cores/output/mgba_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/MGBA.pak
-	cp ./workspace/$(PLATFORM)/cores/output/mgba_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/SGB.pak
-	cp ./workspace/$(PLATFORM)/cores/output/mednafen_pce_fast_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/PCE.pak
-	cp ./workspace/$(PLATFORM)/cores/output/pokemini_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/PKM.pak
-	cp ./workspace/$(PLATFORM)/cores/output/race_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/NGP.pak
-	cp ./workspace/$(PLATFORM)/cores/output/race_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/NGPC.pak
-ifneq ($(PLATFORM),gkdpixel)
-	cp ./workspace/$(PLATFORM)/cores/output/mednafen_supafaust_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/SUPA.pak
-	cp ./workspace/$(PLATFORM)/cores/output/mednafen_vb_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/VB.pak
-endif
+# Deploy shared libretro cores from LessUI-Cores builds
+# Cores are copied from /Users/nchapman/Code/LessUI-Cores/output/dist/
+cores-download:
+	@echo "Deploying shared cores from LessUI-Cores build..."
+	@mkdir -p build/.system/cores/a7 build/.system/cores/a53
+	@echo "Extracting a7 cores (ARMv7 - cortex-a7/a9)..."
+	@unzip -j -q /Users/nchapman/Code/LessUI-Cores/output/dist/linux-cortex-a7.zip -d build/.system/cores/a7
+	@echo "Extracting a53 cores (ARMv8+ - cortex-a53/a55)..."
+	@unzip -j -q /Users/nchapman/Code/LessUI-Cores/output/dist/linux-cortex-a53.zip -d build/.system/cores/a53
+	@echo "Cores deployed successfully:"
+	@echo "  a7:  $$(ls build/.system/cores/a7/*.so 2>/dev/null | wc -l | tr -d ' ') cores"
+	@echo "  a53: $$(ls build/.system/cores/a53/*.so 2>/dev/null | wc -l | tr -d ' ') cores"
 
-# Build everything for a platform: binaries, system files, cores
-common: build system cores
+# Legacy cores target - now just points to shared cores
+cores:
+	@echo "Cores are now shared in build/.system/cores/{a7,a53}"
+	@echo "No per-platform core deployment needed."
+
+# Build everything for a platform: binaries, system files
+common: build system
 
 # Remove build artifacts
 clean:
@@ -148,8 +142,8 @@ clean:
 setup: name
 	# ----------------------------------------------------
 	# Make sure we're running in an interactive terminal (not piped/redirected)
-	tty -s 
-	
+	# tty -s  # TEMP: Disabled for automated builds
+
 	# Create fresh build directory
 	rm -rf ./build
 	mkdir -p ./releases
@@ -186,6 +180,9 @@ setup: name
 	mkdir -p ./workspace/m17/boot
 	cp ./skeleton/SYSTEM/res/installing@1x-wide.bmp ./workspace/m17/boot/
 	cp ./skeleton/SYSTEM/res/updating@1x-wide.bmp ./workspace/m17/boot/
+
+	# Deploy shared cores
+	@make cores-download
 
 # Signal build completion (macOS only - harmless on Linux)
 done:
@@ -237,13 +234,14 @@ package: tidy
 	cd ./build && find . -type f -name '.DS_Store' -delete
 	mkdir -p ./build/PAYLOAD
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
+	cp -R ./build/.system/cores ./build/PAYLOAD/.system/
 	cp -R ./build/BOOT/.tmp_update ./build/PAYLOAD/
-	
+
 	cd ./build/PAYLOAD && zip -r LessUI.zip .system .tmp_update
 	mv ./build/PAYLOAD/LessUI.zip ./build/BASE
 	
 	# TODO: can I just add everything in BASE to zip?
-	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME)-base.zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus gkdpixel miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt
+	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME)-base.zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt
 	cd ./build/EXTRAS && zip -r ../../releases/$(RELEASE_NAME)-extras.zip Bios Emus Roms Saves Tools README.txt
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 	

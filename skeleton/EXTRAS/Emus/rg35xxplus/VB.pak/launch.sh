@@ -1,6 +1,6 @@
 #!/bin/sh
 
-EMU_EXE=mednafen_vb
+EMU_EXE=beetle-vb
 CORES_PATH=$(dirname "$0")
 
 ###############################

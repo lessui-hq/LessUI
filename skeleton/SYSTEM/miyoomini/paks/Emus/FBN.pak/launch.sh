@@ -1,7 +1,6 @@
 #!/bin/sh
 
-EMU_EXE=beetle-pce-fast
-CORES_PATH=$(dirname "$0")
+EMU_EXE=fbneo
 
 ###############################
 
@@ -11,4 +10,4 @@ mkdir -p "$BIOS_PATH/$EMU_TAG"
 mkdir -p "$SAVES_PATH/$EMU_TAG"
 HOME="$USERDATA_PATH"
 cd "$HOME"
-minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" > "$LOGS_PATH/$EMU_TAG.txt" 2>&1
+nice -20 minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" &> "$LOGS_PATH/$EMU_TAG.txt"
