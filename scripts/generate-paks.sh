@@ -127,7 +127,6 @@ generate_pak() {
 
     # Get metadata
     local nice_prefix=$(get_platform_metadata "$platform" "nice_prefix")
-    local minarch_setting=$(get_platform_metadata "$platform" "default_minarch_setting")
 
     local cores_json_type="${core_type}_cores"
     local emu_exe=$(get_core_metadata "$cores_json_type" "$core" "emu_exe")
@@ -162,12 +161,15 @@ generate_pak() {
         chmod +x "$launch_output"
     fi
 
-    # Generate default.cfg from template (if config exists)
-    local cfg_template_file="$TEMPLATE_DIR/configs/${core}.cfg"
-    if [ -f "$cfg_template_file" ]; then
-        local cfg_output="$output_dir/default.cfg"
-        sed -e "s|{{PLATFORM_MINARCH_SETTING}}|$minarch_setting|g" \
-            "$cfg_template_file" > "$cfg_output"
+    # Generate default.cfg - check platform-specific first, then fallback to default
+    local cfg_platform_file="$TEMPLATE_DIR/configs/${platform}/${core}.cfg"
+    local cfg_default_file="$TEMPLATE_DIR/configs/default/${core}.cfg"
+    local cfg_output="$output_dir/default.cfg"
+
+    if [ -f "$cfg_platform_file" ]; then
+        cp "$cfg_platform_file" "$cfg_output"
+    elif [ -f "$cfg_default_file" ]; then
+        cp "$cfg_default_file" "$cfg_output"
     fi
 }
 

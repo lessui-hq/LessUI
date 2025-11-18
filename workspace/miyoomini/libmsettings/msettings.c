@@ -15,6 +15,7 @@
 #include <linux/i2c-dev.h>
 
 #include "msettings.h"
+#include "log.h"
 
 ///////////////////////////////////////
 
@@ -120,12 +121,12 @@ void InitSettings(void) {
 	
 	shm_fd = shm_open(SHM_KEY, O_RDWR | O_CREAT | O_EXCL, 0644); // see if it exists
 	if (shm_fd==-1 && errno==EEXIST) { // already exists
-		puts("Settings client");
+		LOG_debug("Settings client (connecting to existing shared memory)");
 		shm_fd = shm_open(SHM_KEY, O_RDWR, 0644);
 		settings = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 	}
-	else { // host
-		puts("Settings host");
+	else { // host (creating new shared memory)
+		LOG_debug("Settings host (creating new shared memory)");
 		is_host = 1;
 		// we created it so set initial size and populate
 		ftruncate(shm_fd, shm_size);
@@ -142,7 +143,7 @@ void InitSettings(void) {
 			memcpy(settings, &DefaultSettings, shm_size);
 		}
 	}
-	printf("brightness: %i\nspeaker: %i\n", settings->brightness, settings->speaker);
+	LOG_debug("Loaded settings: brightness=%i speaker=%i", settings->brightness, settings->speaker);
 
 	MI_AO_Enable(0);
 	MI_AO_EnableChn(0,0);

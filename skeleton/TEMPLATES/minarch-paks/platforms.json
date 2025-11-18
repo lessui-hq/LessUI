@@ -2,58 +2,47 @@
   "platforms": {
     "miyoomini": {
       "arch": "arm32",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_screen_scaling = Native"
+      "nice_prefix": "nice -20 "
     },
     "trimuismart": {
       "arch": "arm64",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": "nice -20 "
     },
     "my355": {
       "arch": "arm64",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": "nice -20 "
     },
     "my282": {
       "arch": "arm64",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": "nice -20 "
     },
     "magicmini": {
       "arch": "arm64",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": "nice -20 "
     },
     "zero28": {
       "arch": "arm64",
-      "nice_prefix": "nice -20 ",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": "nice -20 "
     },
     "tg5040": {
       "arch": "arm64",
-      "nice_prefix": "",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": ""
     },
     "rgb30": {
       "arch": "arm64",
-      "nice_prefix": "",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": ""
     },
     "m17": {
       "arch": "arm64",
-      "nice_prefix": "",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": ""
     },
     "rg35xx": {
       "arch": "arm64",
-      "nice_prefix": "",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": ""
     },
     "rg35xxplus": {
       "arch": "arm64",
-      "nice_prefix": "",
-      "default_minarch_setting": "minarch_cpu_speed = Powersave"
+      "nice_prefix": ""
     }
   }
 }

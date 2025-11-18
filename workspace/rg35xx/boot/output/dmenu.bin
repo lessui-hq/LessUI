@@ -10,6 +10,14 @@ SYSTEM_FRAG=$SYSTEM_DIR/rg35xx
 UPDATE_FRAG=/LessUI.zip
 SYSTEM_PATH=${SDCARD_PATH}${SYSTEM_FRAG}
 UPDATE_PATH=${SDCARD_PATH}${UPDATE_FRAG}
+LOG_FILE="${SDCARD_PATH}/lessui-install.log"
+
+# Embedded logging (same format as log.sh)
+log_write() {
+	echo "[$1] $2" >> "$LOG_FILE"
+}
+log_info() { log_write "INFO" "$*"; }
+log_error() { log_write "ERROR" "$*"; }
 
 mkdir /mnt/sdcard
 if [ -e /dev/block/mmcblk1p1 ]; then
@@ -57,12 +65,26 @@ if [ -f $UPDATE_PATH ]; then
 	busybox fbset -g 640 480 640 480 16
 	dd if=/tmp/$ACTION of=/dev/fb0
 	sync
-	
-	busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH
+
+	log_info "Starting LessUI $ACTION..."
+	if busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH >> "$LOG_FILE" 2>&1; then
+		log_info "Unzip complete"
+	else
+		EXIT_CODE=$?
+		log_error "Unzip failed with exit code $EXIT_CODE"
+	fi
 	rm -f $UPDATE_PATH
-	
+
 	# the updated system finishes the install/update
-	$SYSTEM_PATH/bin/install.sh # &> $SDCARD_PATH/install.txt
+	if [ -f $SYSTEM_PATH/bin/install.sh ]; then
+		log_info "Running install.sh..."
+		if $SYSTEM_PATH/bin/install.sh >> "$LOG_FILE" 2>&1; then
+			log_info "Installation complete"
+		else
+			EXIT_CODE=$?
+			log_error "install.sh failed with exit code $EXIT_CODE"
+		fi
+	fi
 fi
 
 ROOTFS_IMAGE=$SYSTEM_PATH/rootfs.ext2
