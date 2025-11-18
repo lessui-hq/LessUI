@@ -1,46 +1,57 @@
 {
   "platforms": {
     "miyoomini": {
+      "arch": "arm32",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_screen_scaling = Native"
     },
     "trimuismart": {
+      "arch": "arm64",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "my355": {
+      "arch": "arm64",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "my282": {
+      "arch": "arm64",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "magicmini": {
+      "arch": "arm64",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "zero28": {
+      "arch": "arm64",
       "nice_prefix": "nice -20 ",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "tg5040": {
+      "arch": "arm64",
       "nice_prefix": "",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "rgb30": {
+      "arch": "arm64",
       "nice_prefix": "",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "m17": {
+      "arch": "arm64",
       "nice_prefix": "",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "rg35xx": {
+      "arch": "arm64",
       "nice_prefix": "",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     },
     "rg35xxplus": {
+      "arch": "arm64",
       "nice_prefix": "",
       "default_minarch_setting": "minarch_cpu_speed = Powersave"
     }

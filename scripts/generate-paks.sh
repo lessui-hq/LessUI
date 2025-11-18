@@ -76,6 +76,46 @@ is_bundled_core() {
     [ "$bundled" = "true" ]
 }
 
+# Function to check if core requires ARM64
+is_arm64_only() {
+    local core_type=$1
+    local core=$2
+    local arm64_only=$(jq -r ".${core_type}.\"$core\".arm64_only // false" "$CORES_JSON")
+    [ "$arm64_only" = "true" ]
+}
+
+# Function to check if core is compatible with platform architecture
+is_core_compatible_with_platform() {
+    local platform=$1
+    local core_type=$2
+    local core=$3
+
+    # Get platform architecture
+    local platform_arch=$(jq -r ".platforms.\"$platform\".arch" "$PLATFORMS_JSON")
+
+    # If core is arm64_only and platform is arm32, skip
+    if [ "$platform_arch" = "arm32" ] && is_arm64_only "$core_type" "$core"; then
+        return 1  # Not compatible
+    fi
+
+    return 0  # Compatible
+}
+
+# Function to check if core is in target list
+core_in_target_list() {
+    local core=$1
+    if [ ${#TARGET_CORES[@]} -eq 0 ]; then
+        return 0  # No filter, include all
+    fi
+    local target
+    for target in "${TARGET_CORES[@]}"; do
+        if [ "$target" = "$core" ]; then
+            return 0  # Found
+        fi
+    done
+    return 1  # Not found
+}
+
 # Function to generate a pak
 generate_pak() {
     local platform=$1
@@ -95,6 +135,7 @@ generate_pak() {
     # Determine if this is a bundled core (EXTRAS only)
     local cores_path_override=""
     if [ "$output_base" = "EXTRAS" ] && is_bundled_core "$cores_json_type" "$core"; then
+        # shellcheck disable=SC2016
         cores_path_override='CORES_PATH=$(dirname "$0")'
     fi
 
@@ -148,10 +189,14 @@ for platform in $PLATFORMS_TO_GENERATE; do
     # Generate stock cores (SYSTEM)
     for core in $STOCK_CORES; do
         # If specific cores requested, filter
-        if [ ${#TARGET_CORES[@]} -gt 0 ]; then
-            if [[ ! " ${TARGET_CORES[@]} " =~ " ${core} " ]]; then
-                continue
-            fi
+        if ! core_in_target_list "$core"; then
+            continue
+        fi
+
+        # Check architecture compatibility
+        if ! is_core_compatible_with_platform "$platform" "stock_cores" "$core"; then
+            echo "  Skipping $core (requires ARM64)"
+            continue
         fi
 
         generate_pak "$platform" "$core" "stock" "SYSTEM"
@@ -160,10 +205,14 @@ for platform in $PLATFORMS_TO_GENERATE; do
     # Generate extra cores (EXTRAS)
     for core in $EXTRA_CORES; do
         # If specific cores requested, filter
-        if [ ${#TARGET_CORES[@]} -gt 0 ]; then
-            if [[ ! " ${TARGET_CORES[@]} " =~ " ${core} " ]]; then
-                continue
-            fi
+        if ! core_in_target_list "$core"; then
+            continue
+        fi
+
+        # Check architecture compatibility
+        if ! is_core_compatible_with_platform "$platform" "extra_cores" "$core"; then
+            echo "  Skipping $core (requires ARM64)"
+            continue
         fi
 
         generate_pak "$platform" "$core" "extra" "EXTRAS"

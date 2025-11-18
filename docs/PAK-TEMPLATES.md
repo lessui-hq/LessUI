@@ -13,15 +13,18 @@ As of the prebuilt cores migration, LessUI uses a **template-based system** to g
 ```
 skeleton/
 ├── TEMPLATES/
-│   ├── platforms.json          # Platform metadata (nice prefix, default settings)
-│   ├── cores.json              # Core definitions (emu_exe, config template)
-│   └── paks/
-│       ├── launch.sh.template  # Launch script template
-│       └── configs/            # Config templates for each core
-│           ├── GB.cfg
-│           ├── GBA.cfg
-│           ├── VB.cfg
-│           └── ...
+│   ├── minarch-paks/           # Template system for libretro core paks
+│   │   ├── platforms.json      # Platform metadata (nice prefix, default settings)
+│   │   ├── cores.json          # Core definitions (emu_exe, bundled status)
+│   │   ├── launch.sh.template  # Launch script template (shared by all cores)
+│   │   └── configs/            # Config templates (one per core)
+│   │       ├── GB.cfg
+│   │       ├── GBA.cfg
+│   │       ├── VB.cfg
+│   │       └── ...
+│   └── paks/                   # Direct paks (copied as-is to all platforms)
+│       └── PAK.pak/
+│           └── launch.sh
 └── SYSTEM/
     └── (generated during build)
 ```
@@ -58,25 +61,23 @@ Defines which cores to build and their properties:
 ```json
 {
   "stock_cores": {
-    "PAK": {
-      "emu_exe": "",
-      "cfg_template": "",
-      "no_config": true,
-      "empty_launch": true
+    "FC": {
+      "emu_exe": "fceumm"
     },
     "GB": {
-      "emu_exe": "gambatte",
-      "cfg_template": "GB.cfg"
+      "emu_exe": "gambatte"
     },
     "GBA": {
-      "emu_exe": "gpsp",
-      "cfg_template": "GBA.cfg"
+      "emu_exe": "gpsp"
     }
   },
   "extra_cores": {
     "VB": {
-      "emu_exe": "beetle-vb",
-      "cfg_template": "VB.cfg",
+      "emu_exe": "mednafen_vb",
+      "bundled_core": true
+    },
+    "N64": {
+      "emu_exe": "mupen64plus_next",
       "bundled_core": true
     }
   }
@@ -85,10 +86,7 @@ Defines which cores to build and their properties:
 
 **Fields:**
 - `emu_exe`: Core library name (becomes `${emu_exe}_libretro.so`)
-- `cfg_template`: Config template file in `paks/configs/`
-- `bundled_core`: (optional) If true, sets `CORES_PATH=$(dirname "$0")` to use bundled core
-- `no_config`: (optional) If true, skips default.cfg generation (used for PAK.pak)
-- `empty_launch`: (optional) If true, generates minimal `#!/bin/sh` launch script (used for PAK.pak)
+- `bundled_core`: (optional) If true, sets `CORES_PATH=$(dirname "$0")` to use bundled core from pak directory
 
 **Core Types:**
 - `stock_cores`: Installed in `SYSTEM/<platform>/paks/Emus/` (base install)
@@ -172,13 +170,12 @@ Or manually:
 1. **Add to `cores.json`**:
    ```json
    "NEWCORE": {
-     "emu_exe": "newcore",
-     "cfg_template": "NEWCORE.cfg",
-     "bundled_core": true  // if EXTRAS core with bundled .so
+     "emu_exe": "newcore_name",
+     "bundled_core": true  // optional - if EXTRAS core with bundled .so
    }
    ```
 
-2. **Create config template** at `skeleton/TEMPLATES/paks/configs/NEWCORE.cfg`:
+2. **Create config template** at `skeleton/TEMPLATES/minarch-paks/configs/NEWCORE.cfg`:
    ```ini
    {{PLATFORM_MINARCH_SETTING}}
 

@@ -84,19 +84,23 @@
     },
     "N64": {
       "emu_exe": "mupen64plus_next",
-      "bundled_core": true
+      "bundled_core": true,
+      "arm64_only": true
     },
     "NDS": {
       "emu_exe": "melonds",
-      "bundled_core": true
+      "bundled_core": true,
+      "arm64_only": true
     },
     "PSP": {
       "emu_exe": "ppsspp",
-      "bundled_core": true
+      "bundled_core": true,
+      "arm64_only": true
     },
     "DC": {
       "emu_exe": "flycast",
-      "bundled_core": true
+      "bundled_core": true,
+      "arm64_only": true
     },
     "A2600": {
       "emu_exe": "stella",
