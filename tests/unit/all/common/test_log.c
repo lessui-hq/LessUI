@@ -88,7 +88,7 @@ static int count_lines(const char* path) {
 		return 0;
 
 	int count = 0;
-	char ch;
+	int ch;
 	while ((ch = fgetc(fp)) != EOF) {
 		if (ch == '\n')
 			count++;
@@ -484,7 +484,7 @@ int main(void) {
 	RUN_TEST(test_log_rotation_disabled_when_max_size_zero);
 
 	// Thread safety tests
-	// RUN_TEST(test_log_file_thread_safety);  // TODO: Debug why this hangs in Docker
+	RUN_TEST(test_log_file_thread_safety);
 
 	// Auto-newline tests
 	RUN_TEST(test_log_auto_newline);
