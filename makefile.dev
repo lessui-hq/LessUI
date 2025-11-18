@@ -50,7 +50,9 @@ endif
 # Compiler and flags (native macOS)
 CC = gcc
 INCDIR = -I workspace/all/minui -I workspace/all/common -I workspace/macos/platform $(SDL_INCLUDES)
-CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS -Ofast -std=gnu99
+# Use LOG_FLAGS from parent Makefile, or default to full logging for dev builds
+LOG_FLAGS ?= -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
+CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) -Ofast -std=gnu99
 CFLAGS += -DDEV_SCREEN_WIDTH=$(SCREEN_WIDTH) -DDEV_SCREEN_HEIGHT=$(SCREEN_HEIGHT)
 CFLAGS += -fsanitize=address -fno-common
 CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths

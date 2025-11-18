@@ -855,7 +855,7 @@ static int hasM3u(char* rom_path, char* m3u_path) {
  * @return 1 if any playable recents exist, 0 otherwise
  */
 static int hasRecents(void) {
-	LOG_info("hasRecents %s", RECENT_PATH);
+	LOG_debug("hasRecents %s", RECENT_PATH);
 	int has = 0;
 
 	// Track parent directories to avoid duplicate multi-disc entries
@@ -2190,7 +2190,7 @@ int main(int argc, char* argv[]) {
 				tmp[0] = '\0';
 
 				sprintf(res_path, "%s/.res/%s.png", res_root, res_name);
-				LOG_info("res_path: %s", res_path);
+				LOG_debug("res_path: %s", res_path);
 				if (exists(res_path)) {
 					had_thumb = 1;
 					SDL_Surface* thumb = IMG_Load(res_path);

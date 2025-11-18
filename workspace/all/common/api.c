@@ -1344,11 +1344,11 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	SDL_InitSubSystem(SDL_INIT_AUDIO);
 
 #if defined(USE_SDL2)
-	LOG_info("Available audio drivers:\n");
+	LOG_debug("Available audio drivers:\n");
 	for (int i = 0; i < SDL_GetNumAudioDrivers(); i++) {
-		LOG_info("- %s\n", SDL_GetAudioDriver(i));
+		LOG_debug("- %s\n", SDL_GetAudioDriver(i));
 	}
-	LOG_info("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
+	LOG_debug("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
 #endif
 
 	memset(&snd, 0, sizeof(struct SND_Context));
@@ -1364,7 +1364,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	spec_in.callback = SND_audioCallback;
 
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
-		LOG_info("SDL_OpenAudio error: %s\n", SDL_GetError());
+		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
 	snd.buffer_seconds = 5;
 	snd.sample_rate_in = sample_rate;

@@ -581,7 +581,7 @@ static void SRAM_read(void) {
 
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
-	printf("sav path (read): %s\n", filename);
+	LOG_debug("sav path (read): %s", filename);
 
 	FILE* sram_file = fopen(filename, "r");
 	if (!sram_file)
@@ -612,7 +612,7 @@ static void SRAM_write(void) {
 
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
-	printf("sav path (write): %s\n", filename);
+	LOG_debug("sav path (write): %s", filename);
 
 	FILE* sram_file = fopen(filename, "w");
 	if (!sram_file) {
@@ -653,7 +653,7 @@ static void RTC_read(void) {
 
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	printf("rtc path (read): %s\n", filename);
+	LOG_debug("rtc path (read): %s", filename);
 
 	FILE* rtc_file = fopen(filename, "r");
 	if (!rtc_file)
@@ -680,7 +680,7 @@ static void RTC_write(void) {
 
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	printf("rtc path (write) size(%zu): %s\n", rtc_size, filename);
+	LOG_debug("rtc path (write) size(%zu): %s", rtc_size, filename);
 
 	FILE* rtc_file = fopen(filename, "w");
 	if (!rtc_file) {
@@ -1279,7 +1279,7 @@ static void Config_getPath(char* filename, int override) {
 		sprintf(filename, "%s/%s%s.cfg", core.config_dir, game.name, device_tag);
 	else
 		sprintf(filename, "%s/minarch%s.cfg", core.config_dir, device_tag);
-	LOG_info("Config_getPath %s", filename);
+	LOG_debug("Config_getPath %s", filename);
 }
 
 ///////////////////////////////////////
@@ -1356,7 +1356,7 @@ static void Config_init(void) {
 
 		tmp += strlen(button_id); // prepare to continue search
 
-		LOG_info("\tbind %s (%s) %i:%i", button_name, button_id, local_id, retro_id);
+		LOG_debug("\tbind %s (%s) %i:%i", button_name, button_id, local_id, retro_id);
 
 		// TODO: test this without a final line return
 		tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
@@ -1387,7 +1387,7 @@ static void Config_readOptionsString(char* cfg) {
 	if (!cfg)
 		return;
 
-	LOG_info("Config_readOptions");
+	LOG_debug("Config_readOptions");
 	char key[256];
 	char value[256];
 	for (int i = 0; config.frontend.options[i].key; i++) {
@@ -1415,7 +1415,7 @@ static void Config_readControlsString(char* cfg) {
 	if (!cfg)
 		return;
 
-	LOG_info("Config_readControlsString");
+	LOG_debug("Config_readControlsString");
 
 	char key[256];
 	char value[256];
@@ -1727,7 +1727,7 @@ static const char* getOptionNameFromKey(const char* key, const char* name) {
 
 // the following 3 functions always touch config.core, the rest can operate on arbitrary OptionLists
 static void OptionList_init(const struct retro_core_option_definition* defs) {
-	LOG_info("OptionList_init");
+	LOG_debug("OptionList_init");
 	int count;
 	for (count = 0; defs[count].key; count++)
 		;
@@ -1803,7 +1803,7 @@ static void OptionList_init(const struct retro_core_option_definition* defs) {
 	// fflush(stdout);
 }
 static void OptionList_vars(const struct retro_variable* vars) {
-	LOG_info("OptionList_vars");
+	LOG_debug("OptionList_vars");
 	int count;
 	for (count = 0; vars[count].key; count++)
 		;
@@ -1924,7 +1924,7 @@ static void OptionList_setOptionRawValue(OptionList* list, const char* key, int 
 		if (exactMatch((char*)core.tag, "GB") && containsString(item->key, "palette"))
 			Special_updatedDMGPalette(3); // from options
 	} else
-		LOG_info("unknown option %s ", key);
+		LOG_warn("unknown option %s", key);
 }
 static void OptionList_setOptionValue(OptionList* list, const char* key, const char* value) {
 	Option* item = OptionList_getOption(list, key);
@@ -1937,7 +1937,7 @@ static void OptionList_setOptionValue(OptionList* list, const char* key, const c
 		if (exactMatch((char*)core.tag, "GB") && containsString(item->key, "palette"))
 			Special_updatedDMGPalette(2); // from core
 	} else
-		LOG_info("unknown option %s ", key);
+		LOG_warn("unknown option %s", key);
 }
 // static void OptionList_setOptionVisibility(OptionList* list, const char* key, int visible) {
 // 	Option* item = OptionList_getOption(list, key);
@@ -2176,7 +2176,7 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	config.controls = core_button_mapping[0].name ? core_button_mapping : default_button_mapping;
 
-	puts("---------------------------------");
+	LOG_debug("---------------------------------");
 
 	const char* core_button_names[RETRO_BUTTON_COUNT] = {0};
 	int present[RETRO_BUTTON_COUNT];
@@ -2191,29 +2191,27 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 			// TODO: don't ignore unavailable buttons, just override them to BTN_ID_NONE!
 			if (var->id >= RETRO_BUTTON_COUNT) {
-				printf("UNAVAILABLE: %s\n", var->description);
-				fflush(stdout);
+				LOG_debug("UNAVAILABLE: %s", var->description);
 				continue;
 			} else {
-				printf("PRESENT    : %s\n", var->description);
-				fflush(stdout);
+				LOG_debug("PRESENT    : %s", var->description);
 			}
 			present[var->id] = 1;
 			core_button_names[var->id] = var->description;
 		}
 	}
 
-	puts("---------------------------------");
+	LOG_debug("---------------------------------");
 
 	for (int i = 0; default_button_mapping[i].name; i++) {
 		ButtonMapping* mapping = &default_button_mapping[i];
-		LOG_info("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro], mapping->name,
-		         (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]));
+		LOG_debug("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro], mapping->name,
+		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]));
 		if (core_button_names[mapping->retro])
 			mapping->name = (char*)core_button_names[mapping->retro];
 	}
 
-	puts("---------------------------------");
+	LOG_debug("---------------------------------");
 
 	for (int i = 0; config.controls[i].name; i++) {
 		ButtonMapping* mapping = &config.controls[i];
@@ -2224,12 +2222,12 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 			mapping->ignore = 1;
 			continue;
 		}
-		LOG_info("%s: <%s> (%i:%i)", mapping->name,
-		         (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]),
-		         mapping->local, mapping->retro);
+		LOG_debug("%s: <%s> (%i:%i)", mapping->name,
+		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]),
+		          mapping->local, mapping->retro);
 	}
 
-	puts("---------------------------------");
+	LOG_debug("---------------------------------");
 	input_initialized = 1;
 }
 
@@ -2418,7 +2416,6 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 				// printf("\t%i: %s\n", type->id, type->desc);
 			}
 		}
-		fflush(stdout);
 		return false; // TODO: tmp
 		break;
 	}
@@ -4447,7 +4444,6 @@ static int Menu_options(MenuList* list) {
 						if (w > mw)
 							mw = w;
 					}
-					fflush(stdout);
 					// cache the result
 					list->max_width = mw = MIN(mw, screen->w - SCALE1(PADDING * 2));
 				}
