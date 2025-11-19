@@ -145,15 +145,20 @@ generate_pak() {
         chmod +x "$launch_output"
     fi
 
-    # Generate default.cfg - check platform-specific first, then fallback to default
-    local cfg_platform_file="$TEMPLATE_DIR/configs/${platform}/${core}.cfg"
-    local cfg_default_file="$TEMPLATE_DIR/configs/default/${core}.cfg"
-    local cfg_output="$output_dir/default.cfg"
+    # Generate config files - copy from base, then overwrite/add with platform-specific
+    # This mirrors the pak output structure: {TAG}/default.cfg, default-{device}.cfg, etc.
 
-    if [ -f "$cfg_platform_file" ]; then
-        cp "$cfg_platform_file" "$cfg_output"
-    elif [ -f "$cfg_default_file" ]; then
-        cp "$cfg_default_file" "$cfg_output"
+    local cfg_base_dir="$TEMPLATE_DIR/configs/base/${core}"
+    local cfg_platform_dir="$TEMPLATE_DIR/configs/${platform}/${core}"
+
+    # Copy base configs first (if exists)
+    if [ -d "$cfg_base_dir" ]; then
+        cp "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+    fi
+
+    # Copy/overwrite with platform-specific configs (if exists)
+    if [ -d "$cfg_platform_dir" ]; then
+        cp "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
     fi
 }
 
