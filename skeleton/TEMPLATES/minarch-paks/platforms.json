@@ -5,7 +5,7 @@
       "nice_prefix": "nice -20 "
     },
     "trimuismart": {
-      "arch": "arm64",
+      "arch": "arm32",
       "nice_prefix": "nice -20 "
     },
     "my355": {
@@ -13,7 +13,7 @@
       "nice_prefix": "nice -20 "
     },
     "my282": {
-      "arch": "arm64",
+      "arch": "arm32",
       "nice_prefix": "nice -20 "
     },
     "magicmini": {
@@ -33,15 +33,15 @@
       "nice_prefix": ""
     },
     "m17": {
-      "arch": "arm64",
+      "arch": "arm32",
       "nice_prefix": ""
     },
     "rg35xx": {
-      "arch": "arm64",
+      "arch": "arm32",
       "nice_prefix": ""
     },
     "rg35xxplus": {
-      "arch": "arm64",
+      "arch": "arm32",
       "nice_prefix": ""
     }
   }
