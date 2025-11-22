@@ -39,7 +39,7 @@ BUILD_HASH:=$(shell git rev-parse --short HEAD)
 RELEASE_TIME:=$(shell TZ=GMT date +%Y%m%d)
 RELEASE_BETA=
 RELEASE_BASE=LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
-RELEASE_DOT:=$(shell find -E ./releases/. -regex ".*/${RELEASE_BASE}-[0-9]+-base\.zip" | wc -l | sed 's/ //g')
+RELEASE_DOT:=$(shell find ./releases/. -name "${RELEASE_BASE}-*-base.zip" 2>/dev/null | wc -l | sed 's/ //g')
 # First build has no suffix, subsequent builds use -1, -2, etc.
 # Check if unnumbered base exists, if so start numbering from RELEASE_DOT+1
 RELEASE_SUFFIX:=$(shell \
@@ -88,6 +88,9 @@ test:
 
 lint:
 	@make -f makefile.qa lint
+
+analyze:
+	@make -f makefile.qa analyze
 
 format:
 	@make -f makefile.qa format

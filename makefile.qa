@@ -41,8 +41,8 @@ help:
 	@echo "  make clean-qa      - Clean QA artifacts"
 	@echo ""
 	@echo "Installing tools:"
-	@echo "  macOS:  brew install cppcheck llvm shellcheck"
-	@echo "  Linux:  sudo apt-get install cppcheck clang-format shellcheck"
+	@echo "  macOS:  brew install cppcheck llvm shellcheck sdl2 sdl2_image sdl2_ttf"
+	@echo "  Ubuntu: sudo apt-get install cppcheck clang-tools clang-format shellcheck libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev"
 
 # cppcheck configuration
 # Checks for: warnings, performance issues, style problems
@@ -104,14 +104,28 @@ lint-full: check-cppcheck
 
 # Clang Static Analyzer (deep dataflow analysis)
 # Finds: NULL derefs, memory leaks, dead code, logic errors
-# Note: Runs on host (macOS), not in Docker - analyzes source, not binaries
-SCAN_BUILD = /opt/homebrew/opt/llvm/bin/scan-build
+# Note: Runs on host (not in Docker) - analyzes source, not binaries
+# Works on macOS (Homebrew) and Linux (apt packages)
+
+# Auto-detect scan-build location
+SCAN_BUILD := $(shell which scan-build 2>/dev/null || which /opt/homebrew/opt/llvm/bin/scan-build 2>/dev/null)
+
+# Auto-detect SDL2 include path (works on both macOS and Ubuntu)
+SDL2_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+
 ANALYZE_FLAGS = -DPLATFORM=\"macos\" -DSDCARD_PATH=\"../../macos/FAKESD\" -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS \
                 -I workspace/all/common -I workspace/macos/platform \
-                -I /opt/homebrew/include -DUSE_SDL2 -std=gnu99
+                $(SDL2_CFLAGS) -DUSE_SDL2 -std=gnu99
 
-analyze:
-	@which $(SCAN_BUILD) > /dev/null || (echo "Error: scan-build not found. Run 'brew install llvm'" && exit 1)
+check-scan-build:
+	@if [ -z "$(SCAN_BUILD)" ]; then \
+		echo "Error: scan-build not found"; \
+		echo "  macOS: brew install llvm"; \
+		echo "  Ubuntu: sudo apt-get install clang-tools"; \
+		exit 1; \
+	fi
+
+analyze: check-scan-build
 	@echo "================================="
 	@echo "Running Clang Static Analyzer..."
 	@echo "================================="
