@@ -121,9 +121,13 @@ int GFX_wrapText(TTF_Font* font, char* str, int max_width, int max_lines) {
 				max_line_width = line_width;
 			tmp[0] = ' ';
 			tmp += 1;
-			prev[0] = '\n';
-			prev += 1;
-			line = prev;
+			if (prev) {
+				prev[0] = '\n';
+				prev += 1;
+				line = prev;
+			} else {
+				line = tmp;
+			}
 			lines += 1;
 		} else { // continue
 			tmp[0] = ' ';

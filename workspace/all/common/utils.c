@@ -275,14 +275,33 @@ void getFile(const char* path, char* buffer, size_t buffer_size) {
 		return;
 	}
 
-	fseek(file, 0L, SEEK_END);
-	size_t size = ftell(file);
+	size_t bytes_read = 0;
+	long file_size;
+
+	// Get file size
+	if (fseek(file, 0L, SEEK_END) != 0 || (file_size = ftell(file)) < 0) {
+		LOG_errno("Failed to get file size for %s", path);
+		goto cleanup;
+	}
+
+	// Read file contents
+	size_t size = (size_t)file_size;
 	if (size > buffer_size - 1)
 		size = buffer_size - 1;
-	rewind(file);
-	fread(buffer, sizeof(char), size, file);
+
+	if (fseek(file, 0L, SEEK_SET) != 0) {
+		LOG_errno("Failed to rewind file %s", path);
+		goto cleanup;
+	}
+
+	bytes_read = fread(buffer, sizeof(char), size, file);
+	if (bytes_read != size && ferror(file)) {
+		LOG_errno("Failed to read file %s", path);
+	}
+
+cleanup:
 	fclose(file);
-	buffer[size] = '\0';
+	buffer[bytes_read] = '\0';
 }
 
 /**
@@ -305,7 +324,13 @@ char* allocFile(const char* path) {
 	}
 
 	fseek(file, 0L, SEEK_END);
-	size_t size = ftell(file);
+	long file_size = ftell(file);
+	if (file_size < 0) {
+		LOG_errno("Failed to get file size for %s", path);
+		fclose(file);
+		return NULL;
+	}
+	size_t size = (size_t)file_size;
 	contents = calloc(size + 1, sizeof(char));
 	if (!contents) {
 		LOG_error("Failed to allocate %zu bytes for file %s", size + 1, path);
@@ -412,7 +437,6 @@ void getDisplayName(const char* in_name, char* out_name) {
 		if (tmp == out_name)
 			break; // Don't remove if name would be empty
 		tmp[0] = '\0';
-		tmp = out_name;
 	}
 
 	// Safety check: restore previous name if we removed everything

@@ -1479,7 +1479,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 		int pressed = 0; // 0=up,1=down
 		int id = -1;
 		if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
-			uint8_t code = event.key.keysym.scancode;
+			int code = event.key.keysym.scancode;
 			pressed = event.type == SDL_KEYDOWN;
 			// LOG_info("key event: %i (%i)\n", code,pressed);
 			if (code == CODE_UP) {
@@ -1550,7 +1550,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 				id = BTN_ID_POWEROFF;
 			} // nano-only
 		} else if (event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP) {
-			uint8_t joy = event.jbutton.button;
+			int joy = event.jbutton.button;
 			pressed = event.type == SDL_JOYBUTTONDOWN;
 			// LOG_info("joy event: %i (%i)\n", joy,pressed);
 			if (joy == JOY_UP) {
@@ -1776,7 +1776,7 @@ FALLBACK_IMPLEMENTATION int PLAT_shouldWake(void) {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		if (event.type == SDL_KEYUP) {
-			uint8_t code = event.key.keysym.scancode;
+			int code = event.key.keysym.scancode;
 			if ((BTN_WAKE == BTN_POWER && code == CODE_POWER) ||
 			    (BTN_WAKE == BTN_MENU && (code == CODE_MENU || code == CODE_MENU_ALT))) {
 				// ignore input while lid is closed
@@ -1785,7 +1785,7 @@ FALLBACK_IMPLEMENTATION int PLAT_shouldWake(void) {
 				return 1;
 			}
 		} else if (event.type == SDL_JOYBUTTONUP) {
-			uint8_t joy = event.jbutton.button;
+			int joy = event.jbutton.button;
 			if ((BTN_WAKE == BTN_POWER && joy == JOY_POWER) ||
 			    (BTN_WAKE == BTN_MENU && (joy == JOY_MENU || joy == JOY_MENU_ALT))) {
 				// ignore input while lid is closed

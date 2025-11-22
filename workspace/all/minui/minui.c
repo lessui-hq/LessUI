@@ -275,7 +275,6 @@ static int getIndexChar(char* str) {
  * @param out_name Output buffer for unique name (min 256 bytes)
  */
 static void getUniqueName(Entry* entry, char* out_name) {
-	char* filename = strrchr(entry->path, '/') + 1;
 	char emu_tag[256];
 	getEmuName(entry->path, emu_tag);
 
@@ -961,6 +960,9 @@ static int hasCollections(void) {
 		return has;
 
 	DIR* dh = opendir(COLLECTIONS_PATH);
+	if (!dh)
+		return has;
+
 	struct dirent* dp;
 	while ((dp = readdir(dh)) != NULL) {
 		if (hide(dp->d_name))
