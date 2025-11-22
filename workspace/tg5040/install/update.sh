@@ -28,7 +28,7 @@ if [ -d $BRICK_PATH ]; then
 		DST_PATH=${SDCARD_PATH}/.userdata/tg5040
 		mkdir -p $DST_PATH # just in case
 	
-		for SUB_PATH in $SRC_PATH/*; do
+		for SUB_PATH in "$SRC_PATH"/*; do
 			if [ -d $SUB_PATH ]; then
 				SUB_NAME=$(basename $SUB_PATH)
 				NEW_PATH=$DST_PATH/$SUB_NAME
@@ -38,7 +38,7 @@ if [ -d $BRICK_PATH ]; then
 					mkdir -p $NEW_PATH
 				fi
 			
-				for CFG_PATH in $SUB_PATH/*.cfg; do
+				for CFG_PATH in "$SUB_PATH"/*.cfg; do
 					if [ -f $CFG_PATH ]; then
 						CFG_NAME=$(basename $CFG_PATH .cfg)
 						echo "copying $CFG_PATH to $NEW_PATH/$CFG_NAME-brick.cfg"

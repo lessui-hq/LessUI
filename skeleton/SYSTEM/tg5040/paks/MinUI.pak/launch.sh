@@ -47,23 +47,23 @@ fi
 
 #rumble motor PH3
 echo 227 > /sys/class/gpio/export
-echo -n out > /sys/class/gpio/gpio227/direction
-echo -n 0 > /sys/class/gpio/gpio227/value
+printf "%s" out > /sys/class/gpio/gpio227/direction
+printf "%s" 0 > /sys/class/gpio/gpio227/value
 
 if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
 	#Left/Right Pad PD14/PD18
 	echo 110 > /sys/class/gpio/export
-	echo -n out > /sys/class/gpio/gpio110/direction
-	echo -n 1 > /sys/class/gpio/gpio110/value
+	printf "%s" out > /sys/class/gpio/gpio110/direction
+	printf "%s" 1 > /sys/class/gpio/gpio110/value
 
 	echo 114 > /sys/class/gpio/export
-	echo -n out > /sys/class/gpio/gpio114/direction
-	echo -n 1 > /sys/class/gpio/gpio114/value
+	printf "%s" out > /sys/class/gpio/gpio114/direction
+	printf "%s" 1 > /sys/class/gpio/gpio114/value
 fi
 
 #DIP Switch PH19
 echo 243 > /sys/class/gpio/export
-echo -n in > /sys/class/gpio/gpio243/direction
+printf "%s" in > /sys/class/gpio/gpio243/direction
 
 #######################################
 
@@ -124,7 +124,7 @@ EXEC_PATH="/tmp/minui_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH"  && sync
 while [ -f $EXEC_PATH ]; do
-	minui.elf &> $LOGS_PATH/minui.log
+	minui.elf > $LOGS_PATH/minui.log 2>&1
 	[ -f $EXEC_PATH ] && echo $CPU_SPEED_PERF > $CPU_PATH
 	echo `date +'%F %T'` > "$DATETIME_PATH"
 	sync

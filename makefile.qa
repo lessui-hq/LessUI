@@ -50,7 +50,7 @@ help:
 CPPCHECK_FLAGS = --enable=warning,performance,portability \
                  --suppressions-list=.cppcheck-suppressions \
                  --inline-suppr \
-                 --error-exitcode=0 \
+                 --error-exitcode=1 \
                  --quiet
 
 # Check if cppcheck is installed
@@ -254,10 +254,16 @@ format-check: check-clang-format
 ###########################################################
 # Shell Script Linting
 
-# Find all shell scripts (exclude cores, toolchains, embedded binaries)
+# Find all shell scripts we maintain (exclude third-party code)
+# Excludes:
+#   - workspace/*/other/* (third-party SDL, DTC, etc.)
+#   - workspace/macos/FAKESD/* (generated test data)
+#   - cores, toolchains (third-party)
 SHELL_SCRIPTS = $(shell find skeleton workspace -name "*.sh" -type f \
                  -not -path "*/cores/*" \
                  -not -path "*/toolchains/*" \
+                 -not -path "*/other/*" \
+                 -not -path "*/macos/FAKESD/*" \
                  -not -path "*/em_ui.sh" \
                  2>/dev/null)
 ROOT_SCRIPTS = commits.sh
@@ -269,13 +275,14 @@ lint-shell: check-shellcheck
 	@ERROR_COUNT=0; \
 	for script in $(ROOT_SCRIPTS) $(SHELL_SCRIPTS); do \
 		if [ -f "$$script" ]; then \
-			shellcheck "$$script" || ERROR_COUNT=$$((ERROR_COUNT + 1)); \
+			shellcheck -S warning "$$script" || ERROR_COUNT=$$((ERROR_COUNT + 1)); \
 		fi; \
 	done; \
 	if [ $$ERROR_COUNT -gt 0 ]; then \
 		echo ""; \
 		echo "Found issues in $$ERROR_COUNT script(s)"; \
 		echo "Note: Using forgiving rules (see .shellcheckrc)"; \
+		exit 1; \
 	else \
 		echo "✓ All shell scripts passed"; \
 	fi

@@ -74,6 +74,8 @@ cd output
 tar -czvf data bootlogo.bmp installing updating bootlogo-r.bmp installing-r updating-r bootlogo-s.bmp installing-s updating-s bootlogo-w.bmp installing-w updating-w unzip
 
 cat ../$SOURCE > $TARGET
-echo BINARY >> $TARGET
-cat data >> $TARGET
-echo >> $TARGET
+{
+	echo BINARY
+	cat data
+	echo
+} >> $TARGET

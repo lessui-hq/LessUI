@@ -20,12 +20,12 @@ export LD_LIBRARY_PATH=$SYSTEM_PATH/lib:/usr/miyoo/lib:$LD_LIBRARY_PATH
 
 #headphone jack
 echo 150 > /sys/class/gpio/export
-echo -n in > /sys/class/gpio/gpio150/direction
+printf "%s" in > /sys/class/gpio/gpio150/direction
 
 #motor
 echo 20 > /sys/class/gpio/export
-echo -n out > /sys/class/gpio/gpio20/direction
-echo -n 0 > /sys/class/gpio/gpio20/value
+printf "%s" out > /sys/class/gpio/gpio20/direction
+printf "%s" 0 > /sys/class/gpio/gpio20/value
 
 #keyboard
 echo 0 > /sys/class/miyooio_chr_dev/joy_type

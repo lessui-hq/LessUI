@@ -28,7 +28,7 @@ umount $BOOT_PATH
 
 echo "Done."
 
-} &> ./log.txt
+} > ./log.txt 2>&1
 
 # self-destruct
 mv $DIR $DIR.disabled

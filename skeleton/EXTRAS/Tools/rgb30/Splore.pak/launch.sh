@@ -24,7 +24,7 @@ cd "$DIR"
 
 if [ ! -d ./pico-8 ]; then
 	PICO8_ZIP=$(ls -1 ./pico-8*raspi.zip 2>/dev/null | head -n 1)
-	if [[ ! -z "$PICO8_ZIP" && -f "$PICO8_ZIP" ]]; then
+	if [ -n "$PICO8_ZIP" ] && [ -f "$PICO8_ZIP" ]; then
 		show.elf "$DIR/extracting.png" 60 &
 		unzip -o "$PICO8_ZIP" -d ./
 		cp ./sdl_controllers.txt ./pico-8

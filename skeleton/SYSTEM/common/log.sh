@@ -50,8 +50,8 @@ log_timestamp() {
 
 # Get file size in bytes (portable across busybox and GNU coreutils)
 log_get_size() {
-	local file="$1"
-	if [ ! -f "$file" ]; then
+	_log_file="$1"
+	if [ ! -f "$_log_file" ]; then
 		echo 0
 		return
 	fi
@@ -59,43 +59,43 @@ log_get_size() {
 	# Try stat (GNU coreutils)
 	if command -v stat >/dev/null 2>&1; then
 		# Linux (busybox or GNU)
-		stat -c%s "$file" 2>/dev/null && return
+		stat -c%s "$_log_file" 2>/dev/null && return
 		# macOS/BSD
-		stat -f%z "$file" 2>/dev/null && return
+		stat -f%z "$_log_file" 2>/dev/null && return
 	fi
 
 	# Fallback: use wc (slower but universal)
-	wc -c < "$file" 2>/dev/null || echo 0
+	wc -c < "$_log_file" 2>/dev/null || echo 0
 }
 
 # Rotate log file if it exceeds maximum size
 log_rotate() {
-	local file="$1"
+	_log_file="$1"
 
-	if [ ! -f "$file" ]; then
+	if [ ! -f "$_log_file" ]; then
 		return
 	fi
 
-	local size=$(log_get_size "$file")
+	_log_size=$(log_get_size "$_log_file")
 
-	if [ "$size" -lt "$LOG_MAX_SIZE" ]; then
+	if [ "$_log_size" -lt "$LOG_MAX_SIZE" ]; then
 		return
 	fi
 
 	# Delete oldest backup
-	rm -f "${file}.${LOG_MAX_BACKUPS}" 2>/dev/null
+	rm -f "${_log_file}.${LOG_MAX_BACKUPS}" 2>/dev/null
 
 	# Rotate backups (N-1 -> N, N-2 -> N-1, ...)
-	local i=$((LOG_MAX_BACKUPS - 1))
-	while [ $i -ge 1 ]; do
-		if [ -f "${file}.${i}" ]; then
-			mv "${file}.${i}" "${file}.$((i + 1))" 2>/dev/null
+	_log_i=$((LOG_MAX_BACKUPS - 1))
+	while [ $_log_i -ge 1 ]; do
+		if [ -f "${_log_file}.${_log_i}" ]; then
+			mv "${_log_file}.${_log_i}" "${_log_file}.$((_log_i + 1))" 2>/dev/null
 		fi
-		i=$((i - 1))
+		_log_i=$((_log_i - 1))
 	done
 
 	# Move current log to .1
-	mv "$file" "${file}.1" 2>/dev/null
+	mv "$_log_file" "${_log_file}.1" 2>/dev/null
 }
 
 ###############################################################################
@@ -123,9 +123,11 @@ log_init() {
 	log_rotate "$LOG_FILE"
 
 	# Write session header
-	echo "========================================" >> "$LOG_FILE"
-	echo "Log started: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
-	echo "========================================" >> "$LOG_FILE"
+	{
+		echo "========================================"
+		echo "Log started: $(date '+%Y-%m-%d %H:%M:%S')"
+		echo "========================================"
+	} >> "$LOG_FILE"
 }
 
 # Log an informational message
@@ -135,12 +137,12 @@ log_init() {
 # Writes to both console (stdout) and log file with [INFO] prefix.
 log_info() {
 	[ "$LOG_ENABLED" -eq 0 ] && return
-	local msg="[$(log_timestamp)] [INFO] $*"
+	_log_msg="[$(log_timestamp)] [INFO] $*"
 
 	if [ -n "$LOG_FILE" ]; then
-		echo "$msg" | tee -a "$LOG_FILE"
+		echo "$_log_msg" | tee -a "$LOG_FILE"
 	else
-		echo "$msg"
+		echo "$_log_msg"
 	fi
 }
 
@@ -151,12 +153,12 @@ log_info() {
 # Writes to both console (stdout) and log file with [WARN] prefix.
 log_warn() {
 	[ "$LOG_ENABLED" -eq 0 ] && return
-	local msg="[$(log_timestamp)] [WARN] $*"
+	_log_msg="[$(log_timestamp)] [WARN] $*"
 
 	if [ -n "$LOG_FILE" ]; then
-		echo "$msg" | tee -a "$LOG_FILE"
+		echo "$_log_msg" | tee -a "$LOG_FILE"
 	else
-		echo "$msg"
+		echo "$_log_msg"
 	fi
 }
 
@@ -167,12 +169,12 @@ log_warn() {
 # Writes to both console (stderr) and log file with [ERROR] prefix.
 log_error() {
 	[ "$LOG_ENABLED" -eq 0 ] && return
-	local msg="[$(log_timestamp)] [ERROR] $*"
+	_log_msg="[$(log_timestamp)] [ERROR] $*"
 
 	if [ -n "$LOG_FILE" ]; then
-		echo "$msg" | tee -a "$LOG_FILE" >&2
+		echo "$_log_msg" | tee -a "$LOG_FILE" >&2
 	else
-		echo "$msg" >&2
+		echo "$_log_msg" >&2
 	fi
 }
 
@@ -203,7 +205,9 @@ log_close() {
 	[ "$LOG_ENABLED" -eq 0 ] && return
 	[ -z "$LOG_FILE" ] && return
 
-	echo "========================================" >> "$LOG_FILE"
-	echo "Log ended: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
-	echo "========================================" >> "$LOG_FILE"
+	{
+		echo "========================================"
+		echo "Log ended: $(date '+%Y-%m-%d %H:%M:%S')"
+		echo "========================================"
+	} >> "$LOG_FILE"
 }

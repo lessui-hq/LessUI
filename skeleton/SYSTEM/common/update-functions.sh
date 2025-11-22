@@ -33,38 +33,38 @@ SCRIPT_DIR="$(dirname "$0")"
 #   0 on success, 1 on failure
 #######################################
 atomic_system_update() {
-	local update_zip="$1"
-	local sdcard="$2"
-	local system_dir="$3"
-	local log="$4"
+	_update_zip="$1"
+	_sdcard="$2"
+	_system_dir="$3"
+	_log="$4"
 
 	# Backup old system if it exists
-	if [ -d "$system_dir" ]; then
+	if [ -d "$_system_dir" ]; then
 		log_info "Backing up existing .system to .system-prev..."
 		# Remove any stale backup first
-		rm -rf "$system_dir-prev"
+		rm -rf "$_system_dir-prev"
 		# Create fresh backup
-		if ! mv "$system_dir" "$system_dir-prev"; then
+		if ! mv "$_system_dir" "$_system_dir-prev"; then
 			log_error "Failed to backup .system - aborting update"
 			return 1
 		fi
 	fi
 
 	# Move old .tmp_update out of the way (original approach)
-	mv "$sdcard/.tmp_update" "$sdcard/.tmp_update-old" 2>/dev/null
+	mv "$_sdcard/.tmp_update" "$_sdcard/.tmp_update-old" 2>/dev/null
 
 	# Extract update
-	if unzip -o "$update_zip" -d "$sdcard" >> "$log" 2>&1; then
+	if unzip -o "$_update_zip" -d "$_sdcard" >> "$_log" 2>&1; then
 		log_info "Unzip complete"
 	else
-		local exit_code=$?
-		log_error "Unzip failed with exit code $exit_code"
+		_exit_code=$?
+		log_error "Unzip failed with exit code $_exit_code"
 	fi
-	rm -f "$update_zip"
-	rm -rf "$sdcard/.tmp_update-old"
+	rm -f "$_update_zip"
+	rm -rf "$_sdcard/.tmp_update-old"
 
 	# Success - remove .system backup
-	rm -rf "$system_dir-prev"
+	rm -rf "$_system_dir-prev"
 	return 0
 }
 
@@ -82,17 +82,17 @@ atomic_system_update() {
 #   0 on success or if script doesn't exist, 1 on failure
 #######################################
 run_platform_install() {
-	local install_script="$1"
-	local log_file="$2"
+	_install_script="$1"
+	_log_file="$2"
 
-	if [ -f "$install_script" ]; then
+	if [ -f "$_install_script" ]; then
 		log_info "Running install.sh..."
-		if "$install_script" >> "$log_file" 2>&1; then
+		if "$_install_script" >> "$_log_file" 2>&1; then
 			log_info "Installation complete"
 			return 0
 		else
-			local exit_code=$?
-			log_error "install.sh failed with exit code $exit_code"
+			_exit_code=$?
+			log_error "install.sh failed with exit code $_exit_code"
 			return 1
 		fi
 	fi

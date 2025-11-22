@@ -31,6 +31,6 @@ export service_adb_tcp_port=5555
 adbd&
 sleep 1
 
-UDC=`ls /sys/class/udc/| awk '{print $1}'`
+UDC=$(find /sys/class/udc/ -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | head -n 1)
 echo $UDC > /sys/kernel/config/usb_gadget/rockchip/UDC
 

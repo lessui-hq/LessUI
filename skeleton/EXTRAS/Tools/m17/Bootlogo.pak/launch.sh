@@ -21,7 +21,12 @@ fi
 # read new bitmap size
 HEX=`dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p`
 # convert to decimal (need to swap le bytes)
-COUNT=$((0x${HEX:6:2}${HEX:4:2}${HEX:2:2}${HEX:0:2}))
+# Extract bytes using dd instead of string indexing
+BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
+BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
+BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
+BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
+COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
 if [ $COUNT -gt 32768 ]; then
 	echo "logo.bmp too large ($COUNT). Aborted."
 	exit 1
@@ -54,7 +59,12 @@ DT=`date +'%Y%m%d%H%M%S'`
 # read bitmap size
 HEX=`dd if=/dev/block/by-name/boot bs=1 skip=$(($OFFSET+2)) count=4 status=none | xxd -g4 -p`
 # convert to decimal (need to swap le bytes)
-COUNT=$((0x${HEX:6:2}${HEX:4:2}${HEX:2:2}${HEX:0:2}))
+# Extract bytes using dd instead of string indexing
+BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
+BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
+BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
+BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
+COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
 # create backup
 echo "copying $COUNT bytes from $OFFSET to backup-$DT.bmp"
 dd if=/dev/block/by-name/boot of=./backup-$DT.bmp bs=1 skip=$OFFSET count=$COUNT
@@ -66,7 +76,7 @@ dd conv=notrunc if=$LOGO_PATH of=/dev/block/by-name/boot bs=1 seek=$OFFSET
 sync
 echo "Done."
 
-} &> ./log.txt
+} > ./log.txt 2>&1
 
 # self-destruct
 mv $DIR $DIR.disabled

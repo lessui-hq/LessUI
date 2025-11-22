@@ -19,7 +19,7 @@ dd if=$LOGO_PATH of=/dev/by-name/bootlogo bs=65536
 
 echo "Done."
 
-} &> ./log.txt
+} > ./log.txt 2>&1
 
 # self-destruct
 DIR=$(dirname "$0")
