@@ -398,7 +398,7 @@ DEV_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(DEV_IMAGE)
 
 docker-build:
 	@echo "Building dev Docker image (Ubuntu 24.04, matches GitHub CI)..."
-	docker build -t $(DEV_IMAGE) -f Dockerfile .
+	@docker build -q -t $(DEV_IMAGE) -f Dockerfile .
 	@echo "✓ Dev image ready"
 
 docker-test: docker-build
