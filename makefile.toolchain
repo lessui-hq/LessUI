@@ -1,22 +1,24 @@
 # LessUI Docker Toolchain Manager
 # Manages platform-specific cross-compilation toolchains
 #
-# This makefile is called by the main makefile to:
-#   1. Clone platform-specific toolchain repositories (from union-* repos)
-#   2. Build Docker images with ARM cross-compilers
-#   3. Launch Docker containers for building LessUI components
+# This makefile pulls pre-built toolchain containers from GitHub Container Registry
+# and launches them for building LessUI components.
 #
-# Toolchains are cloned to: toolchains/<platform>-toolchain/
-# Each toolchain contains a Dockerfile with the cross-compiler setup.
+# Container images: ghcr.io/lessui-hq/union-<platform>-toolchain:latest
 #
 # Usage (typically called from main makefile):
 #   make -f makefile.toolchain PLATFORM=miyoomini       # Enter shell
 #   make -f makefile.toolchain PLATFORM=miyoomini build # Build all
 #
+# Adding a new platform:
+#   1. Fork the union-<platform>-toolchain repo to lessui-hq org
+#   2. Add .github/workflows/build-container.yml to the fork
+#   3. Trigger the workflow to build and publish the container
+#
 # DO NOT call this makefile directly unless debugging toolchain issues.
 # Use the main makefile's 'shell' and 'build' targets instead.
 
-.PHONY: build all clean
+.PHONY: build all clean force-pull
 
 ifeq (,$(PLATFORM))
 $(error PLATFORM not specified. Use: make -f makefile.toolchain PLATFORM=<platform>)
@@ -26,38 +28,58 @@ endif
 HOST_WORKSPACE=$(shell pwd)/workspace
 GUEST_WORKSPACE=/root/workspace
 
-# Toolchain paths
-GIT_IF_NECESSARY=toolchains/$(PLATFORM)-toolchain
+# Pre-built container registry
+CONTAINER_REGISTRY=ghcr.io
+CONTAINER_ORG=lessui-hq
+CONTAINER_IMAGE=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/union-$(PLATFORM)-toolchain:latest
+
+# Toolchain marker file
 INIT_IF_NECESSARY=toolchains/$(PLATFORM)-toolchain/.build
 
 # Default target: ensure toolchain is built, then launch interactive shell
 all: $(INIT_IF_NECESSARY)
-	docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash
+	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash
 
-# Build Docker image (if not already built)
-$(INIT_IF_NECESSARY): $(GIT_IF_NECESSARY)
-	cd toolchains/$(PLATFORM)-toolchain && make .build
+# Get toolchain: pull pre-built container (required)
+$(INIT_IF_NECESSARY):
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Preparing $(PLATFORM)-toolchain..."
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@docker pull $(CONTAINER_IMAGE) || \
+		(echo "" && \
+		 echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
+		 echo "" && \
+		 echo "To add support for $(PLATFORM):" && \
+		 echo "  1. Fork the union-$(PLATFORM)-toolchain to lessui-hq org" && \
+		 echo "  2. Add .github/workflows/build-container.yml" && \
+		 echo "  3. Trigger workflow to build and publish container" && \
+		 echo "" && \
+		 exit 1)
+	@docker tag $(CONTAINER_IMAGE) $(PLATFORM)-toolchain
+	@mkdir -p toolchains/$(PLATFORM)-toolchain && touch $(INIT_IF_NECESSARY)
+	@echo "✓ Using $(CONTAINER_IMAGE)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# Clone toolchain repository (if not already cloned)
-$(GIT_IF_NECESSARY):
-	mkdir -p toolchains
-	git clone https://github.com/shauninman/union-$(PLATFORM)-toolchain/ toolchains/$(PLATFORM)-toolchain
-	@echo "Patching Dockerfile for archived Debian repositories..."
-	@if [ -f toolchains/$(PLATFORM)-toolchain/Dockerfile ]; then \
-		DOCKERFILE=toolchains/$(PLATFORM)-toolchain/Dockerfile; \
-		if grep -q "^FROM debian:buster" $$DOCKERFILE; then \
-			sed -i.bak 's|^FROM debian:buster|FROM debian/eol:buster|g' $$DOCKERFILE && \
-			rm $$DOCKERFILE.bak; \
-			echo "✓ Dockerfile patched to use debian/eol:buster"; \
-		else \
-			echo "✓ No Debian Buster found, skipping patch"; \
-		fi; \
-	fi
-
-# Clean Docker image (toolchain repo remains)
+# Clean Docker image
 clean:
-	cd toolchains/$(PLATFORM)-toolchain && make clean
+	@docker rmi $(PLATFORM)-toolchain 2>/dev/null || true
+	@docker rmi $(CONTAINER_IMAGE) 2>/dev/null || true
+	@rm -f $(INIT_IF_NECESSARY)
 
 # Build all workspace components in Docker (non-interactive)
 build: $(INIT_IF_NECESSARY)
-	docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash -c '. ~/.bashrc && cd /root/workspace && make'
+	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash -c '. ~/.bashrc && cd /root/workspace && make'
+
+# Force pull latest pre-built container (useful for updates)
+force-pull:
+	@echo "Updating $(PLATFORM)-toolchain from $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)..."
+	@docker pull $(CONTAINER_IMAGE) || \
+		(echo "" && \
+		 echo "❌ Failed to pull container: $(CONTAINER_IMAGE)" && \
+		 echo "" && \
+		 echo "Check your network connection, authentication, or image existence." && \
+		 echo "" && \
+		 exit 1)
+	@docker tag $(CONTAINER_IMAGE) $(PLATFORM)-toolchain
+	@mkdir -p toolchains/$(PLATFORM)-toolchain && touch $(INIT_IF_NECESSARY)
+	@echo "✓ Updated to latest container"
