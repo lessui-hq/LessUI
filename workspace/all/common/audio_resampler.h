@@ -1,9 +1,11 @@
 /**
  * audio_resampler.h - Sample rate conversion for audio
  *
- * Provides nearest-neighbor resampling for converting between different
- * audio sample rates. Uses a Bresenham-like algorithm to determine when
- * to drop or duplicate samples.
+ * Provides linear interpolation resampling for converting between different
+ * audio sample rates. Uses fixed-point math for efficiency on ARM devices.
+ *
+ * Supports dynamic rate adjustment for buffer-level-based rate control,
+ * which helps prevent audio underruns and overruns.
  *
  * Extracted from api.c for testability without SDL/ring buffer dependencies.
  */
@@ -12,6 +14,14 @@
 #define __AUDIO_RESAMPLER_H__
 
 #include <stdint.h>
+
+/**
+ * Fixed-point format: 16.16 (16 bits integer, 16 bits fraction)
+ * This gives us sub-sample precision for smooth interpolation.
+ */
+#define FRAC_BITS 16
+#define FRAC_ONE (1 << FRAC_BITS)
+#define FRAC_MASK (FRAC_ONE - 1)
 
 /**
  * Stereo audio frame (left/right channels)
@@ -31,20 +41,27 @@ typedef struct AudioRingBuffer {
 } AudioRingBuffer;
 
 /**
- * Resampler state for nearest-neighbor sample rate conversion
+ * Resampler state for linear interpolation sample rate conversion
  */
 typedef struct AudioResampler {
 	int sample_rate_in; // Input sample rate (e.g., 44100)
 	int sample_rate_out; // Output sample rate (e.g., 48000)
-	int diff; // Accumulated error for Bresenham algorithm
+
+	// Fixed-point 16.16 format for sub-sample precision
+	uint32_t frac_pos; // Fractional position within current input sample pair
+	uint32_t frac_step; // Base step size per output sample (rate_in/rate_out in fixed-point)
+
+	// Previous frame for interpolation
+	SND_Frame prev_frame;
+	int has_prev; // 1 if prev_frame is valid
 } AudioResampler;
 
 /**
- * Result of processing a frame through the resampler
+ * Result of processing frames through the resampler
  */
 typedef struct ResampleResult {
-	int wrote_frame; // 1 if frame was written to buffer, 0 if skipped
-	int consumed; // 1 if should advance to next input frame, 0 if reuse
+	int frames_written; // Number of frames written to output buffer
+	int frames_consumed; // Number of input frames consumed
 } ResampleResult;
 
 /**
@@ -59,38 +76,41 @@ void AudioResampler_init(AudioResampler* resampler, int rate_in, int rate_out);
 /**
  * Resets the resampler's internal state.
  *
+ * Call this when seeking or switching content to avoid interpolation
+ * artifacts from stale samples.
+ *
  * @param resampler Resampler instance to reset
  */
 void AudioResampler_reset(AudioResampler* resampler);
 
 /**
- * Processes a single audio frame through nearest-neighbor resampling.
+ * Resamples a batch of audio frames using linear interpolation.
  *
- * Uses Bresenham-like algorithm to determine:
- * 1. Whether to write this frame to the output buffer
- * 2. Whether to consume (advance) the input or reuse the same frame
- *
- * The algorithm maintains an accumulated difference to decide when to
- * write/skip frames for sample rate conversion.
+ * Linear interpolation smoothly blends between adjacent samples based on
+ * the fractional position, eliminating the clicks and pops that occur
+ * with nearest-neighbor resampling.
  *
  * Example - Upsampling (44100 Hz -> 48000 Hz):
- *   Call 1: wrote=1, consumed=0 (write F1, reuse it)
- *   Call 2: wrote=1, consumed=1 (write F1 again, advance to F2)
- *   Call 3: wrote=1, consumed=1 (write F2, advance to F3)
- *   (Roughly 8.8% of frames are duplicated)
+ *   Input samples: [A, B, C, D]
+ *   Output might be: [A, lerp(A,B,0.3), lerp(A,B,0.6), B, lerp(B,C,0.2), ...]
+ *   More output samples than input, with smooth transitions.
  *
  * Example - Downsampling (48000 Hz -> 44100 Hz):
- *   Call 1: wrote=1, consumed=1 (write F1, advance)
- *   Call 2: wrote=0, consumed=1 (skip F2, advance to F3)
- *   (Roughly 8.1% of frames are skipped)
+ *   Input samples: [A, B, C, D, E]
+ *   Output might be: [A, lerp(B,C,0.4), lerp(D,E,0.2), ...]
+ *   Fewer output samples, some inputs blended together.
  *
  * @param resampler Resampler instance with state
- * @param buffer Ring buffer to write to
- * @param frame Input audio frame to process
- * @return ResampleResult indicating write/consume decisions
+ * @param buffer Ring buffer to write to (NULL for dry run to calculate output size)
+ * @param frames Input audio frames to process
+ * @param frame_count Number of input frames
+ * @param ratio_adjust Dynamic rate adjustment (1.0 = normal, <1.0 = slower, >1.0 = faster)
+ *                     Use this for buffer-level-based rate control. Range: 0.95 to 1.05
+ * @return ResampleResult with frames_written and frames_consumed
  */
-ResampleResult AudioResampler_processFrame(AudioResampler* resampler, AudioRingBuffer* buffer,
-                                           SND_Frame frame);
+ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffer* buffer,
+                                       const SND_Frame* frames, int frame_count,
+                                       float ratio_adjust);
 
 /**
  * Checks if resampling is needed for given sample rates.
@@ -100,5 +120,41 @@ ResampleResult AudioResampler_processFrame(AudioResampler* resampler, AudioRingB
  * @return 1 if rates differ (resampling needed), 0 if rates match
  */
 int AudioResampler_isNeeded(int rate_in, int rate_out);
+
+/**
+ * Calculates the approximate number of output frames for given input.
+ *
+ * Useful for buffer sizing. The actual output may vary slightly due to
+ * fractional accumulation.
+ *
+ * @param resampler Resampler instance
+ * @param input_frames Number of input frames
+ * @param ratio_adjust Dynamic rate adjustment factor
+ * @return Estimated number of output frames
+ */
+int AudioResampler_estimateOutput(AudioResampler* resampler, int input_frames, float ratio_adjust);
+
+// ============================================================================
+// Legacy API (for backwards compatibility during transition)
+// ============================================================================
+
+/**
+ * Result of processing a single frame (legacy API)
+ * @deprecated Use AudioResampler_resample instead
+ */
+typedef struct ResampleResultLegacy {
+	int wrote_frame; // 1 if frame was written to buffer, 0 if skipped
+	int consumed; // 1 if should advance to next input frame, 0 if reuse
+} ResampleResultLegacy;
+
+/**
+ * Processes a single audio frame (legacy nearest-neighbor API).
+ * @deprecated Use AudioResampler_resample for better quality
+ *
+ * Maintained for backwards compatibility. Uses the old Bresenham-like
+ * algorithm that drops or duplicates samples.
+ */
+ResampleResultLegacy AudioResampler_processFrame(AudioResampler* resampler, AudioRingBuffer* buffer,
+                                                 SND_Frame frame);
 
 #endif // __AUDIO_RESAMPLER_H__
