@@ -166,7 +166,6 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	// May need to adjust by 2dp if dp_scale is fractional (e.g., 1.5: 30→45, 31→47, 32→48)
 	int pill_px = DP(ui.pill_height);
 	if (pill_px % 2 != 0) {
-		LOG_debug("  Even-pixel adj: pill_px=%d (odd)\n", pill_px);
 		// Try increasing first (prefer slightly larger)
 		int adjusted = ui.pill_height + 1;
 		while (adjusted <= MAX_PILL && DP(adjusted) % 2 != 0) {
@@ -174,7 +173,6 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 		}
 		if (adjusted <= MAX_PILL) {
 			ui.pill_height = adjusted;
-			LOG_debug("  → Increased to %ddp (%dpx)\n", ui.pill_height, DP(ui.pill_height));
 		} else {
 			// Can't increase, try decreasing
 			adjusted = ui.pill_height - 1;
@@ -182,7 +180,6 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 				adjusted--;
 			}
 			ui.pill_height = adjusted;
-			LOG_debug("  → Decreased to %ddp (%dpx)\n", ui.pill_height, DP(ui.pill_height));
 		}
 	}
 
@@ -444,11 +441,12 @@ SDL_Surface* GFX_init(int mode) {
 		int sheet_w = (int)(loaded_assets->w * scale_ratio + 0.5f);
 		int sheet_h = (int)(loaded_assets->h * scale_ratio + 0.5f);
 
-		// Create destination sheet (initially empty, will be filled asset-by-asset)
-		gfx.assets =
-		    SDL_CreateRGBSurface(0, sheet_w, sheet_h, loaded_assets->format->BitsPerPixel,
-		                         loaded_assets->format->Rmask, loaded_assets->format->Gmask,
-		                         loaded_assets->format->Bmask, loaded_assets->format->Amask);
+		// Create a blank surface and use SDL_ConvertSurface to match loaded_assets format
+		// This ensures SDL sets up the format correctly (masks, etc.)
+		SDL_Surface* blank =
+		    SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32, 0, 0, 0, 0); // Let SDL pick format
+		gfx.assets = SDL_ConvertSurface(blank, loaded_assets->format, 0);
+		SDL_FreeSurface(blank);
 
 		// Process each asset individually to ensure exact sizing
 		// Pills/buttons get exact dimensions, other assets scale proportionally
@@ -492,17 +490,16 @@ SDL_Surface* GFX_init(int mode) {
 			}
 
 			// Extract this asset region from source sheet
-			SDL_Surface* extracted =
-			    SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, loaded_assets->format->BitsPerPixel,
-			                         loaded_assets->format->Rmask, loaded_assets->format->Gmask,
-			                         loaded_assets->format->Bmask, loaded_assets->format->Amask);
+			// Use SDL_ConvertSurface to ensure proper format setup
+			SDL_Surface* temp_extract = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32, 0, 0, 0, 0);
+			SDL_Surface* extracted = SDL_ConvertSurface(temp_extract, loaded_assets->format, 0);
+			SDL_FreeSurface(temp_extract);
 			SDL_BlitSurface(loaded_assets, &src_rect, extracted, &(SDL_Rect){0, 0});
 
 			// Scale this specific asset to its target size
-			SDL_Surface* scaled =
-			    SDL_CreateRGBSurface(0, target_w, target_h, loaded_assets->format->BitsPerPixel,
-			                         loaded_assets->format->Rmask, loaded_assets->format->Gmask,
-			                         loaded_assets->format->Bmask, loaded_assets->format->Amask);
+			SDL_Surface* temp_scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0, 0, 0, 0);
+			SDL_Surface* scaled = SDL_ConvertSurface(temp_scaled, loaded_assets->format, 0);
+			SDL_FreeSurface(temp_scaled);
 			GFX_scaleBilinear(extracted, scaled);
 
 			// Place the scaled asset into the destination sheet
@@ -519,11 +516,8 @@ SDL_Surface* GFX_init(int mode) {
 		// Done with source sheet
 		SDL_FreeSurface(loaded_assets);
 
-		LOG_info("GFX_init: Scaled %d assets individually from @%dx to dp_scale=%.2f (bilinear)\n",
-		         ASSET_COUNT, asset_scale, gfx_dp_scale);
-		LOG_debug("  DARK_GRAY_PILL: w=%d h=%d (target pill_px=%d)\n",
-		          asset_rects[ASSET_DARK_GRAY_PILL].w, asset_rects[ASSET_DARK_GRAY_PILL].h,
-		          pill_px);
+		LOG_info("GFX_init: Scaled %d assets from @%dx to dp_scale=%.2f (bilinear)\n", ASSET_COUNT,
+		         asset_scale, gfx_dp_scale);
 	} else {
 		// Perfect match, use assets as-is
 		gfx.assets = loaded_assets;
