@@ -11,6 +11,7 @@
 
 #ifndef __API_H__
 #define __API_H__
+#include "api_types.h"
 #include "defines.h"
 #include "log.h"
 #include "platform.h"
@@ -517,13 +518,7 @@ void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_S
 // Sound (SND) API
 ///////////////////////////////
 
-/**
- * Stereo audio frame (left and right channels).
- */
-typedef struct SND_Frame {
-	int16_t left; // Left channel sample (-32768 to 32767)
-	int16_t right; // Right channel sample (-32768 to 32767)
-} SND_Frame;
+// SND_Frame defined in api_types.h
 
 /**
  * Initializes the audio subsystem.
@@ -543,6 +538,13 @@ void SND_init(double sample_rate, double frame_rate);
 size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count);
 
 /**
+ * Gets current audio buffer fill level.
+ *
+ * @return Fill level as percentage (0-100)
+ */
+unsigned SND_getBufferOccupancy(void);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
@@ -551,13 +553,7 @@ void SND_quit(void);
 // Lid sensor (LID) API
 ///////////////////////////////
 
-/**
- * Lid sensor state for devices with flip covers.
- */
-typedef struct LID_Context {
-	int has_lid; // 1 if device has a lid sensor, 0 otherwise
-	int is_open; // 1 if lid is open, 0 if closed
-} LID_Context;
+// LID_Context defined in api_types.h
 extern LID_Context lid;
 
 /**
@@ -577,13 +573,7 @@ int PLAT_lidChanged(int* state);
 // Input/Gamepad (PAD) API
 ///////////////////////////////
 
-/**
- * Analog stick axis values.
- */
-typedef struct PAD_Axis {
-	int x; // X-axis value (-32768 to 32767)
-	int y; // Y-axis value (-32768 to 32767)
-} PAD_Axis;
+// PAD_Axis defined in api_types.h
 
 /**
  * Input state tracking context.

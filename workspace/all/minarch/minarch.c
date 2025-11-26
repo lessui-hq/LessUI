@@ -233,6 +233,9 @@ static struct Core {
 	unsigned (*get_region)(void); // Get TV system (NTSC/PAL)
 	void* (*get_memory_data)(unsigned id); // Get pointer to SRAM/RTC memory
 	size_t (*get_memory_size)(unsigned id); // Get size of SRAM/RTC memory
+
+	// Callbacks from core (optional)
+	retro_audio_buffer_status_callback_t audio_buffer_status; // Audio buffer occupancy reporting
 } core;
 
 ///////////////////////////////////////
@@ -2926,34 +2929,14 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	// TODO: RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION 59
-	// TODO: used by mgba, (but only during frameskip?)
-	// case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: { /* 62 */
-	// 	LOG_info("RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK");
-	// 	const struct retro_audio_buffer_status_callback *cb = (const struct retro_audio_buffer_status_callback *)data;
-	// 	if (cb) {
-	// 		LOG_info("has audo_buffer_status callback");
-	// 		core.audio_buffer_status = cb->callback;
-	// 	} else {
-	// 		LOG_info("no audo_buffer_status callback");
-	// 		core.audio_buffer_status = NULL;
-	// 	}
-	// 	break;
-	// }
-	// TODO: used by mgba, (but only during frameskip?)
-	// case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: { /* 63 */
-	// 	LOG_info("RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY");
-	//
-	// 	const unsigned *latency_ms = (const unsigned *)data;
-	// 	if (latency_ms) {
-	// 		unsigned frames = *latency_ms * core.fps / 1000;
-	// 		if (frames < 30)
-	// 			// audio_buffer_size_override = frames;
-	// 			LOG_info("audio_buffer_size_override = %i (unused?)", frames);
-	// 		else
-	// 			LOG_info("Audio buffer change out of range (%d), ignored", frames);
-	// 	}
-	// 	break;
-	// }
+	case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: { /* 62 */
+		const struct retro_audio_buffer_status_callback* cb =
+		    (const struct retro_audio_buffer_status_callback*)data;
+		core.audio_buffer_status = cb ? cb->callback : NULL;
+		LOG_info("SET_AUDIO_BUFFER_STATUS_CALLBACK: %s\n", cb ? "enabled" : "disabled");
+		return true;
+	}
+	// TODO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY 63 (buffer size adjustment)
 
 	// TODO: RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE 64
 	case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: { /* 65 */
@@ -6274,6 +6257,13 @@ static void* coreThread(void* arg) {
 				video_state.frame_time_cb(delta);
 			}
 
+			// Report audio buffer status to core for frameskip decisions.
+			// See non-threaded path for explanation of rate control interaction.
+			if (core.audio_buffer_status) {
+				unsigned occupancy = SND_getBufferOccupancy();
+				core.audio_buffer_status(true, occupancy, occupancy < 25);
+			}
+
 			core.run();
 			limitFF();
 			trackFPS();
@@ -6425,6 +6415,17 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (!thread_video) {
+			// Report audio buffer status to core for frameskip decisions.
+			// This works alongside our dynamic rate control (±2% in api.c):
+			// - Rate control: subtle adjustment to prevent drift (targets 50% fill)
+			// - Frameskip: aggressive response when CPU can't keep up (<25% fill)
+			// Both mechanisms are complementary - rate control handles timing drift,
+			// frameskip handles sustained performance issues.
+			if (core.audio_buffer_status) {
+				unsigned occupancy = SND_getBufferOccupancy();
+				core.audio_buffer_status(true, occupancy, occupancy < 25);
+			}
+
 			core.run();
 			limitFF();
 			trackFPS();

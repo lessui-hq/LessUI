@@ -38,6 +38,8 @@
 #include <msettings.h>
 
 #include "api.h"
+// NOLINTNEXTLINE(bugprone-suspicious-include) - Intentionally bundled to avoid makefile changes
+#include "audio_resampler.c"
 #include "defines.h"
 #include "gfx_text.h"
 #include "pad.h"
@@ -1114,8 +1116,6 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-typedef int (*SND_Resampler)(const SND_Frame frame);
-
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
 	int initialized;
@@ -1132,7 +1132,8 @@ static struct SND_Context {
 	int frame_out; // buf_r
 	int frame_filled; // max_buf_w
 
-	SND_Resampler resample; // Selected resampler function
+	// Linear interpolation resampler with dynamic rate control
+	AudioResampler resampler;
 } snd = {0};
 
 /**
@@ -1174,16 +1175,20 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 			snd.frame_out = 0;
 	}
 
-	int zero = len > 0 && len == SAMPLES;
-	if (zero)
-		return (void)memset(out, 0, len * (sizeof(int16_t) * 2));
-	// else if (len>=5) LOG_info("%8i BUFFER UNDERRUN (%i/%i frames)\n", ms(), len,full_len);
-
-	int16_t* in = out - 1;
-	while (len > 0) {
-		*out++ = (void*)in > (void*)stream ? *--in : 0;
-		*out++ = (void*)in > (void*)stream ? *--in : 0;
-		len -= 1;
+	// Handle underrun: repeat last frame or output silence
+	if (len > 0) {
+		if (snd.frame_filled >= 0 && snd.frame_filled < (int)snd.frame_count) {
+			// Repeat last consumed frame to avoid click
+			SND_Frame last = snd.buffer[snd.frame_filled];
+			while (len > 0) {
+				*out++ = last.left;
+				*out++ = last.right;
+				len--;
+			}
+		} else {
+			// No valid last frame - output silence
+			memset(out, 0, len * sizeof(int16_t) * 2);
+		}
 	}
 }
 
@@ -1224,113 +1229,138 @@ static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
 }
 
 /**
- * Passthrough resampler - no conversion needed.
+ * Calculates buffer fill level as a fraction (0.0 to 1.0).
  *
- * Used when input and output sample rates match.
- * Simply copies frames directly to the ring buffer.
- *
- * @param frame Audio frame to write
- * @return Number of frames consumed (always 1)
+ * @return Fill level where 0.0 = empty, 1.0 = full
  */
-static int SND_resampleNone(SND_Frame frame) { // audio_resample_passthrough
-	snd.buffer[snd.frame_in++] = frame;
-	if (snd.frame_in >= (int)snd.frame_count)
-		snd.frame_in = 0;
-	return 1;
-}
+static float SND_getBufferFillLevel(void) {
+	if (snd.frame_count == 0)
+		return 0.0f;
 
-/**
- * Nearest-neighbor resampler for sample rate conversion.
- *
- * Uses Bresenham-like algorithm to determine when to drop/duplicate
- * samples. Accumulates difference between input and output rates.
- *
- * @param frame Audio frame to resample
- * @return Number of frames consumed (0 or 1)
- */
-static int SND_resampleNear(SND_Frame frame) { // audio_resample_nearest
-	static int diff = 0;
-	int consumed = 0;
-
-	if (diff < snd.sample_rate_out) {
-		snd.buffer[snd.frame_in++] = frame;
-		if (snd.frame_in >= (int)snd.frame_count)
-			snd.frame_in = 0;
-		diff += snd.sample_rate_in;
-	}
-
-	if (diff >= snd.sample_rate_out) {
-		consumed++;
-		diff -= snd.sample_rate_out;
-	}
-
-	return consumed;
-}
-
-/**
- * Selects the appropriate resampler based on sample rates.
- *
- * Chooses passthrough if rates match, otherwise uses nearest-neighbor.
- */
-static void SND_selectResampler(void) { // plat_sound_select_resampler
-	if (snd.sample_rate_in == snd.sample_rate_out) {
-		snd.resample = SND_resampleNone;
+	int filled;
+	if (snd.frame_in >= snd.frame_out) {
+		filled = snd.frame_in - snd.frame_out;
 	} else {
-		snd.resample = SND_resampleNear;
+		filled = snd.frame_count - snd.frame_out + snd.frame_in;
 	}
+
+	return (float)filled / (float)snd.frame_count;
+}
+
+/**
+ * Calculates dynamic rate adjustment based on buffer fill level.
+ *
+ * Uses a simple proportional controller to keep the buffer around 50% full:
+ * - Buffer too empty (<30%): slow down (ratio < 1.0) to produce more output
+ * - Buffer too full (>70%): speed up (ratio > 1.0) to consume more input
+ * - Buffer near target (30-70%): minimal adjustment
+ *
+ * @return Rate adjustment factor (typically 0.98 to 1.02)
+ */
+static float SND_calculateRateAdjust(void) {
+	float fill = SND_getBufferFillLevel();
+
+	// Deadband: 30% to 70% (minimal adjustment in this range)
+	// Target is implicitly 50% (midpoint of deadband)
+	const float deadband_low = 0.3f;
+	const float deadband_high = 0.7f;
+
+	// Maximum adjustment: ±2% (0.98 to 1.02)
+	// This is subtle enough to be inaudible but effective for drift correction
+	const float max_adjust = 0.02f;
+
+	float adjust = 1.0f;
+
+	if (fill < deadband_low) {
+		// Buffer getting empty - slow down to produce more output
+		// At 0% fill, adjust = 0.98 (slow down 2%)
+		float urgency = (deadband_low - fill) / deadband_low;
+		adjust = 1.0f - (urgency * max_adjust);
+	} else if (fill > deadband_high) {
+		// Buffer getting full - speed up to consume more input
+		// At 100% fill, adjust = 1.02 (speed up 2%)
+		float urgency = (fill - deadband_high) / (1.0f - deadband_high);
+		adjust = 1.0f + (urgency * max_adjust);
+	}
+
+	return adjust;
 }
 
 /**
  * Writes a batch of audio samples to the ring buffer.
  *
- * Pushes frames through the resampler into the ring buffer.
- * Waits if buffer is full, batching writes for efficiency.
- * This is the main entry point for emulators to submit audio.
+ * Uses linear interpolation resampling with dynamic rate control:
+ * - Linear interpolation: Smoothly blends between adjacent samples
+ * - Dynamic rate control: Adjusts playback speed ±2% based on buffer fill
+ *
+ * This combination eliminates the clicks/pops of nearest-neighbor resampling
+ * while preventing buffer underruns (crackling) and overruns (audio lag).
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
- * @return Number of frames consumed (may be resampled)
+ * @return Number of frames consumed
  *
  * @note May block briefly if ring buffer is full
  */
 size_t SND_batchSamples(const SND_Frame* frames,
                         size_t frame_count) { // plat_sound_write / plat_sound_write_resample
 
-	// return frame_count; // TODO: tmp, silent
-
 	if (snd.frame_count == 0)
 		return 0;
 
-	// LOG_info("%8i batching samples (%i frames)\n", ms(), frame_count);
-
 	SDL_LockAudio();
 
-	int consumed = 0;
-	int consumed_frames;
-	while (frame_count > 0) {
-		int tries = 0;
-		int amount = MIN(BATCH_SIZE, frame_count);
+	// Calculate dynamic rate adjustment based on buffer fill level
+	float rate_adjust = SND_calculateRateAdjust();
 
-		while (tries < 10 && snd.frame_in == snd.frame_filled) {
-			tries++;
-			SDL_UnlockAudio();
-			SDL_Delay(1);
-			SDL_LockAudio();
-		}
-		// if (tries) LOG_info("%8i waited %ims for buffer to get low...\n", ms(), tries);
+	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
+	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, rate_adjust);
 
-		while (amount && snd.frame_in != snd.frame_filled) {
-			consumed_frames = snd.resample(*frames);
+	// Calculate how much space is available in the ring buffer
+	int available;
+	if (snd.frame_in >= snd.frame_out) {
+		available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
+	} else {
+		available = snd.frame_out - snd.frame_in - 1;
+	}
 
-			frames += consumed_frames;
-			amount -= consumed_frames;
-			frame_count -= consumed_frames;
-			consumed += consumed_frames;
+	// If buffer doesn't have room for estimated output, wait a bit
+	int tries = 0;
+	while (tries < 10 && available < estimated_output) {
+		tries++;
+		SDL_UnlockAudio();
+		SDL_Delay(1);
+		SDL_LockAudio();
+
+		// Recalculate available space
+		if (snd.frame_in >= snd.frame_out) {
+			available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
+		} else {
+			available = snd.frame_out - snd.frame_in - 1;
 		}
 	}
+
+	// Set up ring buffer wrapper for the resampler
+	AudioRingBuffer ring = {
+	    .frames = snd.buffer,
+	    .capacity = snd.frame_count,
+	    .write_pos = snd.frame_in,
+	    .read_pos = snd.frame_out,
+	};
+
+	// Resample the audio with linear interpolation
+	ResampleResult result =
+	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, rate_adjust);
+
+	// Update ring buffer write position
+	snd.frame_in = ring.write_pos;
+
+	// Note: frame_filled is managed by the audio callback (SND_audioCallback)
+	// to track what has been consumed. We don't update it here.
+
 	SDL_UnlockAudio();
 
-	return consumed;
+	return result.frames_consumed;
 }
 
 /**
@@ -1376,7 +1406,8 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
-	SND_selectResampler();
+	// Initialize the linear interpolation resampler
+	AudioResampler_init(&snd.resampler, snd.sample_rate_in, snd.sample_rate_out);
 	SND_resizeBuffer();
 
 	SDL_PauseAudio(0);
@@ -1384,6 +1415,21 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	LOG_info("sample rate: %i (req) %i (rec) [samples %i]\n", snd.sample_rate_in,
 	         snd.sample_rate_out, SAMPLES);
 	snd.initialized = 1;
+}
+
+/**
+ * Gets current audio buffer fill level as a percentage.
+ *
+ * Used by libretro cores for audio-based frameskip decisions.
+ * Thread-safe: locks audio to read consistent buffer state.
+ *
+ * @return Fill level 0-100 (0 = empty, 100 = full)
+ */
+unsigned SND_getBufferOccupancy(void) {
+	SDL_LockAudio();
+	float fill = SND_getBufferFillLevel();
+	SDL_UnlockAudio();
+	return (unsigned)(fill * 100.0f);
 }
 
 /**
