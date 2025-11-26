@@ -442,12 +442,9 @@ SDL_Surface* GFX_init(int mode) {
 		int sheet_w = (int)(loaded_assets->w * scale_ratio + 0.5f);
 		int sheet_h = (int)(loaded_assets->h * scale_ratio + 0.5f);
 
-		// Create destination surface matching loaded_assets format
-		// Use RGBA8888 initially to preserve alpha during conversion
-		SDL_Surface* blank = SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32,
-		                                          RGBA_MASK_8888);
-		gfx.assets = SDL_ConvertSurface(blank, loaded_assets->format, 0);
-		SDL_FreeSurface(blank);
+		// Create destination surface in RGBA8888 format
+		// Keep alpha channel throughout - SDL handles RGBA→RGB565 at final screen blit
+		gfx.assets = SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32, RGBA_MASK_8888);
 
 		// Process each asset individually to ensure exact sizing
 		// Pills/buttons get exact dimensions, other assets scale proportionally
@@ -490,21 +487,22 @@ SDL_Surface* GFX_init(int mode) {
 				// Their internal positioning is handled by proportional offsets in GFX_blitBattery
 			}
 
-			// Extract this asset region from source sheet
-			SDL_Surface* temp_extract = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32,
-			                                                  RGBA_MASK_8888);
-			SDL_Surface* extracted = SDL_ConvertSurface(temp_extract, loaded_assets->format, 0);
-			SDL_FreeSurface(temp_extract);
+			// Extract this asset region from source sheet into RGBA8888 surface
+			SDL_Surface* extracted = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32,
+			                                               RGBA_MASK_8888);
+			// Disable alpha-blending to copy RGBA data directly (not blend with dst)
+			SDLX_SetAlpha(loaded_assets, 0, 0);
 			SDL_BlitSurface(loaded_assets, &src_rect, extracted, &(SDL_Rect){0, 0});
+			SDLX_SetAlpha(loaded_assets, SDL_SRCALPHA, 0);  // Re-enable for later
 
-			// Scale this specific asset to its target size
-			SDL_Surface* temp_scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32,
-			                                                 RGBA_MASK_8888);
-			SDL_Surface* scaled = SDL_ConvertSurface(temp_scaled, loaded_assets->format, 0);
-			SDL_FreeSurface(temp_scaled);
-			GFX_scaleBilinear(extracted, scaled);
+			// Scale this specific asset to its target size (keep in RGBA8888)
+			SDL_Surface* scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32,
+			                                           RGBA_MASK_8888);
+			GFX_scaleBilinear(extracted, scaled);  // Direct pixel copy preserves alpha
 
 			// Place the scaled asset into the destination sheet
+			// Disable alpha-blending to copy RGBA data directly
+			SDLX_SetAlpha(scaled, 0, 0);
 			SDL_BlitSurface(scaled, NULL, gfx.assets, &dst_rect);
 
 			// Update asset rectangle with new position and dimensions
