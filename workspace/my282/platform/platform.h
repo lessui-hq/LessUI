@@ -127,6 +127,7 @@
 // Display Specifications
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL 2.8f // Physical screen diagonal in inches (estimated)
 #define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH 640 // Screen width in pixels
 #define FIXED_HEIGHT 480 // Screen height in pixels (VGA)

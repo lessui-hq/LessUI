@@ -128,6 +128,7 @@
 // Display Specifications
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL 2.4f // Physical screen diagonal in inches
 #define FIXED_SCALE 1 // No scaling (1:1 pixel mapping)
 #define FIXED_WIDTH 320 // Screen width in pixels
 #define FIXED_HEIGHT 240 // Screen height in pixels (QVGA)

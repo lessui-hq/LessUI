@@ -146,6 +146,7 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 // Display Specifications
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL 3.5f // Physical screen diagonal in inches (Miyoo Flip)
 #define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH 640 // Screen width in pixels
 #define FIXED_HEIGHT 480 // Screen height in pixels (VGA)
@@ -171,8 +172,7 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 // Adjusted for HDMI output
 ///////////////////////////////
 
-#define MAIN_ROW_COUNT (on_hdmi ? 8 : 6) // Number of rows visible: 8 (HDMI) or 6 (LCD)
-#define PADDING (on_hdmi ? 40 : 10) // UI padding: 40px (HDMI) or 10px (LCD)
+// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

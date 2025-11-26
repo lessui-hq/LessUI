@@ -19,6 +19,81 @@
 #include "sdl.h"
 
 ///////////////////////////////
+// Display Points (DP) scaling system
+///////////////////////////////
+
+/**
+ * Resolution-independent UI scaling based on physical screen density (PPI).
+ *
+ * The DP system automatically calculates optimal UI scaling from each device's
+ * physical screen size, eliminating per-platform manual tuning. UI elements
+ * are specified in density-independent "display points" (dp), then converted
+ * to physical pixels at runtime.
+ *
+ * Core formula:
+ *   ppi = sqrt(width² + height²) / diagonal_inches
+ *   dp_scale = ppi / 160.0  (160 = Android MDPI baseline)
+ *
+ * Example: Miyoo Mini (640x480, 2.8") → 286 PPI → dp_scale ≈ 1.79
+ *
+ * Usage:
+ *   DP(30)           // Convert 30dp to physical pixels
+ *   DP2(10, 20)      // Convert two values
+ *   DP4(x, y, w, h)  // Convert four values (for SDL_Rect)
+ */
+
+/**
+ * Global display scale factor.
+ *
+ * Calculated at startup from screen PPI. All UI coordinates should be
+ * converted through DP() macros using this value.
+ */
+extern float gfx_dp_scale;
+
+/**
+ * Convert display points to physical pixels.
+ *
+ * @param x Value in display points
+ * @return Value in physical pixels (rounded)
+ */
+#define DP(x) ((int)((x) * gfx_dp_scale + 0.5f))
+#define DP2(a, b) DP(a), DP(b)
+#define DP3(a, b, c) DP(a), DP(b), DP(c)
+#define DP4(a, b, c, d) DP(a), DP(b), DP(c), DP(d)
+
+/**
+ * Runtime-calculated UI layout parameters.
+ *
+ * These values are computed by UI_initLayout() based on screen dimensions
+ * to optimally fill the display without per-platform manual configuration.
+ */
+typedef struct UI_Layout {
+	int pill_height;   // Height of menu pills in dp (28-32 typical)
+	int row_count;     // Number of visible menu rows (6-8)
+	int padding;       // Screen edge padding in dp
+	int text_baseline; // Vertical offset for text centering in pill
+	int button_size;   // Size of button graphics in dp
+	int button_margin; // Margin around buttons in dp
+	int button_padding; // Padding inside buttons in dp
+} UI_Layout;
+
+extern UI_Layout ui;
+
+/**
+ * Initializes the DP scaling system and UI layout.
+ *
+ * Calculates dp_scale from screen PPI, then computes optimal pill height,
+ * row count, and padding to fill the screen perfectly.
+ *
+ * @param screen_width Physical screen width in pixels
+ * @param screen_height Physical screen height in pixels
+ * @param diagonal_inches Physical screen diagonal in inches
+ *
+ * @note Called automatically from GFX_init()
+ */
+void UI_initLayout(int screen_width, int screen_height, float diagonal_inches);
+
+///////////////////////////////
 // Video page buffer constants
 ///////////////////////////////
 

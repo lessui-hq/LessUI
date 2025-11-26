@@ -131,6 +131,7 @@
 // Display Specifications
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL 7.0f // Physical screen diagonal in inches (estimated)
 #define FIXED_SCALE 1 // No scaling factor needed
 #define FIXED_WIDTH 480 // Screen width in pixels
 #define FIXED_HEIGHT 273 // Screen height in pixels (16:9 widescreen)
@@ -147,7 +148,7 @@
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 #define HAS_NEON // May have NEON SIMD support (uncertain)
 
-#define MAIN_ROW_COUNT 7 // Number of rows visible in menu
+// MAIN_ROW_COUNT is now calculated automatically via DP system
 
 ///////////////////////////////
 

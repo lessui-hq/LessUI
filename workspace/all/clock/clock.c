@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
 	// Pre-render all digit and separator characters into a sprite sheet
 	// for fast blitting during the main loop
 	SDL_Surface* digits =
-	    SDL_CreateRGBSurface(SDL_SWSURFACE, SCALE2(120, 16), FIXED_DEPTH, RGBA_MASK_AUTO);
+	    SDL_CreateRGBSurface(SDL_SWSURFACE, DP2(120, 16), FIXED_DEPTH, RGBA_MASK_AUTO);
 	SDL_FillRect(digits, NULL, RGB_BLACK);
 
 	SDL_Surface* digit;
@@ -74,11 +74,11 @@ int main(int argc, char* argv[]) {
 	while (c = chars[i]) {
 		digit = TTF_RenderUTF8_Blended(font.large, c, COLOR_WHITE);
 		// Colon sits too low naturally, adjust vertically
-		int y = i == CHAR_COLON ? SCALE1(-1.5) : 0;
+		int y = i == CHAR_COLON ? DP(-1.5) : 0;
 		SDL_BlitSurface(
 		    digit, NULL, digits,
-		    &(SDL_Rect){(i * SCALE1(DIGIT_WIDTH)) + (SCALE1(DIGIT_WIDTH) - digit->w) / 2,
-		                y + (SCALE1(DIGIT_HEIGHT) - digit->h) / 2});
+		    &(SDL_Rect){(i * DP(DIGIT_WIDTH)) + (DP(DIGIT_WIDTH) - digit->w) / 2,
+		                y + (DP(DIGIT_HEIGHT) - digit->h) / 2});
 		SDL_FreeSurface(digit);
 		i += 1;
 	}
@@ -111,9 +111,9 @@ int main(int argc, char* argv[]) {
 	 * @return New x position after blitting (x + digit width)
 	 */
 	int blit(int i, int x, int y) {
-		SDL_BlitSurface(digits, &(SDL_Rect){i * SCALE1(10), 0, SCALE2(10, 16)}, screen,
+		SDL_BlitSurface(digits, &(SDL_Rect){i * DP(10), 0, DP2(10, 16)}, screen,
 		                &(SDL_Rect){x, y});
-		return x + SCALE1(10);
+		return x + DP(10);
 	}
 
 	/**
@@ -301,18 +301,18 @@ int main(int argc, char* argv[]) {
 
 			// Center the date/time display
 			// Width is 188 pixels (@1x) in 24-hour mode, 223 pixels in 12-hour mode
-			int ox = (screen->w - (show_24hour ? SCALE1(188) : SCALE1(223))) / 2;
+			int ox = (screen->w - (show_24hour ? DP(188) : DP(223))) / 2;
 
 			// Render date/time in format: YYYY/MM/DD HH:MM:SS [AM/PM]
 			int x = ox;
-			int y = SCALE1((((FIXED_HEIGHT / FIXED_SCALE) - PILL_SIZE - DIGIT_HEIGHT) / 2));
+			int y = DP((((FIXED_HEIGHT / FIXED_SCALE) - ui.pill_height - DIGIT_HEIGHT) / 2));
 
 			x = blitNumber(year_selected, x, y);
 			x = blit(CHAR_SLASH, x, y);
 			x = blitNumber(month_selected, x, y);
 			x = blit(CHAR_SLASH, x, y);
 			x = blitNumber(day_selected, x, y);
-			x += SCALE1(10); // space between date and time
+			x += DP(10); // space between date and time
 
 			am_selected = hour_selected < 12;
 			if (show_24hour) {
@@ -329,25 +329,25 @@ int main(int argc, char* argv[]) {
 
 			int ampm_w;
 			if (!show_24hour) {
-				x += SCALE1(10); // space before AM/PM
+				x += DP(10); // space before AM/PM
 				SDL_Surface* text =
 				    TTF_RenderUTF8_Blended(font.large, am_selected ? "AM" : "PM", COLOR_WHITE);
-				ampm_w = text->w + SCALE1(2);
-				SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){x, y - SCALE1(3)});
+				ampm_w = text->w + DP(2);
+				SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){x, y - DP(3)});
 				SDL_FreeSurface(text);
 			}
 
 			// Draw selection cursor underline
 			x = ox;
-			y += SCALE1(19);
+			y += DP(19);
 			if (select_cursor != CURSOR_YEAR) {
-				x += SCALE1(50); // Width of "YYYY/"
-				x += (select_cursor - 1) * SCALE1(30);
+				x += DP(50); // Width of "YYYY/"
+				x += (select_cursor - 1) * DP(30);
 			}
 			blitBar(x, y,
 			        (select_cursor == CURSOR_YEAR
-			             ? SCALE1(40)
-			             : (select_cursor == CURSOR_AMPM ? ampm_w : SCALE1(20))));
+			             ? DP(40)
+			             : (select_cursor == CURSOR_AMPM ? ampm_w : DP(20))));
 
 			GFX_flip(screen);
 			dirty = 0;

@@ -155,6 +155,7 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 // Runtime-configurable for Brick variant
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL (is_brick ? 3.2f : 4.95f) // Diagonal: 3.2" (Brick) or 4.95" (Smart Pro)
 #define FIXED_SCALE (is_brick ? 3 : 2) // Scaling: 3x (Brick) or 2x (standard)
 #define FIXED_WIDTH (is_brick ? 1024 : 1280) // Width: 1024px (Brick) or 1280px (standard)
 #define FIXED_HEIGHT (is_brick ? 768 : 720) // Height: 768px (Brick) or 720px (standard)
@@ -168,8 +169,7 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 // Adjusted for Brick variant
 ///////////////////////////////
 
-#define MAIN_ROW_COUNT (is_brick ? 7 : 8) // Number of rows: 7 (Brick) or 8 (standard)
-#define PADDING (is_brick ? 5 : 40) // UI padding: 5px (Brick) or 40px (standard)
+// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

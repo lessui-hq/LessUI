@@ -189,7 +189,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -283,6 +283,11 @@ tests/directory_utils_test: tests/unit/all/common/test_directory_utils.c workspa
 tests/binary_file_utils_test: tests/unit/all/common/test_binary_file_utils.c workspace/all/common/binary_file_utils.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building binary file I/O tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build UI layout / DP system tests (pure math, no mocking needed)
+tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building UI layout / DP system tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lm
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \

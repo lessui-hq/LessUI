@@ -43,10 +43,10 @@ static int getButtonWidth(char* label) {
 	int w = 0;
 
 	if (strlen(label) <= 2)
-		w = SCALE1(BUTTON_SIZE);
+		w = DP(ui.button_size);
 	else {
 		SDL_Surface* text = TTF_RenderUTF8_Blended(font.tiny, label, COLOR_BUTTON_TEXT);
-		w = SCALE1(BUTTON_SIZE) + text->w;
+		w = DP(ui.button_size) + text->w;
 		SDL_FreeSurface(text);
 	}
 	return w;
@@ -79,17 +79,17 @@ static void blitButton(char* label, SDL_Surface* dst, int pressed, int x, int y,
 		    TTF_RenderUTF8_Blended(len == 2 ? font.small : font.medium, label, COLOR_BUTTON_TEXT);
 		GFX_blitAsset(pressed ? ASSET_BUTTON : ASSET_HOLE, NULL, dst, &point);
 		SDL_BlitSurface(text, NULL, dst,
-		                &(SDL_Rect){point.x + (SCALE1(BUTTON_SIZE) - text->w) / 2,
-		                            point.y + (SCALE1(BUTTON_SIZE) - text->h) / 2});
+		                &(SDL_Rect){point.x + (DP(ui.button_size) - text->w) / 2,
+		                            point.y + (DP(ui.button_size) - text->h) / 2});
 	} else {
 		// Long labels: use pill-shaped button with smaller font
 		text = TTF_RenderUTF8_Blended(font.tiny, label, COLOR_BUTTON_TEXT);
-		w = w ? w : SCALE1(BUTTON_SIZE) / 2 + text->w;
+		w = w ? w : DP(ui.button_size) / 2 + text->w;
 		GFX_blitPill(pressed ? ASSET_BUTTON : ASSET_HOLE, dst,
-		             &(SDL_Rect){point.x, point.y, w, SCALE1(BUTTON_SIZE)});
+		             &(SDL_Rect){point.x, point.y, w, DP(ui.button_size)});
 		SDL_BlitSurface(text, NULL, dst,
 		                &(SDL_Rect){point.x + (w - text->w) / 2,
-		                            point.y + (SCALE1(BUTTON_SIZE) - text->h) / 2, text->w,
+		                            point.y + (DP(ui.button_size) - text->h) / 2, text->w,
 		                            text->h});
 	}
 
@@ -128,9 +128,9 @@ int main(int argc, char* argv[]) {
 	int has_both = (has_power && has_menu);
 
 	// Adjust vertical offset if L3/R3 not present (reclaim space)
-	int oy = SCALE1(PADDING);
+	int oy = DP(ui.padding);
 	if (!has_L3 && !has_R3)
-		oy += SCALE1(PILL_SIZE);
+		oy += DP(ui.pill_height);
 
 	int quit = 0;
 	int dirty = 1;
@@ -155,26 +155,26 @@ int main(int argc, char* argv[]) {
 			// Left shoulder buttons (L1, L2)
 			///////////////////////////////
 			{
-				int x = SCALE1(BUTTON_MARGIN + PADDING);
+				int x = DP(ui.button_margin + PADDING);
 				int y = oy;
 				int w = 0;
 				int ox = 0;
 
-				w = getButtonWidth("L1") + SCALE1(BUTTON_MARGIN) * 2;
+				w = getButtonWidth("L1") + DP(ui.button_margin) * 2;
 				ox = w;
 
 				if (has_L2)
-					w += getButtonWidth("L2") + SCALE1(BUTTON_MARGIN);
+					w += getButtonWidth("L2") + DP(ui.button_margin);
 				// Offset if L2 not present to maintain visual balance
 				if (!has_L2)
-					x += SCALE1(PILL_SIZE);
+					x += DP(ui.pill_height);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, w});
 
-				blitButton("L1", screen, PAD_isPressed(BTN_L1), x + SCALE1(BUTTON_MARGIN),
-				           y + SCALE1(BUTTON_MARGIN), 0);
+				blitButton("L1", screen, PAD_isPressed(BTN_L1), x + DP(ui.button_margin),
+				           y + DP(ui.button_margin), 0);
 				if (has_L2)
 					blitButton("L2", screen, PAD_isPressed(BTN_L2), x + ox,
-					           y + SCALE1(BUTTON_MARGIN), 0);
+					           y + DP(ui.button_margin), 0);
 			}
 
 			///////////////////////////////
@@ -186,60 +186,60 @@ int main(int argc, char* argv[]) {
 				int w = 0;
 				int ox = 0;
 
-				w = getButtonWidth("R1") + SCALE1(BUTTON_MARGIN) * 2;
+				w = getButtonWidth("R1") + DP(ui.button_margin) * 2;
 				ox = w;
 
 				if (has_R2)
-					w += getButtonWidth("R2") + SCALE1(BUTTON_MARGIN);
+					w += getButtonWidth("R2") + DP(ui.button_margin);
 
 				// Right-align the button group
-				x = FIXED_WIDTH - w - SCALE1(BUTTON_MARGIN + PADDING);
+				x = FIXED_WIDTH - w - DP(ui.button_margin + PADDING);
 				if (!has_R2)
-					x -= SCALE1(PILL_SIZE);
+					x -= DP(ui.pill_height);
 
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, w});
 
 				// R2 comes first visually (left position), then R1
 				blitButton(has_R2 ? "R2" : "R1", screen, PAD_isPressed(has_R2 ? BTN_R2 : BTN_R1),
-				           x + SCALE1(BUTTON_MARGIN), y + SCALE1(BUTTON_MARGIN), 0);
+				           x + DP(ui.button_margin), y + DP(ui.button_margin), 0);
 				if (has_R2)
 					blitButton("R1", screen, PAD_isPressed(BTN_R1), x + ox,
-					           y + SCALE1(BUTTON_MARGIN), 0);
+					           y + DP(ui.button_margin), 0);
 			}
 
 			///////////////////////////////
 			// D-pad (Up, Down, Left, Right)
 			///////////////////////////////
 			{
-				int x = SCALE1(PADDING + PILL_SIZE);
-				int y = oy + SCALE1(PILL_SIZE * 2);
-				int o = SCALE1(BUTTON_MARGIN);
+				int x = DP(ui.padding + PILL_SIZE);
+				int y = oy + DP(ui.pill_height * 2);
+				int o = DP(ui.button_margin);
 
 				// Vertical bar connecting Up and Down buttons
 				SDL_FillRect(screen,
-				             &(SDL_Rect){x, y + SCALE1(PILL_SIZE / 2), SCALE1(PILL_SIZE),
-				                         SCALE1(PILL_SIZE * 2)},
+				             &(SDL_Rect){x, y + DP(ui.pill_height / 2), DP(ui.pill_height),
+				                         DP(ui.pill_height * 2)},
 				             RGB_DARK_GRAY);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("U", screen, PAD_isPressed(BTN_DPAD_UP), x + o, y + o, 0);
 
-				y += SCALE1(PILL_SIZE * 2);
+				y += DP(ui.pill_height * 2);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("D", screen, PAD_isPressed(BTN_DPAD_DOWN), x + o, y + o, 0);
 
-				x -= SCALE1(PILL_SIZE);
-				y -= SCALE1(PILL_SIZE);
+				x -= DP(ui.pill_height);
+				y -= DP(ui.pill_height);
 
 				// Horizontal bar connecting Left and Right buttons
 				SDL_FillRect(screen,
-				             &(SDL_Rect){x + SCALE1(PILL_SIZE / 2), y, SCALE1(PILL_SIZE * 2),
-				                         SCALE1(PILL_SIZE)},
+				             &(SDL_Rect){x + DP(ui.pill_height / 2), y, DP(ui.pill_height * 2),
+				                         DP(ui.pill_height)},
 				             RGB_DARK_GRAY);
 
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("L", screen, PAD_isPressed(BTN_DPAD_LEFT), x + o, y + o, 0);
 
-				x += SCALE1(PILL_SIZE * 2);
+				x += DP(ui.pill_height * 2);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("R", screen, PAD_isPressed(BTN_DPAD_RIGHT), x + o, y + o, 0);
 			}
@@ -248,28 +248,28 @@ int main(int argc, char* argv[]) {
 			// Face buttons (A, B, X, Y)
 			///////////////////////////////
 			{
-				int x = FIXED_WIDTH - SCALE1(PADDING + PILL_SIZE * 3) + SCALE1(PILL_SIZE);
-				int y = oy + SCALE1(PILL_SIZE * 2);
-				int o = SCALE1(BUTTON_MARGIN);
+				int x = FIXED_WIDTH - DP(ui.padding + PILL_SIZE * 3) + DP(ui.pill_height);
+				int y = oy + DP(ui.pill_height * 2);
+				int o = DP(ui.button_margin);
 
 				// X (top)
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("X", screen, PAD_isPressed(BTN_X), x + o, y + o, 0);
 
 				// B (bottom)
-				y += SCALE1(PILL_SIZE * 2);
+				y += DP(ui.pill_height * 2);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("B", screen, PAD_isPressed(BTN_B), x + o, y + o, 0);
 
-				x -= SCALE1(PILL_SIZE);
-				y -= SCALE1(PILL_SIZE);
+				x -= DP(ui.pill_height);
+				y -= DP(ui.pill_height);
 
 				// Y (left)
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("Y", screen, PAD_isPressed(BTN_Y), x + o, y + o, 0);
 
 				// A (right)
-				x += SCALE1(PILL_SIZE * 2);
+				x += DP(ui.pill_height * 2);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("A", screen, PAD_isPressed(BTN_A), x + o, y + o, 0);
 			}
@@ -278,15 +278,15 @@ int main(int argc, char* argv[]) {
 			// Volume buttons (if available)
 			///////////////////////////////
 			if (has_volume) {
-				int x = (FIXED_WIDTH - SCALE1(99)) / 2;
-				int y = oy + SCALE1(PILL_SIZE);
-				int w = SCALE1(42);
+				int x = (FIXED_WIDTH - DP(99)) / 2;
+				int y = oy + DP(ui.pill_height);
+				int w = DP(42);
 
-				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, SCALE1(98)});
-				x += SCALE1(BUTTON_MARGIN);
-				y += SCALE1(BUTTON_MARGIN);
+				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, DP(98)});
+				x += DP(ui.button_margin);
+				y += DP(ui.button_margin);
 				blitButton("VOL. -", screen, PAD_isPressed(BTN_MINUS), x, y, w);
-				x += w + SCALE1(BUTTON_MARGIN);
+				x += w + DP(ui.button_margin);
 				blitButton("VOL. +", screen, PAD_isPressed(BTN_PLUS), x, y, w);
 			}
 
@@ -297,16 +297,16 @@ int main(int argc, char* argv[]) {
 				int bw = 42;
 				int pw = has_both ? (bw * 2 + BUTTON_MARGIN * 3) : (bw + BUTTON_MARGIN * 2);
 
-				int x = (FIXED_WIDTH - SCALE1(pw)) / 2;
-				int y = oy + SCALE1(PILL_SIZE * 3);
-				int w = SCALE1(bw);
+				int x = (FIXED_WIDTH - DP(pw)) / 2;
+				int y = oy + DP(ui.pill_height * 3);
+				int w = DP(bw);
 
-				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, SCALE1(pw)});
-				x += SCALE1(BUTTON_MARGIN);
-				y += SCALE1(BUTTON_MARGIN);
+				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, DP(pw)});
+				x += DP(ui.button_margin);
+				y += DP(ui.button_margin);
 				if (has_menu) {
 					blitButton("MENU", screen, PAD_isPressed(BTN_MENU), x, y, w);
-					x += w + SCALE1(BUTTON_MARGIN);
+					x += w + DP(ui.button_margin);
 				}
 				if (has_power) {
 					blitButton("POWER", screen, PAD_isPressed(BTN_POWER), x, y, w);
@@ -317,22 +317,22 @@ int main(int argc, char* argv[]) {
 			// Meta buttons (Select, Start) with quit hint
 			///////////////////////////////
 			{
-				int x = (FIXED_WIDTH - SCALE1(99)) / 2;
-				int y = oy + SCALE1(PILL_SIZE * 5);
-				int w = SCALE1(42);
+				int x = (FIXED_WIDTH - DP(99)) / 2;
+				int y = oy + DP(ui.pill_height * 5);
+				int w = DP(42);
 
-				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, SCALE1(130)});
-				x += SCALE1(BUTTON_MARGIN);
-				y += SCALE1(BUTTON_MARGIN);
+				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, DP(130)});
+				x += DP(ui.button_margin);
+				y += DP(ui.button_margin);
 				blitButton("SELECT", screen, PAD_isPressed(BTN_SELECT), x, y, w);
-				x += w + SCALE1(BUTTON_MARGIN);
+				x += w + DP(ui.button_margin);
 				blitButton("START", screen, PAD_isPressed(BTN_START), x, y, w);
-				x += w + SCALE1(BUTTON_MARGIN);
+				x += w + DP(ui.button_margin);
 
 				// Display "QUIT" hint - press both together to exit
 				SDL_Surface* text = TTF_RenderUTF8_Blended(font.tiny, "QUIT", COLOR_LIGHT_TEXT);
 				SDL_BlitSurface(text, NULL, screen,
-				                &(SDL_Rect){x, y + (SCALE1(BUTTON_SIZE) - text->h) / 2});
+				                &(SDL_Rect){x, y + (DP(ui.button_size) - text->h) / 2});
 				SDL_FreeSurface(text);
 			}
 
@@ -340,18 +340,18 @@ int main(int argc, char* argv[]) {
 			// Analog stick buttons (if available)
 			///////////////////////////////
 			if (has_L3) {
-				int x = SCALE1(PADDING + PILL_SIZE);
-				int y = oy + SCALE1(PILL_SIZE * 6);
-				int o = SCALE1(BUTTON_MARGIN);
+				int x = DP(ui.padding + PILL_SIZE);
+				int y = oy + DP(ui.pill_height * 6);
+				int o = DP(ui.button_margin);
 
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("L3", screen, PAD_isPressed(BTN_L3), x + o, y + o, 0);
 			}
 
 			if (has_R3) {
-				int x = FIXED_WIDTH - SCALE1(PADDING + PILL_SIZE * 3) + SCALE1(PILL_SIZE);
-				int y = oy + SCALE1(PILL_SIZE * 6);
-				int o = SCALE1(BUTTON_MARGIN);
+				int x = FIXED_WIDTH - DP(ui.padding + PILL_SIZE * 3) + DP(ui.pill_height);
+				int y = oy + DP(ui.pill_height * 6);
+				int o = DP(ui.button_margin);
 
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
 				blitButton("R3", screen, PAD_isPressed(BTN_R3), x + o, y + o, 0);

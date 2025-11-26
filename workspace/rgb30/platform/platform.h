@@ -133,6 +133,7 @@
 // Display Specifications
 ///////////////////////////////
 
+#define SCREEN_DIAGONAL 4.0f // Physical screen diagonal in inches
 #define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH 720 // Screen width in pixels (square display)
 #define FIXED_HEIGHT 720 // Screen height in pixels (1:1 aspect ratio)
@@ -156,8 +157,7 @@
 // Larger values for square display
 ///////////////////////////////
 
-#define MAIN_ROW_COUNT 8 // Number of rows visible in menu
-#define PADDING 40 // Padding for UI elements in pixels
+// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings
