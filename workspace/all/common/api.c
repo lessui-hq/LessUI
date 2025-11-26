@@ -118,43 +118,43 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	// Bounds for layout calculation
 	const int MIN_PILL = 28;
 	const int MAX_PILL = 32;
-	const int MIN_ROWS = 6;
-	const int MAX_ROWS = 8;
+	const int PREFERRED_PILL = 30;
 	const int DEFAULT_PADDING = 10; // Consistent padding in dp
+	const int FOOTER_ROWS = 2; // Header spacing + footer button hints row
 
 	// Calculate available height in dp
 	int screen_height_dp = (int)(screen_height / gfx_dp_scale + 0.5f);
 	int available_dp = screen_height_dp - (DEFAULT_PADDING * 2);
 
-	// Find best row count where pill height fits in acceptable range
-	// We need: content rows + 2 (header spacing + footer row)
-	int best_rows = MIN_ROWS;
-	int best_pill = 30;
+	// Dynamic row fitting: calculate how many rows fit in available space
+	// Start with preferred pill size and calculate maximum rows
+	int best_pill = PREFERRED_PILL;
+	int best_rows = (available_dp / PREFERRED_PILL) - FOOTER_ROWS;
 
-	// Try to fit as many rows as possible
-	for (int rows = MAX_ROWS; rows >= MIN_ROWS; rows--) {
-		int total_rows = rows + 2; // +1 header spacing, +1 footer
-		int pill = available_dp / total_rows;
+	// Ensure we have at least some rows, adjust pill size if needed
+	if (best_rows < 1) {
+		// Screen too small even for 1 row at preferred size, use minimum pill
+		best_pill = MIN_PILL;
+		best_rows = (available_dp / MIN_PILL) - FOOTER_ROWS;
+		if (best_rows < 1)
+			best_rows = 1; // Absolute minimum
+	}
 
-		if (pill >= MIN_PILL && pill <= MAX_PILL) {
-			// Found a good fit - use it
-			best_rows = rows;
-			best_pill = pill;
-			break;
-		} else if (pill < MIN_PILL && rows > MIN_ROWS) {
-			// Too many rows, not enough space - try fewer rows
-			continue;
-		} else if (rows == MIN_ROWS) {
-			// Reached minimum rows - use closest valid pill size
-			if (pill < MIN_PILL) {
-				best_pill = MIN_PILL;
-			} else if (pill > MAX_PILL) {
-				best_pill = MAX_PILL;
-			} else {
-				best_pill = pill;
-			}
-			best_rows = rows;
-		}
+	// Recalculate actual pill height to utilize all available space
+	int total_rows = best_rows + FOOTER_ROWS;
+	best_pill = available_dp / total_rows;
+
+	// Clamp pill size to acceptable range
+	if (best_pill < MIN_PILL) {
+		best_pill = MIN_PILL;
+		// Recalculate rows with minimum pill size
+		best_rows = (available_dp / MIN_PILL) - FOOTER_ROWS;
+		if (best_rows < 1)
+			best_rows = 1;
+	} else if (best_pill > MAX_PILL) {
+		best_pill = MAX_PILL;
+		// Recalculate rows with maximum pill size
+		best_rows = (available_dp / MAX_PILL) - FOOTER_ROWS;
 	}
 
 	// Store calculated values, adjusting DP to ensure even physical pixels
@@ -384,9 +384,10 @@ SDL_Surface* GFX_init(int mode) {
 	asset_rgbs[ASSET_DOT] = RGB_LIGHT_GRAY;
 	asset_rgbs[ASSET_HOLE] = RGB_BLACK;
 
-	// Select asset tier based on dp_scale (round up to next available tier)
+	// Select asset tier based on dp_scale (use one tier higher for better quality)
 	// Available tiers: @1x, @2x, @3x, @4x
-	int asset_scale = (int)ceilf(gfx_dp_scale);
+	// Always downscale from a higher resolution for smoother antialiasing
+	int asset_scale = (int)ceilf(gfx_dp_scale) + 1;
 	if (asset_scale < 1)
 		asset_scale = 1;
 	if (asset_scale > 4)
@@ -441,10 +442,10 @@ SDL_Surface* GFX_init(int mode) {
 		int sheet_w = (int)(loaded_assets->w * scale_ratio + 0.5f);
 		int sheet_h = (int)(loaded_assets->h * scale_ratio + 0.5f);
 
-		// Create a blank surface and use SDL_ConvertSurface to match loaded_assets format
-		// This ensures SDL sets up the format correctly (masks, etc.)
-		SDL_Surface* blank =
-		    SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32, 0, 0, 0, 0); // Let SDL pick format
+		// Create destination surface matching loaded_assets format
+		// Use RGBA8888 initially to preserve alpha during conversion
+		SDL_Surface* blank = SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32,
+		                                          RGBA_MASK_8888);
 		gfx.assets = SDL_ConvertSurface(blank, loaded_assets->format, 0);
 		SDL_FreeSurface(blank);
 
@@ -490,14 +491,15 @@ SDL_Surface* GFX_init(int mode) {
 			}
 
 			// Extract this asset region from source sheet
-			// Use SDL_ConvertSurface to ensure proper format setup
-			SDL_Surface* temp_extract = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32, 0, 0, 0, 0);
+			SDL_Surface* temp_extract = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32,
+			                                                  RGBA_MASK_8888);
 			SDL_Surface* extracted = SDL_ConvertSurface(temp_extract, loaded_assets->format, 0);
 			SDL_FreeSurface(temp_extract);
 			SDL_BlitSurface(loaded_assets, &src_rect, extracted, &(SDL_Rect){0, 0});
 
 			// Scale this specific asset to its target size
-			SDL_Surface* temp_scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0, 0, 0, 0);
+			SDL_Surface* temp_scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32,
+			                                                 RGBA_MASK_8888);
 			SDL_Surface* scaled = SDL_ConvertSurface(temp_scaled, loaded_assets->format, 0);
 			SDL_FreeSurface(temp_scaled);
 			GFX_scaleBilinear(extracted, scaled);
