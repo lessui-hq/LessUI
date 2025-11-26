@@ -5104,7 +5104,7 @@ static int Menu_options(MenuList* list) {
 
 	// dependent on option list offset top and bottom, eg. the gray triangles
 	int max_visible_options =
-	    (screen->h - ((DP(ui.padding + ui.pill_height) * 2) + DP(ui.button_size))) /
+	    (screen->h - DP((ui.padding + ui.pill_height) * 2)) /
 	    DP(ui.button_size); // 7 for 480, 10 for 720
 
 	int count;
@@ -5961,9 +5961,9 @@ static void Menu_loop(void) {
 			GFX_blitButtonGroup((char*[]){"B", "BACK", "A", "OKAY", NULL}, 1, screen, 1);
 
 			// Vertically center the menu items
-			oy = (((DEVICE_HEIGHT / FIXED_SCALE) - DP(ui.padding * 2)) -
-			      DP(MENU_ITEM_COUNT * ui.pill_height)) /
-			     2;
+			int menu_height_px = DP((ui.padding * 2) + (MENU_ITEM_COUNT * ui.pill_height));
+			oy = (screen->h - menu_height_px) / 2;
+			
 			for (int i = 0; i < MENU_ITEM_COUNT; i++) {
 				char* item = menu.items[i];
 				SDL_Color text_color = COLOR_WHITE;
