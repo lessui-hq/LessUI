@@ -114,73 +114,75 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	// Asset-level even-pixel adjustments handle rounding where needed
 	gfx_dp_scale = raw_dp_scale;
 
-	// Bounds for layout calculation
+	// Layout calculation: treat everything as uniform rows
+	// Screen layout: top_padding + content_rows + footer_row + bottom_padding
+	// All rows (content + footer) use the same pill_height for visual consistency
 	const int MIN_PILL = 28;
 	const int MAX_PILL = 32;
-	const int PREFERRED_PILL = 30;
-	const int DEFAULT_PADDING = 10; // Consistent padding in dp
-	const int FOOTER_ROWS = 2; // Header spacing + footer button hints row
+	const int DEFAULT_PADDING = 10;
 
-	// Calculate available height in dp
 	int screen_height_dp = (int)(screen_height / gfx_dp_scale + 0.5f);
 	int available_dp = screen_height_dp - (DEFAULT_PADDING * 2);
 
-	// Dynamic row fitting: calculate how many rows fit in available space
-	// Start with preferred pill size and calculate maximum rows
-	int best_pill = PREFERRED_PILL;
-	int best_rows = (available_dp / PREFERRED_PILL) - FOOTER_ROWS;
+	// Calculate maximum possible rows (no arbitrary limit)
+	int max_possible_rows = (available_dp / MIN_PILL) - 1; // -1 for footer
+	if (max_possible_rows < 1)
+		max_possible_rows = 1;
 
-	// Ensure we have at least some rows, adjust pill size if needed
-	if (best_rows < 1) {
-		// Screen too small even for 1 row at preferred size, use minimum pill
-		best_pill = MIN_PILL;
-		best_rows = (available_dp / MIN_PILL) - FOOTER_ROWS;
-		if (best_rows < 1)
-			best_rows = 1; // Absolute minimum
+	// Try different row counts, starting from maximum (prefer more content)
+	// Prefer even pixels but accept odd if needed
+	int best_pill = 0;
+	int best_rows = 0;
+	int best_is_even = 0;
+
+	for (int content_rows = max_possible_rows; content_rows >= 1; content_rows--) {
+		int total_rows = content_rows + 1; // +1 for footer
+		int pill = available_dp / total_rows;
+
+		// Early exit: pills only get larger as rows decrease
+		if (pill > MAX_PILL)
+			break;
+
+		int pill_px = DP(pill);
+		int is_even = (pill_px % 2 == 0);
+
+		if (pill >= MIN_PILL) {
+			if (is_even) {
+				// Perfect: in range AND even pixels
+				best_pill = pill;
+				best_rows = content_rows;
+				best_is_even = 1;
+				LOG_info("Row calc: %d rows → pill=%ddp (%dpx even) ✓\n", content_rows, pill, pill_px);
+				break;
+			} else if (best_rows == 0) {
+				// Acceptable but odd pixels - keep as backup
+				best_pill = pill;
+				best_rows = content_rows;
+				LOG_info("Row calc: %d rows → pill=%ddp (%dpx odd) - backup\n", content_rows, pill,
+				         pill_px);
+			}
+		}
 	}
 
-	// Recalculate actual pill height to utilize all available space
-	int total_rows = best_rows + FOOTER_ROWS;
-	best_pill = available_dp / total_rows;
-
-	// Clamp pill size to acceptable range
-	if (best_pill < MIN_PILL) {
+	if (best_is_even) {
+		LOG_info("Row calc: Using even-pixel configuration\n");
+	} else if (best_rows > 0) {
+		LOG_info("Row calc: Using odd-pixel fallback (no even option in range)\n");
+	} else {
+		// Emergency fallback (should never happen with reasonable MIN_PILL)
 		best_pill = MIN_PILL;
-		// Recalculate rows with minimum pill size
-		best_rows = (available_dp / MIN_PILL) - FOOTER_ROWS;
-		if (best_rows < 1)
-			best_rows = 1;
-	} else if (best_pill > MAX_PILL) {
-		best_pill = MAX_PILL;
-		// Recalculate rows with maximum pill size
-		best_rows = (available_dp / MAX_PILL) - FOOTER_ROWS;
+		best_rows = 1;
+		LOG_info("Row calc: EMERGENCY FALLBACK to %ddp, 1 row\n", MIN_PILL);
 	}
 
-	// Store calculated values, adjusting DP to ensure even physical pixels
 	ui.pill_height = best_pill;
 	ui.row_count = best_rows;
 	ui.padding = DEFAULT_PADDING;
 
-	// Adjust pill_height so it produces even physical pixels (for alignment)
-	// May need to adjust by 2dp if dp_scale is fractional (e.g., 1.5: 30→45, 31→47, 32→48)
-	int pill_px = DP(ui.pill_height);
-	if (pill_px % 2 != 0) {
-		// Try increasing first (prefer slightly larger)
-		int adjusted = ui.pill_height + 1;
-		while (adjusted <= MAX_PILL && DP(adjusted) % 2 != 0) {
-			adjusted++;
-		}
-		if (adjusted <= MAX_PILL) {
-			ui.pill_height = adjusted;
-		} else {
-			// Can't increase, try decreasing
-			adjusted = ui.pill_height - 1;
-			while (adjusted >= MIN_PILL && DP(adjusted) % 2 != 0) {
-				adjusted--;
-			}
-			ui.pill_height = adjusted;
-		}
-	}
+	int used_dp = (ui.row_count + 1) * ui.pill_height;
+	LOG_info("Row calc: FINAL rows=%d, pill=%ddp (%dpx), using %d/%d dp (%.1f%%)\n", ui.row_count,
+	         ui.pill_height, DP(ui.pill_height), used_dp, available_dp,
+	         (used_dp * 100.0f) / available_dp);
 
 	// Derived proportional sizes (also ensure even pixels where needed)
 	ui.button_size = (ui.pill_height * 2) / 3; // ~20 for 30dp pill

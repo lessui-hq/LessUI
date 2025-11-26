@@ -30,10 +30,10 @@ help:
 	@echo "  brew install sdl2 sdl2_image sdl2_ttf"
 
 # macOS native build configuration
-PLATFORM = macos
+PLATFORM = desktop
 SDL_INCLUDES = -I/opt/homebrew/include
 SDL_LIBS = -L/opt/homebrew/lib
-FAKESD_PATH = $(shell pwd)/workspace/desktop/FAKESD
+FAKESD_PATH = $(shell pwd -P)/workspace/desktop/FAKESD
 
 # Aspect ratio configuration (4x3 or 16x9)
 # Can be overridden: ASPECT_RATIO=16x9 make dev-run
@@ -110,6 +110,14 @@ dev: check-sdl $(MINUI_BIN)
 dev-run: dev
 	@echo "Launching minui..."
 	@echo "FAKESD path: $(FAKESD_PATH)"
+	@echo ""
+	@echo "Keyboard controls:"
+	@echo "  Arrow keys  - D-pad navigation"
+	@echo "  Q/W/A/S     - Y/X/B/A buttons"
+	@echo "  Enter       - Start"
+	@echo "  4           - Select"
+	@echo "  Space       - Menu"
+	@echo "  Backspace   - Power (hold to quit)"
 	@echo ""
 	@cd workspace/all/minui && ./build/desktop/minui
 
