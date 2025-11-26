@@ -67,7 +67,7 @@ export LOG_FLAGS
 MINARCH_CORES_VERSION ?= 20251119
 CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
 
-.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done cores-download
+.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup done cores-download dev-deploy dev-build-deploy
 
 export MAKEFLAGS=--no-print-directory
 
@@ -113,6 +113,26 @@ dev-run-4x3:
 
 dev-run-16x9:
 	@make -f makefile.dev dev-run-16x9
+
+# Deploy to SD card for rapid dev iteration (skips zip/unzip)
+# Usage: make dev-deploy              - Deploy all platforms
+#        make dev-deploy PLATFORM=X   - Deploy single platform
+dev-deploy:
+	@if [ -n "$(PLATFORM)" ]; then \
+		./scripts/dev-deploy.sh --platform $(PLATFORM); \
+	else \
+		./scripts/dev-deploy.sh; \
+	fi
+
+# Build and deploy in one shot for dev iteration
+# Usage: make dev-build-deploy                    - Build all platforms and deploy
+#        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
+dev-build-deploy:
+	@if [ -n "$(PLATFORM)" ]; then \
+		make common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+	else \
+		make all && ./scripts/dev-deploy.sh; \
+	fi
 
 # Build all components for a specific platform (in Docker)
 build:
