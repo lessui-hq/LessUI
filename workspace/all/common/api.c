@@ -338,6 +338,49 @@ static void GFX_scaleBilinear(SDL_Surface* src, SDL_Surface* dst) {
 }
 
 /**
+ * Scales an image to fit within maximum dimensions while preserving aspect ratio.
+ *
+ * If the source image is larger than max_w or max_h, scales it down proportionally
+ * based on the longer side. If the image already fits, returns a reference to the
+ * original surface (caller must not free).
+ *
+ * @param src Source surface to scale
+ * @param max_w Maximum width in pixels
+ * @param max_h Maximum height in pixels
+ * @return New scaled surface (caller must SDL_FreeSurface), or src if no scaling needed
+ */
+SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h) {
+	if (!src)
+		return NULL;
+
+	// Check if scaling is needed
+	if (src->w <= max_w && src->h <= max_h)
+		return src; // No scaling needed, return original
+
+	// Calculate scale factor based on longest side
+	float scale_w = (float)max_w / src->w;
+	float scale_h = (float)max_h / src->h;
+	float scale =
+	    (scale_w < scale_h) ? scale_w : scale_h; // Use smaller scale (fits both dimensions)
+
+	// Calculate new dimensions
+	int new_w = (int)(src->w * scale + 0.5f);
+	int new_h = (int)(src->h * scale + 0.5f);
+
+	// Create destination surface with same format as source
+	SDL_Surface* dst =
+	    SDL_CreateRGBSurface(0, new_w, new_h, src->format->BitsPerPixel, src->format->Rmask,
+	                         src->format->Gmask, src->format->Bmask, src->format->Amask);
+	if (!dst)
+		return src; // Allocation failed, return original
+
+	// Perform bilinear scaling
+	GFX_scaleBilinear(src, dst);
+
+	return dst;
+}
+
+/**
  * Initializes the graphics subsystem.
  *
  * Sets up SDL video, initializes the DP scaling system, loads and scales

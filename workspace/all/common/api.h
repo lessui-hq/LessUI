@@ -516,6 +516,16 @@ scaler_t GFX_getAAScaler(const GFX_Renderer* renderer);
 void GFX_freeAAScaler(void);
 
 /**
+ * Scales an image to fit within maximum dimensions while preserving aspect ratio.
+ *
+ * @param src Source surface to scale
+ * @param max_w Maximum width in pixels
+ * @param max_h Maximum height in pixels
+ * @return New scaled surface (caller must SDL_FreeSurface), or src if no scaling needed
+ */
+SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h);
+
+/**
  * Blits a graphics asset to the destination surface.
  *
  * @param asset Asset ID (ASSET_* enum)

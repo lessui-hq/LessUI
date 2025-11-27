@@ -2174,9 +2174,12 @@ int main(int argc, char* argv[]) {
 			int ox = 0; // Initialize to avoid uninitialized warning
 			int oy;
 
-			// Thumbnail support:
+			// Thumbnail support with caching:
 			// For an entry named "NAME.EXT", check for /.res/NAME.EXT.png
-			// Image must be <= FIXED_HEIGHT x FIXED_HEIGHT pixels
+			// Image is scaled to fit within available space and cached for performance
+			static char cached_thumb_path[MAX_PATH] = {0};
+			static SDL_Surface* cached_thumb = NULL;
+
 			int had_thumb = 0;
 			if (!show_version && total > 0) {
 				Entry* entry = top->entries->items[top->selected];
@@ -2196,11 +2199,40 @@ int main(int argc, char* argv[]) {
 				LOG_debug("res_path: %s", res_path);
 				if (exists(res_path)) {
 					had_thumb = 1;
-					SDL_Surface* thumb = IMG_Load(res_path);
-					ox = MAX(FIXED_WIDTH - FIXED_HEIGHT, (FIXED_WIDTH - thumb->w));
-					oy = (FIXED_HEIGHT - thumb->h) / 2;
+					SDL_Surface* thumb = NULL;
+
+					// Check if we have this thumbnail cached
+					if (cached_thumb && strcmp(res_path, cached_thumb_path) == 0) {
+						// Use cached thumbnail
+						thumb = cached_thumb;
+					} else {
+						// Load and scale new thumbnail
+						SDL_Surface* thumb_orig = IMG_Load(res_path);
+
+						// Scale to fit within available space (50% of width, full height minus padding)
+						int padding = DP(ui.padding);
+						int max_width = (ui.screen_width_px / 2) - padding;
+						int max_height = ui.screen_height_px - (padding * 2);
+						thumb = GFX_scaleToFit(thumb_orig, max_width, max_height);
+
+						// Free original if different from scaled
+						if (thumb != thumb_orig)
+							SDL_FreeSurface(thumb_orig);
+
+						// Free old cached thumbnail if exists
+						if (cached_thumb)
+							SDL_FreeSurface(cached_thumb);
+
+						// Cache the new thumbnail
+						cached_thumb = thumb;
+						strcpy(cached_thumb_path, res_path);
+					}
+
+					// Position on right side with padding, vertically centered
+					int padding = DP(ui.padding);
+					ox = ui.screen_width_px - thumb->w - padding;
+					oy = (ui.screen_height_px - thumb->h) / 2;
 					SDL_BlitSurface(thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
-					SDL_FreeSurface(thumb);
 				}
 			}
 
