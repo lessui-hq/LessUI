@@ -803,60 +803,6 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 }
 
 ///////////////////////////////
-// UI Overlay (Unused)
-///////////////////////////////
-
-/**
- * Overlay configuration for UI elements.
- *
- * Reserved for future use with OVERLAY_CH (channel 2).
- * Would support alpha blending for on-screen UI elements.
- *
- * @note Currently unused - overlay layer not enabled
- */
-#define OVERLAY_BPP 4 // 32-bit ARGB
-#define OVERLAY_DEPTH 16 // Bit depth
-#define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB
-
-static struct OVL_Context {
-	SDL_Surface* overlay;
-} ovl;
-
-/**
- * Initializes overlay surface.
- *
- * Creates SDL surface for UI overlay elements. Currently unused
- * as overlay layer is not enabled in display configuration.
- *
- * @return SDL surface for overlay rendering
- */
-SDL_Surface* PLAT_initOverlay(void) {
-	int overlay_size = DP(ui.pill_height);
-	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, OVERLAY_DEPTH,
-	                                   OVERLAY_RGBA_MASK);
-	return ovl.overlay;
-}
-
-/**
- * Cleans up overlay surface.
- */
-void PLAT_quitOverlay(void) {
-	if (ovl.overlay)
-		SDL_FreeSurface(ovl.overlay);
-}
-
-/**
- * Enables or disables overlay layer.
- *
- * Not implemented - overlay layer not used.
- *
- * @param enable Ignored
- */
-void PLAT_enableOverlay(int enable) {
-	// Not implemented
-}
-
-///////////////////////////////
 // Battery Monitoring (LRADC)
 ///////////////////////////////
 

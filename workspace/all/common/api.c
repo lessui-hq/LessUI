@@ -2341,6 +2341,43 @@ int VIB_getStrength(void) {
 // Power management - Battery, sleep, brightness, volume
 ///////////////////////////////
 
+// Overlay surface for fallback implementation (used if platform doesn't provide its own)
+static SDL_Surface* fallback_overlay = NULL;
+
+/**
+ * Fallback overlay initialization for simple platforms.
+ *
+ * Creates a standard SDL surface for the battery warning overlay.
+ * Platforms with hardware overlays (e.g., rg35xx) provide their own implementation.
+ *
+ * @return SDL surface for overlay
+ */
+FALLBACK_IMPLEMENTATION SDL_Surface* PLAT_initOverlay(void) {
+	int overlay_size = DP(ui.pill_height);
+	fallback_overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, 16,
+	                                        0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000); // ARGB
+	return fallback_overlay;
+}
+
+/**
+ * Fallback overlay cleanup.
+ */
+FALLBACK_IMPLEMENTATION void PLAT_quitOverlay(void) {
+	if (fallback_overlay) {
+		SDL_FreeSurface(fallback_overlay);
+		fallback_overlay = NULL;
+	}
+}
+
+/**
+ * Fallback overlay enable/disable (no-op for software compositing).
+ *
+ * @param enable Unused - software overlays are always composited
+ */
+FALLBACK_IMPLEMENTATION void PLAT_enableOverlay(int enable) {
+	(void)enable; // Overlay composited in software, no hardware control needed
+}
+
 /**
  * Initializes the low battery warning overlay.
  *

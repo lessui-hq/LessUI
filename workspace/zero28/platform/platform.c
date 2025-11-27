@@ -699,54 +699,6 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 }
 
 ///////////////////////////////
-// Overlay (Status Icons)
-///////////////////////////////
-
-#define OVERLAY_BPP 4 // Bytes per pixel (ARGB32)
-#define OVERLAY_DEPTH 16 // Bit depth
-#define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB
-
-/**
- * Overlay rendering context.
- *
- * Provides surface for rendering status icons (battery, wifi, etc).
- */
-static struct OVL_Context {
-	SDL_Surface* overlay; // ARGB surface for status icons
-} ovl;
-
-/**
- * Initializes overlay surface for status icons.
- *
- * Creates ARGB surface at DP-scaled size for status indicators.
- *
- * @return Overlay surface
- */
-SDL_Surface* PLAT_initOverlay(void) {
-	int overlay_size = DP(ui.pill_height);
-	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, OVERLAY_DEPTH,
-	                                   OVERLAY_RGBA_MASK);
-	return ovl.overlay;
-}
-
-/**
- * Cleans up overlay resources.
- */
-void PLAT_quitOverlay(void) {
-	if (ovl.overlay)
-		SDL_FreeSurface(ovl.overlay);
-}
-
-/**
- * Enables or disables overlay (not implemented).
- *
- * @param enable Ignored
- */
-void PLAT_enableOverlay(int enable) {
-	// Not implemented
-}
-
-///////////////////////////////
 // Power Management
 ///////////////////////////////
 

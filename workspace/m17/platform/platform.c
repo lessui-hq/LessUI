@@ -550,27 +550,6 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 }
 
 ///////////////////////////////
-
-#define OVERLAY_BPP 4
-#define OVERLAY_DEPTH 16
-#define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB
-static struct OVL_Context {
-	SDL_Surface* overlay;
-} ovl;
-
-SDL_Surface* PLAT_initOverlay(void) {
-	int overlay_size = DP(ui.pill_height);
-	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, OVERLAY_DEPTH,
-	                                   OVERLAY_RGBA_MASK);
-	return ovl.overlay;
-}
-void PLAT_quitOverlay(void) {
-	if (ovl.overlay)
-		SDL_FreeSurface(ovl.overlay);
-}
-void PLAT_enableOverlay(int enable) {}
-
-///////////////////////////////
 // Power management
 ///////////////////////////////
 
