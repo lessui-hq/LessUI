@@ -13,7 +13,7 @@
  *
  * Hardware specifics:
  * - Built-in screen: 640x480 display (rotatable)
- * - HDMI output: 720x720 (no rotation)
+ * - HDMI output: 1280x720 (no rotation)
  * - Hall sensor for lid detection at /sys/devices/platform/hall-mh248/hallvalue
  * - Rumble motor controlled via GPIO20
  */

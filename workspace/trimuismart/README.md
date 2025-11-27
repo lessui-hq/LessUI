@@ -14,10 +14,10 @@ Platform implementation for the Trimui Smart retro handheld device.
 
 ### SoC & Architecture
 - **SoC**: Allwinner F1C100s
-- **CPU**: ARM926EJ-S (single core)
+- **CPU**: ARM926EJ-S (ARMv5 single core)
 - **Memory Allocator**: ION (In-kernel Out-of-Nexus) for contiguous DMA buffers
 - **Display Layers**: Multi-channel composition (video scaling + UI overlay)
-- **NEON**: Supported (ARM NEON SIMD optimizations available)
+- **NEON**: Not supported (ARM926EJ-S lacks NEON SIMD - requires ARMv7-A or later)
 
 ### Input
 - **D-Pad**: Up, Down, Left, Right
@@ -169,7 +169,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/              Utilities (keymon, etc.)
 │   │   │   └── install.sh    Post-update installation script
 │   │   └── paks/             Applications and emulators
-│   │       └── LessUI.pak/    Main launcher
+│   │       └── MinUI.pak/     Main launcher
 │   └── res/                  Shared UI assets
 │       ├── assets.png        UI sprite sheet (1x scale, 320x240)
 │       └── InterTight-Bold.ttf
@@ -194,7 +194,7 @@ LessUI installs to the SD card with the following structure:
    - Extract `LessUI.zip` to SD card using custom `unzip` utility
    - Delete `LessUI.zip` after successful extraction
    - Run `.system/trimuismart/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/trimuismart/paks/LessUI.pak/launch.sh`
+4. Launch LessUI via `.system/trimuismart/paks/MinUI.pak/launch.sh`
 5. If launcher exits, poweroff device (prevents stock firmware from accessing card)
 
 ### Update Process
@@ -361,7 +361,7 @@ The Trimui Smart supports 12 libretro cores:
 
 ### Development Notes
 1. **No L3/R3**: Platform lacks clickable analog sticks
-2. **NEON Optimizations**: Platform supports ARM NEON SIMD - use `HAS_NEON` define
+2. **No NEON**: ARM926EJ-S does not support NEON SIMD (requires ARMv7-A+) - avoid NEON-specific optimizations
 3. **Simple Keymon**: Simpler than other platforms (no jack detection, no HDMI, no power monitoring)
 4. **Shutdown on Exit**: Boot script forces poweroff if LessUI exits (prevents stock firmware access)
 5. **SDL Pre-installed**: Stock firmware provides SDL libraries (no SDL build needed)

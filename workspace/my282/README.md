@@ -20,9 +20,9 @@ Platform implementation for the MY282 retro handheld device.
   - SELECT and START buttons
 
 ### Input Method
-- **Primary**: Joystick API (SDL joystick indices 0-18)
-- **Active**: Evdev code for POWER button only (CODE_POWER = 102)
-- **No SDL Keyboard**: All keyboard mappings are `BUTTON_NA`
+- **Primary**: Evdev input events (direct reading from `/dev/input/event*`)
+- **Implementation**: Reads raw `input_event` structures for all buttons and analog sticks
+- **Notable**: JOY_* macros in platform.h are unused, actual implementation uses evdev
 
 ### CPU & Performance
 - ARM Cortex-A53 processor with NEON SIMD support
@@ -189,7 +189,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/           Utilities (keymon, overclock, etc.)
 │   │   │   └── install.sh Post-update installation script
 │   │   └── paks/          Applications and emulators
-│   │       └── LessUI.pak/ Main launcher
+│   │       └── MinUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
@@ -217,7 +217,7 @@ LessUI installs to the SD card with the following structure:
    - Delete ZIP file
    - Remove backup directory
    - Run `.system/my282/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/my282/paks/LessUI.pak/launch.sh`
+4. Launch LessUI via `.system/my282/paks/MinUI.pak/launch.sh`
 5. Keep relaunching while launcher exists (infinite loop)
 6. If launcher removed, execute `poweroff` to prevent stock firmware access
 

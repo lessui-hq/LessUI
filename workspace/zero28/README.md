@@ -177,7 +177,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/            Utilities (keymon, bl_enable, bl_disable, etc.)
 │   │   │   └── install.sh  Post-update installation script (no-op)
 │   │   └── paks/           Applications and emulators
-│   │       └── LessUI.pak/  Main launcher
+│   │       └── MinUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Line effect overlays (2-8px)
@@ -202,7 +202,7 @@ LessUI installs to the SD card with the following structure:
    - Extract `LessUI.zip` to SD card
    - Delete ZIP and old update directory
    - Run `.system/zero28/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/zero28/paks/LessUI.pak/launch.sh`
+4. Launch LessUI via `.system/zero28/paks/MinUI.pak/launch.sh`
 5. If launcher exits, power off device (prevents stock firmware from accessing card)
 
 ### Update Process

@@ -224,7 +224,7 @@ LessUI installs to the SD card with the following structure:
 │   │   │   └── install.sh  Post-update script
 │   │   ├── dat/            Data files (runtrimui.sh)
 │   │   └── paks/           Applications and emulators
-│   │       └── LessUI.pak/  Main launcher
+│   │       └── MinUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale - standard)
 │       ├── assets@3x.png   UI sprite sheet (3x scale - Brick)
@@ -259,7 +259,7 @@ LessUI installs to the SD card with the following structure:
    - Deletes ZIP file
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
-6. Launches LessUI via `.system/tg5040/paks/LessUI.pak/launch.sh`
+6. Launches LessUI via `.system/tg5040/paks/MinUI.pak/launch.sh`
 
 ### Update Process
 

@@ -192,7 +192,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/            Utilities (keymon, etc.)
 │   │   │   └── install.sh  Post-update installation script
 │   │   └── paks/           Applications and emulators
-│   │       └── LessUI.pak/  Main launcher
+│   │       └── MinUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Scanline overlay effects (various scales)
@@ -233,7 +233,7 @@ After initialization, device boots as follows:
    - Extract ZIP to SD card root
    - Delete ZIP file
    - Run `.system/my355/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/my355/paks/LessUI.pak/launch.sh`
+4. Launch LessUI via `.system/my355/paks/MinUI.pak/launch.sh`
 5. Loop: if launcher exits, relaunch (prevents stock firmware access)
 6. On critical failure: power off device
 

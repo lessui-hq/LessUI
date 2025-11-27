@@ -222,7 +222,7 @@ LessUI installs across two SD cards:
 │   │   ├── dat/
 │   │   │   └── dmenu.bin  Updated stock menu binary
 │   │   └── paks/          Applications and emulators
-│   │       └── LessUI.pak/ Main launcher
+│   │       └── MinUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
@@ -251,7 +251,7 @@ LessUI installs across two SD cards:
    - Delete ZIP file
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
-6. Launch LessUI via `.system/rg35xxplus/paks/LessUI.pak/launch.sh`
+6. Launch LessUI via `.system/rg35xxplus/paks/MinUI.pak/launch.sh`
 7. If launcher exits, shutdown device (prevents stock firmware from accessing card)
 
 ### Update Process

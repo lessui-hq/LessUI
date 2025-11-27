@@ -174,7 +174,7 @@ LessUI installs to the SD card with the following structure:
 │   ├── rg35xx/             Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, overclock, install.sh)
 │   │   ├── paks/           Applications and emulators
-│   │   │   └── LessUI.pak/  Main launcher
+│   │   │   └── MinUI.pak/  Main launcher
 │   │   ├── dat/            Boot partition files (ramdisk.img, dmenu.bin)
 │   │   └── rootfs.ext2     Chroot filesystem image
 │   └── res/                Shared UI assets

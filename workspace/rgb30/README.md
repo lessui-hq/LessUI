@@ -22,9 +22,9 @@ Platform implementation for the Anbernic RGB30 retro handheld device.
   - SELECT and START buttons
 
 ### Input Method
-- **Primary**: SDL Joystick API (gamepad input)
-- **Secondary**: Evdev codes for volume, power, and menu modifier buttons
-- **Hybrid Design**: Minimal SDL keyboard (power button only), most input via joystick
+- **Primary**: Evdev input events (direct reading from `/dev/input/event*`)
+- **Implementation**: Reads raw `input_event` structures for all input
+- **Notable**: Bypasses SDL input APIs entirely
 
 ### CPU & Performance
 - ARM processor with NEON SIMD support
@@ -161,7 +161,7 @@ LessUI installs to the SD card with the following structure:
 │   ├── rgb30/              Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, show, etc.)
 │   │   └── paks/           Applications and emulators
-│   │       └── LessUI.pak/  Main launcher
+│   │       └── MinUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
