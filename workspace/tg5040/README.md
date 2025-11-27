@@ -228,7 +228,7 @@ LessUI installs to the SD card with the following structure:
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale - standard)
 │       ├── assets@3x.png   UI sprite sheet (3x scale - Brick)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/            Update staging area
 │   └── tg5040/             Platform boot components
 │       ├── show.elf        Splash screen display

@@ -165,7 +165,7 @@ LessUI installs to the SD card with the following structure:
 │   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets.png      UI sprite sheet (1x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── em_ui.sh                Boot script (LessUI entry point)
 ├── Roms/                   ROM files organized by system
 ├── LessUI.zip               Update package (if present)

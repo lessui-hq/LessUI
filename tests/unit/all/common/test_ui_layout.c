@@ -32,7 +32,7 @@ UI_Layout ui = {
     .pill_height = 30,
     .row_count = 6,
     .padding = 10,
-    .text_baseline = 4,
+    .text_baseline = 6,
     .button_size = 20,
     .button_margin = 5,
     .button_padding = 12,
@@ -98,7 +98,7 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	ui.button_size = (best_pill * 2) / 3;
 	ui.button_margin = (best_pill - ui.button_size) / 2;
 	ui.button_padding = (best_pill * 2) / 5;
-	ui.text_baseline = (4 * best_pill + 15) / 30;
+	ui.text_baseline = (best_pill * 2) / 10;
 }
 
 void setUp(void) {
@@ -110,7 +110,7 @@ void setUp(void) {
 	ui.button_size = 20;
 	ui.button_margin = 5;
 	ui.button_padding = 12;
-	ui.text_baseline = 4;
+	ui.text_baseline = 6;
 }
 
 void tearDown(void) {

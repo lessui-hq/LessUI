@@ -197,7 +197,7 @@ LessUI installs to the SD card with the following structure:
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Scanline overlay effects (various scales)
 │       ├── grid-*.png      Grid overlay effects (various scales)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/            Update staging area
 │   └── my355/              Platform boot components
 │       ├── show.elf        Splash screen display

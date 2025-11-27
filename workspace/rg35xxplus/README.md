@@ -225,7 +225,7 @@ LessUI installs across two SD cards:
 │   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .userdata/
 │   └── rg35xxplus/        User settings and saves
 ├── Roms/                  ROM files organized by system

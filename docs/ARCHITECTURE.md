@@ -127,7 +127,7 @@ skeleton/
 ├── SYSTEM/
 │   └── res/              # Shared assets
 │       ├── assets@2x.png # UI sprite sheet
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 │
 ├── BOOT/                 # Boot scripts
 └── EXTRAS/               # Optional paks

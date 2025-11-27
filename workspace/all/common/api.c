@@ -69,7 +69,7 @@ UI_Layout ui = {
     .pill_height = 30,
     .row_count = 6,
     .padding = 10,
-    .text_baseline = 4, // (30 * 2) / 15 = 4 for 30dp pill
+    .text_baseline = 6, // (30 * 2) / 10 = 6 for 30dp pill
     .button_size = 20,
     .button_margin = 5,
     .button_padding = 12,

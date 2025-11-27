@@ -172,7 +172,7 @@ LessUI installs to the SD card with the following structure:
 │   │       └── LessUI.pak/    Main launcher
 │   └── res/                  Shared UI assets
 │       ├── assets.png        UI sprite sheet (1x scale, 320x240)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/              Update staging area
 │   └── trimuismart/          Platform boot components
 │       ├── show.elf          Splash screen display

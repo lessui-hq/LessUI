@@ -142,7 +142,7 @@ LessUI installs to the **secondary SD card** (`/storage/TF2`) with this structur
 │   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── Roms/                   ROM files organized by system
 ├── LessUI.zip               Update package (if present)
 └── log.txt                 Installation/update log
