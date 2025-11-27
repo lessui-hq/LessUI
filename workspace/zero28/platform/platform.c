@@ -702,11 +702,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 // Overlay (Status Icons)
 ///////////////////////////////
 
-#define OVERLAY_WIDTH PILL_SIZE // Unscaled width
-#define OVERLAY_HEIGHT PILL_SIZE // Unscaled height
 #define OVERLAY_BPP 4 // Bytes per pixel (ARGB32)
 #define OVERLAY_DEPTH 16 // Bit depth
-#define OVERLAY_PITCH (OVERLAY_WIDTH * OVERLAY_BPP) // Row stride
 #define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB
 
 /**
@@ -721,13 +718,14 @@ static struct OVL_Context {
 /**
  * Initializes overlay surface for status icons.
  *
- * Creates ARGB surface at 2x scale for status indicators.
+ * Creates ARGB surface at DP-scaled size for status indicators.
  *
  * @return Overlay surface
  */
 SDL_Surface* PLAT_initOverlay(void) {
-	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, SCALE2(OVERLAY_WIDTH, OVERLAY_HEIGHT),
-	                                   OVERLAY_DEPTH, OVERLAY_RGBA_MASK);
+	int overlay_size = DP(ui.pill_height);
+	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, OVERLAY_DEPTH,
+	                                   OVERLAY_RGBA_MASK);
 	return ovl.overlay;
 }
 

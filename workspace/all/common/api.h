@@ -107,17 +107,19 @@ extern float gfx_dp_scale;
  * to optimally fill the display without per-platform manual configuration.
  */
 typedef struct UI_Layout {
-	int screen_width;     // Screen width in dp
-	int screen_height;    // Screen height in dp
-	int screen_width_px;  // Screen width in pixels (cached for convenience)
+	int screen_width; // Screen width in dp
+	int screen_height; // Screen height in dp
+	int screen_width_px; // Screen width in pixels (cached for convenience)
 	int screen_height_px; // Screen height in pixels (cached for convenience)
-	int pill_height;      // Height of menu pills in dp (28-32 typical)
-	int row_count;        // Number of visible menu rows (6-8)
-	int padding;          // Screen edge padding in dp
-	int text_baseline;    // Vertical offset for text centering in pill
-	int button_size;      // Size of button graphics in dp
-	int button_margin;    // Margin around buttons in dp
-	int button_padding;   // Padding inside buttons in dp
+	int pill_height; // Height of menu pills in dp (28-32 typical)
+	int row_count; // Number of visible menu rows (6-8)
+	int padding; // Screen edge padding in dp
+	int text_baseline; // Vertical offset for text centering in pill
+	int button_size; // Size of button graphics in dp
+	int button_margin; // Margin around buttons in dp
+	int button_padding; // Padding inside buttons in dp
+	int settings_size; // Size of setting indicators in dp
+	int settings_width; // Width of setting indicators in dp
 } UI_Layout;
 
 extern UI_Layout ui;
@@ -519,9 +521,7 @@ void GFX_freeAAScaler(void);
  * @param asset Asset ID (ASSET_* enum)
  * @param src_rect Source rectangle (NULL for full asset)
  * @param dst Destination surface
- * @param dst_rect Destination rectangle
- *
- * @note All dimensions should be pre-scaled by FIXED_SCALE
+ * @param dst_rect Destination rectangle (dimensions in physical pixels)
  */
 void GFX_blitAsset(int asset, const SDL_Rect* src_rect, SDL_Surface* dst, SDL_Rect* dst_rect);
 
@@ -654,7 +654,8 @@ void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_S
  * @param w_dp Width in DP
  * @param h_dp Height in DP
  */
-static inline void GFX_blitPill_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp, int h_dp) {
+static inline void GFX_blitPill_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp,
+                                   int h_dp) {
 	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
 	GFX_blitPill(asset, dst, &rect);
 }
@@ -669,7 +670,8 @@ static inline void GFX_blitPill_DP(int asset, SDL_Surface* dst, int x_dp, int y_
  * @param w_dp Width in DP
  * @param h_dp Height in DP
  */
-static inline void GFX_blitRect_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp, int h_dp) {
+static inline void GFX_blitRect_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp,
+                                   int h_dp) {
 	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
 	GFX_blitRect(asset, dst, &rect);
 }
@@ -683,7 +685,8 @@ static inline void GFX_blitRect_DP(int asset, SDL_Surface* dst, int x_dp, int y_
  * @param x_dp X coordinate in DP
  * @param y_dp Y coordinate in DP
  */
-static inline void GFX_blitAsset_DP(int asset, const SDL_Rect* src_rect, SDL_Surface* dst, int x_dp, int y_dp) {
+static inline void GFX_blitAsset_DP(int asset, const SDL_Rect* src_rect, SDL_Surface* dst, int x_dp,
+                                    int y_dp) {
 	SDL_Rect dst_rect = {DP(x_dp), DP(y_dp), 0, 0};
 	GFX_blitAsset(asset, src_rect, dst, &dst_rect);
 }
@@ -711,8 +714,8 @@ static inline void GFX_blitBattery_DP(SDL_Surface* dst, int x_dp, int y_dp) {
  * @param w_dp Width in DP
  * @param h_dp Height in DP
  */
-static inline void GFX_blitMessage_DP(TTF_Font* ttf_font, char* msg, SDL_Surface* dst,
-                                       int x_dp, int y_dp, int w_dp, int h_dp) {
+static inline void GFX_blitMessage_DP(TTF_Font* ttf_font, char* msg, SDL_Surface* dst, int x_dp,
+                                      int y_dp, int w_dp, int h_dp) {
 	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
 	GFX_blitMessage(ttf_font, msg, dst, &rect);
 }
@@ -732,8 +735,10 @@ static inline void GFX_blitMessage_DP(TTF_Font* ttf_font, char* msg, SDL_Surface
 static inline void TTF_SizeUTF8_DP(TTF_Font* ttf_font, const char* text, int* w_dp, int* h_dp) {
 	int w_px = 0, h_px = 0;
 	TTF_SizeUTF8(ttf_font, text, &w_px, &h_px);
-	if (w_dp) *w_dp = PX_TO_DP(w_px);
-	if (h_dp) *h_dp = PX_TO_DP(h_px);
+	if (w_dp)
+		*w_dp = PX_TO_DP(w_px);
+	if (h_dp)
+		*h_dp = PX_TO_DP(h_px);
 }
 
 /**
@@ -745,8 +750,8 @@ static inline void TTF_SizeUTF8_DP(TTF_Font* ttf_font, const char* text, int* w_
  * @param x_dp X coordinate in DP
  * @param y_dp Y coordinate in DP
  */
-static inline void SDL_BlitSurface_DP(SDL_Surface* src, SDL_Rect* srcrect,
-                                      SDL_Surface* dst, int x_dp, int y_dp) {
+static inline void SDL_BlitSurface_DP(SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst,
+                                      int x_dp, int y_dp) {
 	SDL_Rect dstrect = {DP(x_dp), DP(y_dp), 0, 0};
 	SDL_BlitSurface(src, srcrect, dst, &dstrect);
 }

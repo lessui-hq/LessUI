@@ -211,13 +211,13 @@ int main(int argc, char* argv[]) {
 			// D-pad (Up, Down, Left, Right)
 			///////////////////////////////
 			{
-				int x = DP(ui.padding + PILL_SIZE);
+				int x = DP(ui.padding + ui.pill_height);
 				int y = oy + DP(ui.pill_height * 2);
 				int o = DP(ui.button_margin);
 
 				// Vertical bar connecting Up and Down buttons
 				SDL_FillRect(screen,
-				             &(SDL_Rect){x, y + DP(ui.pill_height / 2), DP(ui.pill_height),
+				             &(SDL_Rect){x, y + DP(ui.pill_height) / 2, DP(ui.pill_height),
 				                         DP(ui.pill_height * 2)},
 				             RGB_DARK_GRAY);
 				GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &(SDL_Rect){x, y, 0});
@@ -232,7 +232,7 @@ int main(int argc, char* argv[]) {
 
 				// Horizontal bar connecting Left and Right buttons
 				SDL_FillRect(screen,
-				             &(SDL_Rect){x + DP(ui.pill_height / 2), y, DP(ui.pill_height * 2),
+				             &(SDL_Rect){x + DP(ui.pill_height) / 2, y, DP(ui.pill_height * 2),
 				                         DP(ui.pill_height)},
 				             RGB_DARK_GRAY);
 
@@ -248,7 +248,7 @@ int main(int argc, char* argv[]) {
 			// Face buttons (A, B, X, Y)
 			///////////////////////////////
 			{
-				int x = FIXED_WIDTH - DP(ui.padding + PILL_SIZE * 3) + DP(ui.pill_height);
+				int x = FIXED_WIDTH - DP(ui.padding + ui.pill_height * 3) + DP(ui.pill_height);
 				int y = oy + DP(ui.pill_height * 2);
 				int o = DP(ui.button_margin);
 
@@ -295,7 +295,7 @@ int main(int argc, char* argv[]) {
 			///////////////////////////////
 			if (has_power || has_menu) {
 				int bw = 42;
-				int pw = has_both ? (bw * 2 + BUTTON_MARGIN * 3) : (bw + BUTTON_MARGIN * 2);
+				int pw = has_both ? (bw * 2 + ui.button_margin * 3) : (bw + ui.button_margin * 2);
 
 				int x = (FIXED_WIDTH - DP(pw)) / 2;
 				int y = oy + DP(ui.pill_height * 3);
@@ -340,7 +340,7 @@ int main(int argc, char* argv[]) {
 			// Analog stick buttons (if available)
 			///////////////////////////////
 			if (has_L3) {
-				int x = DP(ui.padding + PILL_SIZE);
+				int x = DP(ui.padding + ui.pill_height);
 				int y = oy + DP(ui.pill_height * 6);
 				int o = DP(ui.button_margin);
 
@@ -349,7 +349,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			if (has_R3) {
-				int x = FIXED_WIDTH - DP(ui.padding + PILL_SIZE * 3) + DP(ui.pill_height);
+				int x = FIXED_WIDTH - DP(ui.padding + ui.pill_height * 3) + DP(ui.pill_height);
 				int y = oy + DP(ui.pill_height * 6);
 				int o = DP(ui.button_margin);
 

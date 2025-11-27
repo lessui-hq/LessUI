@@ -2282,9 +2282,8 @@ int main(int argc, char* argv[]) {
 				int version_h_dp = (int)(version->h / gfx_dp_scale + 0.5f);
 				int center_x_dp = (ui.screen_width - version_w_dp) / 2;
 				int center_y_dp = (ui.screen_height - version_h_dp) / 2;
-				SDL_BlitSurface(
-				    version, NULL, screen,
-				    &(SDL_Rect){DP(center_x_dp), DP(center_y_dp), 0, 0});
+				SDL_BlitSurface(version, NULL, screen,
+				                &(SDL_Rect){DP(center_x_dp), DP(center_y_dp), 0, 0});
 
 				// buttons (duped and trimmed from below)
 				if (show_setting && !GetHDMI())
@@ -2306,7 +2305,8 @@ int main(int argc, char* argv[]) {
 						// Calculate available width in pixels
 						// ox is in pixels (thumbnail offset), screen width converted from DP to pixels
 						int available_width =
-						    (had_thumb && j != selected_row ? ox : DP(ui.screen_width)) - DP(ui.padding * 2);
+						    (had_thumb && j != selected_row ? ox : DP(ui.screen_width)) -
+						    DP(ui.padding * 2);
 						if (i == top->start && !(had_thumb && j != selected_row))
 							available_width -= ow; //
 
@@ -2357,8 +2357,8 @@ int main(int argc, char* argv[]) {
 					}
 				} else {
 					// Use DP-based wrapper for proper scaling
-					GFX_blitMessage_DP(font.large, "Empty folder", screen,
-					                   0, 0, ui.screen_width, ui.screen_height);
+					GFX_blitMessage_DP(font.large, "Empty folder", screen, 0, 0, ui.screen_width,
+					                   ui.screen_height);
 				}
 
 				// buttons

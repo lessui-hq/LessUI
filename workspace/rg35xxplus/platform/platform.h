@@ -144,7 +144,6 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define SCREEN_DIAGONAL                                                                            \
 	(is_cubexx ? 3.95f                                                                             \
 	           : (is_rg34xx ? 3.4f : 3.5f)) // Diagonal: 3.95" (Cube) / 3.4" (34XX) / 3.5" (Plus)
-#define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH (is_cubexx ? 720 : (is_rg34xx ? 720 : 640)) // Width: 720 (H/SP) or 640 (Plus)
 #define FIXED_HEIGHT (is_cubexx ? 720 : 480) // Height: 720 (H) or 480 (Plus/SP)
 #define FIXED_BPP 2 // Bytes per pixel (RGB565)
@@ -161,15 +160,6 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define HDMI_HEIGHT 720 // HDMI height in pixels (720p)
 #define HDMI_PITCH (HDMI_WIDTH * FIXED_BPP) // HDMI row stride
 #define HDMI_SIZE (HDMI_PITCH * HDMI_HEIGHT) // HDMI framebuffer size
-
-// TODO: if HDMI_HEIGHT > FIXED_HEIGHT then MAIN_ROW_COUNT will be insufficient
-
-///////////////////////////////
-// UI Layout Configuration
-// Adjusted for device variant and HDMI
-///////////////////////////////
-
-// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

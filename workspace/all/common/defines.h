@@ -185,30 +185,9 @@
 ///////////////////////////////
 
 /**
- * UI element sizes in logical pixels (before FIXED_SCALE multiplication).
- */
-#define PILL_SIZE 30 // Height of menu item pills
-#define BUTTON_SIZE 20 // Size of button graphics
-#define BUTTON_MARGIN 5 // Margin around buttons ((PILL_SIZE - BUTTON_SIZE) / 2)
-#define BUTTON_PADDING 12 // Padding inside buttons
-#define SETTINGS_SIZE 4 // Size of setting indicators
-#define SETTINGS_WIDTH 80 // Width of settings panel
-
-/**
- * Number of visible menu rows on the main screen.
- *
- * Default is 6 rows. Platform can override in platform.h if needed.
- * Calculation: FIXED_HEIGHT / (PILL_SIZE * FIXED_SCALE) - 2
- */
-#ifndef MAIN_ROW_COUNT
-#define MAIN_ROW_COUNT 6
-#endif
-
-/**
  * Screen padding in logical pixels.
  *
- * Default is 10 pixels. Platform can override in platform.h if needed.
- * Calculation: PILL_SIZE / 3 (or non-integer part divided by three)
+ * Used for button margin calculations in minput.
  */
 #ifndef PADDING
 #define PADDING 10
@@ -241,18 +220,6 @@
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define CEIL_DIV(a, b) ((a) + (b) - 1) / (b) // Integer ceiling division
-
-/**
- * Scaling macros for UI coordinates.
- *
- * These multiply logical coordinates by FIXED_SCALE to get physical screen coordinates.
- * Use these when passing coordinates to SDL or GFX functions.
- */
-#define SCALE1(a) ((a) * FIXED_SCALE)
-#define SCALE2(a, b) ((a) * FIXED_SCALE), ((b) * FIXED_SCALE)
-#define SCALE3(a, b, c) ((a) * FIXED_SCALE), ((b) * FIXED_SCALE), ((c) * FIXED_SCALE)
-#define SCALE4(a, b, c, d)                                                                         \
-	((a) * FIXED_SCALE), ((b) * FIXED_SCALE), ((c) * FIXED_SCALE), ((d) * FIXED_SCALE)
 
 ///////////////////////////////
 // Platform capability detection

@@ -147,7 +147,6 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL 3.5f // Physical screen diagonal in inches (Miyoo Flip)
-#define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH 640 // Screen width in pixels
 #define FIXED_HEIGHT 480 // Screen height in pixels (VGA)
 #define FIXED_BPP 2 // Bytes per pixel (RGB565)
@@ -164,15 +163,6 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define HDMI_HEIGHT 720 // HDMI height in pixels (720p)
 #define HDMI_PITCH (HDMI_WIDTH * FIXED_BPP) // HDMI row stride
 #define HDMI_SIZE (HDMI_PITCH * HDMI_HEIGHT) // HDMI framebuffer size
-
-// TODO: if HDMI_HEIGHT > FIXED_HEIGHT then MAIN_ROW_COUNT will be insufficient
-
-///////////////////////////////
-// UI Layout Configuration
-// Adjusted for HDMI output
-///////////////////////////////
-
-// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

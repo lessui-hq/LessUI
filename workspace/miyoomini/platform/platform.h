@@ -140,21 +140,12 @@ extern int is_560p; // Set to 1 for 560p screen variant
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL 2.8f // Physical screen diagonal in inches
-#define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH (is_560p ? 752 : 640) // Screen width: 752px (560p) or 640px (standard)
 #define FIXED_HEIGHT (is_560p ? 560 : 480) // Screen height: 560px (560p) or 480px (standard)
 #define FIXED_BPP 2 // Bytes per pixel (RGB565)
 #define FIXED_DEPTH (FIXED_BPP * 8) // Bit depth (16-bit color)
 #define FIXED_PITCH (FIXED_WIDTH * FIXED_BPP) // Row stride in bytes
 #define FIXED_SIZE (FIXED_PITCH * FIXED_HEIGHT) // Total framebuffer size
-
-///////////////////////////////
-// UI Layout Configuration
-// Adjusted for 560p variant
-///////////////////////////////
-
-// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
-#define PAGE_SCALE (is_560p ? 2 : 3) // Memory scaling: tighter on 560p to reduce usage
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

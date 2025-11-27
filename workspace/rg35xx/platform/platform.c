@@ -922,11 +922,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
  * - Independent positioning and scaling
  * - Can be toggled without affecting main framebuffer
  */
-#define OVERLAY_WIDTH PILL_SIZE // Unscaled overlay width
-#define OVERLAY_HEIGHT PILL_SIZE // Unscaled overlay height
 #define OVERLAY_BPP 4 // 32-bit ARGB
 #define OVERLAY_DEPTH 32
-#define OVERLAY_PITCH (OVERLAY_WIDTH * OVERLAY_BPP)
 #define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB format
 #define OVERLAY_FB 0 // Framebuffer device index
 #define OVERLAY_ID 1 // Overlay plane ID
@@ -961,9 +958,11 @@ static struct OVL_Context {
  * @note Uses per-pixel alpha (not global alpha)
  */
 SDL_Surface* PLAT_initOverlay(void) {
-	// Create SDL surface (scaled by SCALE2 macro)
-	ovl.overlay = SDL_CreateRGBSurfaceFrom(NULL, SCALE2(OVERLAY_WIDTH, OVERLAY_HEIGHT),
-	                                       OVERLAY_DEPTH, SCALE1(OVERLAY_PITCH), OVERLAY_RGBA_MASK);
+	// Create SDL surface (DP-scaled)
+	int overlay_size = DP(ui.pill_height);
+	int overlay_pitch = overlay_size * OVERLAY_BPP;
+	ovl.overlay = SDL_CreateRGBSurfaceFrom(NULL, overlay_size, overlay_size, OVERLAY_DEPTH,
+	                                       overlay_pitch, OVERLAY_RGBA_MASK);
 	uint32_t size = ovl.overlay->h * ovl.overlay->pitch;
 
 	// Allocate ION memory for overlay buffer
@@ -982,8 +981,8 @@ SDL_Surface* PLAT_initOverlay(void) {
 	// Calculate overlay position (top-right corner)
 	int x, y, w, h;
 	w = h = ovl.overlay->w;
-	x = FIXED_WIDTH - SCALE1(PADDING) - w;
-	y = SCALE1(PADDING);
+	x = FIXED_WIDTH - DP(ui.padding) - w;
+	y = DP(ui.padding);
 
 	// Configure overlay info
 	ovl.oinfo.mem_off = (uintptr_t)ovl.ov_info.padd - vid.finfo.smem_start; // Offset from FB base

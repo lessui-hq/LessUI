@@ -152,7 +152,8 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 				best_pill = pill;
 				best_rows = content_rows;
 				best_is_even = 1;
-				LOG_info("Row calc: %d rows → pill=%ddp (%dpx even) ✓\n", content_rows, pill, pill_px);
+				LOG_info("Row calc: %d rows → pill=%ddp (%dpx even) ✓\n", content_rows, pill,
+				         pill_px);
 				break;
 			} else if (best_rows == 0) {
 				// Acceptable but odd pixels - keep as backup
@@ -184,6 +185,7 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	ui.padding = DEFAULT_PADDING;
 
 	int used_dp = (ui.row_count + 1) * ui.pill_height;
+	(void)used_dp; // Used in LOG_info below
 	LOG_info("Row calc: FINAL rows=%d, pill=%ddp (%dpx), using %d/%d dp (%.1f%%)\n", ui.row_count,
 	         ui.pill_height, DP(ui.pill_height), used_dp, available_dp,
 	         (used_dp * 100.0f) / available_dp);
@@ -201,6 +203,10 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	// visual weight of font glyphs (most text sits above baseline, descenders are rare)
 	// Gives ~4dp for 30dp pill, scales proportionally with pill height
 	ui.text_baseline = (ui.pill_height * 2) / 15;
+
+	// Settings indicators
+	ui.settings_size = ui.pill_height / 8; // ~4dp for 30dp pill
+	ui.settings_width = 80; // Fixed width in dp
 
 	LOG_info("UI_initLayout: %dx%d @ %.2f\" → PPI=%.0f, dp_scale=%.2f\n", screen_width,
 	         screen_height, diagonal_inches, ppi, gfx_dp_scale);
@@ -497,17 +503,16 @@ SDL_Surface* GFX_init(int mode) {
 			}
 
 			// Extract this asset region from source sheet into RGBA8888 surface
-			SDL_Surface* extracted = SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32,
-			                                               RGBA_MASK_8888);
+			SDL_Surface* extracted =
+			    SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32, RGBA_MASK_8888);
 			// Disable alpha-blending to copy RGBA data directly (not blend with dst)
 			SDLX_SetAlpha(loaded_assets, 0, 0);
 			SDL_BlitSurface(loaded_assets, &src_rect, extracted, &(SDL_Rect){0, 0});
-			SDLX_SetAlpha(loaded_assets, SDL_SRCALPHA, 0);  // Re-enable for later
+			SDLX_SetAlpha(loaded_assets, SDL_SRCALPHA, 0); // Re-enable for later
 
 			// Scale this specific asset to its target size (keep in RGBA8888)
-			SDL_Surface* scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32,
-			                                           RGBA_MASK_8888);
-			GFX_scaleBilinear(extracted, scaled);  // Direct pixel copy preserves alpha
+			SDL_Surface* scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32, RGBA_MASK_8888);
+			GFX_scaleBilinear(extracted, scaled); // Direct pixel copy preserves alpha
 
 			// Place the scaled asset into the destination sheet
 			// Disable alpha-blending to copy RGBA data directly
@@ -1170,7 +1175,8 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 		// label - center text in button using DP-aware centering
 		// Bias vertical position up slightly to account for visual weight of glyphs
 		text = TTF_RenderUTF8_Blended(font.medium, button, COLOR_BUTTON_TEXT);
-		int offset_y = DP_CENTER_PX(ui.button_size, text->h) - DP(1); // Move up ~1dp for visual balance
+		int offset_y =
+		    DP_CENTER_PX(ui.button_size, text->h) - DP(1); // Move up ~1dp for visual balance
 		SDL_BlitSurface(text, NULL, dst,
 		                &(SDL_Rect){dst_rect->x + DP_CENTER_PX(ui.button_size, text->w),
 		                            dst_rect->y + offset_y});
@@ -1187,8 +1193,8 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 		int oy = special_case ? DP(-2) : 0;
 		SDL_BlitSurface(text, NULL, dst,
 		                &(SDL_Rect){ox + dst_rect->x,
-		                            oy + dst_rect->y + DP_CENTER_PX(ui.button_size, text->h), text->w,
-		                            text->h});
+		                            oy + dst_rect->y + DP_CENTER_PX(ui.button_size, text->h),
+		                            text->w, text->h});
 		ox += text->w;
 		ox += DP(ui.button_size) / 4;
 		SDL_FreeSurface(text);
@@ -1199,8 +1205,9 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 	// hint text
 	text = TTF_RenderUTF8_Blended(font.small, hint, COLOR_WHITE);
 	SDL_BlitSurface(text, NULL, dst,
-	                &(SDL_Rect){ox + dst_rect->x, dst_rect->y + DP_CENTER_PX(ui.button_size, text->h),
-	                            text->w, text->h});
+	                &(SDL_Rect){ox + dst_rect->x,
+	                            dst_rect->y + DP_CENTER_PX(ui.button_size, text->h), text->w,
+	                            text->h});
 	SDL_FreeSurface(text);
 }
 
@@ -1279,7 +1286,7 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 	int ow = 0;
 
 	if (show_setting && !GetHDMI()) {
-		ow = DP(ui.pill_height + SETTINGS_WIDTH + 10 + 4);
+		ow = DP(ui.pill_height + ui.settings_width + ui.padding + 4);
 		ox = ui.screen_width_px - DP(ui.padding) - ow;
 		oy = DP(ui.padding);
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
@@ -1305,14 +1312,15 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 		GFX_blitAsset(asset, NULL, dst, &(SDL_Rect){ax, ay});
 
 		ox += DP(ui.pill_height);
-		oy += DP((ui.pill_height - SETTINGS_SIZE) / 2);
+		oy += (DP(ui.pill_height) - DP(ui.settings_size)) / 2;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_BAR_BG : ASSET_BAR_BG_MENU, dst,
-		             &(SDL_Rect){ox, oy, DP(SETTINGS_WIDTH), DP(SETTINGS_SIZE)});
+		             &(SDL_Rect){ox, oy, DP(ui.settings_width), DP(ui.settings_size)});
 
 		float percent = ((float)(setting_value - setting_min) / (setting_max - setting_min));
 		if (show_setting == 1 || setting_value > 0) {
-			GFX_blitPill(ASSET_BAR, dst,
-			             &(SDL_Rect){ox, oy, DP(SETTINGS_WIDTH) * percent, DP(SETTINGS_SIZE)});
+			GFX_blitPill(
+			    ASSET_BAR, dst,
+			    &(SDL_Rect){ox, oy, DP(ui.settings_width) * percent, DP(ui.settings_size)});
 		}
 	} else {
 		// TODO: handle wifi

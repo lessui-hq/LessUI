@@ -651,11 +651,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 // Overlay (On-Screen Display)
 ///////////////////////////////
 
-#define OVERLAY_WIDTH PILL_SIZE
-#define OVERLAY_HEIGHT PILL_SIZE
 #define OVERLAY_BPP 4
 #define OVERLAY_DEPTH 16
-#define OVERLAY_PITCH (OVERLAY_WIDTH * OVERLAY_BPP)
 #define OVERLAY_RGBA_MASK 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 // ARGB
 
 static struct OVL_Context {
@@ -668,8 +665,9 @@ static struct OVL_Context {
  * @return Overlay surface for rendering status indicators
  */
 SDL_Surface* PLAT_initOverlay(void) {
-	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, SCALE2(OVERLAY_WIDTH, OVERLAY_HEIGHT),
-	                                   OVERLAY_DEPTH, OVERLAY_RGBA_MASK);
+	int overlay_size = DP(ui.pill_height);
+	ovl.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, OVERLAY_DEPTH,
+	                                   OVERLAY_RGBA_MASK);
 	return ovl.overlay;
 }
 

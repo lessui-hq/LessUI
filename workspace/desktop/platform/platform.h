@@ -131,7 +131,6 @@
 
 // Desktop uses a virtual 2.78" screen at VGA resolution to get dp_scale ≈ 2.0 (with 144 PPI baseline)
 #define SCREEN_DIAGONAL 2.78f // Virtual screen diagonal for consistent scaling
-#define FIXED_SCALE 2 // 2x scaling factor for UI
 #define FIXED_WIDTH 640 // Screen width in pixels
 #define FIXED_HEIGHT 480 // Screen height in pixels (VGA)
 #define FIXED_BPP 2 // Bytes per pixel (RGB565)
@@ -145,12 +144,6 @@
 // #define HDMI_HEIGHT 720
 // #define HDMI_PITCH 	(HDMI_WIDTH * FIXED_BPP)
 // #define HDMI_SIZE	(HDMI_PITCH * HDMI_HEIGHT)
-
-///////////////////////////////
-// UI Layout Configuration
-///////////////////////////////
-
-// MAIN_ROW_COUNT and PADDING are now calculated automatically via DP system
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings
