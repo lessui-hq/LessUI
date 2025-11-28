@@ -26,18 +26,18 @@ all: build
 
 # Setup hook - runs once before any platform builds
 setup:
-	@echo "utils/makefile: UTIL_NAMES=$(UTIL_NAMES)"
-	@echo "utils/makefile: DESTDIR=$(DESTDIR)"
 	@for util in $(UTIL_NAMES); do \
-		echo "  Calling setup for $$util"; \
 		$(MAKE) -C "$$util" setup DESTDIR=$(DESTDIR); \
 	done
 
-# Build hook - runs per-platform in Docker
-build:
-	@for util in $(UTIL_NAMES); do \
-		$(MAKE) -C "$$util" build PLATFORM=$(PLATFORM); \
-	done
+# Build hook - runs per-platform in Docker (parallel via make -j)
+# Each util is an independent target, so make -j will parallelize them
+build: $(UTIL_NAMES)
+
+$(UTIL_NAMES): FORCE
+	@$(MAKE) -C "$@" build PLATFORM=$(PLATFORM)
+
+FORCE:
 
 # Install hook - runs per-platform outside Docker
 install:

@@ -57,145 +57,112 @@ else
     PLATFORMS_TO_GENERATE="$TARGET_PLATFORM"
 fi
 
-# Function to get platform metadata
-get_platform_metadata() {
-    local platform=$1
-    local key=$2
-    jq -r ".platforms.\"$platform\".\"$key\"" "$PLATFORMS_JSON"
-}
+# Parallel job count (use nproc if available, fallback to 4)
+PARALLEL_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-# Function to get core metadata
-get_core_metadata() {
-    local core=$1
-    local key=$2
-    jq -r ".stock_cores.\"$core\".\"$key\"" "$CORES_JSON"
-}
+# Export variables for parallel subprocesses
+export TEMPLATE_DIR BUILD_DIR PLATFORMS_JSON CORES_JSON
 
-# Function to check if core requires ARM64
-is_arm64_only() {
-    local core=$1
-    local arm64_only=$(jq -r ".stock_cores.\"$core\".arm64_only // false" "$CORES_JSON")
-    [ "$arm64_only" = "true" ]
-}
-
-# Function to check if core is compatible with platform architecture
-is_core_compatible_with_platform() {
+# Function to generate a single pak (called in parallel)
+# Arguments: platform core
+generate_pak() {
     local platform=$1
     local core=$2
 
-    # Get platform architecture
-    local platform_arch=$(jq -r ".platforms.\"$platform\".arch" "$PLATFORMS_JSON")
+    # Get metadata (inline jq calls for subprocess isolation)
+    local nice_prefix=$(jq -r ".platforms.\"$platform\".nice_prefix" "$PLATFORMS_JSON")
+    local emu_exe=$(jq -r ".stock_cores.\"$core\".emu_exe" "$CORES_JSON")
 
-    # If core is arm64_only and platform is arm32, skip
-    if [ "$platform_arch" = "arm32" ] && is_arm64_only "$core"; then
-        return 1  # Not compatible
+    # Create output directory
+    local output_dir="$BUILD_DIR/SYSTEM/$platform/paks/Emus/${core}.pak"
+    mkdir -p "$output_dir"
+
+    # Generate launch.sh from template
+    local launch_template="$TEMPLATE_DIR/launch.sh.template"
+    if [ -f "$launch_template" ]; then
+        sed -e "s|{{EMU_EXE}}|$emu_exe|g" \
+            -e "s|{{NICE_PREFIX}}|$nice_prefix|g" \
+            "$launch_template" > "$output_dir/launch.sh"
+        chmod +x "$output_dir/launch.sh"
     fi
 
-    return 0  # Compatible
+    # Copy config files - base first, then platform-specific overwrites
+    local cfg_base_dir="$TEMPLATE_DIR/configs/base/${core}"
+    local cfg_platform_dir="$TEMPLATE_DIR/configs/${platform}/${core}"
+
+    if [ -d "$cfg_base_dir" ]; then
+        cp "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+    fi
+    if [ -d "$cfg_platform_dir" ]; then
+        cp "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+    fi
+
+}
+export -f generate_pak
+
+# Function to check if core is compatible with platform architecture
+is_core_compatible() {
+    local platform=$1
+    local core=$2
+
+    local platform_arch=$(jq -r ".platforms.\"$platform\".arch" "$PLATFORMS_JSON")
+    local arm64_only=$(jq -r ".stock_cores.\"$core\".arm64_only // false" "$CORES_JSON")
+
+    if [ "$platform_arch" = "arm32" ] && [ "$arm64_only" = "true" ]; then
+        return 1
+    fi
+    return 0
 }
 
 # Function to check if core is in target list
 core_in_target_list() {
     local core=$1
     if [ ${#TARGET_CORES[@]} -eq 0 ]; then
-        return 0  # No filter, include all
+        return 0
     fi
     local target
     for target in "${TARGET_CORES[@]}"; do
-        if [ "$target" = "$core" ]; then
-            return 0  # Found
-        fi
+        [ "$target" = "$core" ] && return 0
     done
-    return 1  # Not found
+    return 1
 }
 
-# Function to generate a pak
-generate_pak() {
-    local platform=$1
-    local core=$2
+# Main generation
+echo "Generating emulator paks..."
 
-    echo "  Generating ${core}.pak for $platform"
-
-    # Get metadata
-    local nice_prefix=$(get_platform_metadata "$platform" "nice_prefix")
-    local emu_exe=$(get_core_metadata "$core" "emu_exe")
-
-    # Create output directory
-    local output_dir="$BUILD_DIR/SYSTEM/$platform/paks/Emus/${core}.pak"
-
-    mkdir -p "$output_dir"
-
-    # Generate launch.sh
-    local launch_output="$output_dir/launch.sh"
-
-    # Generate from template with substitutions
-    local launch_template="$TEMPLATE_DIR/launch.sh.template"
-    if [ -f "$launch_template" ]; then
-        sed -e "s|{{EMU_EXE}}|$emu_exe|g" \
-            -e "s|{{NICE_PREFIX}}|$nice_prefix|g" \
-            "$launch_template" > "$launch_output"
-        chmod +x "$launch_output"
-    fi
-
-    # Generate config files - copy from base, then overwrite/add with platform-specific
-    # This mirrors the pak output structure: {TAG}/default.cfg, default-{device}.cfg, etc.
-
-    local cfg_base_dir="$TEMPLATE_DIR/configs/base/${core}"
-    local cfg_platform_dir="$TEMPLATE_DIR/configs/${platform}/${core}"
-
-    # Copy base configs first (if exists)
-    if [ -d "$cfg_base_dir" ]; then
-        cp "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
-    fi
-
-    # Copy/overwrite with platform-specific configs (if exists)
-    if [ -d "$cfg_platform_dir" ]; then
-        cp "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
-    fi
-}
-
-# Main generation loop
-echo "Generating emulator paks from templates..."
-echo "Emulator template dir: $TEMPLATE_DIR"
-echo "Output dir: $BUILD_DIR"
-echo ""
-
+# Build list of all platform/core pairs to generate
+WORK_LIST=""
 for platform in $PLATFORMS_TO_GENERATE; do
-    echo "Platform: $platform"
-
-    # Get all cores from stock_cores
     CORES=$(jq -r '.stock_cores | keys[]' "$CORES_JSON")
 
-    # Generate all core paks (SYSTEM)
     for core in $CORES; do
-        # If specific cores requested, filter
+        # Filter by target cores if specified
         if ! core_in_target_list "$core"; then
             continue
         fi
 
         # Check architecture compatibility
-        if ! is_core_compatible_with_platform "$platform" "$core"; then
-            echo "  Skipping $core (requires ARM64)"
+        if ! is_core_compatible "$platform" "$core"; then
             continue
         fi
 
-        generate_pak "$platform" "$core"
+        WORK_LIST="$WORK_LIST$platform $core"$'\n'
     done
+done
 
-    # Copy direct paks (non-template paks like PAK.pak)
+# Generate paks in parallel using xargs
+PAK_COUNT=$(echo "$WORK_LIST" | grep -c . || echo 0)
+echo "$WORK_LIST" | xargs -P "$PARALLEL_JOBS" -L 1 bash -c 'generate_pak "$@"' _
+
+# Copy direct paks (sequential - few files)
+for platform in $PLATFORMS_TO_GENERATE; do
     if [ -d "$DIRECT_PAKS_DIR" ]; then
-        echo "  Copying direct paks..."
         for pak in "$DIRECT_PAKS_DIR"/*.pak; do
             if [ -d "$pak" ]; then
-                pak_name=$(basename "$pak")
-                echo "    Copying ${pak_name}"
                 cp -r "$pak" "$BUILD_DIR/SYSTEM/$platform/paks/Emus/"
             fi
         done
     fi
-
-    echo ""
 done
 
-echo "Emulator pak generation complete!"
-echo "(Tool paks are handled by 'make system')"
+echo "Generated $PAK_COUNT emulator paks"

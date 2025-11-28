@@ -13,12 +13,27 @@ endif
 REQUIRES_SDL=other/sdl
 REQUIRES_COMMANDER=other/DinguxCommander
 
-all: readmes
-	cd blank && make
-	cd batmon && make
-	cd lumon && make
-	cd show && make
-	cd overclock && make
+# Platform-specific binaries (can run in parallel)
+PLATFORM_TARGETS = blank batmon lumon show overclock
+
+.PHONY: $(PLATFORM_TARGETS)
+
+all: readmes $(PLATFORM_TARGETS)
+
+blank:
+	$(MAKE) -C blank
+
+batmon:
+	$(MAKE) -C batmon
+
+lumon:
+	$(MAKE) -C lumon
+
+show:
+	$(MAKE) -C show
+
+overclock:
+	$(MAKE) -C overclock
 
 early: $(REQUIRES_SDL) $(REQUIRES_COMMANDER)
 	cd other/sdl && ./make.sh

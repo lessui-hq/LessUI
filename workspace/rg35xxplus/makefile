@@ -17,10 +17,21 @@ REQUIRES_SDL2=other/sdl2
 REQUIRES_DTC=other/dtc
 REQUIRES_FBSET=other/fbset
 
-all: readmes
+# Platform-specific binaries (can run in parallel after readmes)
+PLATFORM_TARGETS = boot init show
+
+.PHONY: $(PLATFORM_TARGETS)
+
+all: readmes $(PLATFORM_TARGETS)
+
+boot:
 	cd boot && ./build.sh
-	cd init && make
-	cd show && make
+
+init:
+	$(MAKE) -C init
+
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_UNZIP60) $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	mkdir -p other

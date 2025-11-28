@@ -67,8 +67,9 @@ clean:
 	@rm -f $(INIT_IF_NECESSARY)
 
 # Build all workspace components in Docker (non-interactive)
+# Uses -j for parallel builds (nproc detects available cores in container)
 build: $(INIT_IF_NECESSARY)
-	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash -c '. ~/.bashrc && cd /root/workspace && make'
+	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash -c '. ~/.bashrc && cd /root/workspace && make -j$$(nproc)'
 
 # Force pull latest pre-built container (useful for updates)
 force-pull:

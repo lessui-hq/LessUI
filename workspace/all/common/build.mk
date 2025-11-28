@@ -25,14 +25,18 @@
 #   INSTALL_DEST  - Override install destination
 
 ###########################################################
-# Hook interface gate - setup, install, and clean don't need PLATFORM/CROSS_COMPILE
-# (setup runs once before builds, install runs on host after Docker builds, clean is cleanup)
-ifeq ($(filter setup install clean,$(MAKECMDGOALS)),)
-
+# PLATFORM is needed for install (to find binaries) but not for setup/clean
 ifeq (,$(PLATFORM))
 PLATFORM := $(UNION_PLATFORM)
 endif
 
+# Hook interface gate - setup and clean don't need PLATFORM/CROSS_COMPILE
+# install needs PLATFORM but not CROSS_COMPILE (runs on host after Docker builds)
+ifeq ($(filter setup clean,$(MAKECMDGOALS)),)
+
+# install needs PLATFORM to find the built binaries
+ifeq ($(filter install,$(MAKECMDGOALS)),)
+# build target - needs everything
 ifeq (,$(PLATFORM))
 $(error please specify PLATFORM, eg. PLATFORM=miyoomini make)
 endif
@@ -46,7 +50,8 @@ endif
 PLATFORM_DEPTH ?= ../../../
 include $(PLATFORM_DEPTH)$(PLATFORM)/platform/makefile.env
 
-endif  # ifeq (no setup/install/clean)
+endif  # not install
+endif  # not setup/clean
 
 ###########################################################
 # Defaults

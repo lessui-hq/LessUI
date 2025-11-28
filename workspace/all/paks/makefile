@@ -17,12 +17,9 @@ ifeq (,$(PLATFORM))
 PLATFORM=$(UNION_PLATFORM)
 endif
 
-# Discover all paks with makefiles (either root or src/)
-PAK_ROOT_MAKEFILES := $(wildcard */makefile)
+# Discover all paks with src/ makefiles (these need compilation)
 PAK_SRC_MAKEFILES := $(wildcard */src/makefile)
-PAK_ROOT_NAMES := $(patsubst %/makefile,%,$(PAK_ROOT_MAKEFILES))
 PAK_SRC_NAMES := $(patsubst %/src/makefile,%,$(PAK_SRC_MAKEFILES))
-ALL_PAK_NAMES := $(sort $(PAK_ROOT_NAMES) $(PAK_SRC_NAMES))
 
 .PHONY: setup build install clean all
 
@@ -31,23 +28,23 @@ all: build
 
 # Setup hook - runs once before any platform builds
 setup:
-	@echo "paks/makefile: DESTDIR=$(DESTDIR)"
 	@for pak_dir in */; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
-			echo "  Calling setup for $$pak (root makefile)"; \
 			$(MAKE) -C "$$pak" setup DESTDIR=$(DESTDIR); \
 		elif [ -f "$$pak/src/makefile" ]; then \
-			echo "  Calling setup for $$pak (src/makefile)"; \
 			$(MAKE) -C "$$pak/src" setup DESTDIR=$(DESTDIR); \
 		fi; \
 	done
 
-# Build hook - runs per-platform in Docker
-build:
-	@for pak in $(PAK_SRC_NAMES); do \
-		$(MAKE) -C "$$pak/src" build PLATFORM=$(PLATFORM); \
-	done
+# Build hook - runs per-platform in Docker (parallel via make -j)
+# Each pak is an independent target, so make -j will parallelize them
+build: $(PAK_SRC_NAMES)
+
+$(PAK_SRC_NAMES): FORCE
+	@$(MAKE) -C "$@/src" build PLATFORM=$(PLATFORM)
+
+FORCE:
 
 # Install hook - runs per-platform outside Docker (construct paks)
 install:
