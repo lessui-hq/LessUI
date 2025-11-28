@@ -1,6 +1,6 @@
-# File Transfer
+# File Server
 
-Web-based file transfer tool for LessUI. Allows uploading and downloading files via a web browser.
+Web-based file server for LessUI. Allows uploading and downloading files via a web browser.
 
 ## LessUI Integration
 
@@ -11,14 +11,14 @@ This pak has been integrated into LessUI from Jose Gonzalez's minui-dufs-server-
 **Forked from commit:** `2171b4240133904721ffe25f8f450e0e7ab26142`
 
 **Changes made for LessUI:**
-- Renamed from "HTTP Server" to "File Transfer" for clarity
+- Renamed from "HTTP Server" to "File Server" for clarity
 - Adapted pak.json to match LessUI schema (removed author, repo_url, release_filename fields)
 - Updated version to 1.0.0
 - Follows LessUI pak directory structure in `workspace/all/paks/`
 
 ## Overview
 
-File Transfer runs a web server ([dufs](https://github.com/sigoden/dufs/)) that lets you:
+File Server runs a web server ([dufs](https://github.com/sigoden/dufs/)) that lets you:
 - Browse device files from your web browser
 - Upload files to your device
 - Download files from your device
@@ -34,7 +34,7 @@ File Transfer runs a web server ([dufs](https://github.com/sigoden/dufs/)) that 
 ## Usage
 
 1. Connect device to WiFi using the Wifi pak
-2. Launch `Tools > File Transfer`
+2. Launch `Tools > File Server`
 3. Toggle "Enabled" to start the server
 4. Note the IP address shown in settings
 5. Open web browser on your computer
@@ -50,9 +50,9 @@ File Transfer runs a web server ([dufs](https://github.com/sigoden/dufs/)) that 
 
 ### Configuration
 
-**Custom Port:** Create `$SDCARD_PATH/.userdata/$PLATFORM/File Transfer/port` with desired port number
+**Custom Port:** Create `$SDCARD_PATH/.userdata/$PLATFORM/File Server/port` with desired port number
 
-**Logs:** Debug logs written to `$LOGS_PATH/File Transfer.txt`
+**Logs:** Debug logs written to `$LOGS_PATH/File Server.txt`
 
 ## Technical Details
 

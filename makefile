@@ -165,9 +165,14 @@ system:
 			[ -f "$$pak_dir/launch.sh" ] && cp "$$pak_dir/launch.sh" "$$output_dir/" && chmod +x "$$output_dir/launch.sh"; \
 			[ -f "$$pak_dir/pak.json" ] && cp "$$pak_dir/pak.json" "$$output_dir/"; \
 			[ -f "$$pak_dir/settings.json" ] && cp "$$pak_dir/settings.json" "$$output_dir/"; \
-			if [ -d "$$pak_dir/res/$(PLATFORM)" ]; then \
+			if [ -d "$$pak_dir/res" ]; then \
 				mkdir -p "$$output_dir/res"; \
-				cp -r "$$pak_dir/res/$(PLATFORM)" "$$output_dir/res/"; \
+				for res_file in "$$pak_dir/res"/*; do \
+					[ -f "$$res_file" ] && cp "$$res_file" "$$output_dir/res/"; \
+				done; \
+				if [ -d "$$pak_dir/res/$(PLATFORM)" ]; then \
+					cp -r "$$pak_dir/res/$(PLATFORM)" "$$output_dir/res/"; \
+				fi; \
 			fi; \
 			if [ -d "$$pak_dir/bin/$(PLATFORM)" ]; then \
 				mkdir -p "$$output_dir/bin"; \
