@@ -167,9 +167,18 @@ system:
 			mkdir -p "$$output_dir"; \
 			[ -f "$$pak_dir/launch.sh" ] && cp "$$pak_dir/launch.sh" "$$output_dir/" && chmod +x "$$output_dir/launch.sh"; \
 			[ -f "$$pak_dir/pak.json" ] && cp "$$pak_dir/pak.json" "$$output_dir/"; \
-			[ -d "$$pak_dir/res" ] && cp -r "$$pak_dir/res" "$$output_dir/"; \
-			[ -d "$$pak_dir/bin" ] && cp -r "$$pak_dir/bin" "$$output_dir/"; \
-			[ -d "$$pak_dir/lib" ] && cp -r "$$pak_dir/lib" "$$output_dir/"; \
+			if [ -d "$$pak_dir/res/$(PLATFORM)" ]; then \
+				mkdir -p "$$output_dir/res"; \
+				cp -r "$$pak_dir/res/$(PLATFORM)" "$$output_dir/res/"; \
+			fi; \
+			if [ -d "$$pak_dir/bin/$(PLATFORM)" ]; then \
+				mkdir -p "$$output_dir/bin"; \
+				cp -r "$$pak_dir/bin/$(PLATFORM)" "$$output_dir/bin/"; \
+			fi; \
+			if [ -d "$$pak_dir/lib/$(PLATFORM)" ]; then \
+				mkdir -p "$$output_dir/lib"; \
+				cp -r "$$pak_dir/lib/$(PLATFORM)" "$$output_dir/lib/"; \
+			fi; \
 			if [ -d "$$pak_dir/$(PLATFORM)" ]; then \
 				set +e; \
 				cp -r "$$pak_dir/$(PLATFORM)/"* "$$output_dir/" 2>/dev/null; \
