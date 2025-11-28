@@ -5,7 +5,7 @@ PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
 
 IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 if [ -z "$IP" ]; then
-	$PRESENTER "WiFi IP Address:\n\nUnassigned" 4
+	$PRESENTER --message "WiFi IP Address:\n\nUnassigned" --timeout 4
 else
-	$PRESENTER "WiFi IP Address:\n\n$IP" 4
+	$PRESENTER --message "WiFi IP Address:\n\n$IP" --timeout 4
 fi

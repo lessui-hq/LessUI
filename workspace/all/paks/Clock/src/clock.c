@@ -371,9 +371,9 @@ int main(int argc, char* argv[]) {
 	if (save_changes) {
 		PLAT_setDateTime(year_selected, month_selected, day_selected, hour_selected,
 		                 minute_selected, seconds_selected);
-		system("minui-presenter 'Clock updated successfully!' 2");
+		system("minui-presenter --message 'Clock updated successfully!' --timeout 2");
 	} else {
-		system("minui-presenter 'Clock update cancelled' 2");
+		system("minui-presenter --message 'Clock update cancelled' --timeout 2");
 	}
 
 	return EXIT_SUCCESS;

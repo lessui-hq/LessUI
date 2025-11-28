@@ -17,7 +17,7 @@ hide() {
 
 show() {
 	hide
-	$PRESENTER "$1" 300 &
+	$PRESENTER --message "$1" --timeout 300 &
 	PRESENTER_PID=$!
 }
 
@@ -67,7 +67,7 @@ echo "flashing updated boot.img"
 flashcp boot.img /dev/mtd2 && sync
 
 hide
-$PRESENTER "Boot logo flashed!\n\nRebooting in 2 seconds..." 2
+$PRESENTER --message "Boot logo flashed!\n\nRebooting in 2 seconds..." --timeout 2
 echo "done, rebooting"
 
 sleep 2

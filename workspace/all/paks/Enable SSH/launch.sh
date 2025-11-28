@@ -6,7 +6,7 @@ PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
 
 # must be connected to wifi
 if [ "$(cat /sys/class/net/wlan0/operstate)" != "up" ]; then
-	$PRESENTER "WiFi not connected.\n\nPlease connect to WiFi first." 4
+	$PRESENTER --message "WiFi not connected.\n\nPlease connect to WiFi first." --timeout 4
 	exit 0
 fi
 
@@ -28,7 +28,7 @@ fi
 INSTALL_PID=$!
 
 # Show installing message while it runs
-$PRESENTER "Installing SSH server...\n\nThis may take a few minutes.\nDevice will reboot when done." 200 &
+$PRESENTER --message "Installing SSH server...\n\nThis may take a few minutes.\nDevice will reboot when done." --timeout 200 &
 PRESENTER_PID=$!
 
 # Wait for installation to complete
@@ -38,10 +38,10 @@ wait "$INSTALL_PID"
 kill "$PRESENTER_PID" 2>/dev/null
 
 if grep -q "Success" ./log.txt; then
-	$PRESENTER "SSH enabled successfully!\n\nLogin: root / root\nDevice will reboot now." 5 &
+	$PRESENTER --message "SSH enabled successfully!\n\nLogin: root / root\nDevice will reboot now." --timeout 5 &
 	sleep 5
 	mv "$DIR" "$DIR.disabled"
 	reboot
 else
-	$PRESENTER "SSH installation failed.\nCheck log.txt for details." 5
+	$PRESENTER --message "SSH installation failed.\nCheck log.txt for details." --timeout 5
 fi

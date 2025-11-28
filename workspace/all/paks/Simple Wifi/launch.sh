@@ -34,7 +34,7 @@ disconnect()
 {
 	echo "disconnect"
 	wifictl disable
-	$PRESENTER "WiFi disconnected" 2
+	$PRESENTER --message "WiFi disconnected" --timeout 2
 	STATUS=down
 }
 
@@ -43,7 +43,7 @@ connect()
 	echo "connect"
 	wifictl enable &
 	DELAY=30
-	$PRESENTER "Connecting to WiFi...\n\nPlease wait up to 30 seconds." $DELAY &
+	$PRESENTER --message "Connecting to WiFi...\n\nPlease wait up to 30 seconds." --timeout $DELAY &
 	PRESENTER_PID=$!
 
 	for _ in $(seq 1 $DELAY); do
@@ -57,9 +57,9 @@ connect()
 	kill "$PRESENTER_PID" 2>/dev/null
 
 	if [ "$STATUS" = "up" ]; then
-		$PRESENTER "WiFi connected successfully!" 2
+		$PRESENTER --message "WiFi connected successfully!" --timeout 2
 	else
-		$PRESENTER "WiFi connection failed" 3
+		$PRESENTER --message "WiFi connection failed" --timeout 3
 	fi
 }
 
@@ -71,7 +71,7 @@ if [ "$WIFI_NAME" != "$CUR_NAME" ] || [ "$WIFI_PASS" != "$CUR_PASS" ]; then
 		disconnect
 	fi
 
-	$PRESENTER "Updating WiFi credentials..." 2
+	$PRESENTER --message "Updating WiFi credentials..." --timeout 2
 	set_setting wifi.ssid "$WIFI_NAME"
 	set_setting wifi.key "$WIFI_PASS"
 fi

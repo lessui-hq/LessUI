@@ -12,11 +12,11 @@ case "$PLATFORM" in
 		# Use system file manager on rg35xxplus
 		DIR="/mnt/vendor/bin/fileM"
 		if [ ! -d "$DIR" ]; then
-			$PRESENTER "File manager not found.\n\nUpdate stock firmware from Anbernic." 5
+			$PRESENTER --message "File manager not found.\n\nUpdate stock firmware from Anbernic." --timeout 5
 			exit 1
 		fi
 		if [ ! -f "$DIR/dinguxCommand_en.dge" ]; then
-			$PRESENTER "File manager binary missing or corrupt." 5
+			$PRESENTER --message "File manager binary missing or corrupt." --timeout 5
 			exit 1
 		fi
 		cd "$DIR" || exit 1
@@ -27,7 +27,7 @@ case "$PLATFORM" in
 		# Use 351Files on magicmini
 		BINARY="./bin/$PLATFORM/351Files"
 		if [ ! -f "$BINARY" ]; then
-			$PRESENTER "File manager not available for $PLATFORM" 3
+			$PRESENTER --message "File manager not available for $PLATFORM" --timeout 3
 			exit 1
 		fi
 		"$BINARY"
@@ -36,7 +36,7 @@ case "$PLATFORM" in
 		# Use DinguxCommander on all other platforms
 		BINARY="./bin/$PLATFORM/DinguxCommander"
 		if [ ! -f "$BINARY" ]; then
-			$PRESENTER "File manager not available for $PLATFORM" 3
+			$PRESENTER --message "File manager not available for $PLATFORM" --timeout 3
 			exit 1
 		fi
 		"$BINARY"

@@ -9,7 +9,7 @@ PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
 
 # Bail if already running
 if pidof adbd >/dev/null 2>&1; then
-	$PRESENTER "ADB is already running" 3
+	$PRESENTER --message "ADB is already running" --timeout 3
 	exit 0
 fi
 
@@ -17,7 +17,7 @@ fi
 case "$PLATFORM" in
 	miyoomini)
 		# Show progress message
-		$PRESENTER "Enabling WiFi and ADB...\n\nPlease wait up to 20 seconds." 20 &
+		$PRESENTER --message "Enabling WiFi and ADB...\n\nPlease wait up to 20 seconds." --timeout 20 &
 		PRESENTER_PID=$!
 
 		{
@@ -59,16 +59,16 @@ case "$PLATFORM" in
 		if pidof adbd >/dev/null 2>&1; then
 			IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 			if [ -n "$IP" ]; then
-				$PRESENTER "ADB enabled!\n\nConnect via:\nadb connect $IP:5555" 5
+				$PRESENTER --message "ADB enabled!\n\nConnect via:\nadb connect $IP:5555" --timeout 5
 			else
-				$PRESENTER "ADB enabled!\n\nGet IP from WiFi menu,\nthen: adb connect <ip>:5555" 5
+				$PRESENTER --message "ADB enabled!\n\nGet IP from WiFi menu,\nthen: adb connect <ip>:5555" --timeout 5
 			fi
 		else
-			$PRESENTER "Failed to start ADB.\n\nCheck $LOGS_PATH/$PAK_NAME.txt" 5
+			$PRESENTER --message "Failed to start ADB.\n\nCheck $LOGS_PATH/$PAK_NAME.txt" --timeout 5
 		fi
 		;;
 	*)
-		$PRESENTER "Platform $PLATFORM not supported" 3
+		$PRESENTER --message "Platform $PLATFORM not supported" --timeout 3
 		exit 1
 		;;
 esac

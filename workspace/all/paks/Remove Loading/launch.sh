@@ -14,7 +14,7 @@ case "$PLATFORM" in
 		overclock.elf "$CPU_SPEED_GAME" # slow down, my282 didn't like overclock during this operation
 
 		# Show progress
-		$PRESENTER "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" 120 &
+		$PRESENTER --message "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" --timeout 120 &
 		PRESENTER_PID=$!
 
 		{
@@ -34,7 +34,7 @@ case "$PLATFORM" in
 			unsquashfs customer
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to extract firmware.\nYour device is safe." 4
+				$PRESENTER --message "Failed to extract firmware.\nYour device is safe." --timeout 4
 				sync
 				exit 1
 			fi
@@ -45,7 +45,7 @@ case "$PLATFORM" in
 			mksquashfs squashfs-root customer.mod -comp xz -b 131072 -xattrs -all-root
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to repack firmware.\nYour device is safe." 4
+				$PRESENTER --message "Failed to repack firmware.\nYour device is safe." --timeout 4
 				sync
 				exit 1
 			fi
@@ -53,7 +53,7 @@ case "$PLATFORM" in
 			dd if=customer.mod of=/dev/mtdblock6 bs=128K conv=fsync
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to write firmware!\nDevice may need recovery." 5
+				$PRESENTER --message "Failed to write firmware!\nDevice may need recovery." --timeout 5
 				sync
 				exit 1
 			fi
@@ -61,7 +61,7 @@ case "$PLATFORM" in
 		} &> ./log.txt
 
 		kill "$PRESENTER_PID" 2>/dev/null
-		$PRESENTER "Loading screen removed!\n\nRebooting in 2 seconds..." 2
+		$PRESENTER --message "Loading screen removed!\n\nRebooting in 2 seconds..." --timeout 2
 		mv "$DIR" "$DIR.disabled"
 		sync
 		reboot
@@ -71,7 +71,7 @@ case "$PLATFORM" in
 		overclock.elf performance 2 1200 384 1080 0
 
 		# Show progress
-		$PRESENTER "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" 120 &
+		$PRESENTER --message "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" --timeout 120 &
 		PRESENTER_PID=$!
 
 		{
@@ -91,7 +91,7 @@ case "$PLATFORM" in
 			unsquashfs rootfs
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to extract firmware.\nYour device is safe." 4
+				$PRESENTER --message "Failed to extract firmware.\nYour device is safe." --timeout 4
 				sync
 				exit 1
 			fi
@@ -102,7 +102,7 @@ case "$PLATFORM" in
 			mksquashfs squashfs-root rootfs.mod -comp xz -b 262144 -Xbcj arm
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to repack firmware.\nYour device is safe." 4
+				$PRESENTER --message "Failed to repack firmware.\nYour device is safe." --timeout 4
 				sync
 				exit 1
 			fi
@@ -110,7 +110,7 @@ case "$PLATFORM" in
 			mtd write rootfs.mod /dev/mtd3
 			if [ $? -ne 0 ]; then
 				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER "Failed to write firmware!\nDevice may need recovery." 5
+				$PRESENTER --message "Failed to write firmware!\nDevice may need recovery." --timeout 5
 				sync
 				exit 1
 			fi
@@ -118,21 +118,21 @@ case "$PLATFORM" in
 		} &> ./log.txt
 
 		kill "$PRESENTER_PID" 2>/dev/null
-		$PRESENTER "Loading screen removed successfully!" 3
+		$PRESENTER --message "Loading screen removed successfully!" --timeout 3
 		mv "$DIR" "$DIR.disabled"
 		sync
 		;;
 
 	tg5040)
 		sed -i '/^\/usr\/sbin\/pic2fb \/etc\/splash.png/d' /etc/init.d/runtrimui
-		$PRESENTER "Boot loading screen removed!" 3
+		$PRESENTER --message "Boot loading screen removed!" --timeout 3
 
 		mv "$DIR" "$DIR.disabled"
 		sync
 		;;
 
 	*)
-		$PRESENTER "Remove Loading not supported on $PLATFORM" 3
+		$PRESENTER --message "Remove Loading not supported on $PLATFORM" --timeout 3
 		exit 1
 		;;
 esac

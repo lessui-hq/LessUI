@@ -11,7 +11,7 @@ PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
 # Platform-specific implementations
 case "$PLATFORM" in
 	miyoomini)
-		$PRESENTER "Flashing boot logo..." 30 &
+		$PRESENTER --message "Flashing boot logo..." --timeout 30 &
 		PRESENTER_PID=$!
 
 		{
@@ -49,9 +49,9 @@ case "$PLATFORM" in
 		kill "$PRESENTER_PID" 2>/dev/null
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			$PRESENTER "Boot logo flashed successfully!" 3
+			$PRESENTER --message "Boot logo flashed successfully!" --timeout 3
 		else
-			$PRESENTER "Failed to flash boot logo. Check log.txt" 4
+			$PRESENTER --message "Failed to flash boot logo. Check log.txt" --timeout 4
 		fi
 		;;
 
@@ -74,9 +74,9 @@ case "$PLATFORM" in
 		} > ./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			$PRESENTER "Boot logo flashed successfully!" 3
+			$PRESENTER --message "Boot logo flashed successfully!" --timeout 3
 		else
-			$PRESENTER "Failed to flash boot logo. Check log.txt" 4
+			$PRESENTER --message "Failed to flash boot logo. Check log.txt" --timeout 4
 		fi
 		;;
 
@@ -87,7 +87,7 @@ case "$PLATFORM" in
 
 		LOGO_PATH=$DIR/$LOGO_NAME
 		if [ ! -f $LOGO_PATH ]; then
-			$PRESENTER "Missing bootlogo.bmp file!" 2
+			$PRESENTER --message "Missing bootlogo.bmp file!" --timeout 2
 			exit 1
 		fi
 
@@ -97,13 +97,13 @@ case "$PLATFORM" in
 		OFFSET_PATH="res/offset-$VERSION"
 
 		if [ ! -f "$OFFSET_PATH" ]; then
-			$PRESENTER "Unsupported firmware version!" 2
+			$PRESENTER --message "Unsupported firmware version!" --timeout 2
 			exit 1
 		fi
 
 		OFFSET=$(cat "$OFFSET_PATH")
 
-		$PRESENTER "Updating boot logo..." 120 &
+		$PRESENTER --message "Updating boot logo..." --timeout 120 &
 		PRESENTER_PID=$!
 
 		gzip -k "$LOGO_PATH"
@@ -113,7 +113,7 @@ case "$PLATFORM" in
 		MAX_SIZE=62234
 		if [ "$LOGO_SIZE" -gt "$MAX_SIZE" ]; then
 			kill $PRESENTER_PID 2>/dev/null
-			$PRESENTER "Logo too complex, simplify image!" 4
+			$PRESENTER --message "Logo too complex, simplify image!" --timeout 4
 			exit 1
 		fi
 
@@ -128,7 +128,7 @@ case "$PLATFORM" in
 
 		rm -f $LOGO_PATH boot0 boot0-suffix
 
-		$PRESENTER "Boot logo flashed successfully!" 3
+		$PRESENTER --message "Boot logo flashed successfully!" --timeout 3
 		;;
 
 	my355)
@@ -139,27 +139,27 @@ case "$PLATFORM" in
 		# Show progress messages based on log output
 		sleep 2
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Preparing environment..." 2
+			$PRESENTER --message "Preparing environment..." --timeout 2
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Extracting boot image..." 3
+			$PRESENTER --message "Extracting boot image..." --timeout 3
 		fi
 		sleep 4
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Unpacking resources..." 3
+			$PRESENTER --message "Unpacking resources..." --timeout 3
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Replacing logo..." 3
+			$PRESENTER --message "Replacing logo..." --timeout 3
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Repacking boot image..." 4
+			$PRESENTER --message "Repacking boot image..." --timeout 4
 		fi
 		sleep 5
 		if ps | grep -q $APPLY_PID; then
-			$PRESENTER "Flashing to device..." 4
+			$PRESENTER --message "Flashing to device..." --timeout 4
 		fi
 
 		wait $APPLY_PID
@@ -177,11 +177,11 @@ case "$PLATFORM" in
 		fi
 
 		if [ ! -f "$LOGO_PATH" ]; then
-			$PRESENTER "No bootlogo.bmp file found!" 3
+			$PRESENTER --message "No bootlogo.bmp file found!" --timeout 3
 			exit 1
 		fi
 
-		$PRESENTER "Flashing boot logo..." 10 &
+		$PRESENTER --message "Flashing boot logo..." --timeout 10 &
 		PRESENTER_PID=$!
 
 		{
@@ -198,9 +198,9 @@ case "$PLATFORM" in
 		kill "$PRESENTER_PID" 2>/dev/null
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			$PRESENTER "Boot logo flashed! Rebooting..." 3
+			$PRESENTER --message "Boot logo flashed! Rebooting..." --timeout 3
 		else
-			$PRESENTER "Failed to flash boot logo. Check log.txt" 4
+			$PRESENTER --message "Failed to flash boot logo. Check log.txt" --timeout 4
 		fi
 
 		rm -f /tmp/minui_exec
@@ -219,7 +219,7 @@ case "$PLATFORM" in
 		umount $BOOT_PATH
 		rm -rf $BOOT_PATH
 
-		$PRESENTER "Boot logo flashed! Rebooting..." 3
+		$PRESENTER --message "Boot logo flashed! Rebooting..." --timeout 3
 
 		reboot
 		;;
@@ -288,14 +288,14 @@ case "$PLATFORM" in
 		} > ./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			$PRESENTER "Boot logo flashed successfully!" 3
+			$PRESENTER --message "Boot logo flashed successfully!" --timeout 3
 		else
-			$PRESENTER "Failed to flash boot logo. Check log.txt" 4
+			$PRESENTER --message "Failed to flash boot logo. Check log.txt" --timeout 4
 		fi
 		;;
 
 	*)
-		$PRESENTER "Bootlogo not supported on $PLATFORM" 3
+		$PRESENTER --message "Bootlogo not supported on $PLATFORM" --timeout 3
 		exit 1
 		;;
 esac
