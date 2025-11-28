@@ -103,7 +103,7 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	// Calculate PPI and dp_scale
 	float diagonal_px = sqrtf((float)(screen_width * screen_width + screen_height * screen_height));
 	float ppi = diagonal_px / diagonal_inches;
-	float raw_dp_scale = ppi / 144.0f;
+	float raw_dp_scale = ppi / 120.0f;
 
 	// Apply platform scale modifier if defined
 #ifdef SCALE_MODIFIER
