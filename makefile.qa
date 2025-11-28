@@ -60,7 +60,6 @@ TIDY_SOURCES = workspace/all/minui/*.c \
                workspace/all/minarch/*.c \
                workspace/all/common/*.c \
                workspace/all/minput/*.c \
-               workspace/all/say/*.c \
                workspace/all/syncsettings/*.c
 
 # Auto-detect SDL2 include path (works on both macOS and Ubuntu)
@@ -317,7 +316,6 @@ FORMAT_PATHS = workspace/all/minui/*.c \
                workspace/all/common/*.c \
                workspace/all/common/*.h \
                workspace/all/paks/*/src/*.c \
-               workspace/all/say/*.c \
                workspace/all/syncsettings/*.c \
                workspace/*/platform/platform.c \
                workspace/*/platform/platform.h \

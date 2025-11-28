@@ -1,7 +1,7 @@
 #!/bin/sh
 
+PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
+
 rm -f "$USERDATA_PATH/mstick.bin"
 
-DIR="$(dirname "$0")"
-cd "$DIR"
-show.elf "$DIR/calibrate.png" 2
+$PRESENTER "Stick calibration reset.\n\nMove stick to recalibrate." 3

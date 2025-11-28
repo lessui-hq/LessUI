@@ -39,11 +39,11 @@ BUILD_HASH:=$(shell git rev-parse --short HEAD)
 RELEASE_TIME:=$(shell TZ=GMT date +%Y%m%d)
 RELEASE_BETA=
 RELEASE_BASE=LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
-RELEASE_DOT:=$(shell find ./releases/. -name "${RELEASE_BASE}-*-base.zip" 2>/dev/null | wc -l | sed 's/ //g')
+RELEASE_DOT:=$(shell find ./releases/. -name "${RELEASE_BASE}-*.zip" 2>/dev/null | wc -l | sed 's/ //g')
 # First build has no suffix, subsequent builds use -1, -2, etc.
-# Check if unnumbered base exists, if so start numbering from RELEASE_DOT+1
+# Check if unnumbered release exists, if so start numbering from RELEASE_DOT+1
 RELEASE_SUFFIX:=$(shell \
-	if [ "$(RELEASE_DOT)" = "0" ] && [ ! -f "./releases/${RELEASE_BASE}-base.zip" ]; then \
+	if [ "$(RELEASE_DOT)" = "0" ] && [ ! -f "./releases/${RELEASE_BASE}.zip" ]; then \
 		echo ""; \
 	elif [ "$(RELEASE_DOT)" = "0" ]; then \
 		echo "-1"; \
@@ -150,7 +150,6 @@ system:
 	cp ./workspace/all/minui/build/$(PLATFORM)/minui.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/minarch.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
-	cp ./workspace/all/say/build/$(PLATFORM)/say.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	# Copy utils (available to all paks)
 	cp ./workspace/all/utils/minui-keyboard/build/$(PLATFORM)/minui-keyboard ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/utils/minui-list/build/$(PLATFORM)/minui-list ./build/SYSTEM/$(PLATFORM)/bin/
@@ -237,7 +236,6 @@ clean:
 	rm -rf workspace/all/minarch/build
 	rm -rf workspace/all/paks/*/build
 	rm -rf workspace/all/utils/*/build
-	rm -rf workspace/all/say/build
 	rm -rf workspace/all/syncsettings/build
 	# Clean platform-specific boot outputs
 	rm -rf workspace/rg35xxplus/boot/output
@@ -358,7 +356,7 @@ package: tidy
 	mv ./build/PAYLOAD/LessUI.zip ./build/BASE
 
 	# TODO: can I just add everything in BASE to zip?
-	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME)-base.zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt
+	cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME).zip Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 	
 ###########################################################

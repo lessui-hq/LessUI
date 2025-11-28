@@ -818,21 +818,68 @@ void draw_screen(SDL_Surface *screen, struct AppState *state)
     int word_count = 0;
     char original_message[1024];
     strncpy(original_message, state->items_state->items[state->items_state->selected].text, sizeof(original_message));
-    char *word = strtok(original_message, " ");
+
+    // Replace literal \n with actual newline characters
+    char processed_message[1024];
+    int src_pos = 0, dst_pos = 0;
+    while (original_message[src_pos] != '\0' && dst_pos < sizeof(processed_message) - 1)
+    {
+        if (original_message[src_pos] == '\\' && original_message[src_pos + 1] == 'n')
+        {
+            processed_message[dst_pos++] = '\n';
+            src_pos += 2;
+        }
+        else
+        {
+            processed_message[dst_pos++] = original_message[src_pos++];
+        }
+    }
+    processed_message[dst_pos] = '\0';
+
+    char *word = strtok(processed_message, " ");
     int word_height = 0;
     while (word != NULL)
     {
         int word_width;
         strtrim(word);
-        if (strcmp(word, "") == 0)
+
+        // Check if word contains newlines - if so, split it
+        char *newline_pos = strchr(word, '\n');
+        if (newline_pos != NULL)
         {
-            continue;
+            // Add the part before newline
+            *newline_pos = '\0';
+            if (strcmp(word, "") != 0)
+            {
+                TTF_SizeUTF8(state->fonts.large, word, &word_width, &word_height);
+                strncpy(words[word_count].message, word, sizeof(words[word_count].message));
+                words[word_count].width = word_width;
+                word_count++;
+            }
+
+            // Add empty word to force line break
+            strncpy(words[word_count].message, "\n", sizeof(words[word_count].message));
+            words[word_count].width = -1; // Special marker for forced line break
+            word_count++;
+
+            // Continue with part after newline if any
+            char *remaining = newline_pos + 1;
+            if (strcmp(remaining, "") != 0)
+            {
+                TTF_SizeUTF8(state->fonts.large, remaining, &word_width, &word_height);
+                strncpy(words[word_count].message, remaining, sizeof(words[word_count].message));
+                words[word_count].width = word_width;
+                word_count++;
+            }
+        }
+        else if (strcmp(word, "") != 0)
+        {
+            TTF_SizeUTF8(state->fonts.large, word, &word_width, &word_height);
+            strncpy(words[word_count].message, word, sizeof(words[word_count].message));
+            words[word_count].width = word_width;
+            word_count++;
         }
 
-        TTF_SizeUTF8(state->fonts.large, word, &word_width, &word_height);
-        strncpy(words[word_count].message, word, sizeof(words[word_count].message));
-        words[word_count].width = word_width;
-        word_count++;
         word = strtok(NULL, " ");
     }
 
@@ -856,6 +903,15 @@ void draw_screen(SDL_Surface *screen, struct AppState *state)
         if (current_message_index >= MAIN_ROW_COUNT)
         {
             break;
+        }
+
+        // Check for forced line break marker
+        if (words[i].width == -1)
+        {
+            // Move to next line
+            current_message_index++;
+            message_count++;
+            continue;
         }
 
         int potential_width = messages[current_message_index].width + words[i].width;

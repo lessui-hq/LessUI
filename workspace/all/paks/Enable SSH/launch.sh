@@ -2,31 +2,45 @@
 DIR="$(dirname "$0")"
 cd "$DIR"
 
-{
+PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
 
 # must be connected to wifi
-if [ `cat /sys/class/net/wlan0/operstate` != "up" ]; then
-	show.elf "$DIR/wifi.png" 8
+if [ "$(cat /sys/class/net/wlan0/operstate)" != "up" ]; then
+	$PRESENTER "WiFi not connected.\n\nPlease connect to WiFi first." 4
 	exit 0
 fi
 
-show.elf "$DIR/ssh.png" 200 &
+{
+	# switch language from mandarin to english since we require a reboot anyway
+	locale-gen "en_US.UTF-8"
+	echo "LANG=en_US.UTF-8" > /etc/default/locale
 
-# switch language from mandarin to english since we require a reboot anyway
-locale-gen "en_US.UTF-8"
-echo "LANG=en_US.UTF-8" > /etc/default/locale
+	# install or update ssh server
+	apt -y update && apt -y install --reinstall openssh-server
+	echo "d /run/sshd 0755 root root" > /etc/tmpfiles.d/sshd.conf
 
-# install or update ssh server
-apt -y update && apt -y install --reinstall openssh-server
-echo "d /run/sshd 0755 root root" > /etc/tmpfiles.d/sshd.conf
+	# enable login root:root
+	echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+	printf "root\nroot" | passwd root
 
-# enable login root:root
-echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-printf "root\nroot" | passwd root
+	echo "Success"
+} > ./log.txt 2>&1 &
 
-killall -9 show.elf
+# Show installing message while it runs
+$PRESENTER "Installing SSH server...\n\nThis may take a few minutes.\nDevice will reboot when done." 200 &
+PRESENTER_PID=$!
 
-} &> ./log.txt
+# Wait for installation to complete
+wait
 
-mv "$DIR" "$DIR.disabled"
-reboot # required for root:root to be recognized and new locale to take effect
+# Kill the presenter
+kill $PRESENTER_PID 2>/dev/null
+
+if grep -q "Success" ./log.txt; then
+	$PRESENTER "SSH enabled successfully!\n\nLogin: root / root\nDevice will reboot now." 5 &
+	sleep 5
+	mv "$DIR" "$DIR.disabled"
+	reboot
+else
+	$PRESENTER "SSH installation failed.\nCheck log.txt for details." 5
+fi
