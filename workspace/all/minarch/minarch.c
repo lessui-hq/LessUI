@@ -121,26 +121,28 @@ static int screen_effect = EFFECT_NONE; // No scanlines or grid effects
 static int prevent_tearing = 1; // Enable vsync (lenient mode)
 
 /**
- * Pixel Format Downsampling Flag
+ * Core Pixel Format
  *
- * Most libretro cores natively output RGB565 (16-bit color), which matches our
- * display hardware. However, some cores output XRGB8888 (32-bit color) and require
- * real-time conversion to RGB565.
+ * Tracks the pixel format the current core outputs. Our display hardware uses RGB565
+ * (16-bit color), so non-native formats require real-time conversion.
  *
- * When downsample=1:
- *  - Core outputs XRGB8888 (4 bytes/pixel)
- *  - buffer_downsample() converts to RGB565 (2 bytes/pixel)
- *  - Conversion extracts top 5/6/5 bits per channel
- *  - Adds ~1-2ms overhead per frame (optimized single-pass)
+ * Supported formats (from libretro.h):
+ *  - RETRO_PIXEL_FORMAT_0RGB1555 (0): Legacy 15-bit, 1 unused bit. Default if core
+ *    doesn't call SET_PIXEL_FORMAT. Used by some older arcade cores (mame2003+).
+ *    Conversion: Extract 5-bit R/G/B, expand G to 6 bits, pack to RGB565.
  *
- * Cores requiring downsampling:
- *  - PlayStation (PCSX ReARMed) - 32-bit framebuffer
- *  - Neo Geo (FBNeo/geolith) - High color arcade graphics
- *  - Some modern cores that prefer higher color depth
+ *  - RETRO_PIXEL_FORMAT_XRGB8888 (1): 32-bit with unused alpha byte.
+ *    Used by PlayStation (PCSX ReARMed), Neo Geo (FBNeo), modern cores.
+ *    Conversion: Extract top 5/6/5 bits per channel, pack to RGB565.
  *
+ *  - RETRO_PIXEL_FORMAT_RGB565 (2): Native 16-bit format - no conversion needed.
+ *    Most cores use this. Recommended format per libretro spec.
+ *
+ * Performance: NEON-optimized conversion adds ~0.3-0.5ms per frame.
  * Set automatically by RETRO_ENVIRONMENT_SET_PIXEL_FORMAT callback.
  */
-static int downsample = 0;
+static enum retro_pixel_format pixel_format =
+    RETRO_PIXEL_FORMAT_0RGB1555; // Default per libretro spec
 
 // Performance Settings
 static int show_debug = 0; // Display FPS/CPU usage overlay
@@ -2650,16 +2652,21 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: { /* 10 */
 		const enum retro_pixel_format* format = (enum retro_pixel_format*)data;
 
-		LOG_info("Core requested pixel format: %d", *format);
-
-		if (*format == RETRO_PIXEL_FORMAT_RGB565) {
-			LOG_info("Using native RGB565 format (no conversion needed)");
-			downsample = 0;
-		} else if (*format == RETRO_PIXEL_FORMAT_XRGB8888) {
-			LOG_info("Using XRGB8888 format with conversion to RGB565");
-			downsample = 1;
-		} else {
-			LOG_error("Unsupported pixel format %d (only RGB565 and XRGB8888 supported)", *format);
+		switch (*format) {
+		case RETRO_PIXEL_FORMAT_0RGB1555:
+			LOG_info("Core requested 0RGB1555 format (15-bit, conversion to RGB565)");
+			pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
+			break;
+		case RETRO_PIXEL_FORMAT_XRGB8888:
+			LOG_info("Core requested XRGB8888 format (32-bit, conversion to RGB565)");
+			pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
+			break;
+		case RETRO_PIXEL_FORMAT_RGB565:
+			LOG_info("Core requested RGB565 format (native, no conversion needed)");
+			pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+			break;
+		default:
+			LOG_error("Core requested unknown pixel format %d", *format);
 			return false;
 		}
 		break;
@@ -3345,69 +3352,66 @@ static int fit = 1; // Use software scaler (fit to screen)
 static int fit = 0; // Use hardware scaler
 #endif
 
-// Buffer for pixel format conversion (XRGB8888 -> RGB565)
-static void* buffer = NULL;
+// Helper macro: true if pixel format requires conversion to RGB565
+#define NEEDS_CONVERSION (pixel_format != RETRO_PIXEL_FORMAT_RGB565)
+
+// Buffer for pixel format conversion (0RGB1555/XRGB8888 -> RGB565)
+static void* convert_buffer = NULL;
 
 /**
  * Frees pixel format conversion buffer.
  */
-static void buffer_dealloc(void) {
-	if (!buffer)
+static void convert_buffer_free(void) {
+	if (!convert_buffer)
 		return;
-	free(buffer);
-	buffer = NULL;
+	free(convert_buffer);
+	convert_buffer = NULL;
 }
 
 /**
- * Allocates pixel format conversion buffer.
+ * Allocates pixel format conversion buffer for RGB565 output.
  *
  * @param w Width in pixels
  * @param h Height in pixels
- * @param p Pitch in bytes (unused but kept for consistency)
  */
-static void buffer_realloc(int w, int h, int p) {
-	buffer_dealloc();
+static void convert_buffer_alloc(int w, int h) {
+	convert_buffer_free();
 	size_t buffer_size = (w * FIXED_BPP) * h;
-	buffer = malloc(buffer_size);
-	if (!buffer) {
-		LOG_error("Failed to allocate downsample buffer: %dx%d (%zu bytes)", w, h, buffer_size);
-		LOG_error("Disabling downsampling to prevent crash");
-		downsample = 0;
+	convert_buffer = malloc(buffer_size);
+	if (!convert_buffer) {
+		LOG_error("Failed to allocate conversion buffer: %dx%d (%zu bytes)", w, h, buffer_size);
+		LOG_error("Falling back to RGB565 (conversion disabled)");
+		pixel_format = RETRO_PIXEL_FORMAT_RGB565;
 		return;
 	}
-	LOG_debug("Allocated downsample buffer: %dx%d (%zu bytes)", w, h, buffer_size);
+	LOG_debug("Allocated conversion buffer: %dx%d (%zu bytes)", w, h, buffer_size);
 }
 
-/**
- * Converts XRGB8888 pixel data to RGB565 format using ARM NEON SIMD.
- *
- * NEON-optimized version that processes 4 pixels in parallel using 128-bit
- * vector registers. Achieves ~3-4x speedup vs scalar implementation.
- *
- * Algorithm:
- * 1. Load 4 XRGB8888 pixels (128 bits) into NEON quad register
- * 2. Extract R, G, B channels using vector AND + shift operations
- * 3. Combine into packed RGB565 format
- * 4. Narrow from 32-bit to 16-bit and store 4 RGB565 pixels
- *
- * Performance: Reduces conversion overhead from ~1-2ms to ~0.3-0.5ms per frame.
- *
- * @param data Source pixel data in XRGB8888 format
- * @param width Frame width in pixels
- * @param height Frame height in pixels
- * @param pitch Bytes per scanline of source data
- *
- * @note Only available when HAS_NEON is defined
- * @note Processes pixels in groups of 4, with scalar fallback for remainder
- * @note Uses NEON intrinsics for ARM32/ARM64 portability
- */
+// ============================================================================
+// Pixel Format Conversion Functions
+//
+// Convert non-native formats to RGB565 for display. NEON-optimized versions
+// process 8 pixels at a time for ~3-4x speedup on ARM devices.
+// ============================================================================
+
 #ifdef HAS_NEON
 #include <arm_neon.h>
 
-static void buffer_downsample_neon(const void* data, unsigned width, unsigned height,
-                                   size_t pitch) {
+/**
+ * Converts XRGB8888 to RGB565 using ARM NEON SIMD.
+ *
+ * Processes 4 pixels per iteration using 128-bit vector operations.
+ * Input:  XXRRGGBB XXRRGGBB XXRRGGBB XXRRGGBB (4x32-bit)
+ * Output: RRRRRGGGGGGBBBBB RRRRRGGGGGGBBBBB (4x16-bit packed)
+ *
+ * @param data Source XRGB8888 data
+ * @param width Frame width
+ * @param height Frame height
+ * @param pitch Source pitch in bytes
+ */
+static void convert_xrgb8888_neon(const void* data, unsigned width, unsigned height, size_t pitch) {
 	const uint32_t* input = data;
-	uint16_t* output = buffer;
+	uint16_t* output = convert_buffer;
 	size_t extra = pitch / sizeof(uint32_t) - width;
 
 	// NEON mask constants for extracting RGB565 components from XRGB8888
@@ -3415,48 +3419,99 @@ static void buffer_downsample_neon(const void* data, unsigned width, unsigned he
 	const uint32x4_t mask_green = vdupq_n_u32(0x0000FC00); // Green: bits 15-10
 	const uint32x4_t mask_red = vdupq_n_u32(0x00F80000); // Red: bits 23-19
 
-	// Process scanlines
 	for (unsigned y = 0; y < height; y++) {
 		unsigned x = 0;
 		const uint32_t* line_input = input;
 		uint16_t* line_output = output;
 
-		// NEON vectorized loop: process 4 pixels (128 bits) at once
-		unsigned width_vec = width & ~3; // Round down to multiple of 4
+		// NEON: process 4 pixels at a time
+		unsigned width_vec = width & ~3u;
 		for (; x < width_vec; x += 4) {
-			// Load 4 XRGB8888 pixels (128 bits total)
 			uint32x4_t pixels = vld1q_u32(line_input);
 			line_input += 4;
 
-			// Extract color channels using NEON intrinsics
-			// Blue: (pixel & 0x000000F8) >> 3
 			uint32x4_t blue = vshrq_n_u32(vandq_u32(pixels, mask_blue), 3);
-
-			// Green: (pixel & 0x0000FC00) >> 5
 			uint32x4_t green = vshrq_n_u32(vandq_u32(pixels, mask_green), 5);
-
-			// Red: (pixel & 0x00F80000) >> 8
 			uint32x4_t red = vshrq_n_u32(vandq_u32(pixels, mask_red), 8);
 
-			// Combine channels: RGB565 = R | G | B
 			uint32x4_t rgb565_32 = vorrq_u32(vorrq_u32(red, green), blue);
-
-			// Narrow from 32-bit to 16-bit (4 pixels become 4 uint16_t values)
 			uint16x4_t rgb565 = vmovn_u32(rgb565_32);
 
-			// Store 4 RGB565 pixels (64 bits)
 			vst1_u16(line_output, rgb565);
 			line_output += 4;
 		}
 
-		// Scalar tail: process remaining pixels (< 4)
+		// Scalar tail
 		for (; x < width; x++) {
 			uint32_t pixel = *line_input++;
 			*line_output++ =
 			    ((pixel & 0xF80000) >> 8) | ((pixel & 0x00FC00) >> 5) | ((pixel & 0x0000F8) >> 3);
 		}
 
-		// Move to next scanline (account for pitch padding)
+		input += width + extra;
+		output += width;
+	}
+}
+
+/**
+ * Converts 0RGB1555 to RGB565 using ARM NEON SIMD.
+ *
+ * Processes 8 pixels per iteration using 128-bit vector operations.
+ * Input:  0RRRRRGGGGGBBBBB (5-5-5 with unused MSB)
+ * Output: RRRRRGGGGGGBBBBB (5-6-5)
+ *
+ * The key difference from RGB565 is that green is only 5 bits in 1555,
+ * so we need to expand it to 6 bits. We duplicate the MSB of green
+ * into the LSB position: G5 = (g << 1) | (g >> 4)
+ *
+ * @param data Source 0RGB1555 data
+ * @param width Frame width
+ * @param height Frame height
+ * @param pitch Source pitch in bytes
+ */
+static void convert_0rgb1555_neon(const void* data, unsigned width, unsigned height, size_t pitch) {
+	const uint16_t* input = data;
+	uint16_t* output = convert_buffer;
+	size_t extra = pitch / sizeof(uint16_t) - width;
+
+	for (unsigned y = 0; y < height; y++) {
+		unsigned x = 0;
+		const uint16_t* line_input = input;
+		uint16_t* line_output = output;
+
+		// NEON: process 8 pixels at a time
+		unsigned width_vec = width & ~7u;
+		for (; x < width_vec; x += 8) {
+			uint16x8_t src = vld1q_u16(line_input);
+			line_input += 8;
+
+			// Extract 5-bit components from 0RRRRRGGGGGBBBBB
+			// R: bits 14-10, G: bits 9-5, B: bits 4-0
+			uint16x8_t r = vandq_u16(vshrq_n_u16(src, 10), vdupq_n_u16(0x1F));
+			uint16x8_t g = vandq_u16(vshrq_n_u16(src, 5), vdupq_n_u16(0x1F));
+			uint16x8_t b = vandq_u16(src, vdupq_n_u16(0x1F));
+
+			// Expand green from 5 to 6 bits: g6 = (g << 1) | (g >> 4)
+			// This duplicates the MSB into the new LSB for better color accuracy
+			uint16x8_t g6 = vorrq_u16(vshlq_n_u16(g, 1), vshrq_n_u16(g, 4));
+
+			// Pack to RGB565: RRRRRGGGGGGBBBBB
+			uint16x8_t rgb565 = vorrq_u16(vorrq_u16(vshlq_n_u16(r, 11), vshlq_n_u16(g6, 5)), b);
+
+			vst1q_u16(line_output, rgb565);
+			line_output += 8;
+		}
+
+		// Scalar tail
+		for (; x < width; x++) {
+			uint16_t px = *line_input++;
+			uint16_t r = (px >> 10) & 0x1F;
+			uint16_t g = (px >> 5) & 0x1F;
+			uint16_t b = px & 0x1F;
+			uint16_t g6 = (g << 1) | (g >> 4);
+			*line_output++ = (r << 11) | (g6 << 5) | b;
+		}
+
 		input += width + extra;
 		output += width;
 	}
@@ -3464,85 +3519,118 @@ static void buffer_downsample_neon(const void* data, unsigned width, unsigned he
 #endif // HAS_NEON
 
 /**
- * Converts XRGB8888 pixel data to RGB565 format.
+ * Converts XRGB8888 to RGB565 (scalar fallback).
  *
- * Some cores output 32-bit color (XRGB8888) but the device screen uses
- * 16-bit color (RGB565). This function performs the conversion.
+ * @param data Source XRGB8888 data
+ * @param width Frame width
+ * @param height Frame height
+ * @param pitch Source pitch in bytes
+ */
+static void convert_xrgb8888_scalar(const void* data, unsigned width, unsigned height,
+                                    size_t pitch) {
+	const uint32_t* input = data;
+	uint16_t* output = convert_buffer;
+	size_t extra = pitch / sizeof(uint32_t) - width;
+
+	for (unsigned y = 0; y < height; y++) {
+		for (unsigned x = 0; x < width; x++) {
+			uint32_t pixel = *input++;
+			*output++ = ((pixel & 0xF80000) >> 8) | // Red: bits 23-19 -> 15-11
+			            ((pixel & 0x00FC00) >> 5) | // Green: bits 15-10 -> 10-5
+			            ((pixel & 0x0000F8) >> 3); // Blue: bits 7-3 -> 4-0
+		}
+		input += extra;
+	}
+}
+
+/**
+ * Converts 0RGB1555 to RGB565 (scalar fallback).
  *
- * @param data Source pixel data in XRGB8888 format
+ * @param data Source 0RGB1555 data
+ * @param width Frame width
+ * @param height Frame height
+ * @param pitch Source pitch in bytes
+ */
+static void convert_0rgb1555_scalar(const void* data, unsigned width, unsigned height,
+                                    size_t pitch) {
+	const uint16_t* input = data;
+	uint16_t* output = convert_buffer;
+	size_t extra = pitch / sizeof(uint16_t) - width;
+
+	for (unsigned y = 0; y < height; y++) {
+		for (unsigned x = 0; x < width; x++) {
+			uint16_t px = *input++;
+			// Extract 5-bit components from 0RRRRRGGGGGBBBBB
+			uint16_t r = (px >> 10) & 0x1F;
+			uint16_t g = (px >> 5) & 0x1F;
+			uint16_t b = px & 0x1F;
+			// Expand green from 5 to 6 bits
+			uint16_t g6 = (g << 1) | (g >> 4);
+			// Pack to RGB565
+			*output++ = (r << 11) | (g6 << 5) | b;
+		}
+		input += extra;
+	}
+}
+
+/**
+ * Converts pixel data to RGB565 format based on current pixel_format setting.
+ *
+ * Dispatches to the appropriate conversion function (NEON-optimized or scalar)
+ * based on the source format. RGB565 input is a no-op (returns immediately).
+ *
+ * @param data Source pixel data
  * @param width Frame width in pixels
  * @param height Frame height in pixels
- * @param pitch Bytes per scanline of source data
+ * @param pitch Source pitch in bytes
  *
- * @note Based on picoarch implementation
- * @note Writes converted data to 'buffer' global
- * @note Uses NEON optimization when HAS_NEON is defined (3-4x speedup)
+ * @note Writes converted data to convert_buffer global
+ * @note convert_buffer_alloc() must be called first
  */
-static void buffer_downsample(const void* data, unsigned width, unsigned height, size_t pitch) {
-	// Validate buffer was allocated (buffer_realloc must be called first)
-	if (!buffer) {
-		LOG_error("Downsample buffer not allocated - skipping frame");
+static void pixel_convert(const void* data, unsigned width, unsigned height, size_t pitch) {
+	if (!convert_buffer) {
+		LOG_error("Conversion buffer not allocated - skipping frame");
 		return;
 	}
 
-	const uint32_t* input = data;
-	uint16_t* output = buffer;
+	// Validate pitch based on pixel format
+	size_t bytes_per_pixel = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? 4 : 2;
+	size_t min_pitch = width * bytes_per_pixel;
 
-	// Validate pitch is reasonable for XRGB8888 format
-	size_t min_pitch = width * sizeof(uint32_t);
 	if (pitch < min_pitch) {
-		LOG_error("Invalid pitch %zu for width %u (XRGB8888 requires >= %zu)", pitch, width,
-		          min_pitch);
-		LOG_error("Core framebuffer is corrupt - skipping frame to prevent buffer overrun");
-		return; // Abort conversion - reading more data than provided would crash
+		LOG_error("Invalid pitch %zu for width %u (format %d requires >= %zu)", pitch, width,
+		          pixel_format, min_pitch);
+		return;
 	}
 
-	// Validate pitch is aligned to 4 bytes (sizeof(uint32_t))
-	if (pitch % sizeof(uint32_t) != 0) {
-		LOG_error("Misaligned pitch %zu (not multiple of %zu) - skipping frame", pitch,
-		          sizeof(uint32_t));
-		LOG_error("Core framebuffer alignment violation");
-		return; // Abort to prevent misaligned memory access
-	}
+	LOG_debug("Converting %ux%u from format %d to RGB565", width, height, pixel_format);
 
-	// Calculate stride: number of pixels to skip after each scanline
-	// For XRGB8888 (4 bytes/pixel), extra padding per line is:
-	//   extra = (pitch / 4) - width
-	// Example: For a 160-pixel-wide image with 640-byte pitch (160 × 4):
-	//   extra = (640 / 4) - 160 = 0 pixels of padding per line
-	size_t extra = pitch / sizeof(uint32_t) - width;
-
-	LOG_debug("Downsampling %ux%u XRGB8888->RGB565: pitch=%zu bytes, stride=%zu pixels", width,
-	          height, pitch, extra);
-
-	// Warn about unusually large pitch values (may indicate core issues)
-	if (extra > width * 2) {
-		LOG_warn(
-		    "Very large pitch stride: %zu pixels padding for %u visible (core may have issues)",
-		    extra, width);
-	}
-
+	switch (pixel_format) {
+	case RETRO_PIXEL_FORMAT_XRGB8888:
 #ifdef HAS_NEON
-	// Use NEON-optimized version when available (3-4x faster)
-	// NEON processes 4 pixels at a time using SIMD instructions
-	buffer_downsample_neon(data, width, height, pitch);
+		convert_xrgb8888_neon(data, width, height, pitch);
 #else
-	// Scalar fallback: Convert XRGB8888 to RGB565 pixel-by-pixel
-	for (unsigned y = 0; y < height; y++) {
-		for (unsigned x = 0; x < width; x++) {
-			// Optimized single-operation conversion:
-			// Extract R (bits 23-19), G (bits 15-10), B (bits 7-3) and pack into RGB565
-			uint32_t pixel = *input;
-			*output = ((pixel & 0xF80000) >> 8) | // Red: 5 bits
-			          ((pixel & 0x00FC00) >> 5) | // Green: 6 bits
-			          ((pixel & 0x0000F8) >> 3); // Blue: 5 bits
-			input++;
-			output++;
-		}
-
-		input += extra; // Skip padding to next scanline
-	}
+		convert_xrgb8888_scalar(data, width, height, pitch);
 #endif
+		break;
+
+	case RETRO_PIXEL_FORMAT_0RGB1555:
+#ifdef HAS_NEON
+		convert_0rgb1555_neon(data, width, height, pitch);
+#else
+		convert_0rgb1555_scalar(data, width, height, pitch);
+#endif
+		break;
+
+	case RETRO_PIXEL_FORMAT_RGB565:
+		// Should never be called for RGB565, but handle it gracefully
+		LOG_warn("pixel_convert called for RGB565 (no conversion needed)");
+		break;
+
+	default:
+		LOG_error("Unknown pixel format %d", pixel_format);
+		break;
+	}
 }
 
 /**
@@ -3659,8 +3747,8 @@ static void* apply_rotation(void* src, uint32_t src_w, uint32_t src_h, uint32_t 
  * @note Clears screen when scaler changes
  */
 static void selectScaler(int src_w, int src_h, int src_p) {
-	if (downsample)
-		buffer_realloc(src_w, src_h, src_p);
+	if (NEEDS_CONVERSION)
+		convert_buffer_alloc(src_w, src_h);
 
 	// ROTATION: Swap dimensions for 90°/270° rotations BEFORE scaling calculations
 	// Note: core.aspect_ratio is already for the ROTATED dimensions, so don't invert it
@@ -3939,15 +4027,15 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	fps_ticks += 1;
 
 	// Calculate pitches for different stages
-	// pitch = bytes per line as provided by core (XRGB8888 or RGB565)
+	// pitch = bytes per line as provided by core (varies by pixel format)
 	// rgb565_pitch = bytes per line in RGB565 format (what renderer expects)
 	size_t rgb565_pitch;
 
-	if (downsample) {
-		// Core provided XRGB8888 (4 bytes/pixel), we'll convert to RGB565 (2 bytes/pixel)
+	if (NEEDS_CONVERSION) {
+		// Core uses non-native format, we'll convert to RGB565 (2 bytes/pixel)
 		rgb565_pitch = width * FIXED_BPP;
-		LOG_debug("XRGB8888->RGB565: %ux%u, pitch %zu->%zu bytes", width, height, pitch,
-		          rgb565_pitch);
+		LOG_debug("Format %d->RGB565: %ux%u, pitch %zu->%zu bytes", pixel_format, width, height,
+		          pitch, rgb565_pitch);
 	} else {
 		// Core provided RGB565 directly, use as-is
 		rgb565_pitch = pitch;
@@ -3979,16 +4067,9 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	void* frame_data;
 	size_t frame_pitch;
 
-	if (downsample) {
-		// Validate pitch before attempting conversion
-		size_t min_pitch = width * sizeof(uint32_t);
-		if (pitch < min_pitch) {
-			LOG_error("Skipping frame due to invalid pitch: %zu < %zu", pitch, min_pitch);
-			return; // Abort entire frame to prevent rendering corrupted data
-		}
-
-		buffer_downsample(data, width, height, pitch);
-		frame_data = buffer;
+	if (NEEDS_CONVERSION) {
+		pixel_convert(data, width, height, pitch);
+		frame_data = convert_buffer;
 		frame_pitch = rgb565_pitch;
 	} else {
 		frame_data = (void*)data;
@@ -4006,7 +4087,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 	renderer.src = rotated_data;
 
-	// debug - render after downsample so we write to RGB565 buffer
+	// debug - render after pixel conversion so we write to RGB565 buffer
 	if (show_debug) {
 		int x = 2 + renderer.src_x;
 		int y = 2 + renderer.src_y;
@@ -4075,14 +4156,14 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * - Non-threaded: Calls video_refresh_callback_main directly
  * - Threaded: Copies/converts frame to backbuffer and signals main thread
  *
- * @param data Pointer to pixel data (XRGB8888 or RGB565 depending on downsample)
+ * @param data Pointer to pixel data (format depends on pixel_format setting)
  * @param width Frame width in pixels
  * @param height Frame height in pixels
  * @param pitch Bytes per scanline
  *
  * @note This is a libretro callback, invoked by core after rendering a frame
  * @note Threading mode copies frame to prevent race conditions
- * @note When downsampling, performs XRGB8888->RGB565 conversion here
+ * @note When using non-RGB565 format, performs pixel conversion here
  */
 static void video_refresh_callback(const void* data, unsigned width, unsigned height,
                                    size_t pitch) {
@@ -4093,9 +4174,9 @@ static void video_refresh_callback(const void* data, unsigned width, unsigned he
 		pthread_mutex_lock(&core_mx);
 
 		// Determine backbuffer pitch:
-		// - Downsampling: Output is tightly packed (width * 2 bytes/line)
+		// - Non-RGB565: Output is tightly packed after conversion (width * 2 bytes/line)
 		// - RGB565: Preserve core's pitch (may have padding)
-		size_t backbuffer_pitch = downsample ? (width * FIXED_BPP) : pitch;
+		size_t backbuffer_pitch = NEEDS_CONVERSION ? (width * FIXED_BPP) : pitch;
 
 		// Reallocate backbuffer if dimensions changed
 		if (backbuffer && (backbuffer->w != (int)width || backbuffer->h != (int)height ||
@@ -4121,24 +4202,19 @@ static void video_refresh_callback(const void* data, unsigned width, unsigned he
 		}
 
 		// Copy or convert data to backbuffer
-		if (downsample) {
-			// Validate pitch before attempting conversion
-			size_t min_pitch = width * sizeof(uint32_t);
-			if (pitch < min_pitch) {
-				LOG_error("Skipping threaded frame due to invalid pitch: %zu < %zu", pitch,
-				          min_pitch);
-				pthread_mutex_unlock(&core_mx);
-				return; // Abort frame to prevent buffer corruption
-			}
+		if (NEEDS_CONVERSION) {
+			// Ensure conversion buffer is allocated
+			if (!convert_buffer)
+				convert_buffer_alloc(width, height);
 
-			// Core provided XRGB8888, convert to tightly-packed RGB565
-			buffer_downsample(data, width, height, pitch);
-			if (!buffer) {
-				LOG_error("Failed to allocate downsample buffer: %ux%u", width, height);
+			// Convert to RGB565
+			pixel_convert(data, width, height, pitch);
+			if (!convert_buffer) {
+				LOG_error("Failed to allocate conversion buffer: %ux%u", width, height);
 				pthread_mutex_unlock(&core_mx);
 				return;
 			}
-			memcpy(backbuffer->pixels, buffer, height * backbuffer_pitch);
+			memcpy(backbuffer->pixels, convert_buffer, height * backbuffer_pitch);
 		} else {
 			// Core provided RGB565, direct copy with original pitch
 			memcpy(backbuffer->pixels, data, height * backbuffer_pitch);
@@ -4367,8 +4443,14 @@ void Core_quit(void) {
 	}
 }
 void Core_close(void) {
+	// Free pixel format conversion buffer
+	convert_buffer_free();
+
 	// Free rotation buffer
 	rotation_buffer_free();
+
+	// Reset pixel format to default for next core
+	pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
 
 	if (core.handle)
 		dlclose(core.handle);
@@ -6500,7 +6582,7 @@ finish:
 	PAD_quit();
 	GFX_quit();
 
-	buffer_dealloc();
+	convert_buffer_free();
 
 	return EXIT_SUCCESS;
 }
