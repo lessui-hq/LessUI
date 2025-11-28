@@ -1033,18 +1033,23 @@ void GFX_blitPill(int asset, SDL_Surface* dst, const SDL_Rect* dst_rect) {
 	if (h == 0)
 		h = asset_rects[asset].h;
 
-	int r = h / 2;
+	// Asset is a square (pill_px × pill_px), split into left and right halves
+	// For odd heights, left cap gets the extra pixel to avoid clipping
+	int asset_w = asset_rects[asset].w;
+	int left_cap = (asset_w + 1) / 2;  // rounds up for odd widths
+	int right_cap = asset_w / 2;       // rounds down for odd widths
+
 	if (w < h)
 		w = h;
-	w -= h;
+	int middle = w - h;
 
-	GFX_blitAsset(asset, &(SDL_Rect){0, 0, r, h}, dst, &(SDL_Rect){x, y});
-	x += r;
-	if (w > 0) {
-		SDL_FillRect(dst, &(SDL_Rect){x, y, w, h}, asset_rgbs[asset]);
-		x += w;
+	GFX_blitAsset(asset, &(SDL_Rect){0, 0, left_cap, h}, dst, &(SDL_Rect){x, y});
+	x += left_cap;
+	if (middle > 0) {
+		SDL_FillRect(dst, &(SDL_Rect){x, y, middle, h}, asset_rgbs[asset]);
+		x += middle;
 	}
-	GFX_blitAsset(asset, &(SDL_Rect){r, 0, r, h}, dst, &(SDL_Rect){x, y});
+	GFX_blitAsset(asset, &(SDL_Rect){left_cap, 0, right_cap, h}, dst, &(SDL_Rect){x, y});
 }
 
 /**
