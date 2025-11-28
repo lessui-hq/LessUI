@@ -77,6 +77,42 @@ extern float gfx_dp_scale;
 #define DP_CENTER_PX(dp_size, px_size) (((DP(dp_size) - (px_size)) + 1) / 2)
 
 /**
+ * Calculate X and Y offsets to visually center a single glyph in a container.
+ *
+ * Uses TTF_GlyphMetrics to get precise glyph bounds rather than relying on
+ * the rendered surface dimensions (which include side bearings and descender space).
+ * This produces accurate visual centering for button labels like "A", "B", etc.
+ *
+ * @param container_w Container width in pixels
+ * @param container_h Container height in pixels
+ * @param font TTF_Font to get metrics from
+ * @param ch Character to center (as UTF-16 codepoint)
+ * @param out_x Pointer to receive X offset for the text surface
+ * @param out_y Pointer to receive Y offset for the text surface
+ */
+static inline void GFX_centerGlyph(int container_w, int container_h, TTF_Font* font, Uint16 ch,
+                                   int* out_x, int* out_y) {
+	int minx, maxx, miny, maxy, advance;
+	TTF_GlyphMetrics(font, ch, &minx, &maxx, &miny, &maxy, &advance);
+
+	// Glyph visual width and height (actual inked area)
+	int glyph_w = maxx - minx;
+	int glyph_h = maxy - miny;
+
+	// Center the visual glyph bounds within container
+	// minx is the left bearing (offset from render origin to first inked pixel)
+	// The rendered surface places the glyph at x=minx, so we adjust for that
+	*out_x = (container_w - glyph_w + 1) / 2 - minx;
+
+	// maxy is distance from baseline to top of glyph
+	// Ascent is the font's max distance above baseline
+	// The rendered surface has ascent pixels above the baseline
+	int ascent = TTF_FontAscent(font);
+	int glyph_top_in_surface = ascent - maxy; // where glyph starts in surface
+	*out_y = (container_h - glyph_h + 1) / 2 - glyph_top_in_surface;
+}
+
+/**
  * Convert physical pixels to display points.
  *
  * Use this when you have pixel measurements (e.g., from SDL_TTF) and need

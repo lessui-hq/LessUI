@@ -1215,14 +1215,13 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 	if (strlen(button) == 1) {
 		GFX_blitAsset(ASSET_BUTTON, NULL, dst, dst_rect);
 
-		// label - center text in button using DP-aware centering
-		// Bias vertical position up slightly to account for visual weight of glyphs
+		// label - center glyph in button using precise glyph metrics
 		text = TTF_RenderUTF8_Blended(font.medium, button, COLOR_BUTTON_TEXT);
-		int offset_y =
-		    DP_CENTER_PX(ui.button_size, text->h) - DP(1); // Move up ~1dp for visual balance
+		int offset_x, offset_y;
+		GFX_centerGlyph(DP(ui.button_size), DP(ui.button_size), font.medium, (Uint16)button[0],
+		                &offset_x, &offset_y);
 		SDL_BlitSurface(text, NULL, dst,
-		                &(SDL_Rect){dst_rect->x + DP_CENTER_PX(ui.button_size, text->w),
-		                            dst_rect->y + offset_y});
+		                &(SDL_Rect){dst_rect->x + offset_x, dst_rect->y + offset_y});
 		ox += DP(ui.button_size);
 		SDL_FreeSurface(text);
 	} else {
