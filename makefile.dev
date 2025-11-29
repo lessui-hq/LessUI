@@ -67,6 +67,7 @@ MINUI_SOURCE = workspace/all/minui/minui.c \
                workspace/all/common/collections.c \
                workspace/all/common/pad.c \
                workspace/all/common/gfx_text.c \
+               workspace/all/common/str_compare.c \
                workspace/desktop/platform/platform.c
 
 # Header files (dependencies)

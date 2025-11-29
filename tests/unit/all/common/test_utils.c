@@ -408,6 +408,37 @@ void test_getEmuName_with_parens(void) {
 	TEST_ASSERT_EQUAL_STRING("GB", out);
 }
 
+// No-Intro article tests
+void test_fixArticle_the(void) {
+	char name[256] = "Legend of Zelda, The";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", name);
+}
+
+void test_fixArticle_a(void) {
+	char name[256] = "Link to the Past, A";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("A Link to the Past", name);
+}
+
+void test_fixArticle_an(void) {
+	char name[256] = "American Tail, An";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("An American Tail", name);
+}
+
+void test_fixArticle_no_article(void) {
+	char name[256] = "Super Mario Bros";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("Super Mario Bros", name);
+}
+
+void test_getDisplayName_nointro_article(void) {
+	char out[256];
+	getDisplayName("Legend of Zelda, The (USA).nes", out);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", out);
+}
+
 ///////////////////////////////
 // Date/Time Tests
 ///////////////////////////////
@@ -757,6 +788,11 @@ int main(void) {
 	RUN_TEST(test_getDisplayName_doom_extension);
 	RUN_TEST(test_getEmuName_simple);
 	RUN_TEST(test_getEmuName_with_parens);
+	RUN_TEST(test_fixArticle_the);
+	RUN_TEST(test_fixArticle_a);
+	RUN_TEST(test_fixArticle_an);
+	RUN_TEST(test_fixArticle_no_article);
+	RUN_TEST(test_getDisplayName_nointro_article);
 
 	// Leap year
 	RUN_TEST(test_isLeapYear_divisible_by_4);

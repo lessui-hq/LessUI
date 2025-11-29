@@ -42,6 +42,7 @@
 #include "api.h"
 #include "collections.h"
 #include "defines.h"
+#include "str_compare.h"
 #include "utils.h"
 
 ///////////////////////////////
@@ -141,7 +142,10 @@ static int EntryArray_indexOf(Array* self, char* path) {
 }
 
 /**
- * Comparison function for qsort - sorts entries alphabetically by name.
+ * Comparison function for qsort - sorts entries using natural sort.
+ *
+ * Natural sort orders numeric sequences by value, not lexicographically.
+ * Example: "Game 2" < "Game 10" (unlike strcmp where "Game 10" < "Game 2")
  *
  * @param a First entry pointer (Entry**)
  * @param b Second entry pointer (Entry**)
@@ -150,7 +154,7 @@ static int EntryArray_indexOf(Array* self, char* path) {
 static int EntryArray_sortEntry(const void* a, const void* b) {
 	Entry* item1 = *(Entry**)a;
 	Entry* item2 = *(Entry**)b;
-	return strcasecmp(item1->name, item2->name);
+	return strnatcasecmp(item1->name, item2->name);
 }
 
 /**

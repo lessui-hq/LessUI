@@ -223,6 +223,18 @@ int getInt(const char* path);
 ///////////////////////////////
 
 /**
+ * Moves trailing article to the front of a name.
+ *
+ * Handles No-Intro convention where articles are moved to the end
+ * for sorting purposes: "Legend of Zelda, The" -> "The Legend of Zelda"
+ *
+ * Supported articles: The, A, An (case-insensitive matching)
+ *
+ * @param name Name to transform (modified in place)
+ */
+void fixArticle(char* name);
+
+/**
  * Cleans a ROM or app path for display in the UI.
  *
  * Performs multiple transformations:
@@ -231,7 +243,9 @@ int getInt(const char* path);
  * 3. Strips region codes and metadata in parentheses/brackets
  *    Example: "Super Mario (USA) (v1.2).nes" -> "Super Mario"
  * 4. Removes trailing whitespace
- * 5. Special handling: strips platform suffix from Tools paths
+ * 5. Moves trailing articles to front (No-Intro convention)
+ *    Example: "Legend of Zelda, The" -> "The Legend of Zelda"
+ * 6. Special handling: strips platform suffix from Tools paths
  *
  * @param in_name Input path (may be full path or just filename)
  * @param out_name Output buffer for cleaned name (min 256 bytes)

@@ -386,6 +386,53 @@ void putInt(const char* path, int value) {
 ///////////////////////////////
 
 /**
+ * Helper to move a trailing article to the front of a name.
+ *
+ * @param name String to transform (modified in place)
+ * @param suffix The suffix to look for (e.g., ", The")
+ * @param prefix The prefix to prepend (e.g., "The ")
+ * @return 1 if transformed, 0 if no match
+ */
+static int moveArticle(char* name, const char* suffix, const char* prefix) {
+	if (!suffixMatch((char*)suffix, name))
+		return 0;
+
+	int len = strlen(name);
+	int suffix_len = strlen(suffix);
+	int prefix_len = strlen(prefix);
+	int base_len = len - suffix_len;
+
+	// Shift base name right, prepend article
+	memmove(name + prefix_len, name, base_len);
+	memcpy(name, prefix, prefix_len);
+	name[base_len + prefix_len] = '\0';
+	return 1;
+}
+
+/**
+ * Moves trailing article to the front of a name.
+ *
+ * Handles No-Intro convention where articles are moved to the end
+ * for sorting purposes: "Legend of Zelda, The" -> "The Legend of Zelda"
+ *
+ * Supported articles: The, A, An (case-insensitive matching)
+ *
+ * @param name Name to transform (modified in place, same length or shorter)
+ */
+void fixArticle(char* name) {
+	if (!name || !*name)
+		return;
+
+	// Try each article pattern (order matters: ", An" before ", A")
+	if (moveArticle(name, ", The", "The "))
+		return;
+	if (moveArticle(name, ", An", "An "))
+		return;
+	if (moveArticle(name, ", A", "A "))
+		return;
+}
+
+/**
  * Cleans a ROM or app path for display in the UI.
  *
  * Performs multiple transformations:
@@ -444,10 +491,13 @@ void getDisplayName(const char* in_name, char* out_name) {
 		strcpy(out_name, work_name);
 
 	// Remove trailing whitespace
-	tmp = out_name + strlen(out_name) - 1;
-	while (tmp > out_name && isspace((unsigned char)*tmp))
-		tmp--;
-	tmp[1] = '\0';
+	int len = strlen(out_name);
+	while (len > 0 && isspace((unsigned char)out_name[len - 1]))
+		len--;
+	out_name[len] = '\0';
+
+	// Fix No-Intro article convention: "Name, The" -> "The Name"
+	fixArticle(out_name);
 }
 
 /**
