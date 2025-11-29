@@ -304,7 +304,7 @@ int main(int argc, char* argv[]) {
 
 			// Render date/time in format: YYYY/MM/DD HH:MM:SS [AM/PM]
 			// Vertically center in available space (above footer pill)
-			int available_height_dp = ui.screen_height - ui.padding - ui.pill_height;
+			int available_height_dp = ui.screen_height - ui.edge_padding - ui.pill_height;
 			int oy_dp = (available_height_dp - DIGIT_HEIGHT) / 2;
 
 			int x = DP(ox_dp);

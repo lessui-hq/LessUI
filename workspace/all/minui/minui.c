@@ -2210,7 +2210,7 @@ int main(int argc, char* argv[]) {
 						SDL_Surface* thumb_orig = IMG_Load(res_path);
 
 						// Scale to fit within available space (50% of width, full height minus padding)
-						int padding = DP(ui.padding);
+						int padding = DP(ui.edge_padding);
 						int max_width = (ui.screen_width_px / 2) - padding;
 						int max_height = ui.screen_height_px - (padding * 2);
 						thumb = GFX_scaleToFit(thumb_orig, max_width, max_height);
@@ -2229,7 +2229,7 @@ int main(int argc, char* argv[]) {
 					}
 
 					// Position on right side with padding, vertically centered
-					int padding = DP(ui.padding);
+					int padding = DP(ui.edge_padding);
 					ox = ui.screen_width_px - thumb->w - padding;
 					oy = (ui.screen_height_px - thumb->h) / 2;
 					SDL_BlitSurface(thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
@@ -2338,7 +2338,7 @@ int main(int argc, char* argv[]) {
 						// ox is in pixels (thumbnail offset), screen width converted from DP to pixels
 						int available_width =
 						    (had_thumb && j != selected_row ? ox : DP(ui.screen_width)) -
-						    DP(ui.padding * 2);
+						    DP(ui.edge_padding * 2);
 						if (i == top->start && !(had_thumb && j != selected_row))
 							available_width -= ow; //
 
@@ -2353,8 +2353,8 @@ int main(int argc, char* argv[]) {
 						int max_width = MIN(available_width, text_width);
 						if (j == selected_row) {
 							GFX_blitPill(ASSET_WHITE_PILL, screen,
-							             &(SDL_Rect){DP(ui.padding),
-							                         DP(ui.padding + (j * ui.pill_height)),
+							             &(SDL_Rect){DP(ui.edge_padding),
+							                         DP(ui.edge_padding + (j * ui.pill_height)),
 							                         max_width, DP(ui.pill_height)});
 							text_color = COLOR_BLACK;
 						} else if (entry->unique) {
@@ -2370,9 +2370,9 @@ int main(int argc, char* argv[]) {
 							    &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 							    screen,
 							    &(SDL_Rect){
-							        DP(ui.padding + ui.button_padding),
-							        DP(ui.padding + (j * ui.pill_height) + ui.text_baseline), 0,
-							        0});
+							        DP(ui.edge_padding + ui.button_padding),
+							        DP(ui.edge_padding + (j * ui.pill_height) + ui.text_baseline),
+							        0, 0});
 
 							GFX_truncateText(font.large, entry_name, display_name, available_width,
 							                 DP(ui.button_padding * 2));
@@ -2382,9 +2382,10 @@ int main(int argc, char* argv[]) {
 						SDL_BlitSurface(
 						    text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 						    screen,
-						    &(SDL_Rect){DP(ui.padding + ui.button_padding),
-						                DP(ui.padding + (j * ui.pill_height) + ui.text_baseline), 0,
-						                0});
+						    &(SDL_Rect){
+						        DP(ui.edge_padding + ui.button_padding),
+						        DP(ui.edge_padding + (j * ui.pill_height) + ui.text_baseline), 0,
+						        0});
 						SDL_FreeSurface(text);
 					}
 				} else {

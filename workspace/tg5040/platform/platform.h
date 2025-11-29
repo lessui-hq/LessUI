@@ -162,6 +162,7 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL (is_brick ? 3.2f : 4.95f) // Diagonal: 3.2" (Brick) or 4.95" (Smart Pro)
+#define EDGE_PADDING 5 // Reduced edge padding - bezel provides visual margin
 #define FIXED_WIDTH (is_brick ? 1024 : 1280) // Width: 1024px (Brick) or 1280px (standard)
 #define FIXED_HEIGHT (is_brick ? 768 : 720) // Height: 768px (Brick) or 720px (standard)
 

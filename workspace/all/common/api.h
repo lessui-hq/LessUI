@@ -77,6 +77,42 @@ extern float gfx_dp_scale;
 #define DP_CENTER_PX(dp_size, px_size) (((DP(dp_size) - (px_size)) + 1) / 2)
 
 /**
+ * Calculate X and Y offsets to visually center a single glyph in a container.
+ *
+ * Uses TTF_GlyphMetrics to get precise glyph bounds rather than relying on
+ * the rendered surface dimensions (which include side bearings and descender space).
+ * This produces accurate visual centering for button labels like "A", "B", etc.
+ *
+ * @param container_w Container width in pixels
+ * @param container_h Container height in pixels
+ * @param font TTF_Font to get metrics from
+ * @param ch Character to center (as UTF-16 codepoint)
+ * @param out_x Pointer to receive X offset for the text surface
+ * @param out_y Pointer to receive Y offset for the text surface
+ */
+static inline void GFX_centerGlyph(int container_w, int container_h, TTF_Font* font, Uint16 ch,
+                                   int* out_x, int* out_y) {
+	int minx, maxx, miny, maxy, advance;
+	TTF_GlyphMetrics(font, ch, &minx, &maxx, &miny, &maxy, &advance);
+
+	// Glyph visual width and height (actual inked area)
+	int glyph_w = maxx - minx;
+	int glyph_h = maxy - miny;
+
+	// Center the visual glyph bounds within container
+	// minx is the left bearing (offset from render origin to first inked pixel)
+	// The rendered surface places the glyph at x=minx, so we adjust for that
+	*out_x = (container_w - glyph_w + 1) / 2 - minx;
+
+	// maxy is distance from baseline to top of glyph
+	// Ascent is the font's max distance above baseline
+	// The rendered surface has ascent pixels above the baseline
+	int ascent = TTF_FontAscent(font);
+	int glyph_top_in_surface = ascent - maxy; // where glyph starts in surface
+	*out_y = (container_h - glyph_h + 1) / 2 - glyph_top_in_surface;
+}
+
+/**
  * Convert physical pixels to display points.
  *
  * Use this when you have pixel measurements (e.g., from SDL_TTF) and need
@@ -113,10 +149,14 @@ typedef struct UI_Layout {
 	int screen_height_px; // Screen height in pixels (cached for convenience)
 	int pill_height; // Height of menu pills in dp (28-32 typical)
 	int row_count; // Number of visible menu rows (6-8)
-	int padding; // Screen edge padding in dp
+	int padding; // Internal spacing between UI elements in dp
+	int edge_padding; // Distance from screen edges in dp (reduced on devices with bezels)
 	int text_baseline; // Vertical offset for text centering in pill
-	int button_size; // Size of button graphics in dp
+	int button_size; // Size of button icons in dp
 	int button_margin; // Margin around buttons in dp
+	int option_size; // Height of submenu option rows in dp
+	int option_baseline; // Vertical offset for label text (font.medium) in option rows
+	int option_value_baseline; // Vertical offset for value text (font.small) in option rows
 	int button_padding; // Padding inside buttons in dp
 	int settings_size; // Size of setting indicators in dp
 	int settings_width; // Width of setting indicators in dp
@@ -232,8 +272,9 @@ enum {
 	ASSET_WHITE_PILL, // Rounded rectangle (white)
 	ASSET_BLACK_PILL, // Rounded rectangle (black)
 	ASSET_DARK_GRAY_PILL, // Rounded rectangle (dark gray)
-	ASSET_OPTION, // Option indicator
-	ASSET_BUTTON, // Button background
+	ASSET_OPTION, // Option row background (gray, option_size)
+	ASSET_OPTION_WHITE, // Option row selected (white, option_size)
+	ASSET_BUTTON, // Button background (white, button_size)
 	ASSET_PAGE_BG, // Page background
 	ASSET_STATE_BG, // State indicator background
 	ASSET_PAGE, // Page indicator

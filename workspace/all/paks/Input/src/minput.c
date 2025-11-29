@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
 	int has_both = (has_power && has_menu);
 
 	// Adjust vertical offset if L3/R3 not present (reclaim space)
-	int oy = DP(ui.padding);
+	int oy = DP(ui.edge_padding);
 	if (!has_L3 && !has_R3)
 		oy += DP(ui.pill_height);
 
@@ -211,7 +211,7 @@ int main(int argc, char* argv[]) {
 			// D-pad (Up, Down, Left, Right)
 			///////////////////////////////
 			{
-				int x = DP(ui.padding + ui.pill_height);
+				int x = DP(ui.edge_padding + ui.pill_height);
 				int y = oy + DP(ui.pill_height * 2);
 				int o = DP(ui.button_margin);
 
@@ -248,7 +248,7 @@ int main(int argc, char* argv[]) {
 			// Face buttons (A, B, X, Y)
 			///////////////////////////////
 			{
-				int x = FIXED_WIDTH - DP(ui.padding + ui.pill_height * 3) + DP(ui.pill_height);
+				int x = FIXED_WIDTH - DP(ui.edge_padding + ui.pill_height * 3) + DP(ui.pill_height);
 				int y = oy + DP(ui.pill_height * 2);
 				int o = DP(ui.button_margin);
 
@@ -340,7 +340,7 @@ int main(int argc, char* argv[]) {
 			// Analog stick buttons (if available)
 			///////////////////////////////
 			if (has_L3) {
-				int x = DP(ui.padding + ui.pill_height);
+				int x = DP(ui.edge_padding + ui.pill_height);
 				int y = oy + DP(ui.pill_height * 6);
 				int o = DP(ui.button_margin);
 
@@ -349,7 +349,7 @@ int main(int argc, char* argv[]) {
 			}
 
 			if (has_R3) {
-				int x = FIXED_WIDTH - DP(ui.padding + ui.pill_height * 3) + DP(ui.pill_height);
+				int x = FIXED_WIDTH - DP(ui.edge_padding + ui.pill_height * 3) + DP(ui.pill_height);
 				int y = oy + DP(ui.pill_height * 6);
 				int o = DP(ui.button_margin);
 

@@ -712,7 +712,7 @@ void draw_screen(SDL_Surface *screen, struct AppState *state)
             int imgW = surface->w, imgH = surface->h;
 
             // Compute scale factor using DP-based screen dimensions
-            int padding_px = DP(ui.padding * 2);
+            int padding_px = DP(ui.edge_padding * 2);
             int available_width_px = ui.screen_width_px - padding_px;
             int available_height_px = ui.screen_height_px - padding_px;
 
@@ -802,16 +802,16 @@ void draw_screen(SDL_Surface *screen, struct AppState *state)
 
         SDL_Surface *text = TTF_RenderUTF8_Blended(state->fonts.small, time_left_str, COLOR_WHITE);
         SDL_Rect pos = {
-            DP(ui.padding),
-            DP(ui.padding),
+            DP(ui.edge_padding),
+            DP(ui.edge_padding),
             text->w,
             text->h};
         SDL_BlitSurface(text, NULL, screen, &pos);
 
-        initial_padding = text->h + DP(ui.padding);
+        initial_padding = text->h + DP(ui.edge_padding);
     }
 
-    int message_padding_dp = ui.padding + ui.button_padding;
+    int message_padding_dp = ui.edge_padding + ui.button_padding;
 
     // get the width and height of every word in the message
     struct Message words[1024];
@@ -954,11 +954,11 @@ void draw_screen(SDL_Surface *screen, struct AppState *state)
     int current_message_y = (ui.screen_height_px - messages_height) / 2;
     if (state->items_state->items[state->items_state->selected].alignment == MessageAlignmentTop)
     {
-        current_message_y = DP(ui.padding) + initial_padding;
+        current_message_y = DP(ui.edge_padding) + initial_padding;
     }
     else if (state->items_state->items[state->items_state->selected].alignment == MessageAlignmentBottom)
     {
-        current_message_y = ui.screen_height_px - messages_height - DP(ui.padding) - initial_padding;
+        current_message_y = ui.screen_height_px - messages_height - DP(ui.edge_padding) - initial_padding;
     }
 
     for (int i = 0; i <= message_count; i++)
