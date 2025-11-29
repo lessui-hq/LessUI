@@ -21,7 +21,7 @@ SDL?=SDL
 
 TARGET = minarch
 INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../../$(PLATFORM)/platform/
-SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/minui_file_utils.c ../../$(PLATFORM)/platform/platform.c
+SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/minui_file_utils.c ../../$(PLATFORM)/platform/platform.c
 HEADERS = $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc

@@ -127,7 +127,9 @@ static bool extractTag(char* str, char open, char close, char* out, size_t out_s
 	if (content_len >= out_size)
 		content_len = out_size - 1;
 
-	strncpy(out, open_pos + 1, content_len);
+	// Use memcpy to avoid strncpy warnings with zero-length or compile-time constant lengths
+	if (content_len > 0)
+		memcpy(out, open_pos + 1, content_len);
 	out[content_len] = '\0';
 
 	// Remove the entire tag from string (including brackets)

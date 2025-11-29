@@ -52,6 +52,24 @@
 ///////////////////////////////
 
 ///////////////////////////////
+// List View Configuration
+//
+// Tunable parameters for the list view rendering.
+// All values are easily adjustable for tweaking the UI layout.
+///////////////////////////////
+
+// Thumbnail layout (percentages of screen width)
+#define THUMB_TEXT_WIDTH_PERCENT 60 // Text area width when thumbnail shown (unselected items)
+#define THUMB_SELECTED_WIDTH_PERCENT 100 // Selected item text width when thumbnail shown
+#define THUMB_MAX_WIDTH_PERCENT 40 // Maximum thumbnail width
+
+// Thumbnail animation
+#define THUMB_FADE_DURATION_MS 100 // Duration of fade-in animation in milliseconds
+#define THUMB_FADE_FRAME_MS 16 // Assumed frame time (60fps = ~16ms)
+#define THUMB_ALPHA_MAX 255 // Fully opaque
+#define THUMB_ALPHA_MIN 0 // Fully transparent
+
+///////////////////////////////
 // Async thumbnail loader
 //
 // Loads thumbnails in a background thread to prevent UI stutter during scrolling.
@@ -2193,7 +2211,7 @@ int main(int argc, char* argv[]) {
 	char cached_thumb_path[MAX_PATH] = {0}; // Path of cached thumbnail
 	Entry* last_rendered_entry = NULL; // Last entry we rendered (for change detection)
 	int thumb_exists = 0; // Whether thumbnail exists for current entry
-	int thumb_alpha = 255; // Current fade alpha (0-255), starts full for instant display
+	int thumb_alpha = THUMB_ALPHA_MAX; // Current fade alpha, starts full for instant display
 
 	// LOG_info("- loop start: %lu", SDL_GetTicks() - main_begin);
 	while (!quit) {
@@ -2353,7 +2371,7 @@ int main(int argc, char* argv[]) {
 		// Detect when selected entry changes and update thumbnail state
 		Entry* current_entry = (total > 0) ? top->entries->items[top->selected] : NULL;
 		if (current_entry != last_rendered_entry) {
-			// Selection changed - check if new entry has a thumbnail
+			// Selection changed - reset thumbnail state
 			if (cached_thumb) {
 				SDL_FreeSurface(cached_thumb);
 				cached_thumb = NULL;
@@ -2361,21 +2379,26 @@ int main(int argc, char* argv[]) {
 			cached_thumb_path[0] = '\0';
 			thumb_exists = 0;
 
-			if (current_entry && !show_version) {
+			if (current_entry && current_entry->path && !show_version) {
 				char* last_slash = strrchr(current_entry->path, '/');
-				if (last_slash) {
-					int dir_len = last_slash - current_entry->path;
-					snprintf(cached_thumb_path, MAX_PATH, "%.*s/.res/%s.png", dir_len,
-					         current_entry->path, last_slash + 1);
-					thumb_exists = exists(cached_thumb_path);
+				if (last_slash && last_slash[1] != '\0') {
+					// Build thumbnail path: /dir/.res/filename.png
+					int dir_len = (int)(last_slash - current_entry->path);
+					if (dir_len > 0 && dir_len < MAX_PATH - 32) { // Leave room for /.res/name.png
+						snprintf(cached_thumb_path, MAX_PATH, "%.*s/.res/%s.png", dir_len,
+						         current_entry->path, last_slash + 1);
+						thumb_exists = exists(cached_thumb_path);
 
-					// Request async load if thumbnail exists
-					// Max width is 40% of screen (text gets 60%)
-					if (thumb_exists) {
-						int padding = DP(ui.edge_padding);
-						int max_width = (ui.screen_width_px * 40) / 100 - padding;
-						int max_height = ui.screen_height_px - (padding * 2);
-						ThumbLoader_request(cached_thumb_path, max_width, max_height);
+						// Request async load if thumbnail exists
+						if (thumb_exists) {
+							int padding = DP(ui.edge_padding);
+							int max_width =
+							    (ui.screen_width_px * THUMB_MAX_WIDTH_PERCENT) / 100 - padding;
+							int max_height = ui.screen_height_px - (padding * 2);
+							if (max_width > 0 && max_height > 0) {
+								ThumbLoader_request(cached_thumb_path, max_width, max_height);
+							}
+						}
 					}
 				}
 			}
@@ -2387,18 +2410,17 @@ int main(int argc, char* argv[]) {
 			SDL_Surface* loaded = ThumbLoader_get(cached_thumb_path);
 			if (loaded) {
 				cached_thumb = loaded;
-				thumb_alpha = 0; // Start fade from transparent
+				thumb_alpha = THUMB_ALPHA_MIN; // Start fade from transparent
 				dirty = 1;
 			}
 		}
 
 		// Animate thumbnail fade-in
-		if (cached_thumb && thumb_alpha < 255) {
-#define THUMB_FADE_MS 100 // Duration of fade-in animation
-			int fade_step = 255 * 16 / THUMB_FADE_MS; // 16ms per frame at 60fps
+		if (cached_thumb && thumb_alpha < THUMB_ALPHA_MAX) {
+			int fade_step = (THUMB_ALPHA_MAX * THUMB_FADE_FRAME_MS) / THUMB_FADE_DURATION_MS;
 			thumb_alpha += fade_step;
-			if (thumb_alpha > 255)
-				thumb_alpha = 255;
+			if (thumb_alpha > THUMB_ALPHA_MAX)
+				thumb_alpha = THUMB_ALPHA_MAX;
 			dirty = 1;
 		}
 
@@ -2408,16 +2430,18 @@ int main(int argc, char* argv[]) {
 
 			int oy;
 
-			// Fixed thumbnail area width (40% of screen) when thumbnail exists
-			// Unselected text gets 60%, selected text gets 70%
-			int thumb_area_x = (ui.screen_width_px * 60) / 100;
+			// Text area width when thumbnail exists (unselected items)
+			int text_area_width = (ui.screen_width_px * THUMB_TEXT_WIDTH_PERCENT) / 100;
 
-			// Display cached thumbnail if available (centered in thumbnail area)
-			if (!show_version && total > 0 && cached_thumb) {
+			// Display cached thumbnail if available (right-aligned with padding)
+			if (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
+			    cached_thumb->h > 0) {
 				int padding = DP(ui.edge_padding);
 				int ox = ui.screen_width_px - cached_thumb->w - padding;
 				oy = (ui.screen_height_px - cached_thumb->h) / 2;
-				SDLX_SetAlpha(cached_thumb, SDL_SRCALPHA, thumb_alpha);
+				// Clamp alpha to valid range for SDL compatibility
+				int safe_alpha = (thumb_alpha < 0) ? 0 : ((thumb_alpha > 255) ? 255 : thumb_alpha);
+				SDLX_SetAlpha(cached_thumb, SDL_SRCALPHA, safe_alpha);
 				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
@@ -2520,16 +2544,17 @@ int main(int argc, char* argv[]) {
 						char* entry_name = entry->name;
 						char* entry_unique = entry->unique;
 						// Calculate available width in pixels
-						// Use fixed 60% width when thumbnail exists (prevents text reflow)
+						// Use fixed widths when thumbnail exists (prevents text reflow)
 						int available_width;
 						if (thumb_exists) {
 							if (j == selected_row) {
-								// Selected item: 100% of screen width (for now)
+								// Selected item gets more width
 								available_width =
-								    ((ui.screen_width_px * 100) / 100) - DP(ui.edge_padding * 2);
+								    (ui.screen_width_px * THUMB_SELECTED_WIDTH_PERCENT) / 100 -
+								    DP(ui.edge_padding * 2);
 							} else {
-								// Unselected items: 60% of screen width
-								available_width = thumb_area_x - DP(ui.edge_padding * 2);
+								// Unselected items constrained to text area
+								available_width = text_area_width - DP(ui.edge_padding * 2);
 							}
 						} else {
 							available_width = DP(ui.screen_width) - DP(ui.edge_padding * 2);
