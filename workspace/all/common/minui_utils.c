@@ -15,7 +15,10 @@
  * Returns index 1-26 for strings starting with a-z (case-insensitive).
  * Returns 0 for strings starting with non-letters.
  *
- * @param str String to get index for
+ * Note: When used for L1/R1 navigation indexing, pass entry->sort_key
+ * (which has leading articles stripped) to match sort order.
+ *
+ * @param str String to get index for (typically a sort_key)
  * @return Index 0-26 (0=non-letter, 1=A, 2=B, ..., 26=Z)
  */
 int MinUI_getIndexChar(char* str) {

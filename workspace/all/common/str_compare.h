@@ -9,6 +9,17 @@
 #define STR_COMPARE_H
 
 /**
+ * Skips leading article ("The ", "A ", "An ") for sorting purposes.
+ *
+ * No-Intro convention moves articles to end for sorting, so
+ * "The Legend of Zelda" sorts under "L", not "T".
+ *
+ * @param s String to check
+ * @return Pointer past the article, or original pointer if no article
+ */
+const char* skip_article(const char* s);
+
+/**
  * Natural string comparison (case-insensitive).
  *
  * Compares strings in a human-friendly way where numeric sequences

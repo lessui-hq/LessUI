@@ -18,13 +18,15 @@
  * Returns 0 for strings starting with non-letters.
  *
  * Used for L1/R1 quick navigation in file browser.
+ * When building alphabetical index, pass entry->sort_key (which has
+ * leading articles stripped) rather than entry->name to match sort order.
  *
  * Example:
  *   "Apple" -> 1 (A)
  *   "Zelda" -> 26 (Z)
  *   "007 GoldenEye" -> 0 (non-letter)
  *
- * @param str String to get index for
+ * @param str String to get index for (typically sort_key for Entry indexing)
  * @return Index 0-26 (0=non-letter, 1=A, 2=B, ..., 26=Z)
  */
 int MinUI_getIndexChar(char* str);

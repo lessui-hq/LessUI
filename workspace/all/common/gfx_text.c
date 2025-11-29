@@ -56,7 +56,15 @@ int GFX_truncateText(TTF_Font* ttf_font, const char* in_name, char* out_name, in
 
 	while (text_width > max_width) {
 		int len = strlen(out_name);
-		strcpy(&out_name[len - 4], "...\0");
+		// Need at least 4 chars to truncate (replace last char with "...")
+		// If string is too short, just use "..." directly
+		if (len <= 4) {
+			strcpy(out_name, "...");
+			TTF_SizeUTF8(ttf_font, out_name, &text_width, NULL);
+			text_width += padding;
+			break;
+		}
+		strcpy(&out_name[len - 4], "...");
 		TTF_SizeUTF8(ttf_font, out_name, &text_width, NULL);
 		text_width += padding;
 	}

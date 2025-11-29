@@ -72,10 +72,45 @@ enum EntryType {
 typedef struct Entry {
 	char* path; // Full path to file/folder
 	char* name; // Cleaned display name (may be aliased via map.txt)
+	char* sort_key; // Sorting key (name with leading article skipped)
 	char* unique; // Disambiguating text when multiple entries have same name
 	int type; // ENTRY_DIR, ENTRY_PAK, or ENTRY_ROM
 	int alpha; // Index into parent Directory's alphas array for L1/R1 navigation
 } Entry;
+
+/**
+ * Sets an entry's display name and computes its sort key.
+ *
+ * The sort key is the name with any leading article ("The ", "A ", "An ")
+ * stripped, ensuring sorting and alphabetical indexing are consistent.
+ *
+ * @param self Entry to update
+ * @param name New display name (will be copied)
+ * @return 1 on success, 0 on allocation failure
+ */
+static int Entry_setName(Entry* self, const char* name) {
+	char* new_name = strdup(name);
+	if (!new_name)
+		return 0;
+
+	// Compute sort key by skipping leading article
+	const char* key_start = skip_article(name);
+	char* new_sort_key = strdup(key_start);
+	if (!new_sort_key) {
+		free(new_name);
+		return 0;
+	}
+
+	// Free old values and assign new ones
+	if (self->name)
+		free(self->name);
+	if (self->sort_key)
+		free(self->sort_key);
+
+	self->name = new_name;
+	self->sort_key = new_sort_key;
+	return 1;
+}
 
 /**
  * Creates a new entry from a path.
@@ -100,8 +135,10 @@ static Entry* Entry_new(char* path, int type) {
 		free(self);
 		return NULL;
 	}
-	self->name = strdup(display_name);
-	if (!self->name) {
+	// Initialize to NULL before Entry_setName
+	self->name = NULL;
+	self->sort_key = NULL;
+	if (!Entry_setName(self, display_name)) {
 		free(self->path);
 		free(self);
 		return NULL;
@@ -120,6 +157,7 @@ static Entry* Entry_new(char* path, int type) {
 static void Entry_free(Entry* self) {
 	free(self->path);
 	free(self->name);
+	free(self->sort_key);
 	if (self->unique)
 		free(self->unique);
 	free(self);
@@ -144,6 +182,7 @@ static int EntryArray_indexOf(Array* self, char* path) {
 /**
  * Comparison function for qsort - sorts entries using natural sort.
  *
+ * Uses sort_key for comparison, which has leading articles stripped.
  * Natural sort orders numeric sequences by value, not lexicographically.
  * Example: "Game 2" < "Game 10" (unlike strcmp where "Game 10" < "Game 2")
  *
@@ -154,7 +193,7 @@ static int EntryArray_indexOf(Array* self, char* path) {
 static int EntryArray_sortEntry(const void* a, const void* b) {
 	Entry* item1 = *(Entry**)a;
 	Entry* item2 = *(Entry**)b;
-	return strnatcasecmp(item1->name, item2->name);
+	return strnatcasecmp(item1->sort_key, item2->sort_key);
 }
 
 /**
@@ -218,6 +257,8 @@ static IntArray* IntArray_new(void) {
  * @warning Does not check capacity - caller must ensure count < INT_ARRAY_MAX
  */
 static void IntArray_push(IntArray* self, int i) {
+	if (self->count >= INT_ARRAY_MAX)
+		return; // Bounds check to prevent overflow
 	self->items[self->count++] = i;
 }
 
@@ -252,16 +293,17 @@ typedef struct Directory {
 } Directory;
 
 /**
- * Gets the alphabetical index for a string.
+ * Gets the alphabetical index for a sort key.
  *
  * Used to group entries by first letter for L1/R1 shoulder button navigation.
+ * Should be called with entry->sort_key (not entry->name) to match sort order.
  *
- * @param str String to index
+ * @param sort_key Sort key string (articles already stripped)
  * @return 0 for non-alphabetic, 1-26 for A-Z (case-insensitive)
  */
-static int getIndexChar(char* str) {
+static int getIndexChar(char* sort_key) {
 	char i = 0;
-	char c = tolower(str[0]);
+	char c = tolower(sort_key[0]);
 	if (c >= 'a' && c <= 'z')
 		i = (c - 'a') + 1;
 	return i;
@@ -356,11 +398,8 @@ static void Directory_index(Directory* self) {
 				char* filename = strrchr(entry->path, '/') + 1;
 				char* alias = Hash_get(map, filename);
 				if (alias) {
-					char* new_name = strdup(alias);
-					if (!new_name)
+					if (!Entry_setName(entry, alias))
 						continue;
-					free(entry->name);
-					entry->name = new_name;
 					resort = 1;
 					// Check if any alias starts with '.' (hidden)
 					if (!filter && hide(entry->name))
@@ -393,22 +432,12 @@ static void Directory_index(Directory* self) {
 	}
 
 	// Detect duplicates and build alphabetical index
+	// Note: aliases were already applied above, no need to re-apply here
 	Entry* prior = NULL;
 	int alpha = -1;
 	int index = 0;
 	for (int i = 0; i < self->entries->count; i++) {
 		Entry* entry = self->entries->items[i];
-		if (map) {
-			char* filename = strrchr(entry->path, '/') + 1;
-			char* alias = Hash_get(map, filename);
-			if (alias) {
-				char* new_name = strdup(alias);
-				if (new_name) {
-					free(entry->name);
-					entry->name = new_name;
-				}
-			}
-		}
 
 		// Detect duplicate display names
 		if (prior != NULL && exactMatch(prior->name, entry->name)) {
@@ -456,8 +485,9 @@ static void Directory_index(Directory* self) {
 		}
 
 		// Build alphabetical index for L1/R1 navigation
+		// Uses sort_key which has articles stripped, matching sort order
 		if (!skip_index) {
-			int a = getIndexChar(entry->name);
+			int a = getIndexChar(entry->sort_key);
 			if (a != alpha) {
 				index = self->alphas->count;
 				IntArray_push(self->alphas, i);
@@ -1110,12 +1140,8 @@ static Array* getRoot(void) {
 				char* filename = strrchr(entry->path, '/') + 1;
 				char* alias = Hash_get(map, filename);
 				if (alias) {
-					char* new_name = strdup(alias);
-					if (new_name) {
-						free(entry->name);
-						entry->name = new_name;
+					if (Entry_setName(entry, alias))
 						resort = 1;
-					}
 				}
 			}
 			if (resort)
@@ -1190,11 +1216,7 @@ static Array* getRecents(void) {
 		if (!entry)
 			continue;
 		if (recent->alias) {
-			char* new_name = strdup(recent->alias);
-			if (new_name) {
-				free(entry->name);
-				entry->name = new_name;
-			}
+			Entry_setName(entry, recent->alias);
 		}
 		Array_push(entries, entry);
 	}
@@ -1272,11 +1294,9 @@ static Array* getDiscs(char* path) {
 				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
 				if (!entry)
 					continue;
-				free(entry->name);
 				char name[16];
 				sprintf(name, "Disc %i", disc);
-				entry->name = strdup(name);
-				if (!entry->name) {
+				if (!Entry_setName(entry, name)) {
 					Entry_free(entry);
 					continue;
 				}
@@ -2016,6 +2036,15 @@ int main(int argc, char* argv[]) {
 	int show_setting = 0; // 1=brightness, 2=volume overlay
 	int was_online = PLAT_isOnline();
 
+	// Deferred thumbnail loading state - prevents UI stutter during fast scrolling
+	uint32_t last_scroll_time = 0; // 0 = load immediately (no scroll delay)
+	char pending_thumb_path[MAX_PATH] = {0};
+	int thumb_load_pending = 1; // Start with pending to load initial selection
+
+	// Thumbnail cache - shared across frames to avoid reloading same image
+	char cached_thumb_path[MAX_PATH] = {0};
+	SDL_Surface* cached_thumb = NULL;
+
 	// LOG_info("- loop start: %lu", SDL_GetTicks() - main_begin);
 	while (!quit) {
 		GFX_startFrame();
@@ -2144,6 +2173,15 @@ int main(int argc, char* argv[]) {
 			if (selected != top->selected) {
 				top->selected = selected;
 				dirty = 1;
+				last_scroll_time = now; // Track for deferred thumbnail loading
+				thumb_load_pending = 1;
+
+				// Clear cached thumbnail when selection changes to prevent wrong image showing
+				if (cached_thumb) {
+					SDL_FreeSurface(cached_thumb);
+					cached_thumb = NULL;
+					cached_thumb_path[0] = '\0';
+				}
 			}
 
 			// Check if selected ROM has save state for resume
@@ -2159,6 +2197,8 @@ int main(int argc, char* argv[]) {
 				Entry_open(top->entries->items[top->selected]);
 				total = top->entries->count;
 				dirty = 1;
+				thumb_load_pending = 1;
+				last_scroll_time = 0; // Immediate load (no scrolling delay)
 
 				if (total > 0)
 					readyResume(top->entries->items[top->selected]);
@@ -2166,29 +2206,21 @@ int main(int argc, char* argv[]) {
 				closeDirectory();
 				total = top->entries->count;
 				dirty = 1;
+				thumb_load_pending = 1;
+				last_scroll_time = 0; // Immediate load (no scrolling delay)
 				if (total > 0)
 					readyResume(top->entries->items[top->selected]);
 			}
 		}
 
-		// Rendering
-		if (dirty) {
-			GFX_clear(screen);
+		// Deferred thumbnail loading: load after scrolling stops to prevent UI stutter
+		// This runs BEFORE rendering, so if a thumbnail loads it can be shown in this frame
+#define THUMB_SCROLL_DELAY_MS 100
 
-			int ox = 0; // Initialize to avoid uninitialized warning
-			int oy;
-
-			// Thumbnail support with caching:
-			// For an entry named "NAME.EXT", check for /.res/NAME.EXT.png
-			// Image is scaled to fit within available space and cached for performance
-			static char cached_thumb_path[MAX_PATH] = {0};
-			static SDL_Surface* cached_thumb = NULL;
-
-			int had_thumb = 0;
+		if (thumb_load_pending && (now - last_scroll_time >= THUMB_SCROLL_DELAY_MS)) {
+			// User paused scrolling - try to load thumbnail for current selection
 			if (!show_version && total > 0) {
 				Entry* entry = top->entries->items[top->selected];
-				char res_path[MAX_PATH];
-
 				char res_root[MAX_PATH];
 				strcpy(res_root, entry->path);
 
@@ -2199,45 +2231,58 @@ int main(int argc, char* argv[]) {
 				char* tmp = strrchr(res_root, '/');
 				tmp[0] = '\0';
 
-				sprintf(res_path, "%s/.res/%s.png", res_root, res_name);
-				LOG_debug("res_path: %s", res_path);
-				if (exists(res_path)) {
-					had_thumb = 1;
-					SDL_Surface* thumb = NULL;
+				sprintf(pending_thumb_path, "%s/.res/%s.png", res_root, res_name);
 
-					// Check if we have this thumbnail cached
-					if (cached_thumb && strcmp(res_path, cached_thumb_path) == 0) {
-						// Use cached thumbnail
-						thumb = cached_thumb;
-					} else {
+				// Only load if different from cached
+				if (strcmp(pending_thumb_path, cached_thumb_path) != 0) {
+					if (exists(pending_thumb_path)) {
 						// Load and scale new thumbnail
-						SDL_Surface* thumb_orig = IMG_Load(res_path);
+						SDL_Surface* thumb_orig = IMG_Load(pending_thumb_path);
 
-						// Scale to fit within available space (50% of width, full height minus padding)
 						int padding = DP(ui.edge_padding);
 						int max_width = (ui.screen_width_px / 2) - padding;
 						int max_height = ui.screen_height_px - (padding * 2);
-						thumb = GFX_scaleToFit(thumb_orig, max_width, max_height);
+						SDL_Surface* thumb = GFX_scaleToFit(thumb_orig, max_width, max_height);
 
-						// Free original if different from scaled
 						if (thumb != thumb_orig)
 							SDL_FreeSurface(thumb_orig);
 
-						// Free old cached thumbnail if exists
 						if (cached_thumb)
 							SDL_FreeSurface(cached_thumb);
 
-						// Cache the new thumbnail
 						cached_thumb = thumb;
-						strcpy(cached_thumb_path, res_path);
+						strcpy(cached_thumb_path, pending_thumb_path);
+						dirty = 1; // Trigger render to show new thumbnail
+					} else {
+						// No thumbnail for this entry
+						if (cached_thumb) {
+							SDL_FreeSurface(cached_thumb);
+							cached_thumb = NULL;
+							cached_thumb_path[0] = '\0';
+							dirty = 1; // Trigger render without thumbnail
+						}
 					}
-
-					// Position on right side with padding, vertically centered
-					int padding = DP(ui.edge_padding);
-					ox = ui.screen_width_px - thumb->w - padding;
-					oy = (ui.screen_height_px - thumb->h) / 2;
-					SDL_BlitSurface(thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 				}
+			}
+			thumb_load_pending = 0;
+		}
+
+		// Rendering
+		if (dirty) {
+			GFX_clear(screen);
+
+			int ox = 0; // Initialize to avoid uninitialized warning
+			int oy;
+
+			// Thumbnail support: display cached thumbnail if available
+			// Loading is deferred until scrolling stops (see above)
+			int had_thumb = 0;
+			if (!show_version && total > 0 && cached_thumb) {
+				had_thumb = 1;
+				int padding = DP(ui.edge_padding);
+				ox = ui.screen_width_px - cached_thumb->w - padding;
+				oy = (ui.screen_height_px - cached_thumb->h) / 2;
+				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
 			int ow = GFX_blitHardwareGroup(screen, show_setting);

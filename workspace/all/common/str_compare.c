@@ -20,7 +20,7 @@ static const char* articles[] = {"The ", "An ", "A ", NULL};
  * @param s String to check
  * @return Pointer past the article, or original pointer if no article
  */
-static const char* skip_article(const char* s) {
+const char* skip_article(const char* s) {
 	if (!s)
 		return s;
 
