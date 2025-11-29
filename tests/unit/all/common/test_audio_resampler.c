@@ -181,6 +181,15 @@ void test_upsample_realistic_second_of_audio(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
+	// Use larger buffer for this test - upsampling 1000 inputs produces ~1088 outputs
+	SND_Frame large_buffer_data[1200];
+	AudioRingBuffer large_buffer = {
+	    .frames = large_buffer_data,
+	    .capacity = 1200,
+	    .write_pos = 0,
+	    .read_pos = 0,
+	};
+
 	// Simulate processing in chunks like real usage
 	SND_Frame chunk[1000];
 	int total_written = 0;
@@ -195,8 +204,10 @@ void test_upsample_realistic_second_of_audio(void) {
 			chunk[i] = (SND_Frame){(int16_t)(sample_idx % 32768), (int16_t)(sample_idx % 32768)};
 		}
 
-		test_buffer.write_pos = 0; // Reset buffer for each batch
-		ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, chunk, chunk_size, 1.0f);
+		// Reset buffer positions for each batch (simulating consumption)
+		large_buffer.write_pos = 0;
+		large_buffer.read_pos = 0;
+		ResampleResult result = AudioResampler_resample(&resampler, &large_buffer, chunk, chunk_size, 1.0f);
 		total_written += result.frames_written;
 		total_consumed += result.frames_consumed;
 
@@ -273,22 +284,27 @@ void test_rate_adjust_above_one_produces_fewer_samples(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
-	SND_Frame input[100];
-	for (int i = 0; i < 100; i++) {
-		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
+	// Use larger input (500 samples) to make 1% difference detectable
+	// 500 * 1.088 = 544 outputs normally, 544 / 1.01 ≈ 539 with 1% speedup
+	SND_Frame input[500];
+	for (int i = 0; i < 500; i++) {
+		input[i] = (SND_Frame){(int16_t)(i % 32768), (int16_t)(i % 32768)};
 	}
 
 	// Normal rate
-	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.0f);
 	int normal_output = result_normal.frames_written;
 
 	// Reset and try with speedup (ratio > 1)
+	// Use 1.01f (the max allowed by clamp) for reliable detection
 	AudioResampler_reset(&resampler);
 	test_buffer.write_pos = 0;
 
-	ResampleResult result_fast = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.02f);
+	ResampleResult result_fast = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.01f);
 
 	// Should produce fewer output samples when sped up
+	// With 500 inputs and ~1.088 ratio, we get ~544 outputs normally
+	// At 1.01 speedup, should get ~539 outputs (5 fewer)
 	TEST_ASSERT_LESS_THAN(normal_output, result_fast.frames_written);
 }
 
@@ -296,22 +312,25 @@ void test_rate_adjust_below_one_produces_more_samples(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
-	SND_Frame input[100];
-	for (int i = 0; i < 100; i++) {
-		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
+	// Use larger input (500 samples) to make 0.5% difference detectable
+	SND_Frame input[500];
+	for (int i = 0; i < 500; i++) {
+		input[i] = (SND_Frame){(int16_t)(i % 32768), (int16_t)(i % 32768)};
 	}
 
 	// Normal rate
-	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.0f);
 	int normal_output = result_normal.frames_written;
 
 	// Reset and try with slowdown (ratio < 1)
+	// Use 0.99f (the min allowed by clamp) for reliable detection
 	AudioResampler_reset(&resampler);
 	test_buffer.write_pos = 0;
 
-	ResampleResult result_slow = AudioResampler_resample(&resampler, &test_buffer, input, 100, 0.98f);
+	ResampleResult result_slow = AudioResampler_resample(&resampler, &test_buffer, input, 500, 0.99f);
 
 	// Should produce more output samples when slowed down
+	// With 500 inputs at ~1.088 ratio, should produce ~549 outputs (5 more)
 	TEST_ASSERT_GREATER_THAN(normal_output, result_slow.frames_written);
 }
 
@@ -324,12 +343,23 @@ void test_rate_adjust_clamped_to_safe_range(void) {
 		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
 	}
 
-	// Extreme ratio should be clamped, not crash
-	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 100, 10.0f);
+	// Get baseline with normal rate
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+	int normal_output = result_normal.frames_written;
 
-	// Should still produce reasonable output
-	TEST_ASSERT_GREATER_THAN(0, result.frames_written);
-	TEST_ASSERT_GREATER_THAN(0, result.frames_consumed);
+	// Reset and test with extreme ratio (10x) - should be clamped to max 1.01
+	AudioResampler_reset(&resampler);
+	test_buffer.write_pos = 0;
+	ResampleResult result_extreme = AudioResampler_resample(&resampler, &test_buffer, input, 100, 10.0f);
+
+	// Should still produce reasonable output (not crash)
+	TEST_ASSERT_GREATER_THAN(0, result_extreme.frames_written);
+	TEST_ASSERT_GREATER_THAN(0, result_extreme.frames_consumed);
+
+	// Extreme ratio clamped to 1.01 should produce output close to 1.01x baseline
+	// Not the 10x that was requested. Allow some tolerance for first-sample behavior.
+	int expected_clamped = (int)(normal_output * 0.99f); // 1.01 ratio = fewer outputs
+	TEST_ASSERT_INT_WITHIN(10, expected_clamped, result_extreme.frames_written);
 }
 
 ///////////////////////////////

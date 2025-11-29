@@ -1770,38 +1770,43 @@ static float SND_getBufferFillLevel(void) {
 /**
  * Calculates dynamic rate adjustment based on buffer fill level.
  *
- * Uses a simple proportional controller to keep the buffer around 50% full:
- * - Buffer too empty (<30%): slow down (ratio < 1.0) to produce more output
- * - Buffer too full (>70%): speed up (ratio > 1.0) to consume more input
- * - Buffer near target (30-70%): minimal adjustment
+ * Implements the Dynamic Rate Control algorithm from Hans-Kristian Arntzen's paper
+ * "Dynamic Rate Control for Retro Game Emulators" (2012). The formula is:
  *
- * @return Rate adjustment factor (typically 0.98 to 1.02)
+ *   adjustment = 1 + (1 - 2*fill) * d
+ *
+ * Where:
+ *   - fill = current buffer level (0.0 to 1.0)
+ *   - d = maximum allowed pitch deviation
+ *
+ * This creates smooth, continuous feedback that naturally converges to 50% fill:
+ *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer
+ *   - fill = 0.5: adjustment = 1.0, no change (equilibrium)
+ *   - fill > 0.5: adjustment > 1.0, produces less output, drains buffer
+ *
+ * The algorithm is stable and converges exponentially to half-full buffer,
+ * providing maximum headroom for timing jitter in both directions.
+ *
+ * @return Rate adjustment factor (1.0 ± d)
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
 
-	// Deadband: 30% to 70% (minimal adjustment in this range)
-	// Target is implicitly 50% (midpoint of deadband)
-	const float deadband_low = 0.3f;
-	const float deadband_high = 0.7f;
+	// Maximum pitch deviation (d) - choose based on content type
+	// Paper recommends d = 0.002 to 0.005 for inaudible adjustment
+	// PAL content (50Hz on 60Hz display) needs ~17% speed difference,
+	// but that's handled by the base resampling ratio, not dynamic control.
+	// Dynamic control only handles drift and jitter, so keep d small.
+	//
+	// We use a slightly larger value (0.5%) to handle hardware timing
+	// variations on budget handheld devices with less precise oscillators.
+	const float d = 0.005f;
 
-	// Maximum adjustment: ±2% (0.98 to 1.02)
-	// This is subtle enough to be inaudible but effective for drift correction
-	const float max_adjust = 0.02f;
-
-	float adjust = 1.0f;
-
-	if (fill < deadband_low) {
-		// Buffer getting empty - slow down to produce more output
-		// At 0% fill, adjust = 0.98 (slow down 2%)
-		float urgency = (deadband_low - fill) / deadband_low;
-		adjust = 1.0f - (urgency * max_adjust);
-	} else if (fill > deadband_high) {
-		// Buffer getting full - speed up to consume more input
-		// At 100% fill, adjust = 1.02 (speed up 2%)
-		float urgency = (fill - deadband_high) / (1.0f - deadband_high);
-		adjust = 1.0f + (urgency * max_adjust);
-	}
+	// Our formula (inverted from paper to match resampler convention):
+	// When fill=0: adjustment = 1 - d  (smaller steps, more outputs, fills buffer)
+	// When fill=0.5: adjustment = 1.0  (no change)
+	// When fill=1: adjustment = 1 + d  (larger steps, fewer outputs, drains buffer)
+	float adjust = 1.0f - (1.0f - 2.0f * fill) * d;
 
 	return adjust;
 }
@@ -1811,10 +1816,12 @@ static float SND_calculateRateAdjust(void) {
  *
  * Uses linear interpolation resampling with dynamic rate control:
  * - Linear interpolation: Smoothly blends between adjacent samples
- * - Dynamic rate control: Adjusts playback speed ±2% based on buffer fill
+ * - Dynamic rate control: Adjusts pitch ±0.5% based on buffer fill level
  *
- * This combination eliminates the clicks/pops of nearest-neighbor resampling
- * while preventing buffer underruns (crackling) and overruns (audio lag).
+ * Implements Hans-Kristian Arntzen's "Dynamic Rate Control" algorithm which
+ * maintains buffer at 50% full, providing headroom for timing jitter while
+ * keeping pitch deviation inaudible (well under the ~1% threshold of human
+ * perception for most listeners).
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array

@@ -98,7 +98,7 @@ void AudioResampler_reset(AudioResampler* resampler);
  * @param frames Input audio frames to process
  * @param frame_count Number of input frames
  * @param ratio_adjust Dynamic rate adjustment (1.0 = normal, <1.0 = slower, >1.0 = faster)
- *                     Use this for buffer-level-based rate control. Range: 0.95 to 1.05
+ *                     Use this for buffer-level-based rate control. Clamped to ±1%.
  * @return ResampleResult with frames_written and frames_consumed
  */
 ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffer* buffer,
