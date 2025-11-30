@@ -132,8 +132,8 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 
 #define AXIS_LX 0 // Left stick X-axis
 #define AXIS_LY 1 // Left stick Y-axis
-#define AXIS_RX 4 // Right stick X-axis
-#define AXIS_RY 3 // Right stick Y-axis
+#define AXIS_RX 3 // Right stick X-axis
+#define AXIS_RY 4 // Right stick Y-axis
 
 ///////////////////////////////
 // Function Button Mappings

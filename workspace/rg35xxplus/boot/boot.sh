@@ -151,5 +151,6 @@ else
 fi
 
 sync && poweroff
+sleep 60
 
 exit 0
