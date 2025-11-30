@@ -98,10 +98,10 @@ static char thumb_result_path[MAX_PATH]; // Path that was loaded
  */
 static void* thumb_loader_thread(void* arg) {
 	(void)arg;
+	LOG_debug("Thumbnail thread started");
 
 	char path[MAX_PATH];
 	int max_w, max_h;
-
 	while (1) {
 		// Wait for a request
 		pthread_mutex_lock(&thumb_mutex);
@@ -160,7 +160,10 @@ static void ThumbLoader_init(void) {
 	thumb_result_path[0] = '\0';
 	thumb_result = NULL;
 	thumb_shutdown = 0;
-	pthread_create(&thumb_thread, NULL, thumb_loader_thread, NULL);
+	int rc = pthread_create(&thumb_thread, NULL, thumb_loader_thread, NULL);
+	if (rc != 0) {
+		LOG_error("Failed to create thumbnail thread: %d", rc);
+	}
 }
 
 /**
@@ -2177,24 +2180,28 @@ int main(int argc, char* argv[]) {
 	simple_mode = exists(SIMPLE_MODE_PATH);
 
 	LOG_info("Starting MinUI on %s", PLATFORM);
+
+	LOG_debug("InitSettings");
 	InitSettings();
 
+	LOG_debug("GFX_init");
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
-	// LOG_info("- graphics init: %lu", SDL_GetTicks() - main_begin);
 
+	LOG_debug("PAD_init");
 	PAD_init();
-	// LOG_info("- input init: %lu", SDL_GetTicks() - main_begin);
 
+	LOG_debug("PWR_init");
 	PWR_init();
 	if (!HAS_POWER_BUTTON && !simple_mode)
 		PWR_disableSleep();
-	// LOG_info("- power init: %lu", SDL_GetTicks() - main_begin);
 
 	SDL_Surface* version = NULL;
 
+	LOG_debug("ThumbLoader_init");
 	ThumbLoader_init();
+
+	LOG_debug("Menu_init");
 	Menu_init();
-	// LOG_info("- menu init: %lu", SDL_GetTicks() - main_begin);
 
 	// Reduce CPU speed for menu browsing (saves power and heat)
 	PWR_setCPUSpeed(CPU_SPEED_MENU);
@@ -2213,7 +2220,7 @@ int main(int argc, char* argv[]) {
 	int thumb_exists = 0; // Whether thumbnail exists for current entry
 	int thumb_alpha = THUMB_ALPHA_MAX; // Current fade alpha, starts full for instant display
 
-	// LOG_info("- loop start: %lu", SDL_GetTicks() - main_begin);
+	LOG_debug("Entering main loop");
 	while (!quit) {
 		GFX_startFrame();
 		unsigned long now = SDL_GetTicks();
@@ -2405,6 +2412,10 @@ int main(int argc, char* argv[]) {
 			last_rendered_entry = current_entry;
 		}
 
+		// Check if thumbnail is actually loaded and ready to display
+		int showing_thumb = (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
+		                     cached_thumb->h > 0);
+
 		// Poll for async thumbnail load completion
 		if (thumb_exists && !cached_thumb && cached_thumb_path[0]) {
 			SDL_Surface* loaded = ThumbLoader_get(cached_thumb_path);
@@ -2430,12 +2441,9 @@ int main(int argc, char* argv[]) {
 
 			int oy;
 
-			// Text area width when thumbnail exists (unselected items)
-			int text_area_width = (ui.screen_width_px * THUMB_TEXT_WIDTH_PERCENT) / 100;
 
 			// Display cached thumbnail if available (right-aligned with padding)
-			if (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
-			    cached_thumb->h > 0) {
+			if (showing_thumb) {
 				int padding = DP(ui.edge_padding);
 				int ox = ui.screen_width_px - cached_thumb->w - padding;
 				oy = (ui.screen_height_px - cached_thumb->h) / 2;
@@ -2444,6 +2452,9 @@ int main(int argc, char* argv[]) {
 				SDLX_SetAlpha(cached_thumb, SDL_SRCALPHA, safe_alpha);
 				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
+
+			// Text area width when thumbnail is showing (unselected items)
+			int text_area_width = (ui.screen_width_px * THUMB_TEXT_WIDTH_PERCENT) / 100;
 
 			int ow = GFX_blitHardwareGroup(screen, show_setting);
 
@@ -2544,9 +2555,9 @@ int main(int argc, char* argv[]) {
 						char* entry_name = entry->name;
 						char* entry_unique = entry->unique;
 						// Calculate available width in pixels
-						// Use fixed widths when thumbnail exists (prevents text reflow)
+						// Use fixed widths when thumbnail is showing (prevents text reflow)
 						int available_width;
-						if (thumb_exists) {
+						if (showing_thumb) {
 							if (j == selected_row) {
 								// Selected item gets more width
 								available_width =

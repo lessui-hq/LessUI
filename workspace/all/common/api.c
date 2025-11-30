@@ -301,6 +301,10 @@ static void GFX_scaleBilinear(SDL_Surface* src, SDL_Surface* dst) {
 	int dst_w = dst->w;
 	int dst_h = dst->h;
 
+	// Calculate scale ratios (how much to step through source for each dest pixel)
+	float x_ratio = ((float)src_w) / dst_w;
+	float y_ratio = ((float)src_h) / dst_h;
+
 	// Determine bytes per pixel (3 for RGB, 4 for RGBA)
 	int bpp = src->format->BytesPerPixel;
 
@@ -313,76 +317,41 @@ static void GFX_scaleBilinear(SDL_Surface* src, SDL_Surface* dst) {
 	uint8_t* src_pixels = (uint8_t*)src->pixels;
 	uint8_t* dst_pixels = (uint8_t*)dst->pixels;
 
-	// Fixed-point scaling using 16.16 format for ARM optimization
-	// This avoids floating-point math in the inner loop
-	uint32_t x_ratio = ((uint32_t)src_w << 16) / dst_w;
-	uint32_t y_ratio = ((uint32_t)src_h << 16) / dst_h;
-
-	uint32_t src_y_fixed = 0;
 	for (int y = 0; y < dst_h; y++) {
-		int y1 = src_y_fixed >> 16;
-		int y2 = (y1 + 1 < src_h) ? y1 + 1 : y1;
-		uint32_t y_frac = (src_y_fixed >> 8) & 0xFF; // 8-bit fractional part
-		uint32_t y_inv = 256 - y_frac;
-
-		uint8_t* row1 = src_pixels + (y1 * src->pitch);
-		uint8_t* row2 = src_pixels + (y2 * src->pitch);
-		uint8_t* dst_row = dst_pixels + (y * dst->pitch);
-
-		uint32_t src_x_fixed = 0;
 		for (int x = 0; x < dst_w; x++) {
-			int x1 = src_x_fixed >> 16;
+			// Source coordinates (floating point)
+			float src_x = x * x_ratio;
+			float src_y = y * y_ratio;
+
+			// Integer coordinates of surrounding pixels
+			int x1 = (int)src_x;
+			int y1 = (int)src_y;
 			int x2 = (x1 + 1 < src_w) ? x1 + 1 : x1;
-			uint32_t x_frac = (src_x_fixed >> 8) & 0xFF; // 8-bit fractional part
-			uint32_t x_inv = 256 - x_frac;
+			int y2 = (y1 + 1 < src_h) ? y1 + 1 : y1;
+
+			// Fractional parts for interpolation
+			float x_frac = src_x - x1;
+			float y_frac = src_y - y1;
 
 			// Get pointers to the 4 surrounding pixels
-			uint8_t* p11 = row1 + (x1 * bpp);
-			uint8_t* p12 = row1 + (x2 * bpp);
-			uint8_t* p21 = row2 + (x1 * bpp);
-			uint8_t* p22 = row2 + (x2 * bpp);
+			uint8_t* p11 = src_pixels + (y1 * src->pitch) + (x1 * bpp);
+			uint8_t* p12 = src_pixels + (y1 * src->pitch) + (x2 * bpp);
+			uint8_t* p21 = src_pixels + (y2 * src->pitch) + (x1 * bpp);
+			uint8_t* p22 = src_pixels + (y2 * src->pitch) + (x2 * bpp);
 
-			uint8_t* dst_pixel = dst_row + (x * bpp);
+			// Bilinear interpolation for each channel
+			uint8_t* dst_pixel = dst_pixels + (y * dst->pitch) + (x * bpp);
 
-			// Unrolled bilinear interpolation for common pixel formats
-			// All math is integer: weights sum to 256*256=65536, shift by 16
-			if (bpp == 4) {
-				// RGBA (4 channels, unrolled)
-				uint32_t w11 = x_inv * y_inv;
-				uint32_t w12 = x_frac * y_inv;
-				uint32_t w21 = x_inv * y_frac;
-				uint32_t w22 = x_frac * y_frac;
-
-				dst_pixel[0] = (p11[0] * w11 + p12[0] * w12 + p21[0] * w21 + p22[0] * w22) >> 16;
-				dst_pixel[1] = (p11[1] * w11 + p12[1] * w12 + p21[1] * w21 + p22[1] * w22) >> 16;
-				dst_pixel[2] = (p11[2] * w11 + p12[2] * w12 + p21[2] * w21 + p22[2] * w22) >> 16;
-				dst_pixel[3] = (p11[3] * w11 + p12[3] * w12 + p21[3] * w21 + p22[3] * w22) >> 16;
-			} else if (bpp == 3) {
-				// RGB (3 channels, unrolled)
-				uint32_t w11 = x_inv * y_inv;
-				uint32_t w12 = x_frac * y_inv;
-				uint32_t w21 = x_inv * y_frac;
-				uint32_t w22 = x_frac * y_frac;
-
-				dst_pixel[0] = (p11[0] * w11 + p12[0] * w12 + p21[0] * w21 + p22[0] * w22) >> 16;
-				dst_pixel[1] = (p11[1] * w11 + p12[1] * w12 + p21[1] * w21 + p22[1] * w22) >> 16;
-				dst_pixel[2] = (p11[2] * w11 + p12[2] * w12 + p21[2] * w21 + p22[2] * w22) >> 16;
-			} else {
-				// Fallback for other formats (rare)
-				uint32_t w11 = x_inv * y_inv;
-				uint32_t w12 = x_frac * y_inv;
-				uint32_t w21 = x_inv * y_frac;
-				uint32_t w22 = x_frac * y_frac;
-
-				for (int c = 0; c < bpp; c++) {
-					dst_pixel[c] =
-					    (p11[c] * w11 + p12[c] * w12 + p21[c] * w21 + p22[c] * w22) >> 16;
-				}
+			for (int c = 0; c < bpp; c++) {
+				// Interpolate horizontally on top row
+				float top = p11[c] * (1.0f - x_frac) + p12[c] * x_frac;
+				// Interpolate horizontally on bottom row
+				float bottom = p21[c] * (1.0f - x_frac) + p22[c] * x_frac;
+				// Interpolate vertically
+				float result = top * (1.0f - y_frac) + bottom * y_frac;
+				dst_pixel[c] = (uint8_t)(result + 0.5f);
 			}
-
-			src_x_fixed += x_ratio;
 		}
-		src_y_fixed += y_ratio;
 	}
 
 	// Unlock surfaces
