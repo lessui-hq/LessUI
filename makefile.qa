@@ -214,7 +214,7 @@ tests/utils_test: tests/unit/all/common/test_utils.c workspace/all/common/utils.
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build No-Intro name parser tests
-tests/nointro_parser_test: tests/unit/all/common/test_nointro_parser.c workspace/all/common/nointro_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/nointro_parser_test: tests/unit/all/common/test_nointro_parser.c workspace/all/common/nointro_parser.c workspace/all/common/utils.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building No-Intro name parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
