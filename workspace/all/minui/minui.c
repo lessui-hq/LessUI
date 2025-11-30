@@ -79,6 +79,7 @@
 
 // Thumbnail loader state
 static pthread_t thumb_thread;
+static int thumb_thread_valid; // Whether thread was successfully created
 static pthread_mutex_t thumb_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t thumb_cond = PTHREAD_COND_INITIALIZER;
 
@@ -160,9 +161,12 @@ static void ThumbLoader_init(void) {
 	thumb_result_path[0] = '\0';
 	thumb_result = NULL;
 	thumb_shutdown = 0;
+	thumb_thread_valid = 0;
 	int rc = pthread_create(&thumb_thread, NULL, thumb_loader_thread, NULL);
 	if (rc != 0) {
 		LOG_error("Failed to create thumbnail thread: %d", rc);
+	} else {
+		thumb_thread_valid = 1;
 	}
 }
 
@@ -171,12 +175,14 @@ static void ThumbLoader_init(void) {
  * Call once at shutdown.
  */
 static void ThumbLoader_quit(void) {
-	pthread_mutex_lock(&thumb_mutex);
-	thumb_shutdown = 1;
-	pthread_cond_signal(&thumb_cond);
-	pthread_mutex_unlock(&thumb_mutex);
+	if (thumb_thread_valid) {
+		pthread_mutex_lock(&thumb_mutex);
+		thumb_shutdown = 1;
+		pthread_cond_signal(&thumb_cond);
+		pthread_mutex_unlock(&thumb_mutex);
 
-	pthread_join(thumb_thread, NULL);
+		pthread_join(thumb_thread, NULL);
+	}
 
 	if (thumb_result) {
 		SDL_FreeSurface(thumb_result);
@@ -422,15 +428,14 @@ static IntArray* IntArray_new(void) {
 
 /**
  * Appends an integer to the array.
+ * Silently drops if array is full.
  *
  * @param self Array to modify
  * @param i Value to append
- *
- * @warning Does not check capacity - caller must ensure count < INT_ARRAY_MAX
  */
 static void IntArray_push(IntArray* self, int i) {
 	if (self->count >= INT_ARRAY_MAX)
-		return; // Bounds check to prevent overflow
+		return;
 	self->items[self->count++] = i;
 }
 
