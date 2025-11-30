@@ -595,8 +595,7 @@ void PLAT_powerOff(void) {
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
-	PLAT_enableBacklight(0);
-	PLAT_enableLED(1);
+	PLAT_enableBacklight(0); // Also turns on LEDs via PLAT_enableLED(!enable)
 	SND_quit();
 	VIB_quit();
 	PWR_quit();
