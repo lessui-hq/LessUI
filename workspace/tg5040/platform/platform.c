@@ -539,23 +539,23 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
  * Enables or disables LED indicators.
  *
  * Brick variant has three LED zones that are all controlled.
- * LED brightness is 0 (off) when enabled, 60 when disabled (sleep mode).
+ * LED brightness is 60 when enabled, 0 (off) when disabled.
  *
- * @param enable 1 to turn LEDs off (active state), 0 for sleep mode
+ * @param enable 1 to turn LEDs on, 0 to turn off
  */
 static void PLAT_enableLED(int enable) {
 	if (enable) {
-		putInt(LED_PATH1, 0);
-		if (is_brick)
-			putInt(LED_PATH2, 0);
-		if (is_brick)
-			putInt(LED_PATH3, 0);
-	} else {
 		putInt(LED_PATH1, 60);
 		if (is_brick)
 			putInt(LED_PATH2, 60);
 		if (is_brick)
 			putInt(LED_PATH3, 60);
+	} else {
+		putInt(LED_PATH1, 0);
+		if (is_brick)
+			putInt(LED_PATH2, 0);
+		if (is_brick)
+			putInt(LED_PATH3, 0);
 	}
 }
 
@@ -580,7 +580,7 @@ void PLAT_enableBacklight(int enable) {
 		// putInt(BLANK_PATH,4);
 		SetRawBrightness(0);
 	}
-	PLAT_enableLED(enable);
+	PLAT_enableLED(!enable);
 }
 
 /**
@@ -595,7 +595,7 @@ void PLAT_powerOff(void) {
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
-	PLAT_enableLED(0); // Leave display alone
+	PLAT_enableBacklight(0); // Also turns on LEDs via PLAT_enableLED(!enable)
 	SND_quit();
 	VIB_quit();
 	PWR_quit();

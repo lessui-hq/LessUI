@@ -756,6 +756,7 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
  */
 void PLAT_enableBacklight(int enable) {
 	if (enable) {
+		SetRawBrightness(8); // fix screen not turning back on after sleep on some board revs
 		SetBrightness(GetBrightness());
 		system("bl_enable"); // Platform-specific backlight enable script
 		putInt(BLANK_PATH, FB_BLANK_UNBLANK);

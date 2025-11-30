@@ -151,5 +151,6 @@ else
 fi
 
 sync && poweroff
+sleep 60 # Wait for shutdown to complete; prevents mid-poweroff resume on newer OFW
 
 exit 0

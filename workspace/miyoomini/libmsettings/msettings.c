@@ -93,17 +93,21 @@ int axp_read(unsigned char address) {
 
 ///////////////////////////////////////
 
+#define SETTINGS_VERSION 2
 typedef struct Settings {
 	int version; // future proofing
 	int brightness;
-	int unused1;
+	int headphones; // Mini Flip headphone volume
 	int speaker;
-	int unused[4]; // for future use
+	int jack;       // 0 = speaker, 1 = headphones (Mini Flip)
+	int unused[3];  // for future use
 } Settings;
 static Settings DefaultSettings = {
-	.version = 1,
+	.version = SETTINGS_VERSION,
 	.brightness = 3,
+	.headphones = 20,
 	.speaker = 20,
+	.jack = 0,
 };
 static Settings* settings;
 
@@ -135,7 +139,12 @@ void InitSettings(void) {
 		int fd = open(SettingsPath, O_RDONLY);
 		if (fd>=0) {
 			read(fd, settings, shm_size);
-			// TODO: use settings->version for future proofing
+			// Migrate from older settings versions
+			if (settings->version == 1) {
+				settings->version = SETTINGS_VERSION;
+				settings->headphones = DefaultSettings.headphones;
+				settings->jack = DefaultSettings.jack;
+			}
 			close(fd);
 		}
 		else {
@@ -143,7 +152,8 @@ void InitSettings(void) {
 			memcpy(settings, &DefaultSettings, shm_size);
 		}
 	}
-	LOG_debug("Loaded settings: brightness=%i speaker=%i", settings->brightness, settings->speaker);
+	LOG_debug("Loaded settings: brightness=%i speaker=%i headphones=%i jack=%i",
+	          settings->brightness, settings->speaker, settings->headphones, settings->jack);
 
 	MI_AO_Enable(0);
 	MI_AO_EnableChn(0,0);
@@ -173,12 +183,14 @@ void SetBrightness(int value) {
 }
 
 int GetVolume(void) { // 0-20
-	return settings->speaker;
+	return settings->jack ? settings->headphones : settings->speaker;
 }
 void SetVolume(int value) {
+	if (settings->jack) settings->headphones = value;
+	else settings->speaker = value;
+
 	int raw = -60 + value * 3;
 	SetRawVolume(raw);
-	settings->speaker = value;
 	SaveSettings();
 }
 
@@ -212,10 +224,12 @@ void SetRawVolume(int val) {
 }
 
 int GetJack(void) {
-	return 0;
+	return settings->jack;
 }
 void SetJack(int value) {
-	// buh
+	LOG_debug("SetJack(%i)", value);
+	settings->jack = value;
+	SetVolume(GetVolume());
 }
 
 int GetHDMI(void) {
