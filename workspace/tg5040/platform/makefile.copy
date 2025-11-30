@@ -2,15 +2,15 @@ $(PLATFORM):
 	# $@
 	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin
 	# installer
-	cp ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
-	cp ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
-	cp ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
+	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
+	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
+	rsync -a ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
 	mkdir -p ./build/BOOT/common/$@/
 	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
-	cp ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
+	rsync -a ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
 	# boot assets (standard and brick variants)
-	cp ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
-	cp ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png
+	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png
 	mkdir -p ./build/BOOT/common/$@/brick
-	cp ./skeleton/SYSTEM/res/installing@3x.png ./build/BOOT/common/$@/brick/installing.png
-	cp ./skeleton/SYSTEM/res/updating@3x.png ./build/BOOT/common/$@/brick/updating.png
+	rsync -a ./skeleton/SYSTEM/res/installing@3x.png ./build/BOOT/common/$@/brick/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@3x.png ./build/BOOT/common/$@/brick/updating.png

@@ -91,10 +91,10 @@ generate_pak() {
     local cfg_platform_dir="$TEMPLATE_DIR/configs/${platform}/${core}"
 
     if [ -d "$cfg_base_dir" ]; then
-        cp "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+        rsync -a "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
     fi
     if [ -d "$cfg_platform_dir" ]; then
-        cp "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+        rsync -a "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
     fi
 
 }
@@ -159,7 +159,7 @@ for platform in $PLATFORMS_TO_GENERATE; do
     if [ -d "$DIRECT_PAKS_DIR" ]; then
         for pak in "$DIRECT_PAKS_DIR"/*.pak; do
             if [ -d "$pak" ]; then
-                cp -r "$pak" "$BUILD_DIR/SYSTEM/$platform/paks/Emus/"
+                rsync -a "$pak/" "$BUILD_DIR/SYSTEM/$platform/paks/Emus/$(basename "$pak")/"
             fi
         done
     fi

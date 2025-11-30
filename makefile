@@ -161,39 +161,39 @@ system:
 			echo "  Constructing $${pak_name}.pak for $(PLATFORM)"; \
 			output_dir="./build/Tools/$(PLATFORM)/$${pak_name}.pak"; \
 			mkdir -p "$$output_dir"; \
-			[ -f "$$pak_dir/launch.sh" ] && cp "$$pak_dir/launch.sh" "$$output_dir/" && chmod +x "$$output_dir/launch.sh"; \
-			[ -f "$$pak_dir/pak.json" ] && cp "$$pak_dir/pak.json" "$$output_dir/"; \
-			[ -f "$$pak_dir/settings.json" ] && cp "$$pak_dir/settings.json" "$$output_dir/"; \
+			[ -f "$$pak_dir/launch.sh" ] && rsync -a "$$pak_dir/launch.sh" "$$output_dir/" && chmod +x "$$output_dir/launch.sh"; \
+			[ -f "$$pak_dir/pak.json" ] && rsync -a "$$pak_dir/pak.json" "$$output_dir/"; \
+			[ -f "$$pak_dir/settings.json" ] && rsync -a "$$pak_dir/settings.json" "$$output_dir/"; \
 			if [ -d "$$pak_dir/res" ]; then \
 				mkdir -p "$$output_dir/res"; \
 				for res_file in "$$pak_dir/res"/*; do \
-					[ -f "$$res_file" ] && cp "$$res_file" "$$output_dir/res/"; \
+					[ -f "$$res_file" ] && rsync -a "$$res_file" "$$output_dir/res/"; \
 				done; \
 				if [ -d "$$pak_dir/res/$(PLATFORM)" ]; then \
-					cp -r "$$pak_dir/res/$(PLATFORM)" "$$output_dir/res/"; \
+					rsync -a "$$pak_dir/res/$(PLATFORM)/" "$$output_dir/res/$(PLATFORM)/"; \
 				fi; \
 			fi; \
 			if [ -d "$$pak_dir/bin/$(PLATFORM)" ]; then \
 				mkdir -p "$$output_dir/bin"; \
-				cp -r "$$pak_dir/bin/$(PLATFORM)" "$$output_dir/bin/"; \
+				rsync -a "$$pak_dir/bin/$(PLATFORM)/" "$$output_dir/bin/$(PLATFORM)/"; \
 			fi; \
 			for script in "$$pak_dir/bin"/*; do \
 				if [ -f "$$script" ] && [ -x "$$script" ]; then \
 					mkdir -p "$$output_dir/bin"; \
-					cp "$$script" "$$output_dir/bin/"; \
+					rsync -a "$$script" "$$output_dir/bin/"; \
 				fi; \
 			done; \
 			if [ -d "$$pak_dir/lib/$(PLATFORM)" ]; then \
 				mkdir -p "$$output_dir/lib"; \
-				cp -r "$$pak_dir/lib/$(PLATFORM)" "$$output_dir/lib/"; \
+				rsync -a "$$pak_dir/lib/$(PLATFORM)/" "$$output_dir/lib/$(PLATFORM)/"; \
 			fi; \
 			if [ -d "$$pak_dir/$(PLATFORM)" ]; then \
 				set +e; \
-				cp -r "$$pak_dir/$(PLATFORM)/"* "$$output_dir/" 2>/dev/null; \
+				rsync -a "$$pak_dir/$(PLATFORM)/" "$$output_dir/" 2>/dev/null; \
 				set -e; \
 			fi; \
 			for elf in "$$pak_dir/build/$(PLATFORM)/"*.elf; do \
-				[ -f "$$elf" ] && cp "$$elf" "$$output_dir/" || true; \
+				[ -f "$$elf" ] && rsync -a "$$elf" "$$output_dir/" || true; \
 			done; \
 		fi; \
 	done; true
@@ -201,12 +201,12 @@ system:
 	@if [ "$(PLATFORM)" = "rg35xxplus" ]; then \
 		mkdir -p ./build/Tools/rg35xxplus/Apply\ Panel\ Fix.pak/bin; \
 		mkdir -p ./build/Tools/rg35xxplus/Swap\ Menu.pak/bin; \
-		cp ./workspace/rg35xxplus/other/dtc/dtc ./build/Tools/rg35xxplus/Apply\ Panel\ Fix.pak/bin/; \
-		cp ./workspace/rg35xxplus/other/dtc/dtc ./build/Tools/rg35xxplus/Swap\ Menu.pak/bin/; \
+		rsync -a ./workspace/rg35xxplus/other/dtc/dtc ./build/Tools/rg35xxplus/Apply\ Panel\ Fix.pak/bin/; \
+		rsync -a ./workspace/rg35xxplus/other/dtc/dtc ./build/Tools/rg35xxplus/Swap\ Menu.pak/bin/; \
 	fi
 	@if [ "$(PLATFORM)" = "my282" ]; then \
 		mkdir -p ./build/Tools/my282/Remove\ Loading.pak; \
-		cp -r ./workspace/my282/other/squashfs/output/* ./build/Tools/my282/Remove\ Loading.pak/; \
+		rsync -a ./workspace/my282/other/squashfs/output/ ./build/Tools/my282/Remove\ Loading.pak/; \
 	fi
 
 # Build everything for a platform: binaries, system files
@@ -240,7 +240,7 @@ setup: name
 	# Create fresh build directory
 	rm -rf ./build
 	mkdir -p ./releases
-	cp -R ./skeleton ./build
+	rsync -a ./skeleton/ ./build/
 	
 	# remove authoring detritus
 	cd ./build && find . -type f -name '.keep' -delete
@@ -249,29 +249,29 @@ setup: name
 	
 	# Copy README to workspace for formatting (uses Linux fmt in Docker)
 	mkdir -p ./workspace/readmes
-	cp ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
+	rsync -a ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
 
 	# Copy boot assets to workspace for platforms that build them in Docker
 	mkdir -p ./workspace/rg35xx/boot
-	cp ./skeleton/SYSTEM/res/installing@2x-16bit.bmp ./workspace/rg35xx/boot/installing@2x.bmp
-	cp ./skeleton/SYSTEM/res/updating@2x-16bit.bmp ./workspace/rg35xx/boot/updating@2x.bmp
-	cp ./skeleton/SYSTEM/res/bootlogo@2x.png ./workspace/rg35xx/boot/boot_logo.png
+	rsync -a ./skeleton/SYSTEM/res/installing@2x-16bit.bmp ./workspace/rg35xx/boot/installing@2x.bmp
+	rsync -a ./skeleton/SYSTEM/res/updating@2x-16bit.bmp ./workspace/rg35xx/boot/updating@2x.bmp
+	rsync -a ./skeleton/SYSTEM/res/bootlogo@2x.png ./workspace/rg35xx/boot/boot_logo.png
 	mkdir -p ./workspace/rg35xxplus/boot
-	cp ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/bootlogo@2x.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/installing@2x-rotated.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/updating@2x-rotated.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/bootlogo@2x-rotated.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/installing@2x-square.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/updating@2x-square.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/bootlogo@2x-square.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/installing@2x-wide.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/updating@2x-wide.bmp ./workspace/rg35xxplus/boot/
-	cp ./skeleton/SYSTEM/res/bootlogo@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/bootlogo@2x.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/installing@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/updating@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/bootlogo@2x-rotated.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/installing@2x-square.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/updating@2x-square.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/bootlogo@2x-square.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/installing@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/updating@2x-wide.bmp ./workspace/rg35xxplus/boot/
+	rsync -a ./skeleton/SYSTEM/res/bootlogo@2x-wide.bmp ./workspace/rg35xxplus/boot/
 	mkdir -p ./workspace/m17/boot
-	cp ./skeleton/SYSTEM/res/installing@1x-wide.bmp ./workspace/m17/boot/
-	cp ./skeleton/SYSTEM/res/updating@1x-wide.bmp ./workspace/m17/boot/
+	rsync -a ./skeleton/SYSTEM/res/installing@1x-wide.bmp ./workspace/m17/boot/
+	rsync -a ./skeleton/SYSTEM/res/updating@1x-wide.bmp ./workspace/m17/boot/
 
 	# Setup hooks - download shared binaries (runs once for all components)
 	@echo "Running setup hooks..."
@@ -286,22 +286,22 @@ setup: name
 special:
 	# Copy shared install/update functions to BOOT/common
 	mkdir -p ./build/BOOT/common/install
-	cp ./skeleton/SYSTEM/common/log.sh ./build/BOOT/common/install/
-	cp ./skeleton/SYSTEM/common/update-functions.sh ./build/BOOT/common/install/
+	rsync -a ./skeleton/SYSTEM/common/log.sh ./build/BOOT/common/install/
+	rsync -a ./skeleton/SYSTEM/common/update-functions.sh ./build/BOOT/common/install/
 	# setup miyoomini/trimui/magicx family .tmp_update in BOOT
 	mv ./build/BOOT/common ./build/BOOT/.tmp_update
 	mv ./build/BOOT/miyoo ./build/BASE/
 	mv ./build/BOOT/trimui ./build/BASE/
 	mv ./build/BOOT/magicx ./build/BASE/
-	cp -R ./build/BOOT/.tmp_update ./build/BASE/miyoo/app/
-	cp -R ./build/BOOT/.tmp_update ./build/BASE/trimui/app/
-	cp -R ./build/BOOT/.tmp_update ./build/BASE/magicx/
-	cp -R ./build/BASE/miyoo ./build/BASE/miyoo354
-	cp -R ./build/BASE/miyoo ./build/BASE/miyoo355
-	cp -R ./build/BASE/miyoo ./build/BASE/miyoo285
+	rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/miyoo/app/.tmp_update/
+	rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/trimui/app/.tmp_update/
+	rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/magicx/.tmp_update/
+	rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo354/
+	rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo355/
+	rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo285/
 ifneq (,$(findstring my355, $(PLATFORMS)))
-	cp -R ./workspace/my355/init ./build/BASE/miyoo355/app/my355
-	cp -r ./workspace/my355/other/squashfs/output/* ./build/BASE/miyoo355/app/my355/payload/
+	rsync -a ./workspace/my355/init/ ./build/BASE/miyoo355/app/my355/
+	rsync -a ./workspace/my355/other/squashfs/output/ ./build/BASE/miyoo355/app/my355/payload/
 endif
 
 # Backward compatibility for platforms that were merged
@@ -310,11 +310,11 @@ tidy:
 	# Copy update scripts to old platform directories for smooth upgrades
 ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
 	mkdir -p ./build/SYSTEM/rg40xxcube/bin/
-	cp ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/
+	rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/
 endif
 ifneq (,$(findstring tg5040, $(PLATFORMS)))
 	mkdir -p ./build/SYSTEM/tg3040/paks/MinUI.pak/
-	cp ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/MinUI.pak/launch.sh
+	rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/MinUI.pak/launch.sh
 endif
 
 # Create final release ZIP files
@@ -323,7 +323,7 @@ package: tidy
 	# Package everything into distributable ZIPs
 
 	# Move formatted README from workspace to build
-	cp ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt
+	rsync -a ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt
 	rm -rf ./workspace/readmes
 	
 	cd ./build/SYSTEM && echo "$(RELEASE_NAME)\n$(BUILD_HASH)" > version.txt
