@@ -200,8 +200,27 @@ void Hash_free(Hash* self) {
  * @param value Value string
  */
 void Hash_set(Hash* self, char* key, char* value) {
-	Array_push(self->keys, strdup(key));
-	Array_push(self->values, strdup(value));
+	char* key_copy = strdup(key);
+	char* value_copy = strdup(value);
+	if (!key_copy || !value_copy) {
+		free(key_copy);
+		free(value_copy);
+		return;
+	}
+	int old_key_count = self->keys->count;
+	int old_val_count = self->values->count;
+	Array_push(self->keys, key_copy);
+	Array_push(self->values, value_copy);
+	// If either push failed, clean up both and restore consistency
+	if (self->keys->count == old_key_count || self->values->count == old_val_count) {
+		// Rollback: remove any successfully added items
+		if (self->keys->count > old_key_count)
+			Array_pop(self->keys);
+		if (self->values->count > old_val_count)
+			Array_pop(self->values);
+		free(key_copy);
+		free(value_copy);
+	}
 }
 
 /**
