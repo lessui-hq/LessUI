@@ -22,8 +22,8 @@ Cores are **built externally** in the [minarch-cores repository](https://github.
 
 Cores are compiled for two ARM architectures:
 
-- **ARM Cortex-A7** (`linux-cortex-a7.zip`) - 32-bit platforms
-- **ARM Cortex-A53** (`linux-cortex-a53.zip`) - 64-bit platforms
+- **ARM32** (`linux-arm32.zip`) - 32-bit platforms
+- **ARM64** (`linux-arm64.zip`) - 64-bit platforms
 
 All platforms using the same CPU architecture share the same core binaries.
 
@@ -32,28 +32,28 @@ All platforms using the same CPU architecture share the same core binaries.
 The main LessUI Makefile downloads cores during the build:
 
 ```makefile
-# Pre-built cores from minarch-cores repository (nightly builds)
-MINARCH_CORES_VERSION ?= nightly
+# Pre-built cores from minarch-cores repository (versioned releases)
+MINARCH_CORES_VERSION ?= 20251130-1
 CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
 
 cores-download:
 	@mkdir -p build/.system/cores/a7 build/.system/cores/a53
-	@curl -sL $(CORES_BASE)/linux-cortex-a7.zip -o /tmp/lessui-cores-a7.zip
+	@curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-a7.zip
 	@unzip -o -j -q /tmp/lessui-cores-a7.zip -d build/.system/cores/a7
-	@curl -sL $(CORES_BASE)/linux-cortex-a53.zip -o /tmp/lessui-cores-a53.zip
+	@curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-a53.zip
 	@unzip -o -j -q /tmp/lessui-cores-a53.zip -d build/.system/cores/a53
 ```
 
 ### Local Override (Development)
 
-For testing custom cores, place override zips in `workspace/all/paks/Emus/cores-override/`:
+For testing custom cores, place override zips in `workspace/all/paks/Emus/cores/override/`:
 
 ```bash
-cp ~/Downloads/linux-cortex-a7.zip workspace/all/paks/Emus/cores-override/
+cp ~/Downloads/linux-arm32.zip workspace/all/paks/Emus/cores/override/
 make all  # Uses local zip instead of downloading
 ```
 
-See `workspace/all/paks/Emus/cores-override/README.md` for details.
+See `workspace/all/paks/Emus/cores/override/README.md` for details.
 
 ## Available Cores
 

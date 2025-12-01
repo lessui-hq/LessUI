@@ -63,10 +63,6 @@ RELEASE_NAME=$(RELEASE_BASE)$(RELEASE_SUFFIX)
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 export LOG_FLAGS
 
-# Pre-built cores from minarch-cores repository (nightly builds)
-MINARCH_CORES_VERSION ?= 20251119
-CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
-
 .PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup dev-deploy dev-build-deploy
 
 export MAKEFLAGS=--no-print-directory

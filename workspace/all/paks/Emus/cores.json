@@ -73,20 +73,16 @@
       "emu_exe": "picodrive"
     },
     "N64": {
-      "emu_exe": "mupen64plus_next",
-      "arm64_only": true
+      "emu_exe": "mupen64plus_next"
     },
     "NDS": {
-      "emu_exe": "melonds",
-      "arm64_only": true
+      "emu_exe": "melonds"
     },
     "PSP": {
-      "emu_exe": "ppsspp",
-      "arm64_only": true
+      "emu_exe": "ppsspp"
     },
     "DC": {
-      "emu_exe": "flycast",
-      "arm64_only": true
+      "emu_exe": "flycast"
     },
     "A2600": {
       "emu_exe": "stella"
