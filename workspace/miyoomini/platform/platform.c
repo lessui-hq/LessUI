@@ -47,6 +47,7 @@
 
 #include "api.h"
 #include "defines.h"
+#include "effect_surface.h"
 #include "platform.h"
 #include "scaler.h"
 #include "utils.h"
@@ -313,6 +314,7 @@ typedef struct HWBuffer {
 static struct VID_Context {
 	SDL_Surface* video; // SDL framebuffer surface
 	SDL_Surface* screen; // Software rendering surface (may be same as video)
+	SDL_Surface* effect; // Effect overlay surface (for aperture/slotmask)
 	HWBuffer buffer; // ION-allocated buffer for double buffering
 
 	int page; // Current backbuffer page (0 or 1)
@@ -323,6 +325,22 @@ static struct VID_Context {
 	int direct; // 1 if rendering directly to video, 0 if using intermediate buffer
 	int cleared; // 1 if clear is deferred until offscreen
 } vid;
+
+static struct {
+	int type;
+	int next_type;
+	int scale;
+	int next_scale;
+	int live_type;
+	int live_scale;
+} effect_state = {
+    .type = EFFECT_NONE,
+    .next_type = EFFECT_NONE,
+    .scale = 1,
+    .next_scale = 1,
+    .live_type = EFFECT_NONE,
+    .live_scale = 0,
+};
 
 #define MODES_PATH "/sys/class/graphics/fb0/modes"
 
@@ -534,8 +552,37 @@ void PLAT_setSharpness(int sharpness) {
  *
  * @param effect EFFECT_NONE, EFFECT_LINE, or EFFECT_GRID
  */
+static void updateEffectOverlay(void) {
+	if (effect_state.type != EFFECT_CRT) {
+		if (vid.effect) {
+			SDL_FreeSurface(vid.effect);
+			vid.effect = NULL;
+		}
+		return;
+	}
+
+	if (effect_state.type == effect_state.live_type &&
+	    effect_state.scale == effect_state.live_scale)
+		return;
+
+	const char* pattern = RES_PATH "/crt.png";
+
+	if (vid.effect)
+		SDL_FreeSurface(vid.effect);
+	vid.effect = EFFECT_createTiledSurface(pattern, 1, vid.width, vid.height);
+	if (vid.effect) {
+		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, 255);  // Use PNG's built-in alpha
+		effect_state.live_type = effect_state.type;
+		effect_state.live_scale = effect_state.scale;
+	}
+}
+
 void PLAT_setEffect(int effect) {
-	next_effect = effect;
+	effect_state.next_type = effect;
+	if (effect == EFFECT_LINE || effect == EFFECT_GRID)
+		next_effect = effect;
+	else
+		next_effect = EFFECT_NONE;
 }
 
 /**
@@ -555,8 +602,12 @@ void PLAT_vsync(int remaining) {
  * @return Function pointer to scaler implementation
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	effect_state.next_scale = renderer->scale;
+	effect_state.scale = effect_state.next_scale;
+	effect_state.type = effect_state.next_type;
+
 	// Scanline effect scalers
-	if (effect_type == EFFECT_LINE) {
+	if (effect_state.type == EFFECT_LINE) {
 		switch (renderer->scale) {
 		case 4:
 			return scale4x_line;
@@ -627,6 +678,14 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @param sync Sync parameter (unused, vsync controlled via PLAT_setVsync)
  */
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
+	updateEffectOverlay();
+
+	// Composite effect overlay
+	if (vid.effect && effect_state.type != EFFECT_NONE) {
+		SDL_Surface* target = vid.direct ? vid.video : vid.screen;
+		SDL_BlitSurface(vid.effect, NULL, target, NULL);
+	}
+
 	// Scale to framebuffer if using intermediate buffer
 	if (!vid.direct)
 		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 1);

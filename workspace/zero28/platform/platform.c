@@ -32,6 +32,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 ///////////////////////////////
@@ -439,125 +440,91 @@ static void updateEffect(void) {
 		return;
 
 	int live_scale = effect.scale;
-	int live_color = effect.color;
 	effect.scale = effect.next_scale;
 	effect.type = effect.next_type;
 	effect.color = effect.next_color;
 
 	if (effect.type == EFFECT_NONE)
 		return;
-	if (effect.type == effect.live_type && effect.scale == live_scale && effect.color == live_color)
+	if (effect.type == effect.live_type && effect.scale == live_scale)
 		return;
 
-	// Select effect image and opacity based on type and scale
-	char* effect_path = NULL;
-	int opacity = 128; // Default 50% opacity (1 - 1/2)
+	const char* base_pattern = NULL;
+	int opacity = 128;
+
 	if (effect.type == EFFECT_LINE) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/line-2.png";
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/line-3.png";
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/line-4.png";
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/line-5.png";
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/line-6.png";
-		} else {
-			effect_path = RES_PATH "/line-8.png";
-		}
+		opacity = 255;  // Use PNG alpha for shadow scanlines
+		base_pattern = RES_PATH "/line.png";
 	} else if (effect.type == EFFECT_GRID) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/grid-2.png";
-			opacity = 64; // 1 - 3/4 = 25%
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/grid-3.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/grid-4.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/grid-5.png";
-			opacity = 160; // 1 - 9/25 = ~64%
-			// opacity = 96; // TODO: tmp, for white grid
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/grid-6.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 11) {
-			effect_path = RES_PATH "/grid-8.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else {
-			effect_path = RES_PATH "/grid-11.png";
-			opacity = 136; // 1 - 57/121 = ~52%
-		}
+		base_pattern = RES_PATH "/grid.png";
+		if (effect.scale < 3)
+			opacity = 64;
+		else if (effect.scale < 4)
+			opacity = 112;
+		else if (effect.scale < 5)
+			opacity = 144;
+		else if (effect.scale < 6)
+			opacity = 160;
+		else if (effect.scale < 8)
+			opacity = 112;
+		else if (effect.scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect.type == EFFECT_CRT) {
+		base_pattern = RES_PATH "/crt.png";
+		opacity = 255;  // Use PNG alpha for CRT shadows
 	}
 
-	// Load effect image and apply color tinting if needed
-	SDL_Surface* tmp = IMG_Load(effect_path);
-	if (tmp) {
-		// Apply color tinting for grid effects (e.g., DMG green tint)
-		if (effect.type == EFFECT_GRID) {
-			if (effect.color) {
-				uint8_t r, g, b;
-				rgb565_to_rgb888(effect.color, &r, &g, &b);
+	if (!base_pattern)
+		return;
 
-				// Tint all non-transparent pixels with the specified color
-				uint32_t* pixels = (uint32_t*)tmp->pixels;
-				int width = tmp->w;
-				int height = tmp->h;
-				for (int y = 0; y < height; ++y) {
-					for (int x = 0; x < width; ++x) {
-						uint32_t pixel = pixels[y * width + x];
-						uint8_t _, a;
-						SDL_GetRGBA(pixel, tmp->format, &_, &_, &_, &a);
-						if (a)
-							pixels[y * width + x] = SDL_MapRGBA(tmp->format, r, g, b, a);
-					}
-				}
-			}
-		}
+	int target_w = device_width;
+	int target_h = device_height;
 
-		// Create texture from tinted/untinted surface
+	SDL_Texture* tiled =
+	    EFFECT_loadAndTile(vid.renderer, base_pattern, 1, target_w, target_h);
+	if (tiled) {
+		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(tiled, opacity);
 		if (vid.effect)
 			SDL_DestroyTexture(vid.effect);
-		vid.effect = SDL_CreateTextureFromSurface(vid.renderer, tmp);
-		SDL_SetTextureAlphaMod(vid.effect, opacity);
-		SDL_FreeSurface(tmp);
+		vid.effect = tiled;
 		effect.live_type = effect.type;
 	}
 }
 
-/**
+        /**
  * Sets the visual effect type.
  *
  * @param next_type EFFECT_NONE, EFFECT_LINE, or EFFECT_GRID
  */
-void PLAT_setEffect(int next_type) {
-	effect.next_type = next_type;
-}
+        void PLAT_setEffect(int next_type) {
+	        effect.next_type = next_type;
+        }
 
-/**
+        /**
  * Sets the effect tint color.
  *
  * Used for grid effects to simulate colored displays (DMG green, etc).
  *
  * @param next_color RGB565 color value, or 0 for no tint
  */
-void PLAT_setEffectColor(int next_color) {
-	effect.next_color = next_color;
-}
+        void PLAT_setEffectColor(int next_color) {
+	        effect.next_color = next_color;
+        }
 
-/**
+        /**
  * Waits for remaining frame time to maintain target framerate.
  *
  * @param remaining Milliseconds to wait
  */
-void PLAT_vsync(int remaining) {
-	if (remaining > 0)
-		SDL_Delay(remaining);
-}
+        void PLAT_vsync(int remaining) {
+	        if (remaining > 0)
+		        SDL_Delay(remaining);
+        }
 
-/**
+        /**
  * Gets software scaler function for renderer.
  *
  * The Zero28 uses SDL hardware scaling, so always returns identity
@@ -566,12 +533,12 @@ void PLAT_vsync(int remaining) {
  * @param renderer Active renderer
  * @return Identity scaler (scale1x1_c16)
  */
-scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	effect.next_scale = renderer->scale;
-	return scale1x1_c16;
-}
+        scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	        effect.next_scale = renderer->scale;
+	        return scale1x1_c16;
+        }
 
-/**
+        /**
  * Activates game renderer and resizes video to match source.
  *
  * Called when switching from UI rendering to game rendering.
@@ -579,13 +546,13 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
  *
  * @param renderer Game renderer with source dimensions
  */
-void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.blit = renderer;
-	SDL_RenderClear(vid.renderer);
-	resizeVideo(vid.blit->true_w, vid.blit->true_h, vid.blit->src_p);
-}
+        void PLAT_blitRenderer(GFX_Renderer* renderer) {
+	        vid.blit = renderer;
+	        SDL_RenderClear(vid.renderer);
+	        resizeVideo(vid.blit->true_w, vid.blit->true_h, vid.blit->src_p);
+        }
 
-/**
+        /**
  * Flips the framebuffer, presenting rendered content to screen.
  *
  * Handles two rendering paths:
@@ -601,111 +568,112 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @param IGNORED Unused (legacy SDL_Surface parameter)
  * @param ignored Unused parameter
  */
-void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
-	// UI rendering path (no active game renderer)
-	if (!vid.blit) {
-		resizeVideo(device_width, device_height, FIXED_PITCH);
-		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
-		// Apply rotation for portrait displays
-		if (rotate)
-			SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
-			                 &(SDL_Rect){device_height, 0, device_width, device_height},
-			                 rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
-		else
-			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_RenderPresent(vid.renderer);
-		return;
-	}
+        void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
+	        // UI rendering path (no active game renderer)
+	        if (!vid.blit) {
+		        resizeVideo(device_width, device_height, FIXED_PITCH);
+		        SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
+		        // Apply rotation for portrait displays
+		        if (rotate)
+			        SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
+			                         &(SDL_Rect){device_height, 0, device_width, device_height},
+			                         rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
+		        else
+			        SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
+		        SDL_RenderPresent(vid.renderer);
+		        return;
+	        }
 
-	// Game rendering path: Update texture with game framebuffer
-	SDL_UpdateTexture(vid.texture, NULL, vid.blit->src, vid.blit->src_p);
+	        // Game rendering path: Update texture with game framebuffer
+	        SDL_UpdateTexture(vid.texture, NULL, vid.blit->src, vid.blit->src_p);
 
-	// For crisp rendering: NN upscale to intermediate target
-	SDL_Texture* target = vid.texture;
-	int x = vid.blit->src_x;
-	int y = vid.blit->src_y;
-	int w = vid.blit->src_w;
-	int h = vid.blit->src_h;
-	if (vid.sharpness == SHARPNESS_CRISP) {
-		SDL_SetRenderTarget(vid.renderer, vid.target);
-		SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_SetRenderTarget(vid.renderer, NULL);
-		// Scale source rect for intermediate target
-		x *= hard_scale;
-		y *= hard_scale;
-		w *= hard_scale;
-		h *= hard_scale;
-		target = vid.target;
-	}
+	        // For crisp rendering: NN upscale to intermediate target
+	        SDL_Texture* target = vid.texture;
+	        int x = vid.blit->src_x;
+	        int y = vid.blit->src_y;
+	        int w = vid.blit->src_w;
+	        int h = vid.blit->src_h;
+	        if (vid.sharpness == SHARPNESS_CRISP) {
+		        SDL_SetRenderTarget(vid.renderer, vid.target);
+		        SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
+		        SDL_SetRenderTarget(vid.renderer, NULL);
+		        // Scale source rect for intermediate target
+		        x *= hard_scale;
+		        y *= hard_scale;
+		        w *= hard_scale;
+		        h *= hard_scale;
+		        target = vid.target;
+	        }
 
-	// Calculate source and destination rectangles
-	SDL_Rect* src_rect = &(SDL_Rect){x, y, w, h};
-	SDL_Rect* dst_rect = &(SDL_Rect){0, 0, device_width, device_height};
+	        // Calculate source and destination rectangles
+	        SDL_Rect* src_rect = &(SDL_Rect){x, y, w, h};
+	        SDL_Rect* dst_rect = &(SDL_Rect){0, 0, device_width, device_height};
 
-	// Native or cropped aspect ratio (integer scaling, centered)
-	if (vid.blit->aspect == 0) {
-		int dst_w = vid.blit->src_w * vid.blit->scale;
-		int dst_h = vid.blit->src_h * vid.blit->scale;
-		int dst_x = (device_width - dst_w) / 2;
-		int dst_y = (device_height - dst_h) / 2;
-		dst_rect->x = dst_x;
-		dst_rect->y = dst_y;
-		dst_rect->w = dst_w;
-		dst_rect->h = dst_h;
-	}
-	// Aspect ratio correction (fit to screen, maintain aspect)
-	else if (vid.blit->aspect > 0) {
-		int aspect_h = device_height;
-		int aspect_w = aspect_h * vid.blit->aspect;
-		if (aspect_w > device_width) {
-			double ratio = 1 / vid.blit->aspect;
-			aspect_w = device_width;
-			aspect_h = aspect_w * ratio;
-		}
-		int aspect_x = (device_width - aspect_w) / 2;
-		int aspect_y = (device_height - aspect_h) / 2;
-		dst_rect->x = aspect_x;
-		dst_rect->y = aspect_y;
-		dst_rect->w = aspect_w;
-		dst_rect->h = aspect_h;
-	}
+	        // Native or cropped aspect ratio (integer scaling, centered)
+	        if (vid.blit->aspect == 0) {
+		        int dst_w = vid.blit->src_w * vid.blit->scale;
+		        int dst_h = vid.blit->src_h * vid.blit->scale;
+		        int dst_x = (device_width - dst_w) / 2;
+		        int dst_y = (device_height - dst_h) / 2;
+		        dst_rect->x = dst_x;
+		        dst_rect->y = dst_y;
+		        dst_rect->w = dst_w;
+		        dst_rect->h = dst_h;
+	        }
+	        // Aspect ratio correction (fit to screen, maintain aspect)
+	        else if (vid.blit->aspect > 0) {
+		        int aspect_h = device_height;
+		        int aspect_w = aspect_h * vid.blit->aspect;
+		        if (aspect_w > device_width) {
+			        double ratio = 1 / vid.blit->aspect;
+			        aspect_w = device_width;
+			        aspect_h = aspect_w * ratio;
+		        }
+		        int aspect_x = (device_width - aspect_w) / 2;
+		        int aspect_y = (device_height - aspect_h) / 2;
+		        dst_rect->x = aspect_x;
+		        dst_rect->y = aspect_y;
+		        dst_rect->w = aspect_w;
+		        dst_rect->h = aspect_h;
+	        }
 
-	// Render game output with rotation if needed
-	int ox, oy;
-	oy = (device_width - device_height) / 2;
-	ox = -oy;
-	if (rotate)
-		SDL_RenderCopyEx(vid.renderer, target, src_rect,
-		                 &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
-		                 rotate * 90, NULL, SDL_FLIP_NONE);
-	else
-		SDL_RenderCopy(vid.renderer, target, src_rect, dst_rect);
+	        // Render game output with rotation if needed
+	        int ox, oy;
+	        oy = (device_width - device_height) / 2;
+	        ox = -oy;
+	        if (rotate)
+		        SDL_RenderCopyEx(
+		            vid.renderer, target, src_rect,
+		            &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
+		            rotate * 90, NULL, SDL_FLIP_NONE);
+	        else
+		        SDL_RenderCopy(vid.renderer, target, src_rect, dst_rect);
 
-	// Apply grid/line effect overlay if enabled
-	updateEffect();
-	if (vid.blit && effect.type != EFFECT_NONE && vid.effect) {
-		if (rotate)
-			SDL_RenderCopyEx(
-			    vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},
-			    &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
-			    rotate * 90, NULL, SDL_FLIP_NONE);
-		else
-			SDL_RenderCopy(vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},
-			               dst_rect);
-	}
+	        // Apply grid/line effect overlay if enabled
+	        updateEffect();
+	        if (vid.blit && effect.type != EFFECT_NONE && vid.effect) {
+		        if (rotate)
+			        SDL_RenderCopyEx(
+			            vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},
+			            &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
+			            rotate * 90, NULL, SDL_FLIP_NONE);
+		        else
+			        SDL_RenderCopy(vid.renderer, vid.effect,
+			                       &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h}, dst_rect);
+	        }
 
-	SDL_RenderPresent(vid.renderer);
-	vid.blit = NULL;
-}
+	        SDL_RenderPresent(vid.renderer);
+	        vid.blit = NULL;
+        }
 
-///////////////////////////////
-// Power Management
-///////////////////////////////
+        ///////////////////////////////
+        // Power Management
+        ///////////////////////////////
 
-// WiFi connectivity state (updated during battery polling)
-static int online = 0;
+        // WiFi connectivity state (updated during battery polling)
+        static int online = 0;
 
-/**
+        /**
  * Gets battery and charging status.
  *
  * Reads battery level from AXP2202 power management IC via sysfs.
@@ -719,34 +687,34 @@ static int online = 0;
  * @param is_charging Set to 1 if USB power connected, 0 otherwise
  * @param charge Set to battery level (10-100 in 20% increments)
  */
-void PLAT_getBatteryStatus(int* is_charging, int* charge) {
-	// Check USB power connection (AXP2202-specific path)
-	*is_charging = getInt("/sys/class/power_supply/axp2202-usb/online");
+        void PLAT_getBatteryStatus(int* is_charging, int* charge) {
+	        // Check USB power connection (AXP2202-specific path)
+	        *is_charging = getInt("/sys/class/power_supply/axp2202-usb/online");
 
-	// Read battery capacity and round to nearest 20%
-	int i = getInt("/sys/class/power_supply/axp2202-battery/capacity");
-	if (i > 80)
-		*charge = 100;
-	else if (i > 60)
-		*charge = 80;
-	else if (i > 40)
-		*charge = 60;
-	else if (i > 20)
-		*charge = 40;
-	else if (i > 10)
-		*charge = 20;
-	else
-		*charge = 10;
+	        // Read battery capacity and round to nearest 20%
+	        int i = getInt("/sys/class/power_supply/axp2202-battery/capacity");
+	        if (i > 80)
+		        *charge = 100;
+	        else if (i > 60)
+		        *charge = 80;
+	        else if (i > 40)
+		        *charge = 60;
+	        else if (i > 20)
+		        *charge = 40;
+	        else if (i > 10)
+		        *charge = 20;
+	        else
+		        *charge = 10;
 
-	// Update WiFi status (polled here to avoid separate polling loop)
-	char status[16];
-	getFile("/sys/class/net/wlan0/operstate", status, 16);
-	online = prefixMatch("up", status);
-}
+	        // Update WiFi status (polled here to avoid separate polling loop)
+	        char status[16];
+	        getFile("/sys/class/net/wlan0/operstate", status, 16);
+	        online = prefixMatch("up", status);
+        }
 
 #define BLANK_PATH "/sys/class/graphics/fb0/blank"
 
-/**
+        /**
  * Enables or disables backlight.
  *
  * The Zero28 uses external bl_enable/bl_disable scripts for backlight
@@ -754,20 +722,21 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
  *
  * @param enable 1 to enable backlight, 0 to disable
  */
-void PLAT_enableBacklight(int enable) {
-	if (enable) {
-		SetRawBrightness(8); // fix screen not turning back on after sleep on some board revs
-		SetBrightness(GetBrightness());
-		system("bl_enable"); // Platform-specific backlight enable script
-		putInt(BLANK_PATH, FB_BLANK_UNBLANK);
-	} else {
-		SetRawBrightness(0);
-		system("bl_disable"); // Platform-specific backlight disable script
-		putInt(BLANK_PATH, FB_BLANK_POWERDOWN);
-	}
-}
+        void PLAT_enableBacklight(int enable) {
+	        if (enable) {
+		        SetRawBrightness(
+		            8); // fix screen not turning back on after sleep on some board revs
+		        SetBrightness(GetBrightness());
+		        system("bl_enable"); // Platform-specific backlight enable script
+		        putInt(BLANK_PATH, FB_BLANK_UNBLANK);
+	        } else {
+		        SetRawBrightness(0);
+		        system("bl_disable"); // Platform-specific backlight disable script
+		        putInt(BLANK_PATH, FB_BLANK_POWERDOWN);
+	        }
+        }
 
-/**
+        /**
  * Powers off the device.
  *
  * Performs clean shutdown sequence:
@@ -777,29 +746,29 @@ void PLAT_enableBacklight(int enable) {
  * 4. Clear framebuffer
  * 5. Power off system
  */
-void PLAT_powerOff(void) {
-	system("rm -f /tmp/minui_exec && sync");
-	sleep(2);
+        void PLAT_powerOff(void) {
+	        system("rm -f /tmp/minui_exec && sync");
+	        sleep(2);
 
-	SetRawVolume(MUTE_VOLUME_RAW);
-	PLAT_enableBacklight(0);
-	SND_quit();
-	VIB_quit();
-	PWR_quit();
-	GFX_quit();
+	        SetRawVolume(MUTE_VOLUME_RAW);
+	        PLAT_enableBacklight(0);
+	        SND_quit();
+	        VIB_quit();
+	        PWR_quit();
+	        GFX_quit();
 
-	system("cat /dev/zero > /dev/fb0 2>/dev/null");
-	system("poweroff");
-	exit(0);
-}
+	        system("cat /dev/zero > /dev/fb0 2>/dev/null");
+	        system("poweroff");
+	        exit(0);
+        }
 
-///////////////////////////////
-// CPU and Hardware Control
-///////////////////////////////
+        ///////////////////////////////
+        // CPU and Hardware Control
+        ///////////////////////////////
 
 #define GOVERNOR_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed"
 
-/**
+        /**
  * Sets CPU frequency based on performance profile.
  *
  * CPU frequencies:
@@ -810,63 +779,63 @@ void PLAT_powerOff(void) {
  *
  * @param speed CPU_SPEED_* constant
  */
-void PLAT_setCPUSpeed(int speed) {
-	int freq = 0;
-	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 600000;
-		break;
-	case CPU_SPEED_POWERSAVE:
-		freq = 816000;
-		break;
-	case CPU_SPEED_NORMAL:
-		freq = 1416000;
-		break;
-	case CPU_SPEED_PERFORMANCE:
-		freq = 1800000;
-		break;
-	}
-	putInt(GOVERNOR_PATH, freq);
-}
+        void PLAT_setCPUSpeed(int speed) {
+	        int freq = 0;
+	        switch (speed) {
+	        case CPU_SPEED_MENU:
+		        freq = 600000;
+		        break;
+	        case CPU_SPEED_POWERSAVE:
+		        freq = 816000;
+		        break;
+	        case CPU_SPEED_NORMAL:
+		        freq = 1416000;
+		        break;
+	        case CPU_SPEED_PERFORMANCE:
+		        freq = 1800000;
+		        break;
+	        }
+	        putInt(GOVERNOR_PATH, freq);
+        }
 
 #define RUMBLE_PATH "/sys/class/gpio/gpio227/value"
 
-/**
+        /**
  * Sets rumble motor strength (not implemented).
  *
  * @param strength Rumble strength (0-100, ignored)
  */
-void PLAT_setRumble(int strength) {
-	// Not implemented
-}
+        void PLAT_setRumble(int strength) {
+	        // Not implemented
+        }
 
-/**
+        /**
  * Selects appropriate audio sample rate.
  *
  * @param requested Requested sample rate
  * @param max Maximum supported sample rate
  * @return Lesser of requested or max
  */
-int PLAT_pickSampleRate(int requested, int max) {
-	return MIN(requested, max);
-}
+        int PLAT_pickSampleRate(int requested, int max) {
+	        return MIN(requested, max);
+        }
 
-/**
+        /**
  * Gets device model name.
  *
  * @return "Mini Zero 28"
  */
-char* PLAT_getModel(void) {
-	return "Mini Zero 28";
-}
+        char* PLAT_getModel(void) {
+	        return "Mini Zero 28";
+        }
 
-/**
+        /**
  * Checks if device is connected to WiFi.
  *
  * Status is updated during battery polling (see PLAT_getBatteryStatus).
  *
  * @return 1 if WiFi connected, 0 otherwise
  */
-int PLAT_isOnline(void) {
-	return online;
-}
+        int PLAT_isOnline(void) {
+	        return online;
+        }

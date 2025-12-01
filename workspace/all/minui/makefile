@@ -22,6 +22,13 @@ SDL?=SDL
 TARGET = minui
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/str_compare.c ../../$(PLATFORM)/platform/platform.c
+
+# Add effect support - SDL2 platforms use effect_utils, SDL1 platforms use effect_surface
+ifeq ($(SDL),SDL2)
+SOURCE += ../common/effect_utils.c
+else
+SOURCE += ../common/effect_surface.c
+endif
 HEADERS = $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc

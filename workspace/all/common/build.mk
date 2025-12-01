@@ -77,6 +77,13 @@ COMMON_SOURCE = \
 	$(COMMON_DIR)/scaler.c \
 	$(PLATFORM_DIR)/platform.c
 
+# Add effect support - SDL2 platforms use effect_utils, SDL1 platforms use effect_surface
+ifeq ($(SDL),SDL2)
+COMMON_SOURCE += $(COMMON_DIR)/effect_utils.c
+else
+COMMON_SOURCE += $(COMMON_DIR)/effect_surface.c
+endif
+
 SOURCE ?= $(TARGET).c $(COMMON_SOURCE) $(EXTRA_SOURCE)
 HEADERS = $(wildcard $(COMMON_DIR)/*.h) $(wildcard $(PLATFORM_DIR)/*.h)
 

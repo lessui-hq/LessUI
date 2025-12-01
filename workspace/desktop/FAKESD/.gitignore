@@ -1,7 +1,7 @@
-# Ignore ROM files and user data, but keep directory structure
+# Ignore everything in FAKESD (test files, ROMs, resources copied during dev)
 *
 
-# Keep directory structure
+# Keep only skeleton structure
 !.gitignore
 !README.md
 !Roms/
@@ -10,11 +10,3 @@
 !.userdata/.gitkeep
 !.system/
 !.system/.gitkeep
-!.system/res/
-!.system/res/*.png
-!.system/res/*.otf
-!.system/macos/
-!.system/macos/paks/
-!.system/macos/paks/Emus/
-!.system/macos/paks/Emus/*.pak/
-!.system/macos/paks/Emus/*.pak/launch.sh

@@ -62,6 +62,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_surface.h"
 #include "ion.h"
 #include "ion_sunxi.h"
 #include "scaler.h"
@@ -300,6 +301,7 @@ static struct VID_Context {
 	SDL_Surface* video; // Stock SDL surface (unused)
 	SDL_Surface* buffer; // Double buffer (ION-allocated, for hardware)
 	SDL_Surface* screen; // Intermediate render target
+	SDL_Surface* effect; // Effect overlay surface
 	SDL_Surface* special; // Rotation buffer for scaled content
 
 	GFX_Renderer* renderer; // Current active renderer (if any)
@@ -333,6 +335,22 @@ static struct VID_Context {
 	int cleared; // Screen has been cleared
 	int resized; // Screen has been resized (update hardware config)
 } vid;
+
+static struct {
+	int type;
+	int next_type;
+	int scale;
+	int next_scale;
+	int live_type;
+	int live_scale;
+} effect_state = {
+    .type = EFFECT_NONE,
+    .next_type = EFFECT_NONE,
+    .scale = 1,
+    .next_scale = 1,
+    .live_type = EFFECT_NONE,
+    .live_scale = 0,
+};
 static int _; // Dummy variable for ioctl calls
 
 void ADC_init();
@@ -618,8 +636,33 @@ void PLAT_setSharpness(int sharpness) {
  *
  * Not supported on Trimui Smart.
  */
+static void updateEffectOverlay(void) {
+	if (effect_state.type != EFFECT_CRT) {
+		if (vid.effect) {
+			SDL_FreeSurface(vid.effect);
+			vid.effect = NULL;
+		}
+		return;
+	}
+
+	if (effect_state.type == effect_state.live_type &&
+	    effect_state.scale == effect_state.live_scale)
+		return;
+
+	const char* pattern = RES_PATH "/crt.png";
+
+	if (vid.effect)
+		SDL_FreeSurface(vid.effect);
+	vid.effect = EFFECT_createTiledSurface(pattern, 1, vid.width, vid.height);
+	if (vid.effect) {
+		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, 255);  // Use PNG's built-in alpha
+		effect_state.live_type = effect_state.type;
+		effect_state.live_scale = effect_state.scale;
+	}
+}
+
 void PLAT_setEffect(int effect) {
-	// Not supported
+	effect_state.next_type = effect;
 }
 
 /**
@@ -651,6 +694,9 @@ void PLAT_vsync(int remaining) {
  * @note Scale factors > 6 fall back to 1x1 (no scaling)
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	effect_state.next_scale = renderer->scale;
+	effect_state.scale = effect_state.next_scale;
+	effect_state.type = effect_state.next_type;
 	switch (renderer->scale) {
 	case 6:
 		return scale6x6_n16;
@@ -765,6 +811,12 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @note Renderer is cleared after flip (one-shot rendering)
  */
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
+	updateEffectOverlay();
+
+	if (vid.effect && effect_state.type != EFFECT_NONE) {
+		SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+	}
+
 	// If no renderer was used, rotate screen buffer directly (UI mode)
 	if (!vid.renderer)
 		rotate_16bpp(vid.screen->pixels, vid.buffer->pixels, vid.width, vid.height, vid.pitch,

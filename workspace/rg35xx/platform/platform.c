@@ -44,6 +44,7 @@
 #include "utils.h"
 
 #include "de_atm7059.h"
+#include "effect_surface.h"
 #include "ion-owl.h"
 #include "ion.h"
 #include "scaler.h"
@@ -507,6 +508,7 @@ struct owlfb_overlay_info {
  */
 static struct VID_Context {
 	SDL_Surface* screen; // SDL surface wrapping current backbuffer
+	SDL_Surface* effect; // Effect overlay surface
 
 	int fd_fb; // File descriptor for /dev/fb0
 	int fd_ion; // File descriptor for /dev/ion
@@ -524,6 +526,22 @@ static struct VID_Context {
 	int pitch; // Current framebuffer pitch (bytes per line)
 	int cleared; // Deferred clear flag
 } vid;
+
+static struct {
+	int type;
+	int next_type;
+	int scale;
+	int next_scale;
+	int live_type;
+	int live_scale;
+} effect_state = {
+    .type = EFFECT_NONE,
+    .next_type = EFFECT_NONE,
+    .scale = 1,
+    .next_scale = 1,
+    .live_type = EFFECT_NONE,
+    .live_scale = 0,
+};
 
 static int _; // Unused variable for ioctl calls that require a pointer
 
@@ -766,8 +784,37 @@ void PLAT_setSharpness(int sharpness) {
  *
  * @note Effect is applied on next PLAT_blitRenderer call
  */
+static void updateEffectOverlay(void) {
+	if (effect_state.type != EFFECT_CRT) {
+		if (vid.effect) {
+			SDL_FreeSurface(vid.effect);
+			vid.effect = NULL;
+		}
+		return;
+	}
+
+	if (effect_state.type == effect_state.live_type &&
+	    effect_state.scale == effect_state.live_scale)
+		return;
+
+	const char* pattern = RES_PATH "/crt.png";
+
+	if (vid.effect)
+		SDL_FreeSurface(vid.effect);
+	vid.effect = EFFECT_createTiledSurface(pattern, 1, vid.width, vid.height);
+	if (vid.effect) {
+		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, 255);  // Use PNG's built-in alpha
+		effect_state.live_type = effect_state.type;
+		effect_state.live_scale = effect_state.scale;
+	}
+}
+
 void PLAT_setEffect(int effect) {
-	next_effect = effect;
+	effect_state.next_type = effect;
+	if (effect == EFFECT_LINE || effect == EFFECT_GRID)
+		next_effect = effect;
+	else
+		next_effect = EFFECT_NONE;
 }
 
 /**
@@ -802,7 +849,10 @@ void PLAT_vsync(int remaining) {
  * @note All scalers are NEON-optimized (_n16 suffix = RGB565)
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	if (effect_type == EFFECT_LINE) {
+	effect_state.next_scale = renderer->scale;
+	effect_state.scale = effect_state.next_scale;
+	effect_state.type = effect_state.next_type;
+	if (effect_state.type == EFFECT_LINE) {
 		switch (renderer->scale) {
 		case 4:
 			return scale4x_line;
@@ -884,6 +934,12 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @note Page index toggles between 0 and 1 using XOR
  */
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
+	updateEffectOverlay();
+
+	if (vid.effect && effect_state.type != EFFECT_NONE) {
+		SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+	}
+
 	// Point Display Engine to current page (physical address)
 	vid.de_mem[DE_OVL_BA0(0) / 4] = vid.de_mem[DE_OVL_BA0(2) / 4] =
 	    (uintptr_t)(vid.fb_info.padd + vid.page * PAGE_SIZE);

@@ -36,6 +36,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 // Tracks whether HDMI is currently enabled
@@ -550,78 +551,47 @@ static void updateEffect(void) {
 	if (effect.type == effect.live_type && effect.scale == live_scale && effect.color == live_color)
 		return; // already loaded
 
-	char* effect_path = NULL;
-	int opacity = 128; // 1 - 1/2 = 50%
+	const char* base_pattern = NULL;
+	int opacity = 128;
+
 	if (effect.type == EFFECT_LINE) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/line-2.png";
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/line-3.png";
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/line-4.png";
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/line-5.png";
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/line-6.png";
-		} else {
-			effect_path = RES_PATH "/line-8.png";
-		}
+		opacity = 255;  // Use PNG alpha for shadow scanlines
+		base_pattern = RES_PATH "/line.png";
 	} else if (effect.type == EFFECT_GRID) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/grid-2.png";
-			opacity = 64; // 1 - 3/4 = 25%
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/grid-3.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/grid-4.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/grid-5.png";
-			opacity = 160; // 1 - 9/25 = ~64%
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/grid-6.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 11) {
-			effect_path = RES_PATH "/grid-8.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else {
-			effect_path = RES_PATH "/grid-11.png";
-			opacity = 136; // 1 - 57/121 = ~52%
-		}
+		base_pattern = RES_PATH "/grid.png";
+		if (effect.scale < 3)
+			opacity = 64;
+		else if (effect.scale < 4)
+			opacity = 112;
+		else if (effect.scale < 5)
+			opacity = 144;
+		else if (effect.scale < 6)
+			opacity = 160;
+		else if (effect.scale < 8)
+			opacity = 112;
+		else if (effect.scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect.type == EFFECT_CRT) {
+		base_pattern = RES_PATH "/crt.png";
+		opacity = 255;  // Use PNG alpha for CRT shadows
 	}
 
-	// LOG_info("effect: %s opacity: %i\n", effect_path, opacity);
-	SDL_Surface* tmp = IMG_Load(effect_path);
-	if (tmp) {
-		if (effect.type == EFFECT_GRID) {
-			if (effect.color) {
-				// LOG_info("dmg color grid...\n");
+	if (!base_pattern)
+		return;
 
-				uint8_t r, g, b;
-				rgb565_to_rgb888(effect.color, &r, &g, &b);
-				// LOG_info("rgb %i,%i,%i\n",r,g,b);
+	int target_w = device_width;
+	int target_h = device_height;
 
-				uint32_t* pixels = (uint32_t*)tmp->pixels;
-				int width = tmp->w;
-				int height = tmp->h;
-				for (int y = 0; y < height; ++y) {
-					for (int x = 0; x < width; ++x) {
-						uint32_t pixel = pixels[y * width + x];
-						uint8_t _, a;
-						SDL_GetRGBA(pixel, tmp->format, &_, &_, &_, &a);
-						if (a)
-							pixels[y * width + x] = SDL_MapRGBA(tmp->format, r, g, b, a);
-					}
-				}
-			}
-		}
-
+	SDL_Texture* tiled =
+	    EFFECT_loadAndTile(vid.renderer, base_pattern, 1, target_w, target_h);
+	if (tiled) {
+		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(tiled, opacity);
 		if (vid.effect)
 			SDL_DestroyTexture(vid.effect);
-		vid.effect = SDL_CreateTextureFromSurface(vid.renderer, tmp);
-		SDL_SetTextureAlphaMod(vid.effect, opacity);
-		SDL_FreeSurface(tmp);
+		vid.effect = tiled;
 		effect.live_type = effect.type;
 	}
 }

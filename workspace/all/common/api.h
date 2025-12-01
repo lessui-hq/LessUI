@@ -325,12 +325,18 @@ enum {
 };
 
 /**
- * CRT-style visual effects.
+ * CRT/LCD visual effects.
+ *
+ * Clean effects simulate modern LCD displays (monochrome scanlines/grids).
+ * Retro effects simulate vintage CRT displays (RGB phosphor patterns).
+ *
+ * Retro patterns based on MAME HLSL shaders by cgwg, Themaister, et al.
  */
 enum {
-	EFFECT_NONE, // No effect
-	EFFECT_LINE, // Horizontal scanlines
-	EFFECT_GRID, // Grid pattern
+	EFFECT_NONE,  // No effect
+	EFFECT_LINE,  // Horizontal scanlines
+	EFFECT_GRID,  // Pixel grid
+	EFFECT_CRT,   // CRT phosphor simulation (scanlines + RGB subpixels)
 	EFFECT_COUNT,
 };
 

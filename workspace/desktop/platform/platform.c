@@ -27,6 +27,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 ///////////////////////////////
@@ -93,6 +94,7 @@ static struct VID_Context {
 	SDL_Window* window;
 	SDL_Renderer* renderer;
 	SDL_Texture* texture;
+	SDL_Texture* effect;
 	SDL_Surface* buffer;
 	SDL_Surface* screen;
 
@@ -102,6 +104,20 @@ static struct VID_Context {
 	int height;
 	int pitch;
 } vid;
+
+static struct FX_Context {
+	int scale;
+	int type;
+	int next_scale;
+	int next_type;
+	int live_type;
+} effect = {
+    .scale = 1,
+    .next_scale = 1,
+    .type = EFFECT_NONE,
+    .next_type = EFFECT_NONE,
+    .live_type = EFFECT_NONE,
+};
 
 static int device_width;
 static int device_height;
@@ -280,7 +296,71 @@ void PLAT_vsync(int remaining) {
 }
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	effect.next_scale = renderer->scale;
 	return scale1x1_c16;
+}
+
+static void updateEffect(void) {
+	if (effect.next_scale == effect.scale && effect.next_type == effect.type)
+		return;
+
+	int live_scale = effect.scale;
+	effect.scale = effect.next_scale;
+	effect.type = effect.next_type;
+
+	if (effect.type == EFFECT_NONE)
+		return;
+	if (effect.type == effect.live_type && effect.scale == live_scale)
+		return;
+
+	const char* base_pattern = NULL;
+	int opacity = 128;
+
+	if (effect.type == EFFECT_LINE) {
+		opacity = 255;  // Use PNG alpha for shadow scanlines
+		base_pattern = RES_PATH "/line.png";
+	} else if (effect.type == EFFECT_GRID) {
+		base_pattern = RES_PATH "/grid.png";
+		if (effect.scale < 3)
+			opacity = 64;
+		else if (effect.scale < 4)
+			opacity = 112;
+		else if (effect.scale < 5)
+			opacity = 144;
+		else if (effect.scale < 6)
+			opacity = 160;
+		else if (effect.scale < 8)
+			opacity = 112;
+		else if (effect.scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect.type == EFFECT_CRT) {
+		base_pattern = RES_PATH "/crt.png";
+		opacity = 255;  // Use PNG alpha for CRT shadows
+	}
+
+	if (!base_pattern)
+		return;
+
+	SDL_Texture* tiled =
+	    EFFECT_loadAndTile(vid.renderer, base_pattern, 1, device_width, device_height);
+	if (tiled) {
+		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(tiled, opacity);
+		if (vid.effect)
+			SDL_DestroyTexture(vid.effect);
+		vid.effect = tiled;
+		effect.live_type = effect.type;
+	}
+}
+
+void PLAT_setEffect(int next_type) {
+	effect.next_type = next_type;
+}
+
+void PLAT_setEffectColor(int next_color) {
+	// Desktop platform doesn't support DMG color tinting
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
@@ -306,6 +386,8 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @param ignored Unused integer parameter
  */
 void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
+	updateEffect();
+
 	if (!vid.blit) {
 		resizeVideo(device_width, device_height, FIXED_PITCH); // !!!???
 		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
@@ -318,6 +400,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 			LOG_info("not rotated\n");
 			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
 		}
+
+		if (vid.effect && effect.type != EFFECT_NONE) {
+			SDL_RenderCopy(vid.renderer, vid.effect, NULL, NULL);
+		}
+
 		SDL_RenderPresent(vid.renderer);
 		return;
 	}
@@ -371,6 +458,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 		}
 	}
 	SDL_RenderCopy(vid.renderer, vid.texture, src_rect, dst_rect);
+
+	if (vid.effect && effect.type != EFFECT_NONE && dst_rect) {
+		SDL_RenderCopy(vid.renderer, vid.effect, NULL, dst_rect);
+	}
+
 	SDL_RenderPresent(vid.renderer);
 	vid.blit = NULL;
 }

@@ -37,6 +37,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 ///////////////////////////////
@@ -740,7 +741,7 @@ static void rgb565_to_rgb888(uint32_t rgb565, uint8_t* r, uint8_t* g, uint8_t* b
 static void updateEffect(void) {
 	if (effect.next_scale == effect.scale && effect.next_type == effect.type &&
 	    effect.next_color == effect.color)
-		return; // unchanged
+		return;
 
 	int live_scale = effect.scale;
 	int live_color = effect.color;
@@ -749,84 +750,88 @@ static void updateEffect(void) {
 	effect.color = effect.next_color;
 
 	if (effect.type == EFFECT_NONE)
-		return; // disabled
+		return;
 	if (effect.type == effect.live_type && effect.scale == live_scale && effect.color == live_color)
-		return; // already loaded
+		return;
 
-	char* effect_path = NULL;
-	int opacity = 128; // Default: 1 - 1/2 = 50%
-	// Select appropriate effect texture based on type and scale
+	const char* base_pattern = NULL;
+	int opacity = 128;
+
 	if (effect.type == EFFECT_LINE) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/line-2.png";
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/line-3.png";
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/line-4.png";
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/line-5.png";
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/line-6.png";
-		} else {
-			effect_path = RES_PATH "/line-8.png";
-		}
+		opacity = 255;  // Use PNG alpha for shadow scanlines
+		base_pattern = RES_PATH "/line.png";
 	} else if (effect.type == EFFECT_GRID) {
-		if (effect.scale < 3) {
-			effect_path = RES_PATH "/grid-2.png";
-			opacity = 64; // 1 - 3/4 = 25%
-		} else if (effect.scale < 4) {
-			effect_path = RES_PATH "/grid-3.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 5) {
-			effect_path = RES_PATH "/grid-4.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else if (effect.scale < 6) {
-			effect_path = RES_PATH "/grid-5.png";
-			opacity = 160; // 1 - 9/25 = ~64%
-		} else if (effect.scale < 8) {
-			effect_path = RES_PATH "/grid-6.png";
-			opacity = 112; // 1 - 5/9 = ~44%
-		} else if (effect.scale < 11) {
-			effect_path = RES_PATH "/grid-8.png";
-			opacity = 144; // 1 - 7/16 = ~56%
-		} else {
-			effect_path = RES_PATH "/grid-11.png";
-			opacity = 136; // 1 - 57/121 = ~52%
+		base_pattern = RES_PATH "/grid.png";
+		if (effect.scale < 3)
+			opacity = 64;
+		else if (effect.scale < 4)
+			opacity = 112;
+		else if (effect.scale < 5)
+			opacity = 144;
+		else if (effect.scale < 6)
+			opacity = 160;
+		else if (effect.scale < 8)
+			opacity = 112;
+		else if (effect.scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect.type == EFFECT_CRT) {
+		base_pattern = RES_PATH "/crt.png";
+		opacity = 255;  // Use PNG alpha for CRT shadows
+	}
+
+	if (!base_pattern)
+		return;
+
+	SDL_Surface* base = IMG_Load(base_pattern);
+	if (!base)
+		return;
+
+	// Apply DMG color tinting to grid effect before tiling
+	if (effect.type == EFFECT_GRID && effect.color) {
+		uint8_t r, g, b;
+		rgb565_to_rgb888(effect.color, &r, &g, &b);
+
+		uint32_t* pixels = (uint32_t*)base->pixels;
+		int width = base->w;
+		int height = base->h;
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				uint32_t pixel = pixels[y * width + x];
+				uint8_t _, a;
+				SDL_GetRGBA(pixel, base->format, &_, &_, &_, &a);
+				if (a)
+					pixels[y * width + x] = SDL_MapRGBA(base->format, r, g, b, a);
+			}
 		}
 	}
 
-	SDL_Surface* tmp = IMG_Load(effect_path);
-	if (tmp) {
-		// Apply DMG color tinting to grid effects
-		if (effect.type == EFFECT_GRID && effect.color) {
-			uint8_t r, g, b;
-			rgb565_to_rgb888(effect.color, &r, &g, &b);
+	// Scale and tile the pattern
+	int pattern_w = base->w * effect.scale;
+	int pattern_h = base->h * effect.scale;
 
-			// Replace all white pixels with DMG palette color, preserving alpha
-			uint32_t* pixels = (uint32_t*)tmp->pixels;
-			int width = tmp->w;
-			int height = tmp->h;
-			for (int y = 0; y < height; ++y) {
-				for (int x = 0; x < width; ++x) {
-					uint32_t pixel = pixels[y * width + x];
-					uint8_t _, a;
-					SDL_GetRGBA(pixel, tmp->format, &_, &_, &_, &a);
-					// Recolor non-transparent pixels
-					if (a)
-						pixels[y * width + x] = SDL_MapRGBA(tmp->format, r, g, b, a);
-				}
+	SDL_Surface* tiled = SDL_CreateRGBSurface(0, device_width, device_height, 32, 0x00FF0000,
+	                                          0x0000FF00, 0x000000FF, 0xFF000000);
+	if (tiled) {
+		for (int y = 0; y < device_height; y += pattern_h) {
+			for (int x = 0; x < device_width; x += pattern_w) {
+				SDL_Rect dst = {x, y, pattern_w, pattern_h};
+				SDL_BlitScaled(base, NULL, tiled, &dst);
 			}
 		}
 
 		if (vid.effect)
 			SDL_DestroyTexture(vid.effect);
-		vid.effect = SDL_CreateTextureFromSurface(vid.renderer, tmp);
+		vid.effect = SDL_CreateTextureFromSurface(vid.renderer, tiled);
 		SDL_SetTextureBlendMode(vid.effect, SDL_BLENDMODE_BLEND);
 		effect.opacity = opacity;
 		SDL_SetTextureAlphaMod(vid.effect, opacity);
-		SDL_FreeSurface(tmp);
+		SDL_FreeSurface(tiled);
 		effect.live_type = effect.type;
 	}
+
+	SDL_FreeSurface(base);
 }
 
 /**
