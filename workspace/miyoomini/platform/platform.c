@@ -214,8 +214,16 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 				Opt.eDFBBlendFlag = (MI_Gfx_DfbBlendFlags_e)(E_MI_GFX_DFB_BLEND_SRC_PREMULTIPLY |
 				                                             E_MI_GFX_DFB_BLEND_COLORALPHA |
 				                                             E_MI_GFX_DFB_BLEND_ALPHACHANNEL);
-			} else
+			} else if (src->format->Amask) {
+				// Per-pixel alpha: need ALPHACHANNEL to read alpha from pixels
+				// Without it, blend ops may use a default alpha value
+				Opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
+				Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;  // src * src.a
+				// dst op already set to INVSRCALPHA above
+			} else {
+				// No alpha channel, just pre-multiply
 				Opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_SRC_PREMULTIPLY;
+			}
 		}
 
 		// Handle color key (transparency) if requested
@@ -226,7 +234,9 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 			Opt.stSrcColorKeyInfo.stCKeyVal.u32ColorStart =
 			    Opt.stSrcColorKeyInfo.stCKeyVal.u32ColorEnd = src->format->colorkey;
 		}
-		Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
+		// Source blend: ONE for premultiplied (default), SRCALPHA set by per-pixel alpha path
+		if (Opt.eSrcDfbBldOp == 0)
+			Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
 		Opt.eRotate = (MI_GFX_Rotate_e)rotate;
 		Opt.eMirror = (MI_GFX_Mirror_e)mirror;
 		Opt.stClipRect.s32Xpos = dst->clip_rect.x;
@@ -235,11 +245,21 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 		Opt.stClipRect.u32Height = dst->clip_rect.h;
 
 		// Submit blit operation to hardware and optionally wait
+		static int blit_logged = 0;
+		if (!blit_logged && (src->format->Amask != 0)) {
+			LOG_info("MI_GFX blit: src %dx%d (bpp=%d Amask=0x%X) -> dst %dx%d (bpp=%d)\n", src->w,
+			         src->h, src->format->BitsPerPixel, src->format->Amask, dst->w, dst->h,
+			         dst->format->BitsPerPixel);
+			LOG_info("MI_GFX blit: flags=0x%X eDFBBlendFlag=0x%X eSrcDfbBldOp=%d eDstDfbBldOp=%d\n",
+			         src->flags, Opt.eDFBBlendFlag, Opt.eSrcDfbBldOp, Opt.eDstDfbBldOp);
+			blit_logged = 1;
+		}
 		MI_GFX_BitBlit(&Src, &SrcRect, &Dst, &DstRect, &Opt, &Fence);
 		if (!nowait)
 			MI_GFX_WaitAllDone(FALSE, Fence);
 	} else {
 		// Fallback to software blit if physical addresses not available
+		LOG_info("Fallback to SDL_BlitSurface (no pixelsPa)\n");
 		SDL_BlitSurface(src, srcrect, dst, dstrect);
 	}
 }
@@ -306,6 +326,9 @@ typedef struct HWBuffer {
 	void* vadd; // Virtual address (used by CPU)
 } HWBuffer;
 
+// Effect overlay size: FIXED_WIDTH x FIXED_HEIGHT x 4 bytes (ARGB8888)
+#define EFFECT_BUFFER_SIZE (FIXED_WIDTH * FIXED_HEIGHT * 4)
+
 /**
  * Video subsystem context.
  *
@@ -316,6 +339,7 @@ static struct VID_Context {
 	SDL_Surface* screen; // Software rendering surface (may be same as video)
 	SDL_Surface* effect; // Effect overlay surface (for aperture/slotmask)
 	HWBuffer buffer; // ION-allocated buffer for double buffering
+	HWBuffer effect_buffer; // ION-allocated buffer for effect overlay
 
 	int page; // Current backbuffer page (0 or 1)
 	int width; // Current rendering width
@@ -420,6 +444,20 @@ SDL_Surface* PLAT_initVideo(void) {
  * Shuts down video subsystem and frees ION memory.
  */
 void PLAT_quitVideo(void) {
+	// Clean up effect overlay
+	if (vid.effect) {
+		vid.effect->pixels = NULL;
+		vid.effect->pixelsPa = 0;
+		SDL_FreeSurface(vid.effect);
+		vid.effect = NULL;
+	}
+	if (vid.effect_buffer.vadd) {
+		MI_SYS_Munmap(vid.effect_buffer.vadd, ALIGN4K(EFFECT_BUFFER_SIZE));
+		MI_SYS_MMA_Free(vid.effect_buffer.padd);
+		vid.effect_buffer.vadd = NULL;
+		vid.effect_buffer.padd = 0;
+	}
+
 	SDL_FreeSurface(vid.screen);
 
 	MI_SYS_Munmap(vid.buffer.vadd, ALIGN4K(PAGE_SIZE));
@@ -530,59 +568,205 @@ void PLAT_setNearestNeighbor(int enabled) {
 // Pixel Effects and Scaling
 ///////////////////////////////
 
-static int next_effect = EFFECT_NONE; // Effect to apply on next render
-static int effect_type = EFFECT_NONE; // Currently active effect
-
 /**
- * Forces scaler reload when sharpness settings change.
+ * Forces effect overlay regeneration when scaling changes.
  *
- * Triggered when scaling factor changes to ensure effect is reapplied
- * with the new scaler.
- *
- * @param sharpness Sharpness value (unused, but triggers reload)
+ * @param sharpness Sharpness value (unused, triggers reload via scale change)
  */
 void PLAT_setSharpness(int sharpness) {
-	if (effect_type >= EFFECT_NONE)
-		next_effect = effect_type;
-	effect_type = -1; // Force reload
+	(void)sharpness;
+	// Force overlay regeneration by invalidating live state
+	effect_state.live_scale = -1;
 }
 
 /**
- * Sets pixel effect for next render.
+ * Returns the pattern file path for the given effect type and scale.
  *
- * @param effect EFFECT_NONE, EFFECT_LINE, or EFFECT_GRID
+ * Patterns are pre-sized for each scale to ensure correct scanline alignment.
+ * For scale N, pattern is N pixels tall and tiled at 1:1 (no scaling).
+ */
+static const char* getEffectPattern(int effect_type, int scale) {
+	static char path[256];
+
+	// Clamp to available scales
+	if (scale < 2) scale = 2;
+	if (scale == 7) scale = 6;  // Use scale-6 for scale-7
+	if (scale > 8) scale = 8;
+
+	switch (effect_type) {
+	case EFFECT_LINE:
+		snprintf(path, sizeof(path), RES_PATH "/line-%d.png", scale);
+		return path;
+	case EFFECT_GRID:
+		snprintf(path, sizeof(path), RES_PATH "/grid-%d.png", scale);
+		return path;
+	case EFFECT_CRT:
+		snprintf(path, sizeof(path), RES_PATH "/crt-%d.png", scale);
+		return path;
+	default:
+		return NULL;
+	}
+}
+
+/**
+ * Creates or updates the effect overlay surface.
+ *
+ * The overlay is created at the fixed output resolution (FIXED_WIDTH x FIXED_HEIGHT)
+ * with the pattern scaled to match the current pixel scaling factor.
+ * Uses ION memory allocation so MI_GFX hardware can perform alpha blending.
  */
 static void updateEffectOverlay(void) {
-	if (effect_state.type != EFFECT_CRT) {
+	// Apply pending effect type
+	effect_state.type = effect_state.next_type;
+	effect_state.scale = effect_state.next_scale;
+
+	// Clear overlay if no effect
+	if (effect_state.type == EFFECT_NONE) {
 		if (vid.effect) {
+			vid.effect->pixels = NULL;
+			vid.effect->pixelsPa = 0;
 			SDL_FreeSurface(vid.effect);
 			vid.effect = NULL;
 		}
+		if (vid.effect_buffer.vadd) {
+			MI_SYS_Munmap(vid.effect_buffer.vadd, ALIGN4K(EFFECT_BUFFER_SIZE));
+			MI_SYS_MMA_Free(vid.effect_buffer.padd);
+			vid.effect_buffer.vadd = NULL;
+			vid.effect_buffer.padd = 0;
+		}
+		effect_state.live_type = EFFECT_NONE;
+		effect_state.live_scale = 0;
 		return;
 	}
 
+	// Skip if overlay is already correct
 	if (effect_state.type == effect_state.live_type &&
 	    effect_state.scale == effect_state.live_scale)
 		return;
 
-	const char* pattern = RES_PATH "/crt.png";
-
-	if (vid.effect)
-		SDL_FreeSurface(vid.effect);
-	vid.effect = EFFECT_createTiledSurface(pattern, 1, vid.width, vid.height);
-	if (vid.effect) {
-		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, 255);  // Use PNG's built-in alpha
-		effect_state.live_type = effect_state.type;
-		effect_state.live_scale = effect_state.scale;
+	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
+	const char* pattern = getEffectPattern(effect_state.type, scale);
+	if (!pattern) {
+		LOG_info("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
+		return;
 	}
+
+	// Determine overall opacity (matches rg35xxplus behavior)
+	int opacity = 255;
+
+	// All effects use opaque black patterns (alpha=255)
+	// Control visibility via global opacity, scaled per pixel scale
+	// Lower scales (wider spacing) = lower opacity
+	// Higher scales (tighter spacing) = higher opacity to stay visible
+
+	if (effect_state.type == EFFECT_LINE) {
+		if (scale < 3)
+			opacity = 64;   // Coarse scanlines - subtle
+		else if (scale < 4)
+			opacity = 112;
+		else if (scale < 5)
+			opacity = 144;
+		else if (scale < 6)
+			opacity = 160;
+		else if (scale < 8)
+			opacity = 112;
+		else if (scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect_state.type == EFFECT_GRID) {
+		if (scale < 3)
+			opacity = 64;
+		else if (scale < 4)
+			opacity = 112;
+		else if (scale < 5)
+			opacity = 144;
+		else if (scale < 6)
+			opacity = 160;
+		else if (scale < 8)
+			opacity = 112;
+		else if (scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
+	} else if (effect_state.type == EFFECT_CRT) {
+		if (scale < 3)
+			opacity = 80;   // CRT slightly stronger than LINE for visibility
+		else if (scale < 4)
+			opacity = 128;
+		else if (scale < 5)
+			opacity = 160;
+		else if (scale < 6)
+			opacity = 180;
+		else if (scale < 8)
+			opacity = 128;
+		else if (scale < 11)
+			opacity = 160;
+		else
+			opacity = 150;
+	}
+
+	LOG_info("Effect: creating overlay type=%d scale=%d opacity=%d pattern=%s\n", effect_state.type,
+	         scale, opacity, pattern);
+
+	// Pattern is pre-sized for this scale, tile at 1:1 (no scaling)
+	SDL_Surface* temp = EFFECT_createTiledSurface(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT);
+	if (!temp) {
+		LOG_info("Effect: EFFECT_createTiledSurface failed!\n");
+		return;
+	}
+
+	// Allocate ION memory for hardware blitting (if not already allocated)
+	if (!vid.effect_buffer.vadd) {
+		MI_SYS_MMA_Alloc(NULL, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.padd);
+		MI_SYS_Mmap(vid.effect_buffer.padd, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.vadd,
+		            true);
+		LOG_info("Effect: allocated ION buffer padd=0x%llX vadd=%p\n",
+		         (unsigned long long)vid.effect_buffer.padd, vid.effect_buffer.vadd);
+	}
+
+	// Free existing overlay surface (but keep ION buffer)
+	if (vid.effect) {
+		vid.effect->pixels = NULL;
+		vid.effect->pixelsPa = 0;
+		SDL_FreeSurface(vid.effect);
+	}
+
+	// Create SDL surface backed by ION memory (ARGB8888 for alpha blending)
+	vid.effect = SDL_CreateRGBSurfaceFrom(vid.effect_buffer.vadd, FIXED_WIDTH, FIXED_HEIGHT, 32,
+	                                      FIXED_WIDTH * 4, 0x00FF0000, 0x0000FF00, 0x000000FF,
+	                                      0xFF000000);
+	if (!vid.effect) {
+		LOG_info("Effect: SDL_CreateRGBSurfaceFrom failed!\n");
+		SDL_FreeSurface(temp);
+		return;
+	}
+	vid.effect->pixelsPa = vid.effect_buffer.padd;
+
+	// Copy tiled pattern to ION-backed surface
+	memcpy(vid.effect->pixels, temp->pixels, EFFECT_BUFFER_SIZE);
+	SDL_FreeSurface(temp);
+
+	// Enable alpha blending with global opacity
+	SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
+
+	LOG_info("Effect: overlay created %dx%d in ION memory, pixelsPa=0x%llX\n", vid.effect->w,
+	         vid.effect->h, (unsigned long long)vid.effect->pixelsPa);
+
+	effect_state.live_type = effect_state.type;
+	effect_state.live_scale = effect_state.scale;
 }
 
+/**
+ * Sets the pixel effect for rendering.
+ *
+ * @param effect EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, or EFFECT_CRT
+ */
 void PLAT_setEffect(int effect) {
+	if (effect != effect_state.next_type) {
+		LOG_info("PLAT_setEffect: %d -> %d\n", effect_state.next_type, effect);
+	}
 	effect_state.next_type = effect;
-	if (effect == EFFECT_LINE || effect == EFFECT_GRID)
-		next_effect = effect;
-	else
-		next_effect = EFFECT_NONE;
 }
 
 /**
@@ -596,40 +780,18 @@ void PLAT_vsync(int remaining) {
 }
 
 /**
- * Selects appropriate scaler function based on scale factor and effect.
+ * Selects appropriate scaler function based on scale factor.
+ *
+ * Effects are handled via overlay compositing, not scaler functions.
  *
  * @param renderer Renderer context containing scale factor
- * @return Function pointer to scaler implementation
+ * @return Function pointer to NEON-optimized scaler implementation
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	// Track scale for effect overlay generation
 	effect_state.next_scale = renderer->scale;
-	effect_state.scale = effect_state.next_scale;
-	effect_state.type = effect_state.next_type;
 
-	// Scanline effect scalers
-	if (effect_state.type == EFFECT_LINE) {
-		switch (renderer->scale) {
-		case 4:
-			return scale4x_line;
-		case 3:
-			return scale3x_line;
-		case 2:
-			return scale2x_line;
-		default:
-			return scale1x_line;
-		}
-	}
-	// Grid effect scalers
-	else if (effect_type == EFFECT_GRID) {
-		switch (renderer->scale) {
-		case 3:
-			return scale3x_grid;
-		case 2:
-			return scale2x_grid;
-		}
-	}
-
-	// Default nearest-neighbor scalers (NEON-optimized)
+	// All effects use overlay compositing, so just return plain scalers
 	switch (renderer->scale) {
 	case 6:
 		return scale6x6_n16;
@@ -649,18 +811,12 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 /**
  * Blits scaled renderer output to destination surface.
  *
- * Applies the current pixel effect and scaler, reloading if effect changed.
  * Uses NEON-optimized scalers from scaler.c for performance.
+ * Effects are composited later via overlay in PLAT_flip.
  *
  * @param renderer Renderer context with source/dest buffers and dimensions
  */
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	// Reload scaler if effect changed
-	if (effect_type != next_effect) {
-		effect_type = next_effect;
-		renderer->blit = PLAT_getScaler(renderer);
-	}
-
 	// Calculate destination pointer with offset
 	void* dst = renderer->dst + (renderer->dst_y * renderer->dst_p) + (renderer->dst_x * FIXED_BPP);
 	((scaler_t)renderer->blit)(renderer->src, dst, renderer->src_w, renderer->src_h,
@@ -671,6 +827,7 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * Flips display buffer (presents rendered frame).
  *
  * In indirect mode, uses MI_GFX to scale from intermediate buffer to framebuffer.
+ * Effect overlay is composited AFTER scaling to ensure proper alignment with pixels.
  * Implements double buffering by swapping page on each flip.
  * Handles deferred clear if PLAT_clearAll() was called.
  *
@@ -678,17 +835,18 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @param sync Sync parameter (unused, vsync controlled via PLAT_setVsync)
  */
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	updateEffectOverlay();
-
-	// Composite effect overlay
-	if (vid.effect && effect_state.type != EFFECT_NONE) {
-		SDL_Surface* target = vid.direct ? vid.video : vid.screen;
-		SDL_BlitSurface(vid.effect, NULL, target, NULL);
-	}
-
 	// Scale to framebuffer if using intermediate buffer
 	if (!vid.direct)
-		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 1);
+		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
+
+	// Update and composite effect overlay AFTER scaling
+	// Only apply when in indirect mode (game rendering), not direct mode (menus/UI)
+	if (!vid.direct) {
+		updateEffectOverlay();
+		if (vid.effect) {
+			GFX_BlitSurfaceExec(vid.effect, NULL, vid.video, NULL, 0, 0, 0);
+		}
+	}
 
 	SDL_Flip(vid.video);
 

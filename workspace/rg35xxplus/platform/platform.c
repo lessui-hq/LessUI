@@ -884,14 +884,38 @@ static void updateEffect(void) {
 	if (effect.type == effect.live_type && effect.scale == live_scale)
 		return;
 
-	const char* base_pattern = NULL;
-	int opacity = 128;
+	// Clamp scale to available pattern files
+	int pattern_scale = effect.scale;
+	if (pattern_scale < 2) pattern_scale = 2;
+	if (pattern_scale == 7) pattern_scale = 6;  // Use scale-6 for scale-7
+	if (pattern_scale > 8) pattern_scale = 8;
+
+	static char pattern_path[256];
+	int opacity = 255;
+
+	// All effects use opaque black patterns (alpha=255)
+	// Control visibility via global opacity, scaled per pixel scale
+	// Lower scales (wider spacing) = lower opacity
+	// Higher scales (tighter spacing) = higher opacity to stay visible
 
 	if (effect.type == EFFECT_LINE) {
-		opacity = 255;  // Use PNG alpha for shadow scanlines
-		base_pattern = RES_PATH "/line.png";
+		snprintf(pattern_path, sizeof(pattern_path), RES_PATH "/line-%d.png", pattern_scale);
+		if (effect.scale < 3)
+			opacity = 64;
+		else if (effect.scale < 4)
+			opacity = 112;
+		else if (effect.scale < 5)
+			opacity = 144;
+		else if (effect.scale < 6)
+			opacity = 160;
+		else if (effect.scale < 8)
+			opacity = 112;
+		else if (effect.scale < 11)
+			opacity = 144;
+		else
+			opacity = 136;
 	} else if (effect.type == EFFECT_GRID) {
-		base_pattern = RES_PATH "/grid.png";
+		snprintf(pattern_path, sizeof(pattern_path), RES_PATH "/grid-%d.png", pattern_scale);
 		if (effect.scale < 3)
 			opacity = 64;
 		else if (effect.scale < 4)
@@ -907,21 +931,40 @@ static void updateEffect(void) {
 		else
 			opacity = 136;
 	} else if (effect.type == EFFECT_CRT) {
-		base_pattern = RES_PATH "/crt.png";
-		opacity = 255;  // Use PNG alpha for CRT shadows
+		snprintf(pattern_path, sizeof(pattern_path), RES_PATH "/crt-%d.png", pattern_scale);
+		if (effect.scale < 3)
+			opacity = 80;
+		else if (effect.scale < 4)
+			opacity = 128;
+		else if (effect.scale < 5)
+			opacity = 160;
+		else if (effect.scale < 6)
+			opacity = 180;
+		else if (effect.scale < 8)
+			opacity = 128;
+		else if (effect.scale < 11)
+			opacity = 160;
+		else
+			opacity = 150;
+	} else {
+		return;
 	}
 
-	if (!base_pattern)
-		return;
+	const char* base_pattern = pattern_path;
 
 	int target_w = on_hdmi ? HDMI_WIDTH : device_width;
 	int target_h = on_hdmi ? HDMI_HEIGHT : device_height;
+
+	LOG_info("Effect: creating type=%d scale=%d opacity=%d pattern=%s\n", effect.type, effect.scale,
+	         opacity, base_pattern);
 
 	SDL_Texture* tiled =
 	    EFFECT_loadAndTile(vid.renderer, base_pattern, 1, target_w, target_h);
 	if (tiled) {
 		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
 		SDL_SetTextureAlphaMod(tiled, opacity);
+		LOG_info("Effect: created %dx%d texture, blend=BLEND, alphaMod=%d\n", target_w, target_h,
+		         opacity);
 		if (vid.effect)
 			SDL_DestroyTexture(vid.effect);
 		vid.effect = tiled;
@@ -1031,11 +1074,6 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 
 	updateEffect();
 	if (vid.blit && effect.type != EFFECT_NONE && vid.effect) {
-		// ox = effect.scale - (dst_rect->x % effect.scale);
-		// oy = effect.scale - (dst_rect->y % effect.scale);
-		// if (ox==effect.scale) ox = 0;
-		// if (oy==effect.scale) oy = 0;
-		// LOG_info("rotate: %i ox: %i oy: %i\n", rotate, ox,oy);
 		if (rotate && !on_hdmi)
 			SDL_RenderCopyEx(
 			    vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},

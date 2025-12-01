@@ -3,6 +3,7 @@
  */
 
 #include "effect_surface.h"
+#include "log.h"
 #include <stdlib.h>
 
 /**
@@ -21,18 +22,18 @@ static SDL_Surface* scaleSurface(SDL_Surface* src, int scale) {
 		return NULL;
 
 	// Simple nearest-neighbor: replicate each pixel scale x scale times
-	uint32_t* src_pixels = (uint32_t*)src->pixels;
-	uint32_t* dst_pixels = (uint32_t*)scaled->pixels;
-
+	// Use pitch for row stride (not width) to handle potential padding
 	for (int sy = 0; sy < src->h; sy++) {
+		uint32_t* src_row = (uint32_t*)((uint8_t*)src->pixels + sy * src->pitch);
 		for (int sx = 0; sx < src->w; sx++) {
-			uint32_t pixel = src_pixels[sy * src->w + sx];
+			uint32_t pixel = src_row[sx];
 			// Replicate this pixel in a scale x scale block
 			for (int dy = 0; dy < scale; dy++) {
+				int out_y = sy * scale + dy;
+				uint32_t* dst_row = (uint32_t*)((uint8_t*)scaled->pixels + out_y * scaled->pitch);
 				for (int dx = 0; dx < scale; dx++) {
-					int out_y = sy * scale + dy;
 					int out_x = sx * scale + dx;
-					dst_pixels[out_y * new_w + out_x] = pixel;
+					dst_row[out_x] = pixel;
 				}
 			}
 		}
@@ -43,30 +44,73 @@ static SDL_Surface* scaleSurface(SDL_Surface* src, int scale) {
 
 SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int target_w,
                                        int target_h) {
-	if (!pattern_path || scale < 1 || target_w < 1 || target_h < 1)
+	if (!pattern_path || scale < 1 || target_w < 1 || target_h < 1) {
+		LOG_info("EFFECT_createTiledSurface: invalid params\n");
 		return NULL;
+	}
 
 	// Load base pattern
-	SDL_Surface* base = IMG_Load(pattern_path);
-	if (!base)
+	SDL_Surface* loaded = IMG_Load(pattern_path);
+	if (!loaded) {
+		LOG_info("EFFECT_createTiledSurface: IMG_Load failed for %s: %s\n", pattern_path,
+		         IMG_GetError());
 		return NULL;
+	}
+	LOG_info("EFFECT_createTiledSurface: loaded %s (%dx%d bpp=%d Amask=0x%08X pitch=%d)\n",
+	         pattern_path, loaded->w, loaded->h, loaded->format->BitsPerPixel, loaded->format->Amask,
+	         loaded->pitch);
+
+	// Debug: log first few pixel values
+	if (loaded->format->BitsPerPixel == 32) {
+		uint32_t* px = (uint32_t*)loaded->pixels;
+		LOG_info("EFFECT_createTiledSurface: first pixels: 0x%08X 0x%08X 0x%08X\n", px[0], px[1],
+		         px[2]);
+	}
+
+	// Convert to 32-bit ARGB if needed (scaleSurface assumes 32-bit)
+	SDL_Surface* base;
+	if (loaded->format->BitsPerPixel != 32 || loaded->format->Amask != 0xFF000000) {
+		SDL_Surface* converted =
+		    SDL_CreateRGBSurface(0, loaded->w, loaded->h, 32, 0x00FF0000, 0x0000FF00, 0x000000FF,
+		                         0xFF000000);
+		if (converted) {
+			SDL_SetAlpha(loaded, 0, 255); // Disable alpha for copy
+			SDL_BlitSurface(loaded, NULL, converted, NULL);
+			base = converted;
+			LOG_info("EFFECT_createTiledSurface: converted to 32-bit ARGB\n");
+		} else {
+			base = loaded;
+			loaded = NULL;
+		}
+		if (loaded)
+			SDL_FreeSurface(loaded);
+	} else {
+		base = loaded;
+	}
 
 	// Scale it
 	SDL_Surface* scaled = scaleSurface(base, scale);
 	SDL_FreeSurface(base);
 
-	if (!scaled)
+	if (!scaled) {
+		LOG_info("EFFECT_createTiledSurface: scaleSurface failed\n");
 		return NULL;
+	}
 
 	// Create target surface
 	SDL_Surface* tiled = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0x00FF0000, 0x0000FF00,
 	                                          0x000000FF, 0xFF000000);
 	if (!tiled) {
+		LOG_info("EFFECT_createTiledSurface: SDL_CreateRGBSurface failed\n");
 		SDL_FreeSurface(scaled);
 		return NULL;
 	}
 
 	// Tile the scaled pattern
+	// IMPORTANT: Disable alpha blending during tiling so we get a straight pixel copy
+	// (otherwise alpha blending black-on-black gives black, losing alpha values)
+	SDL_SetAlpha(scaled, 0, 255);
+
 	int pattern_w = scaled->w;
 	int pattern_h = scaled->h;
 
@@ -78,5 +122,6 @@ SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int 
 	}
 
 	SDL_FreeSurface(scaled);
+	LOG_info("EFFECT_createTiledSurface: created %dx%d tiled surface\n", target_w, target_h);
 	return tiled;
 }

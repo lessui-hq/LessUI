@@ -271,3 +271,112 @@ This is one of the most popular LessUI platforms and serves as a reference imple
 - Display resolution flexibility
 
 Changes to this platform should be thoroughly tested due to its wide user base and variant complexity.
+
+## MI_GFX Effect Overlay Pipeline Analysis
+
+The miyoomini platform uses the SigmaStar MI_GFX hardware blitter for rendering effect overlays (LINE, GRID, CRT scanline effects). This section documents the complete pipeline and a known alpha blending issue.
+
+### Pipeline Overview
+
+| Step | Location | Description | Status |
+|------|----------|-------------|--------|
+| 1. PNG Load | `effect_surface.c:53` | `IMG_Load()` loads pattern PNG | ✓ Works |
+| 2. Format Check | `effect_surface.c:72` | Convert to ARGB8888 if needed | ✓ Works |
+| 3. Scale | `effect_surface.c:92` | Nearest-neighbor pixel replication | ✓ Works |
+| 4. Tile | `effect_surface.c:112` | `SDL_BlitSurface` with alpha disabled | ✓ Works |
+| 5. ION Copy | `platform.c:704` | `memcpy` to ION-backed surface | ✓ Works |
+| 6. Set Alpha | `platform.c:714` | `SDLX_SetAlpha` sets surface flags | ✓ Works |
+| 7. MI_GFX Blit | `platform.c:828` | Hardware blit to framebuffer | **Issue** |
+
+### Pattern Files
+
+The effect patterns are small PNGs with per-pixel alpha:
+
+| Pattern | Size | Alpha Values | Purpose |
+|---------|------|--------------|---------|
+| `line.png` | 1x3 | 0x14 (8%), 0x82 (51%), 0x00 | Horizontal scanlines |
+| `grid.png` | 2x2 | 0xFF (100%) x3, 0x00 x1 | Grid shadow overlay |
+| `crt.png` | 6x1 | 0x1E (12%), 0x64 (39%) alternating | CRT phosphor simulation |
+
+### Memory Layout Verification
+
+Confirmed via logging that pixel data is correctly stored:
+
+```
+pixel[0] as u32: 0x14000000
+pixel[0] bytes [0,1,2,3]: 0x00 0x00 0x00 0x14
+```
+
+On little-endian ARM, the 32-bit value `0x14000000` is stored as bytes `[0x00, 0x00, 0x00, 0x14]` (LSB first). Our ARGB8888 format has:
+- Amask = 0xFF000000 (alpha in bits 24-31, stored at byte offset 3)
+- Rmask = 0x00FF0000
+- Gmask = 0x0000FF00
+- Bmask = 0x000000FF
+
+### MI_GFX Format Detection
+
+```c
+// GFX_ColorFmt() in platform.c
+if (surface->format->Bmask == 0x000000FF)
+    return E_MI_GFX_FMT_ARGB8888;
+```
+
+Source surface → `E_MI_GFX_FMT_ARGB8888`
+Destination surface → `E_MI_GFX_FMT_RGB565`
+
+### Blend Configuration Attempts
+
+Multiple blend configurations were tested:
+
+| Configuration | Flags | Src Op | Dst Op | Result |
+|---------------|-------|--------|--------|--------|
+| Original | SRC_PREMULTIPLY \| ALPHACHANNEL | ONE | INVSRCALPHA | Too dark |
+| With const color | SRC_PREMULTIPLY \| ALPHACHANNEL + u32GlobalSrcConstColor=0xFF000000 | ONE | INVSRCALPHA | Too dark |
+| Pure blend ops | (none) | SRCALPHA | INVSRCALPHA | Too dark |
+| ALPHACHANNEL only | ALPHACHANNEL | SRCALPHA | INVSRCALPHA | Too dark |
+
+### The Problem
+
+All blend configurations produce effects that are **approximately 2x too dark** compared to the same patterns rendered via SDL2 on rg35xxplus.
+
+**Expected behavior** (SDL2 on rg35xxplus):
+For a pixel with alpha=0x14 (20/255 ≈ 8%):
+```
+result = src * alpha + dst * (1 - alpha)
+result = black * 0.08 + dst * 0.92
+result = dst * 0.92  (8% darker)
+```
+
+**Observed behavior** (MI_GFX on miyoomini):
+The effect appears significantly darker than 8%, suggesting either:
+1. Alpha values are being interpreted differently by MI_GFX
+2. The blend formula uses a different calculation
+3. There's an undocumented hardware behavior
+
+### Diagnostic Test
+
+When global opacity was reduced to 50% (128 instead of 255), the effect appeared "better but not perfect", confirming the ~2x darkening factor.
+
+### SigmaStar Documentation Reference
+
+From [SigmaStar MI_GFX docs](https://wx.comake.online/doc/doc/SigmaStarDocs-SSD220-SIGMASTAR-202305231834/platform/MI/V2/gfx_en.html):
+
+- **ALPHACHANNEL**: "src.a = src.a * const color.a"
+- **COLORALPHA**: "src.a = const color.a"
+- **SRC_PREMULTIPLY**: "src.r = src.r * src.a"
+
+The documentation states ARGB8888 byte order is `[A, R, G, B]` from byte 0, but this conflicts with standard little-endian conventions. The exact hardware interpretation remains unclear.
+
+### Workaround Options
+
+1. **Halve alpha in pixels**: Divide each pixel's alpha by 2 after loading
+2. **Reduce global opacity**: Use opacity=128 for LINE/CRT instead of 255
+3. **Adjust pattern PNGs**: Create miyoomini-specific patterns with lower alpha values
+4. **Accept the difference**: The effect works, just darker than other platforms
+
+### Future Investigation
+
+- Compare with OnionUI's overlay implementation (if they use MI_GFX)
+- Test with ABGR8888 format to rule out byte order issues
+- Analyze MI_GFX behavior with solid color (non-black) overlays
+- Check if the 16-bit RGB565 destination affects alpha interpretation
