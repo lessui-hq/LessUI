@@ -317,7 +317,7 @@ static void updateEffect(void) {
 	int opacity = 128;
 
 	if (effect.type == EFFECT_LINE) {
-		opacity = 255;  // Use PNG alpha for shadow scanlines
+		opacity = 255; // Use PNG alpha for shadow scanlines
 		base_pattern = RES_PATH "/line.png";
 	} else if (effect.type == EFFECT_GRID) {
 		base_pattern = RES_PATH "/grid.png";
@@ -337,7 +337,7 @@ static void updateEffect(void) {
 			opacity = 136;
 	} else if (effect.type == EFFECT_CRT) {
 		base_pattern = RES_PATH "/crt.png";
-		opacity = 255;  // Use PNG alpha for CRT shadows
+		opacity = 255; // Use PNG alpha for CRT shadows
 	}
 
 	if (!base_pattern)

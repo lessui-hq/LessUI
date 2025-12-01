@@ -1,6 +1,8 @@
 /**
  * platform.c - Miyoo Mini platform implementation
  *
+ * REFACTORED VERSION - Uses shared effect_system for effect state management
+ *
  * Provides hardware-specific implementations for the Miyoo Mini family of devices.
  * This is one of the most complex platform implementations in MinUI, featuring:
  *
@@ -14,17 +16,6 @@
  * - Miyoo Mini (original) - 640x480, GPIO battery monitoring
  * - Miyoo Mini Plus - 640x480, AXP223 PMIC, improved hardware
  * - Miyoo Mini Plus (560p variant) - 752x560 resolution option
- *
- * Hardware Architecture:
- * The Miyoo Mini uses the MStar/SigmaStar SSC8336 SoC which provides:
- * - MI_GFX: Hardware graphics blitter for fast scaling/rotation/blending
- * - MI_SYS: System services including ION memory allocation
- * - Double buffering with physically contiguous memory for DMA
- *
- * Memory Management:
- * - ION allocator provides physically contiguous memory required by MI_GFX
- * - Double buffering (page flipping) for tear-free rendering
- * - Physical addresses (padd) used by hardware, virtual addresses (vadd) for CPU
  *
  * @note Based on eggs' GFXSample_rev15 implementation
  */
@@ -48,6 +39,7 @@
 #include "api.h"
 #include "defines.h"
 #include "effect_surface.h"
+#include "effect_system.h"
 #include "platform.h"
 #include "scaler.h"
 #include "utils.h"
@@ -71,12 +63,6 @@ int is_plus = 0; // 1 if device is Miyoo Mini Plus with AXP223 PMIC
 
 /**
  * Determines MI_GFX color format from SDL surface pixel format.
- *
- * Maps SDL pixel format masks to MI_GFX hardware color format constants.
- * Supports 16-bit and 32-bit formats with various alpha channel layouts.
- *
- * @param surface SDL surface to analyze (may be NULL)
- * @return MI_GFX color format enum, defaults to ARGB8888 if unknown
  */
 static inline MI_GFX_ColorFmt_e GFX_ColorFmt(SDL_Surface* surface) {
 	if (surface) {
@@ -103,16 +89,6 @@ static inline MI_GFX_ColorFmt_e GFX_ColorFmt(SDL_Surface* surface) {
 
 /**
  * Flushes CPU cache for a rectangular region of a surface.
- *
- * Required before MI_GFX operations to ensure CPU writes are visible to the
- * hardware blitter. Operates on 4KB-aligned cache lines, so x/w are ignored.
- *
- * @param pixels Base address of pixel buffer
- * @param pitch Bytes per row
- * @param y Starting row
- * @param h Height in rows
- *
- * @note Cache operations work on 4KB boundaries, horizontal coordinates ignored
  */
 static inline void FlushCacheNeeded(void* pixels, uint32_t pitch, uint32_t y, uint32_t h) {
 	uintptr_t pixptr = (uintptr_t)pixels;
@@ -124,26 +100,6 @@ static inline void FlushCacheNeeded(void* pixels, uint32_t pitch, uint32_t y, ui
 
 /**
  * Hardware-accelerated blit using MI_GFX (replaces SDL_BlitSurface).
- *
- * Performs hardware-accelerated surface blitting with support for:
- * - Scaling (up or down)
- * - Pixel format conversion
- * - Rotation (90, 180, 270 degrees)
- * - Mirroring (horizontal, vertical, both)
- * - Alpha blending and color keying
- *
- * Falls back to SDL_BlitSurface if physical addresses are not available.
- * Automatically flushes CPU cache before DMA operations.
- *
- * @param src Source surface (must have pixelsPa set for hardware acceleration)
- * @param srcrect Source rectangle, or NULL for entire surface
- * @param dst Destination surface (must have pixelsPa set for hardware acceleration)
- * @param dstrect Destination rectangle, or NULL for entire surface
- * @param rotate Rotation: 0=none, 1=90°, 2=180°, 3=270°
- * @param mirror Mirror: 0=none, 1=horizontal, 2=vertical, 3=both
- * @param nowait 0=wait for completion, 1=don't wait (async operation)
- *
- * @note Respects SDL_SRCALPHA and SDL_SRCCOLORKEY surface flags
  */
 static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst,
                                        SDL_Rect* dstrect, uint32_t rotate, uint32_t mirror,
@@ -207,7 +163,6 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 		if (src->flags & SDL_SRCALPHA) {
 			Opt.eDstDfbBldOp = E_MI_GFX_DFB_BLD_INVSRCALPHA;
 			if (src->format->alpha != SDL_ALPHA_OPAQUE) {
-				// Global alpha: apply surface-level alpha to entire source
 				Opt.u32GlobalSrcConstColor =
 				    (src->format->alpha << (src->format->Ashift - src->format->Aloss)) &
 				    src->format->Amask;
@@ -215,13 +170,9 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 				                                             E_MI_GFX_DFB_BLEND_COLORALPHA |
 				                                             E_MI_GFX_DFB_BLEND_ALPHACHANNEL);
 			} else if (src->format->Amask) {
-				// Per-pixel alpha: need ALPHACHANNEL to read alpha from pixels
-				// Without it, blend ops may use a default alpha value
 				Opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_ALPHACHANNEL;
-				Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;  // src * src.a
-				// dst op already set to INVSRCALPHA above
+				Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_SRCALPHA;
 			} else {
-				// No alpha channel, just pre-multiply
 				Opt.eDFBBlendFlag = E_MI_GFX_DFB_BLEND_SRC_PREMULTIPLY;
 			}
 		}
@@ -234,7 +185,6 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 			Opt.stSrcColorKeyInfo.stCKeyVal.u32ColorStart =
 			    Opt.stSrcColorKeyInfo.stCKeyVal.u32ColorEnd = src->format->colorkey;
 		}
-		// Source blend: ONE for premultiplied (default), SRCALPHA set by per-pixel alpha path
 		if (Opt.eSrcDfbBldOp == 0)
 			Opt.eSrcDfbBldOp = E_MI_GFX_DFB_BLD_ONE;
 		Opt.eRotate = (MI_GFX_Rotate_e)rotate;
@@ -244,7 +194,6 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 		Opt.stClipRect.u32Width = dst->clip_rect.w;
 		Opt.stClipRect.u32Height = dst->clip_rect.h;
 
-		// Submit blit operation to hardware and optionally wait
 		static int blit_logged = 0;
 		if (!blit_logged && (src->format->Amask != 0)) {
 			LOG_info("MI_GFX blit: src %dx%d (bpp=%d Amask=0x%X) -> dst %dx%d (bpp=%d)\n", src->w,
@@ -258,7 +207,6 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 		if (!nowait)
 			MI_GFX_WaitAllDone(FALSE, Fence);
 	} else {
-		// Fallback to software blit if physical addresses not available
 		LOG_info("Fallback to SDL_BlitSurface (no pixelsPa)\n");
 		SDL_BlitSurface(src, srcrect, dst, dstrect);
 	}
@@ -270,22 +218,10 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 
 #define LID_PATH "/sys/devices/soc0/soc/soc:hall-mh248/hallvalue"
 
-/**
- * Initializes lid sensor support.
- *
- * Detects if device has a Hall effect sensor for lid open/close detection.
- * Currently only used on experimental Miyoo Mini variants.
- */
 void PLAT_initLid(void) {
 	lid.has_lid = exists(LID_PATH);
 }
 
-/**
- * Checks if lid state has changed.
- *
- * @param state Output: receives new lid state (1=open, 0=closed), may be NULL
- * @return 1 if state changed, 0 if unchanged or no lid sensor
- */
 int PLAT_lidChanged(int* state) {
 	if (lid.has_lid) {
 		int lid_open = getInt(LID_PATH);
@@ -303,78 +239,41 @@ int PLAT_lidChanged(int* state) {
 // Input
 ///////////////////////////////
 
-void PLAT_initInput(void) {
-	// No platform-specific input initialization needed
-}
-void PLAT_quitInput(void) {
-	// No platform-specific input cleanup needed
-}
+void PLAT_initInput(void) {}
+void PLAT_quitInput(void) {}
 
 ///////////////////////////////
 // Video - ION Memory and MI_GFX
 ///////////////////////////////
 
-/**
- * ION memory buffer with physical and virtual addresses.
- *
- * MI_GFX requires physically contiguous memory for DMA operations.
- * ION allocator provides both physical address (for hardware) and
- * virtual address (for CPU access).
- */
 typedef struct HWBuffer {
-	MI_PHY padd; // Physical address (used by MI_GFX hardware)
-	void* vadd; // Virtual address (used by CPU)
+	MI_PHY padd;
+	void* vadd;
 } HWBuffer;
 
-// Effect overlay size: FIXED_WIDTH x FIXED_HEIGHT x 4 bytes (ARGB8888)
 #define EFFECT_BUFFER_SIZE (FIXED_WIDTH * FIXED_HEIGHT * 4)
 
-/**
- * Video subsystem context.
- *
- * Manages double-buffered rendering with ION memory allocation.
- */
 static struct VID_Context {
-	SDL_Surface* video; // SDL framebuffer surface
-	SDL_Surface* screen; // Software rendering surface (may be same as video)
-	SDL_Surface* effect; // Effect overlay surface (for aperture/slotmask)
-	HWBuffer buffer; // ION-allocated buffer for double buffering
-	HWBuffer effect_buffer; // ION-allocated buffer for effect overlay
+	SDL_Surface* video;
+	SDL_Surface* screen;
+	SDL_Surface* effect;
+	HWBuffer buffer;
+	HWBuffer effect_buffer;
 
-	int page; // Current backbuffer page (0 or 1)
-	int width; // Current rendering width
-	int height; // Current rendering height
-	int pitch; // Current pitch in bytes
+	int page;
+	int width;
+	int height;
+	int pitch;
 
-	int direct; // 1 if rendering directly to video, 0 if using intermediate buffer
-	int cleared; // 1 if clear is deferred until offscreen
+	int direct;
+	int cleared;
 } vid;
 
-static struct {
-	int type;
-	int next_type;
-	int scale;
-	int next_scale;
-	int live_type;
-	int live_scale;
-} effect_state = {
-    .type = EFFECT_NONE,
-    .next_type = EFFECT_NONE,
-    .scale = 1,
-    .next_scale = 1,
-    .live_type = EFFECT_NONE,
-    .live_scale = 0,
-};
+// Use shared EffectState from effect_system.h
+static EffectState effect_state;
 
 #define MODES_PATH "/sys/class/graphics/fb0/modes"
 
-/**
- * Checks if framebuffer supports a specific video mode.
- *
- * @param path Path to modes sysfs file
- * @param mode Mode string to search for (e.g., "752x560p")
- * @return 1 if mode is supported, 0 otherwise
- */
 static int hasMode(const char* path, const char* mode) {
 	FILE* f = fopen(path, "r");
 	if (!f)
@@ -387,64 +286,41 @@ static int hasMode(const char* path, const char* mode) {
 	return 0;
 }
 
-/**
- * Initializes video subsystem with hardware variant detection.
- *
- * Detects hardware variant (Mini vs Plus, 480p vs 560p) and allocates
- * ION memory for double-buffered rendering. The Plus variant is identified
- * by the presence of axp_test (AXP223 PMIC utility). The 560p mode is
- * auto-enabled when hardware supports it.
- *
- * Memory Layout:
- * - Allocates 2 pages (PAGE_COUNT=2) of PAGE_SIZE each
- * - Each page is 4KB-aligned for cache operations
- * - Page 0 and 1 are swapped on each flip for double buffering
- *
- * @return Surface for rendering (either direct video or intermediate screen)
- *
- * @note Sets global flags: is_plus, is_560p
- */
 SDL_Surface* PLAT_initVideo(void) {
-	// Detect hardware variants
 	is_plus = exists("/customer/app/axp_test");
 	is_560p = hasMode(MODES_PATH, "752x560p");
 	LOG_info("is 560p: %i\n", is_560p);
 
-	// Initialize SDL with custom battery handling
-	putenv("SDL_HIDE_BATTERY=1"); // using MiniUI's custom SDL
+	putenv("SDL_HIDE_BATTERY=1");
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_ShowCursor(0);
 
 	vid.video = SDL_SetVideoMode(FIXED_WIDTH, FIXED_HEIGHT, FIXED_DEPTH, SDL_SWSURFACE);
 
-	// Allocate ION memory for double buffering (physically contiguous for MI_GFX)
 	int buffer_size = ALIGN4K(PAGE_SIZE) * PAGE_COUNT;
 	MI_SYS_MMA_Alloc(NULL, ALIGN4K(buffer_size), &vid.buffer.padd);
 	MI_SYS_Mmap(vid.buffer.padd, ALIGN4K(buffer_size), &vid.buffer.vadd, true);
 
-	// Initialize rendering state
 	vid.page = 1;
-	vid.direct = 1; // Start in direct mode (no intermediate buffer)
+	vid.direct = 1;
 	vid.width = FIXED_WIDTH;
 	vid.height = FIXED_HEIGHT;
 	vid.pitch = FIXED_PITCH;
 	vid.cleared = 0;
 
-	// Create screen surface backed by ION memory
 	vid.screen =
 	    SDL_CreateRGBSurfaceFrom(vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE), vid.width,
 	                             vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
 	vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE);
 	memset(vid.screen->pixels, 0, vid.pitch * vid.height);
 
+	// Initialize effect state using shared effect_system
+	EFFECT_init(&effect_state);
+
 	return vid.direct ? vid.video : vid.screen;
 }
 
-/**
- * Shuts down video subsystem and frees ION memory.
- */
 void PLAT_quitVideo(void) {
-	// Clean up effect overlay
 	if (vid.effect) {
 		vid.effect->pixels = NULL;
 		vid.effect->pixelsPa = 0;
@@ -466,45 +342,17 @@ void PLAT_quitVideo(void) {
 	SDL_Quit();
 }
 
-/**
- * Clears current video buffer using hardware memset.
- *
- * Uses MI_SYS_MemsetPa for fast hardware-accelerated clearing of the
- * physically contiguous buffer. Cache is flushed before the operation.
- *
- * @param screen Surface to clear (unused, operates on current vid.page)
- *
- * @note Direct memset() on screen->pixels can cause crashes with ION memory
- */
 void PLAT_clearVideo(SDL_Surface* screen) {
 	MI_SYS_FlushInvCache(vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE), ALIGN4K(PAGE_SIZE));
 	MI_SYS_MemsetPa(vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE), 0, PAGE_SIZE);
 	SDL_FillRect(screen, NULL, 0);
 }
 
-/**
- * Clears both front and back buffers.
- *
- * Clears backbuffer immediately and defers frontbuffer clear until next
- * flip to avoid visible artifacts.
- */
 void PLAT_clearAll(void) {
-	PLAT_clearVideo(vid.screen); // clear backbuffer
-	vid.cleared = 1; // defer clearing frontbuffer until offscreen
+	PLAT_clearVideo(vid.screen);
+	vid.cleared = 1;
 }
 
-/**
- * Sets vsync behavior via custom SDL environment variables.
- *
- * Controls tearing vs flicker tradeoffs:
- * - VSYNC_OFF: No synchronization, lowest latency, potential tearing
- * - VSYNC_LENIENT: Blocking but no flip wait, tear-free but may flicker
- * - VSYNC_STRICT: Full synchronization, eliminates flicker, may introduce tearing
- *
- * @param vsync VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- *
- * @note Trade-offs are hardware-specific and somewhat counterintuitive
- */
 void PLAT_setVsync(int vsync) {
 	if (vsync == VSYNC_OFF) {
 		putenv("GFX_FLIPWAIT=0");
@@ -516,24 +364,10 @@ void PLAT_setVsync(int vsync) {
 		putenv("GFX_FLIPWAIT=1");
 		putenv("GFX_BLOCKING=1");
 	}
-	SDL_GetVideoInfo(); // Apply environment changes
+	SDL_GetVideoInfo();
 }
 
-/**
- * Resizes rendering surface (switches between direct and indirect rendering).
- *
- * If requested size matches native resolution, renders directly to framebuffer.
- * Otherwise, creates an intermediate surface and uses MI_GFX to scale during flip.
- *
- * @param w Width in pixels
- * @param h Height in pixels
- * @param pitch Pitch in bytes
- * @return Surface to render to (either vid.video or vid.screen)
- *
- * @note Recreates vid.screen if switching to indirect mode
- */
 SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
-	// Determine if we can render directly to framebuffer
 	vid.direct = w == FIXED_WIDTH && h == FIXED_HEIGHT && pitch == FIXED_PITCH;
 	vid.width = w;
 	vid.height = h;
@@ -542,9 +376,8 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	if (vid.direct) {
 		memset(vid.video->pixels, 0, vid.pitch * vid.height);
 	} else {
-		// Recreate screen surface with new dimensions
 		vid.screen->pixels = NULL;
-		vid.screen->pixelsPa = NULL; // Prevent custom SDL from freeing ION memory
+		vid.screen->pixelsPa = NULL;
 		SDL_FreeSurface(vid.screen);
 
 		vid.screen =
@@ -557,22 +390,13 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	return vid.direct ? vid.video : vid.screen;
 }
 
-void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
-	// No clipping support needed
-}
-void PLAT_setNearestNeighbor(int enabled) {
-	// Filtering handled by scaler selection
-}
+void PLAT_setVideoScaleClip(int x, int y, int width, int height) {}
+void PLAT_setNearestNeighbor(int enabled) {}
 
 ///////////////////////////////
 // Pixel Effects and Scaling
 ///////////////////////////////
 
-/**
- * Forces effect overlay regeneration when scaling changes.
- *
- * @param sharpness Sharpness value (unused, triggers reload via scale change)
- */
 void PLAT_setSharpness(int sharpness) {
 	(void)sharpness;
 	// Force overlay regeneration by invalidating live state
@@ -580,45 +404,12 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 /**
- * Returns the pattern file path for the given effect type and scale.
- *
- * Patterns are pre-sized for each scale to ensure correct scanline alignment.
- * For scale N, pattern is N pixels tall and tiled at 1:1 (no scaling).
- */
-static const char* getEffectPattern(int effect_type, int scale) {
-	static char path[256];
-
-	// Clamp to available scales
-	if (scale < 2) scale = 2;
-	if (scale == 7) scale = 6;  // Use scale-6 for scale-7
-	if (scale > 8) scale = 8;
-
-	switch (effect_type) {
-	case EFFECT_LINE:
-		snprintf(path, sizeof(path), RES_PATH "/line-%d.png", scale);
-		return path;
-	case EFFECT_GRID:
-		snprintf(path, sizeof(path), RES_PATH "/grid-%d.png", scale);
-		return path;
-	case EFFECT_CRT:
-		snprintf(path, sizeof(path), RES_PATH "/crt-%d.png", scale);
-		return path;
-	default:
-		return NULL;
-	}
-}
-
-/**
  * Creates or updates the effect overlay surface.
- *
- * The overlay is created at the fixed output resolution (FIXED_WIDTH x FIXED_HEIGHT)
- * with the pattern scaled to match the current pixel scaling factor.
- * Uses ION memory allocation so MI_GFX hardware can perform alpha blending.
+ * Now uses EFFECT_getPatternPath() and EFFECT_getOpacity() from effect_system.
  */
 static void updateEffectOverlay(void) {
-	// Apply pending effect type
-	effect_state.type = effect_state.next_type;
-	effect_state.scale = effect_state.next_scale;
+	// Apply pending effect settings
+	EFFECT_applyPending(&effect_state);
 
 	// Clear overlay if no effect
 	if (effect_state.type == EFFECT_NONE) {
@@ -634,77 +425,27 @@ static void updateEffectOverlay(void) {
 			vid.effect_buffer.vadd = NULL;
 			vid.effect_buffer.padd = 0;
 		}
-		effect_state.live_type = EFFECT_NONE;
-		effect_state.live_scale = 0;
+		EFFECT_markLive(&effect_state);
 		return;
 	}
 
 	// Skip if overlay is already correct
-	if (effect_state.type == effect_state.live_type &&
-	    effect_state.scale == effect_state.live_scale)
+	if (!EFFECT_needsUpdate(&effect_state))
 		return;
 
 	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
-	const char* pattern = getEffectPattern(effect_state.type, scale);
+
+	// Use shared EFFECT_getPatternPath() instead of local getEffectPattern()
+	char pattern_path[256];
+	const char* pattern =
+	    EFFECT_getPatternPath(pattern_path, sizeof(pattern_path), effect_state.type, scale);
 	if (!pattern) {
 		LOG_info("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
 		return;
 	}
 
-	// Determine overall opacity (matches rg35xxplus behavior)
-	int opacity = 255;
-
-	// All effects use opaque black patterns (alpha=255)
-	// Control visibility via global opacity, scaled per pixel scale
-	// Lower scales (wider spacing) = lower opacity
-	// Higher scales (tighter spacing) = higher opacity to stay visible
-
-	if (effect_state.type == EFFECT_LINE) {
-		if (scale < 3)
-			opacity = 64;   // Coarse scanlines - subtle
-		else if (scale < 4)
-			opacity = 112;
-		else if (scale < 5)
-			opacity = 144;
-		else if (scale < 6)
-			opacity = 160;
-		else if (scale < 8)
-			opacity = 112;
-		else if (scale < 11)
-			opacity = 144;
-		else
-			opacity = 136;
-	} else if (effect_state.type == EFFECT_GRID) {
-		if (scale < 3)
-			opacity = 64;
-		else if (scale < 4)
-			opacity = 112;
-		else if (scale < 5)
-			opacity = 144;
-		else if (scale < 6)
-			opacity = 160;
-		else if (scale < 8)
-			opacity = 112;
-		else if (scale < 11)
-			opacity = 144;
-		else
-			opacity = 136;
-	} else if (effect_state.type == EFFECT_CRT) {
-		if (scale < 3)
-			opacity = 80;   // CRT slightly stronger than LINE for visibility
-		else if (scale < 4)
-			opacity = 128;
-		else if (scale < 5)
-			opacity = 160;
-		else if (scale < 6)
-			opacity = 180;
-		else if (scale < 8)
-			opacity = 128;
-		else if (scale < 11)
-			opacity = 160;
-		else
-			opacity = 150;
-	}
+	// Use shared EFFECT_getOpacity()
+	int opacity = EFFECT_getOpacity(scale);
 
 	LOG_info("Effect: creating overlay type=%d scale=%d opacity=%d pattern=%s\n", effect_state.type,
 	         scale, opacity, pattern);
@@ -733,9 +474,9 @@ static void updateEffectOverlay(void) {
 	}
 
 	// Create SDL surface backed by ION memory (ARGB8888 for alpha blending)
-	vid.effect = SDL_CreateRGBSurfaceFrom(vid.effect_buffer.vadd, FIXED_WIDTH, FIXED_HEIGHT, 32,
-	                                      FIXED_WIDTH * 4, 0x00FF0000, 0x0000FF00, 0x000000FF,
-	                                      0xFF000000);
+	vid.effect =
+	    SDL_CreateRGBSurfaceFrom(vid.effect_buffer.vadd, FIXED_WIDTH, FIXED_HEIGHT, 32,
+	                             FIXED_WIDTH * 4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
 	if (!vid.effect) {
 		LOG_info("Effect: SDL_CreateRGBSurfaceFrom failed!\n");
 		SDL_FreeSurface(temp);
@@ -747,51 +488,35 @@ static void updateEffectOverlay(void) {
 	memcpy(vid.effect->pixels, temp->pixels, EFFECT_BUFFER_SIZE);
 	SDL_FreeSurface(temp);
 
-	// Enable alpha blending with global opacity
+	// Enable alpha blending with opacity from effect_system
 	SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 
 	LOG_info("Effect: overlay created %dx%d in ION memory, pixelsPa=0x%llX\n", vid.effect->w,
 	         vid.effect->h, (unsigned long long)vid.effect->pixelsPa);
 
-	effect_state.live_type = effect_state.type;
-	effect_state.live_scale = effect_state.scale;
+	EFFECT_markLive(&effect_state);
 }
 
-/**
- * Sets the pixel effect for rendering.
- *
- * @param effect EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, or EFFECT_CRT
- */
 void PLAT_setEffect(int effect) {
 	if (effect != effect_state.next_type) {
 		LOG_info("PLAT_setEffect: %d -> %d\n", effect_state.next_type, effect);
 	}
-	effect_state.next_type = effect;
+	EFFECT_setType(&effect_state, effect);
 }
 
-/**
- * Waits for remaining frame time to maintain target framerate.
- *
- * @param remaining Milliseconds remaining in frame
- */
+void PLAT_setEffectColor(int color) {
+	EFFECT_setColor(&effect_state, color);
+}
+
 void PLAT_vsync(int remaining) {
 	if (remaining > 0)
 		SDL_Delay(remaining);
 }
 
-/**
- * Selects appropriate scaler function based on scale factor.
- *
- * Effects are handled via overlay compositing, not scaler functions.
- *
- * @param renderer Renderer context containing scale factor
- * @return Function pointer to NEON-optimized scaler implementation
- */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	// Track scale for effect overlay generation
-	effect_state.next_scale = renderer->scale;
+	EFFECT_setScale(&effect_state, renderer->scale);
 
-	// All effects use overlay compositing, so just return plain scalers
 	switch (renderer->scale) {
 	case 6:
 		return scale6x6_n16;
@@ -808,39 +533,17 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	}
 }
 
-/**
- * Blits scaled renderer output to destination surface.
- *
- * Uses NEON-optimized scalers from scaler.c for performance.
- * Effects are composited later via overlay in PLAT_flip.
- *
- * @param renderer Renderer context with source/dest buffers and dimensions
- */
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	// Calculate destination pointer with offset
 	void* dst = renderer->dst + (renderer->dst_y * renderer->dst_p) + (renderer->dst_x * FIXED_BPP);
 	((scaler_t)renderer->blit)(renderer->src, dst, renderer->src_w, renderer->src_h,
 	                           renderer->src_p, renderer->dst_w, renderer->dst_h, renderer->dst_p);
 }
 
-/**
- * Flips display buffer (presents rendered frame).
- *
- * In indirect mode, uses MI_GFX to scale from intermediate buffer to framebuffer.
- * Effect overlay is composited AFTER scaling to ensure proper alignment with pixels.
- * Implements double buffering by swapping page on each flip.
- * Handles deferred clear if PLAT_clearAll() was called.
- *
- * @param IGNORED Surface parameter (unused)
- * @param sync Sync parameter (unused, vsync controlled via PLAT_setVsync)
- */
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	// Scale to framebuffer if using intermediate buffer
 	if (!vid.direct)
 		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
 
 	// Update and composite effect overlay AFTER scaling
-	// Only apply when in indirect mode (game rendering), not direct mode (menus/UI)
 	if (!vid.direct) {
 		updateEffectOverlay();
 		if (vid.effect) {
@@ -850,14 +553,12 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 
 	SDL_Flip(vid.video);
 
-	// Swap to other page for double buffering
 	if (!vid.direct) {
 		vid.page ^= 1;
 		vid.screen->pixels = vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE);
 		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE);
 	}
 
-	// Complete deferred clear if pending
 	if (vid.cleared) {
 		PLAT_clearVideo(vid.screen);
 		vid.cleared = 0;
@@ -868,22 +569,9 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 // Power Management - AXP223 PMIC (Plus Model)
 ///////////////////////////////
 
-// I2C device and address for AXP223 power management IC
 #define AXPDEV "/dev/i2c-1"
 #define AXPID (0x34)
 
-/**
- * Writes a register on the AXP223 PMIC (Miyoo Mini Plus only).
- *
- * Used for power control including shutdown. Key registers:
- * - 0x32 bit7: Shutdown control
- *
- * @param address Register address
- * @param val Value to write
- * @return 0 on success, -1 on failure
- *
- * @note Only available on Mini Plus with AXP223 PMIC
- */
 int axp_write(unsigned char address, unsigned char val) {
 	struct i2c_msg msg[1];
 	struct i2c_rdwr_ioctl_data packets;
@@ -910,25 +598,6 @@ int axp_write(unsigned char address, unsigned char val) {
 	return 0;
 }
 
-/**
- * Reads a register from the AXP223 PMIC (Miyoo Mini Plus only).
- *
- * Key registers:
- * - 0x00: Power status
- *   - bit7: ACIN presence (1=connected)
- *   - bit6: ACIN usable
- *   - bit4: VBUS usable
- *   - bit2: Battery current direction (0=discharging, 1=charging)
- *   - bit0: Boot source (ACIN or VBUS)
- * - 0x01: Charge status
- *   - bit6: Charging indication (1=charging, 0=not charging/finished)
- * - 0xB9: Battery percentage (mask with 0x7F)
- *
- * @param address Register address
- * @return Register value (0-255) on success, -1 on failure
- *
- * @note Only available on Mini Plus with AXP223 PMIC
- */
 int axp_read(unsigned char address) {
 	struct i2c_msg msg[2];
 	struct i2c_rdwr_ioctl_data packets;
@@ -961,31 +630,14 @@ int axp_read(unsigned char address) {
 // Battery and Power Status
 ///////////////////////////////
 
-static int online = 0; // WiFi connection status
+static int online = 0;
 
-/**
- * Gets battery charge level and charging status.
- *
- * On Mini Plus: Reads charging status from AXP223 PMIC register 0x00, bit 2
- * On Mini: Reads charging status from GPIO 59
- *
- * Battery level is read from /tmp/battery (updated by system daemon) and
- * quantized to 6 levels to reduce visual noise: 100%, 80%, 60%, 40%, 20%, 10%
- *
- * Also updates WiFi connection status as a side effect.
- *
- * @param is_charging Output: receives charging status (1=charging, 0=not)
- * @param charge Output: receives battery level (10, 20, 40, 60, 80, 100)
- */
 void PLAT_getBatteryStatus(int* is_charging, int* charge) {
-	// Check charging status (hardware-dependent)
 	*is_charging =
 	    is_plus ? (axp_read(0x00) & 0x4) > 0 : getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
 
-	// Read battery percentage from system daemon
-	int i = getInt("/tmp/battery"); // 0-100
+	int i = getInt("/tmp/battery");
 
-	// Quantize to reduce visual noise in battery indicator
 	if (i > 80)
 		*charge = 100;
 	else if (i > 60)
@@ -999,47 +651,25 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 	else
 		*charge = 10;
 
-	// Update WiFi connection status
 	char status[16];
 	getFile("/sys/class/net/wlan0/operstate", status, 16);
 	online = prefixMatch("up", status);
 }
 
-/**
- * Enables or disables the backlight via PWM control.
- *
- * Enable: Configures PWM0 for backlight control
- * Disable: Configures GPIO4 to turn off backlight
- *
- * @param enable 1 to enable backlight, 0 to disable
- */
 void PLAT_enableBacklight(int enable) {
 	if (enable) {
-		// Restore PWM control
 		putInt("/sys/class/gpio/gpio4/value", 1);
 		putInt("/sys/class/gpio/unexport", 4);
 		putInt("/sys/class/pwm/pwmchip0/export", 0);
 		putInt("/sys/class/pwm/pwmchip0/pwm0/enable", 0);
 		putInt("/sys/class/pwm/pwmchip0/pwm0/enable", 1);
 	} else {
-		// Use GPIO to turn off backlight
 		putInt("/sys/class/gpio/export", 4);
 		putFile("/sys/class/gpio/gpio4/direction", "out");
 		putInt("/sys/class/gpio/gpio4/value", 0);
 	}
 }
 
-/**
- * Performs graceful system shutdown.
- *
- * Sequence:
- * 1. Wait 2 seconds (debounce)
- * 2. Mute audio
- * 3. Disable backlight
- * 4. Shut down all subsystems
- * 5. Execute system shutdown command
- * 6. Pause indefinitely (wait for power off)
- */
 void PLAT_powerOff(void) {
 	sleep(2);
 
@@ -1052,24 +682,13 @@ void PLAT_powerOff(void) {
 
 	system("shutdown");
 	while (1)
-		pause(); // Wait for kernel to power off
+		pause();
 }
 
 ///////////////////////////////
 // CPU Speed Control
 ///////////////////////////////
 
-/**
- * Sets CPU frequency using overclock.elf utility.
- *
- * Frequency mapping:
- * - CPU_SPEED_MENU:        504 MHz (power saving for menus)
- * - CPU_SPEED_POWERSAVE:  1104 MHz (light games)
- * - CPU_SPEED_NORMAL:     1296 MHz (most games)
- * - CPU_SPEED_PERFORMANCE: 1488 MHz (demanding games)
- *
- * @param speed One of the CPU_SPEED_* constants
- */
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
@@ -1096,13 +715,6 @@ void PLAT_setCPUSpeed(int speed) {
 // Rumble/Vibration
 ///////////////////////////////
 
-/**
- * Controls vibration motor via GPIO 48.
- *
- * Only updates GPIO state when value changes to minimize I/O overhead.
- *
- * @param strength 0 to disable, non-zero to enable
- */
 void PLAT_setRumble(int strength) {
 	static char lastvalue = 0;
 	const char str_export[2] = "48";
@@ -1110,7 +722,7 @@ void PLAT_setRumble(int strength) {
 	char value[1];
 	int fd;
 
-	value[0] = (strength == 0 ? 0x31 : 0x30); // '0' (off) : '1' (on)
+	value[0] = (strength == 0 ? 0x31 : 0x30);
 	if (lastvalue != value[0]) {
 		fd = open("/sys/class/gpio/export", O_WRONLY);
 		if (fd > 0) {
@@ -1135,13 +747,6 @@ void PLAT_setRumble(int strength) {
 // Audio Configuration
 ///////////////////////////////
 
-/**
- * Selects audio sample rate.
- *
- * @param requested Requested sample rate (Hz)
- * @param max Maximum supported sample rate (Hz)
- * @return Sample rate to use (always returns max)
- */
 int PLAT_pickSampleRate(int requested, int max) {
 	return max;
 }
@@ -1150,16 +755,6 @@ int PLAT_pickSampleRate(int requested, int max) {
 // Device Identification
 ///////////////////////////////
 
-/**
- * Returns human-readable device model string.
- *
- * Detects between:
- * - Miyoo Mini Flip (MY285 - clamshell variant)
- * - Miyoo Mini Plus (Plus model with AXP223)
- * - Miyoo Mini (original model)
- *
- * @return Model string (do not free)
- */
 char* PLAT_getModel(void) {
 	char* model = getenv("MY_MODEL");
 	if (exactMatch(model, "MY285"))
@@ -1170,13 +765,6 @@ char* PLAT_getModel(void) {
 		return "Miyoo Mini";
 }
 
-/**
- * Checks if device is connected to WiFi.
- *
- * @return 1 if online, 0 if offline
- *
- * @note Status updated as side effect of PLAT_getBatteryStatus()
- */
 int PLAT_isOnline(void) {
 	return online;
 }

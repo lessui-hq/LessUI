@@ -115,7 +115,7 @@ def main():
 
     # Generate patterns for common pixel scales (2-8)
     # Scale 1 is never used (1:1 scaling has no interpolation artifacts needing effects)
-    scales = [2, 3, 4, 5, 6, 8]
+    scales = [2, 3, 4, 5, 6, 7, 8]
 
     patterns = []
     for scale in scales:

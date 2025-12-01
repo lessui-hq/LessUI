@@ -1,6 +1,8 @@
 /**
  * platform.c - Miyoo A30 (MY282) platform implementation
  *
+ * REFACTORED VERSION - Uses shared render_sdl2 backend
+ *
  * Platform-specific code for the Miyoo A30 handheld device. This platform
  * features analog stick support, display rotation, LED control, rumble
  * feedback, and grid/line visual effects.
@@ -11,7 +13,7 @@
  * - LED brightness control on low-power states
  * - Motor rumble support via sysfs interface
  * - CPU frequency scaling via overclock.elf
- * - Overlay effects (scanlines/grid) with DMG color support
+ * - Overlay effects (scanlines/grid) with DMG color support (via render_sdl2)
  */
 
 #include <linux/fb.h>
@@ -33,7 +35,7 @@
 #include "platform.h"
 #include "utils.h"
 
-#include "effect_utils.h"
+#include "render_sdl2.h"
 #include "scaler.h"
 
 ///////////////////////////////
@@ -241,573 +243,76 @@ int PLAT_shouldWake(void) {
 }
 
 ///////////////////////////////
-// Video Handling
+// Video - Using shared SDL2 backend
 ///////////////////////////////
 
-static struct VID_Context {
-	SDL_Window* window;
-	SDL_Renderer* renderer;
-	SDL_Texture* texture;
-	SDL_Texture* target;
-	SDL_Texture* effect;
+static SDL2_RenderContext vid_ctx;
 
-	SDL_Surface* buffer;
-	SDL_Surface* screen;
-
-	GFX_Renderer* blit; // yeesh
-
-	int width;
-	int height;
-	int pitch;
-	int sharpness;
-} vid;
-
-static int device_width;
-static int device_height;
-static int device_pitch;
-static int rotate = 0;
-
-/**
- * Initializes SDL video subsystem and creates rendering context.
- *
- * Creates SDL window and renderer at native device resolution.
- * Automatically detects display orientation (portrait mode sets
- * rotation to 270 degrees). Sets up textures and surfaces for
- * rendering pipeline.
- *
- * @return Pointer to main screen surface for drawing
- */
-SDL_Surface* PLAT_initVideo(void) {
-	// LOG_info("PLAT_initVideo\n");
-
-	SDL_InitSubSystem(SDL_INIT_VIDEO);
-	SDL_ShowCursor(0);
-
-	// SDL_version compiled;
-	// SDL_version linked;
-	// SDL_VERSION(&compiled);
-	// SDL_GetVersion(&linked);
-	// LOG_info("Compiled SDL version %d.%d.%d ...\n", compiled.major, compiled.minor, compiled.patch);
-	// LOG_info("Linked SDL version %d.%d.%d.\n", linked.major, linked.minor, linked.patch);
-	//
-	// int num_displays = SDL_GetNumVideoDisplays();
-	// LOG_info("SDL_GetNumVideoDisplays(): %i\n", num_displays);
-	//
-	// LOG_info("Available video drivers:\n");
-	// for (int i=0; i<SDL_GetNumVideoDrivers(); i++) {
-	// 	LOG_info("- %s\n", SDL_GetVideoDriver(i));
-	// }
-	// LOG_info("Current video driver: %s\n", SDL_GetCurrentVideoDriver());
-	//
-	// LOG_info("Available render drivers:\n");
-	// for (int i=0; i<SDL_GetNumRenderDrivers(); i++) {
-	// 	SDL_RendererInfo info;
-	// 	SDL_GetRenderDriverInfo(i,&info);
-	// 	LOG_info("- %s\n", info.name);
-	// }
-	//
-	// LOG_info("Available display modes:\n");
-	// SDL_DisplayMode mode;
-	// for (int i=0; i<SDL_GetNumDisplayModes(0); i++) {
-	// 	SDL_GetDisplayMode(0, i, &mode);
-	// 	LOG_info("- %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-	// }
-	// SDL_GetCurrentDisplayMode(0, &mode);
-	// LOG_info("Current display mode: %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-
-	// LOG_info("Available audio drivers:\n");
-	// for (int i=0; i<SDL_GetNumAudioDrivers(); i++) {
-	// 	LOG_info("- %s\n", SDL_GetAudioDriver(i));
-	// }
-	// LOG_info("Current audio driver: %s\n", SDL_GetCurrentAudioDriver()); // NOTE: hadn't been selected yet so will always be NULL!
-
-	// SDL_SetHint(SDL_HINT_RENDER_VSYNC,"0"); // ignored?
-
-	int w = FIXED_WIDTH;
-	int h = FIXED_HEIGHT;
-	int p = FIXED_PITCH;
-	vid.window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
-	                              SDL_WINDOW_SHOWN);
-	LOG_info("window size: %ix%i\n", w, h);
-
-	SDL_DisplayMode mode;
-	SDL_GetCurrentDisplayMode(0, &mode);
-	LOG_info("Current display mode: %ix%i (%s)\n", mode.w, mode.h,
-	         SDL_GetPixelFormatName(mode.format));
-	// Detect portrait orientation and enable 270-degree rotation
-	if (mode.h > mode.w)
-		rotate = 3;
-	vid.renderer =
-	    SDL_CreateRenderer(vid.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	// SDL_RenderSetLogicalSize(vid.renderer, w,h); // TODO: wrong, but without and with the below it's even wrong-er
-
-	// int renderer_width,renderer_height;
-	// SDL_GetRendererOutputSize(vid.renderer, &renderer_width, &renderer_height);
-	// LOG_info("output size: %ix%i\n", renderer_width, renderer_height);
-	// if (renderer_width!=w) { // I think this can only be hdmi
-	// 	float x_scale = (float)renderer_width / w;
-	// 	float y_scale = (float)renderer_height / h;
-	// 	SDL_SetWindowSize(vid.window, w / x_scale, h / y_scale);
-	//
-	// 	SDL_GetRendererOutputSize(vid.renderer, &renderer_width, &renderer_height);
-	// 	LOG_info("adjusted size: %ix%i\n", renderer_width, renderer_height);
-	// 	x_scale = (float)renderer_width / w;
-	// 	y_scale = (float)renderer_height / h;
-	// 	SDL_RenderSetScale(vid.renderer, x_scale,y_scale);
-	//
-	// 	// for some reason we need to clear and present
-	// 	// after setting the window size or we'll miss
-	// 	// the first frame
-	// 	SDL_RenderClear(vid.renderer);
-	// 	SDL_RenderPresent(vid.renderer);
-	// }
-
-	// SDL_RendererInfo info;
-	// SDL_GetRendererInfo(vid.renderer, &info);
-	// LOG_info("Current render driver: %s\n", info.name);
-
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1"); // linear
-	vid.texture =
-	    SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
-	vid.target = NULL; // only needed for non-native sizes
-
-	// TODO: doesn't work here
-	// SDL_SetTextureScaleMode(vid.texture, SDL_ScaleModeLinear); // we always start at device size so use linear for better upscaling over hdmi
-
-	// SDL_ScaleMode scale_mode;
-	// SDL_GetTextureScaleMode(vid.texture, &scale_mode);
-	// LOG_info("texture scale mode: %i\n", scale_mode);
-
-	// int format;
-	// int access_;
-	// SDL_QueryTexture(vid.texture, &format, &access_, NULL,NULL);
-	// LOG_info("texture format: %s (streaming: %i)\n", SDL_GetPixelFormatName(format), access_==SDL_TEXTUREACCESS_STREAMING);
-
-	vid.buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
-	vid.screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH, RGBA_MASK_565);
-	vid.width = w;
-	vid.height = h;
-	vid.pitch = p;
-
-	device_width = w;
-	device_height = h;
-	device_pitch = p;
-
-	vid.sharpness = SHARPNESS_SOFT;
-
-	return vid.screen;
-}
-
-static void clearVideo(void) {
-	SDL_FillRect(vid.screen, NULL, 0);
-	for (int i = 0; i < 3; i++) {
-		SDL_RenderClear(vid.renderer);
-		SDL_RenderPresent(vid.renderer);
-	}
-}
-
-/**
- * Shuts down video subsystem and frees all resources.
- *
- * Destroys all SDL surfaces, textures, renderer, and window.
- * Calls SDL_Quit() to cleanly shutdown SDL.
- */
-void PLAT_quitVideo(void) {
-	// clearVideo();
-
-	SDL_FreeSurface(vid.screen);
-	SDL_FreeSurface(vid.buffer);
-	if (vid.target)
-		SDL_DestroyTexture(vid.target);
-	if (vid.effect)
-		SDL_DestroyTexture(vid.effect);
-	SDL_DestroyTexture(vid.texture);
-	SDL_DestroyRenderer(vid.renderer);
-	SDL_DestroyWindow(vid.window);
-
-	// system("cat /dev/zero > /dev/fb0 2>/dev/null");
-	SDL_Quit();
-}
-
-/**
- * Clears video surface to black.
- *
- * @param screen Surface to clear
- */
-void PLAT_clearVideo(SDL_Surface* screen) {
-	SDL_FillRect(screen, NULL, 0); // TODO: revisit
-}
-
-/**
- * Clears both screen surface and renderer.
- */
-void PLAT_clearAll(void) {
-	PLAT_clearVideo(vid.screen); // TODO: revist
-	SDL_RenderClear(vid.renderer);
-}
-
-/**
- * Sets vsync mode (not implemented on this platform).
- *
- * @param vsync Desired vsync state (ignored)
- */
-void PLAT_setVsync(int vsync) {
-	// buh
-}
-
-static int hard_scale = 4; // TODO: base src size, eg. 160x144 can be 4
-
-static void resizeVideo(int w, int h, int p) {
-	if (w == vid.width && h == vid.height && p == vid.pitch)
-		return;
-
-	// TODO: minarch disables crisp (and nn upscale before linear downscale) when native
-
-	if (w >= device_width && h >= device_height)
-		hard_scale = 1;
-	else if (h >= 160)
-		hard_scale = 2; // limits gba and up to 2x (seems sufficient)
-	else
-		hard_scale = 4;
-
-	LOG_info("resizeVideo(%i,%i,%i) hard_scale: %i crisp: %i\n", w, h, p, hard_scale,
-	         vid.sharpness == SHARPNESS_CRISP);
-
-	SDL_FreeSurface(vid.buffer);
-	SDL_DestroyTexture(vid.texture);
-	if (vid.target)
-		SDL_DestroyTexture(vid.target);
-
-	SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY,
-	                        vid.sharpness == SHARPNESS_SOFT ? "1" : "0", SDL_HINT_OVERRIDE);
-	vid.texture =
-	    SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-	if (vid.sharpness == SHARPNESS_CRISP) {
-		SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY, "1", SDL_HINT_OVERRIDE);
-		vid.target = SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565,
-		                               SDL_TEXTUREACCESS_TARGET, w * hard_scale, h * hard_scale);
-	} else {
-		vid.target = NULL;
-	}
-
-	vid.buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
-
-	vid.width = w;
-	vid.height = h;
-	vid.pitch = p;
-}
-
-/**
- * Resizes video output to specified dimensions.
- *
- * @param w Width in pixels
- * @param h Height in pixels
- * @param p Pitch in bytes
- * @return Pointer to screen surface
- */
-SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
-	resizeVideo(w, h, p);
-	return vid.screen;
-}
-
-/**
- * Sets video scale clipping region (not implemented on this platform).
- */
-void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
-	// buh
-}
-
-/**
- * Sets nearest-neighbor scaling mode (not implemented on this platform).
- */
-void PLAT_setNearestNeighbor(int enabled) {
-	// buh
-}
-
-/**
- * Sets video sharpness filtering mode.
- *
- * @param sharpness SHARPNESS_SOFT (linear) or SHARPNESS_CRISP (nearest-neighbor + linear)
- */
-void PLAT_setSharpness(int sharpness) {
-	if (vid.sharpness == sharpness)
-		return;
-	int p = vid.pitch;
-	vid.pitch = 0;
-	vid.sharpness = sharpness;
-	resizeVideo(vid.width, vid.height, p);
-}
-
-static struct FX_Context {
-	int scale;
-	int type;
-	int color;
-	int next_scale;
-	int next_type;
-	int next_color;
-	int live_type;
-} effect = {
-    .scale = 1,
-    .next_scale = 1,
-    .type = EFFECT_NONE,
-    .next_type = EFFECT_NONE,
-    .live_type = EFFECT_NONE,
-    .color = 0,
-    .next_color = 0,
+static const SDL2_Config vid_config = {
+    .auto_rotate = 1,
+    .has_hdmi = 0,
+    .brightness_alpha = 0,
+    .default_sharpness = SHARPNESS_SOFT,
 };
 
-/**
- * Converts RGB565 color to RGB888 format.
- *
- * Used to convert DMG palette colors for colorizing grid effects.
- * Expands 5/6-bit components to full 8-bit range.
- *
- * @param rgb565 16-bit RGB565 color value
- * @param r Output red component (0-255)
- * @param g Output green component (0-255)
- * @param b Output blue component (0-255)
- */
-static void rgb565_to_rgb888(uint32_t rgb565, uint8_t* r, uint8_t* g, uint8_t* b) {
-	// Extract the red component (5 bits)
-	uint8_t red = (rgb565 >> 11) & 0x1F;
-	// Extract the green component (6 bits)
-	uint8_t green = (rgb565 >> 5) & 0x3F;
-	// Extract the blue component (5 bits)
-	uint8_t blue = rgb565 & 0x1F;
-
-	// Scale the values to 8-bit range
-	*r = (red << 3) | (red >> 2);
-	*g = (green << 2) | (green >> 4);
-	*b = (blue << 3) | (blue >> 2);
-}
-static void updateEffect(void) {
-	if (effect.next_scale == effect.scale && effect.next_type == effect.type &&
-	    effect.next_color == effect.color)
-		return; // unchanged
-
-	int live_scale = effect.scale;
-	int live_color = effect.color;
-	effect.scale = effect.next_scale;
-	effect.type = effect.next_type;
-	effect.color = effect.next_color;
-
-	if (effect.type == EFFECT_NONE)
-		return; // disabled
-	if (effect.type == effect.live_type && effect.scale == live_scale && effect.color == live_color)
-		return; // already loaded
-
-	const char* base_pattern = NULL;
-	int opacity = 128;
-
-	if (effect.type == EFFECT_LINE) {
-		opacity = 255;  // Use PNG alpha for shadow scanlines
-		base_pattern = RES_PATH "/line.png";
-	} else if (effect.type == EFFECT_GRID) {
-		base_pattern = RES_PATH "/grid.png";
-		if (effect.scale < 3)
-			opacity = 64;
-		else if (effect.scale < 4)
-			opacity = 112;
-		else if (effect.scale < 5)
-			opacity = 144;
-		else if (effect.scale < 6)
-			opacity = 160;
-		else if (effect.scale < 8)
-			opacity = 112;
-		else if (effect.scale < 11)
-			opacity = 144;
-		else
-			opacity = 136;
-	} else if (effect.type == EFFECT_CRT) {
-		base_pattern = RES_PATH "/crt.png";
-		opacity = 255;  // Use PNG alpha for CRT shadows
-	}
-
-	if (!base_pattern)
-		return;
-
-	int target_w = device_width;
-	int target_h = device_height;
-
-	SDL_Texture* tiled =
-	    EFFECT_loadAndTile(vid.renderer, base_pattern, 1, target_w, target_h);
-	if (tiled) {
-		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
-		SDL_SetTextureAlphaMod(tiled, opacity);
-		if (vid.effect)
-			SDL_DestroyTexture(vid.effect);
-		vid.effect = tiled;
-		effect.live_type = effect.type;
-	}
+SDL_Surface* PLAT_initVideo(void) {
+	return SDL2_initVideo(&vid_ctx, FIXED_WIDTH, FIXED_HEIGHT, &vid_config);
 }
 
-/**
- * Sets the overlay effect type.
- *
- * @param next_type EFFECT_NONE, EFFECT_LINE (scanlines), or EFFECT_GRID
- */
-void PLAT_setEffect(int next_type) {
-	effect.next_type = next_type;
+void PLAT_quitVideo(void) {
+	SDL2_quitVideo(&vid_ctx);
 }
 
-/**
- * Sets the effect color for DMG-style grid colorization.
- *
- * @param next_color RGB565 color value (0 for no colorization)
- */
-void PLAT_setEffectColor(int next_color) {
-	effect.next_color = next_color;
+void PLAT_clearVideo(SDL_Surface* screen) {
+	SDL2_clearVideo(&vid_ctx);
 }
 
-/**
- * Delays for remaining frame time to maintain target framerate.
- *
- * @param remaining Milliseconds remaining in frame budget
- */
+void PLAT_clearAll(void) {
+	SDL2_clearAll(&vid_ctx);
+}
+
+void PLAT_setVsync(int vsync) {
+	// Vsync handled by SDL_RENDERER_PRESENTVSYNC in SDL2 backend
+}
+
+SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
+	return SDL2_resizeVideo(&vid_ctx, w, h, p);
+}
+
+void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
+	// Not supported on this platform
+}
+
+void PLAT_setNearestNeighbor(int enabled) {
+	// Always enabled via sharpness setting
+}
+
+void PLAT_setSharpness(int sharpness) {
+	SDL2_setSharpness(&vid_ctx, sharpness);
+}
+
+void PLAT_setEffect(int effect) {
+	SDL2_setEffect(&vid_ctx, effect);
+}
+
+void PLAT_setEffectColor(int color) {
+	SDL2_setEffectColor(&vid_ctx, color);
+}
+
 void PLAT_vsync(int remaining) {
-	if (remaining > 0)
-		SDL_Delay(remaining);
+	SDL2_vsync(remaining);
 }
 
-/**
- * Gets appropriate scaler function for renderer.
- *
- * Updates effect scale based on renderer scale factor.
- *
- * @param renderer Renderer context with scale information
- * @return Scaler function pointer
- */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	// LOG_info("getScaler for scale: %i\n", renderer->scale);
-	effect.next_scale = renderer->scale;
-	return scale1x1_c16;
+	return SDL2_getScaler(&vid_ctx, renderer);
 }
 
-/**
- * Prepares renderer for blitting.
- *
- * Stores renderer reference and resizes video output to match
- * renderer dimensions.
- *
- * @param renderer Renderer to prepare for blitting
- */
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.blit = renderer;
-	SDL_RenderClear(vid.renderer);
-	resizeVideo(vid.blit->true_w, vid.blit->true_h, vid.blit->src_p);
+	SDL2_blitRenderer(&vid_ctx, renderer);
 }
 
-/**
- * Renders frame to screen with rotation and effects.
- *
- * Handles two rendering paths:
- * 1. Direct screen rendering (when vid.blit is NULL)
- * 2. Renderer-based blitting with aspect ratio, sharpness, and effects
- *
- * Applies rotation (270 degrees for portrait mode), aspect ratio scaling,
- * and overlay effects (scanlines/grid) before presenting.
- *
- * @param IGNORED Unused surface parameter
- * @param ignored Unused int parameter
- */
-void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
-	if (!vid.blit) {
-		resizeVideo(device_width, device_height, FIXED_PITCH); // !!!???
-		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
-		if (rotate)
-			SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
-			                 &(SDL_Rect){0, device_width, device_width, device_height}, rotate * 90,
-			                 &(SDL_Point){0, 0}, SDL_FLIP_NONE);
-		else
-			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_RenderPresent(vid.renderer);
-		return;
-	}
-
-	// uint32_t then = SDL_GetTicks();
-	SDL_UpdateTexture(vid.texture, NULL, vid.blit->src, vid.blit->src_p);
-	// LOG_info("blit blocked for %ims (%i,%i)\n", SDL_GetTicks()-then,vid.buffer->w,vid.buffer->h);
-
-	SDL_Texture* target = vid.texture;
-	int x = vid.blit->src_x;
-	int y = vid.blit->src_y;
-	int w = vid.blit->src_w;
-	int h = vid.blit->src_h;
-	if (vid.sharpness == SHARPNESS_CRISP) {
-		SDL_SetRenderTarget(vid.renderer, vid.target);
-		SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_SetRenderTarget(vid.renderer, NULL);
-		x *= hard_scale;
-		y *= hard_scale;
-		w *= hard_scale;
-		h *= hard_scale;
-		target = vid.target;
-	}
-
-	SDL_Rect* src_rect = &(SDL_Rect){x, y, w, h};
-	SDL_Rect* dst_rect = &(SDL_Rect){0, 0, device_width, device_height};
-	if (vid.blit->aspect == 0) { // native or cropped
-		// LOG_info("src_rect %i,%i %ix%i\n",src_rect->x,src_rect->y,src_rect->w,src_rect->h);
-
-		int dst_w = vid.blit->src_w * vid.blit->scale;
-		int dst_h = vid.blit->src_h * vid.blit->scale;
-		int dst_x = (device_width - dst_w) / 2;
-		int dst_y = (device_height - dst_h) / 2;
-		dst_rect->x = dst_x;
-		dst_rect->y = dst_y;
-		dst_rect->w = dst_w;
-		dst_rect->h = dst_h;
-
-		// LOG_info("dst_rect %i,%i %ix%i\n",dst_rect->x,dst_rect->y,dst_rect->w,dst_rect->h);
-	} else if (vid.blit->aspect > 0) { // aspect
-		int aspect_h = device_height;
-		int aspect_w = aspect_h * vid.blit->aspect;
-		if (aspect_w > device_width) {
-			double ratio = 1 / vid.blit->aspect;
-			aspect_w = device_width;
-			aspect_h = aspect_w * ratio;
-		}
-		int aspect_x = (device_width - aspect_w) / 2;
-		int aspect_y = (device_height - aspect_h) / 2;
-		// dst_rect = &(SDL_Rect){x,y,w,h};
-		dst_rect->x = aspect_x;
-		dst_rect->y = aspect_y;
-		dst_rect->w = aspect_w;
-		dst_rect->h = aspect_h;
-	}
-
-	int ox, oy;
-	oy = (device_width - device_height) / 2;
-	ox = -oy;
-	if (rotate)
-		SDL_RenderCopyEx(vid.renderer, target, src_rect,
-		                 &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
-		                 rotate * 90, NULL, SDL_FLIP_NONE);
-	else
-		SDL_RenderCopy(vid.renderer, target, src_rect, dst_rect);
-
-	updateEffect();
-	if (vid.blit && effect.type != EFFECT_NONE && vid.effect) {
-		// ox = effect.scale - (dst_rect->x % effect.scale);
-		// oy = effect.scale - (dst_rect->y % effect.scale);
-		// if (ox==effect.scale) ox = 0;
-		// if (oy==effect.scale) oy = 0;
-		// LOG_info("rotate: %i ox: %i oy: %i\n", rotate, ox,oy);
-		if (rotate)
-			SDL_RenderCopyEx(
-			    vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},
-			    &(SDL_Rect){ox + dst_rect->x, oy + dst_rect->y, dst_rect->w, dst_rect->h},
-			    rotate * 90, NULL, SDL_FLIP_NONE);
-		else
-			SDL_RenderCopy(vid.renderer, vid.effect, &(SDL_Rect){0, 0, dst_rect->w, dst_rect->h},
-			               dst_rect);
-	}
-
-	// uint32_t then = SDL_GetTicks();
-	SDL_RenderPresent(vid.renderer);
-	// LOG_info("SDL_RenderPresent blocked for %ims\n", SDL_GetTicks()-then);
-	vid.blit = NULL;
+void PLAT_flip(SDL_Surface* screen, int sync) {
+	SDL2_flip(&vid_ctx, sync);
 }
 
 ///////////////////////////////
@@ -826,10 +331,6 @@ static int online = 0;
  * @param charge Output: Battery percentage (10-100)
  */
 void PLAT_getBatteryStatus(int* is_charging, int* charge) {
-	// *is_charging = 0;
-	// *charge = PWR_LOW_CHARGE;
-	// return;
-
 	*is_charging = getInt("/sys/class/power_supply/usb/online");
 
 	int i = getInt("/sys/class/power_supply/battery/capacity");
@@ -846,11 +347,6 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 		*charge = 20;
 	else
 		*charge = 10;
-
-	// wifi status, just hooking into the regular PWR polling
-	// char status[16];
-	// getFile("/sys/class/net/wlan0/operstate", status,16);
-	// online = prefixMatch("up", status);
 }
 
 #define LED_PATH "/sys/class/leds/led1/brightness"

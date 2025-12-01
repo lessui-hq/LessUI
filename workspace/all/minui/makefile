@@ -23,9 +23,12 @@ TARGET = minui
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/str_compare.c ../../$(PLATFORM)/platform/platform.c
 
-# Add effect support - SDL2 platforms use effect_utils, SDL1 platforms use effect_surface
+# Add shared rendering modules
+SOURCE += ../common/effect_system.c ../common/render_common.c
+
+# Add effect support - SDL2 platforms use render_sdl2 + effect_utils, SDL1 platforms use effect_surface
 ifeq ($(SDL),SDL2)
-SOURCE += ../common/effect_utils.c
+SOURCE += ../common/render_sdl2.c ../common/effect_utils.c
 else
 SOURCE += ../common/effect_surface.c
 endif

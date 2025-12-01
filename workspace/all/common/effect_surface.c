@@ -57,24 +57,16 @@ SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int 
 		return NULL;
 	}
 	LOG_info("EFFECT_createTiledSurface: loaded %s (%dx%d bpp=%d Amask=0x%08X pitch=%d)\n",
-	         pattern_path, loaded->w, loaded->h, loaded->format->BitsPerPixel, loaded->format->Amask,
-	         loaded->pitch);
-
-	// Debug: log first few pixel values
-	if (loaded->format->BitsPerPixel == 32) {
-		uint32_t* px = (uint32_t*)loaded->pixels;
-		LOG_info("EFFECT_createTiledSurface: first pixels: 0x%08X 0x%08X 0x%08X\n", px[0], px[1],
-		         px[2]);
-	}
+	         pattern_path, loaded->w, loaded->h, loaded->format->BitsPerPixel,
+	         loaded->format->Amask, loaded->pitch);
 
 	// Convert to 32-bit ARGB if needed (scaleSurface assumes 32-bit)
 	SDL_Surface* base;
 	if (loaded->format->BitsPerPixel != 32 || loaded->format->Amask != 0xFF000000) {
-		SDL_Surface* converted =
-		    SDL_CreateRGBSurface(0, loaded->w, loaded->h, 32, 0x00FF0000, 0x0000FF00, 0x000000FF,
-		                         0xFF000000);
+		SDL_Surface* converted = SDL_CreateRGBSurface(0, loaded->w, loaded->h, 32, 0x00FF0000,
+		                                              0x0000FF00, 0x000000FF, 0xFF000000);
 		if (converted) {
-			SDL_SetAlpha(loaded, 0, 255); // Disable alpha for copy
+			SDLX_SetAlpha(loaded, 0, 255); // Disable alpha for copy
 			SDL_BlitSurface(loaded, NULL, converted, NULL);
 			base = converted;
 			LOG_info("EFFECT_createTiledSurface: converted to 32-bit ARGB\n");
@@ -109,7 +101,7 @@ SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int 
 	// Tile the scaled pattern
 	// IMPORTANT: Disable alpha blending during tiling so we get a straight pixel copy
 	// (otherwise alpha blending black-on-black gives black, losing alpha values)
-	SDL_SetAlpha(scaled, 0, 255);
+	SDLX_SetAlpha(scaled, 0, 255);
 
 	int pattern_w = scaled->w;
 	int pattern_h = scaled->h;
