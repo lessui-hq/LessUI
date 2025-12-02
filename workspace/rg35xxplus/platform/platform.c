@@ -50,16 +50,20 @@
 
 // Device registry - all known devices that work with this platform
 static const DeviceInfo rg35xxplus_devices[] = {
-    // 640x480 devices
+    // 640x480 devices (VGA resolution - most devices!)
+    {.device_id = "rg28xx", .display_name = "RG28XX", .manufacturer = "Anbernic"},
     {.device_id = "rg35xxplus", .display_name = "RG35XX Plus", .manufacturer = "Anbernic"},
+    {.device_id = "rg35xxh", .display_name = "RG35XX H", .manufacturer = "Anbernic"},
+    {.device_id = "rg35xxsp", .display_name = "RG35XX SP", .manufacturer = "Anbernic"},
+    {.device_id = "rg40xxh", .display_name = "RG40XX H", .manufacturer = "Anbernic"},
+    {.device_id = "rg40xxv", .display_name = "RG40XX V", .manufacturer = "Anbernic"},
 
     // 720x720 square devices
     {.device_id = "rgcubexx", .display_name = "RG CubeXX", .manufacturer = "Anbernic"},
-    {.device_id = "rg35xxh", .display_name = "RG35XX H", .manufacturer = "Anbernic"},
 
     // 720x480 widescreen devices
     {.device_id = "rg34xx", .display_name = "RG34XX", .manufacturer = "Anbernic"},
-    {.device_id = "rg35xxsp", .display_name = "RG35XX SP", .manufacturer = "Anbernic"},
+    {.device_id = "rg34xxsp", .display_name = "RG34XXSP", .manufacturer = "Anbernic"},
 
     // Sentinel
     {NULL, NULL, NULL}};
@@ -74,17 +78,17 @@ typedef struct {
 } VariantConfig;
 
 static const VariantConfig rg35xxplus_variants[] = {
-    {.variant = VARIANT_RG35XX_PLUS,
+    {.variant = VARIANT_RG35XX_VGA,
      .screen_width = 640,
      .screen_height = 480,
      .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_LID | HW_FEATURE_RUMBLE},
-    {.variant = VARIANT_RG35XX_H,
+    {.variant = VARIANT_RG35XX_SQUARE,
      .screen_width = 720,
      .screen_height = 720,
      .screen_diagonal_default = 3.95f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_LID | HW_FEATURE_RUMBLE},
-    {.variant = VARIANT_RG35XX_SP,
+    {.variant = VARIANT_RG35XX_WIDE,
      .screen_width = 720,
      .screen_height = 480,
      .screen_diagonal_default = 3.4f,
@@ -101,16 +105,20 @@ typedef struct {
 } DeviceVariantMap;
 
 static const DeviceVariantMap rg35xxplus_device_map[] = {
-    // 640x480 devices - VARIANT_RG35XX_PLUS
-    {"RG35xxPlus", VARIANT_RG35XX_PLUS, &rg35xxplus_devices[0], 3.5f},
+    // 640x480 devices - VARIANT_RG35XX_VGA (most devices!)
+    {"RG28xx", VARIANT_RG35XX_VGA, &rg35xxplus_devices[0], 2.8f},
+    {"RG35xxPlus", VARIANT_RG35XX_VGA, &rg35xxplus_devices[1], 3.5f},
+    {"RG35xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[2], 3.5f},
+    {"RG35xxSP", VARIANT_RG35XX_VGA, &rg35xxplus_devices[3], 3.5f},
+    {"RG40xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[4], 4.0f},
+    {"RG40xxV", VARIANT_RG35XX_VGA, &rg35xxplus_devices[5], 4.0f},
 
-    // 720x720 square devices - VARIANT_RG35XX_H
-    {"RGcubexx", VARIANT_RG35XX_H, &rg35xxplus_devices[1], 3.95f},
-    {"RG35xxH", VARIANT_RG35XX_H, &rg35xxplus_devices[2], 3.95f},
+    // 720x720 square devices - VARIANT_RG35XX_SQUARE
+    {"RGcubexx", VARIANT_RG35XX_SQUARE, &rg35xxplus_devices[6], 3.95f},
 
-    // 720x480 widescreen devices - VARIANT_RG35XX_SP
-    {"RG34xx", VARIANT_RG35XX_SP, &rg35xxplus_devices[3], 3.4f},
-    {"RG35xxSP", VARIANT_RG35XX_SP, &rg35xxplus_devices[4], 3.4f},
+    // 720x480 widescreen devices - VARIANT_RG35XX_WIDE
+    {"RG34xx", VARIANT_RG35XX_WIDE, &rg35xxplus_devices[7], 3.4f},
+    {"RG34xxSP", VARIANT_RG35XX_WIDE, &rg35xxplus_devices[8], 3.4f},
 
     // Sentinel
     {NULL, VARIANT_NONE, NULL, 0.0f}};
@@ -168,9 +176,9 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
 	         v->device->display_name,
-	         v->variant == VARIANT_RG35XX_H    ? "square"
-	         : v->variant == VARIANT_RG35XX_SP ? "widescreen"
-	                                           : "standard",
+	         v->variant == VARIANT_RG35XX_SQUARE ? "square"
+	         : v->variant == VARIANT_RG35XX_WIDE   ? "widescreen"
+	                                               : "VGA",
 	         v->screen_width, v->screen_height, v->screen_diagonal);
 }
 

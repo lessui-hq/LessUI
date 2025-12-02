@@ -139,17 +139,18 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	v->platform = PLATFORM;
 	v->has_hdmi = 0;
 
-	// Check for Miyoo Mini Flip (MY285)
+	// Check for Miyoo Mini Flip (MY285) - NOTE: This is NOT the RK3566 Miyoo Flip!
+	// MY285 is a clamshell variant of the original Miyoo Mini (R16/SSD202D)
 	char* model = getenv("MY_MODEL");
 	if (exactMatch(model, "MY285")) {
-		// Flip uses standard Mini variant
+		// Flip uses standard Mini variant but different screen size
 		v->device = &miyoomini_devices[3]; // Mini Flip
 		v->variant = VARIANT_MINI_STANDARD;
 		const VariantConfig* config = getVariantConfig(v->variant);
 		if (config) {
 			v->screen_width = config->screen_width;
 			v->screen_height = config->screen_height;
-			v->screen_diagonal = config->screen_diagonal_default;
+			v->screen_diagonal = 3.5f; // Mini Flip has 3.5" screen (vs 2.8" Mini)
 			v->hw_features = config->hw_features;
 		}
 		LOG_info("Detected device: %s %s (%dx%d, %.1f\")\n", v->device->manufacturer,

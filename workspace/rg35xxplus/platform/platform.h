@@ -35,13 +35,13 @@
 ///////////////////////////////
 
 // RG35XX Plus family variants
-#define VARIANT_RG35XX_PLUS (VARIANT_PLATFORM_BASE + 0) // 640x480 standard
-#define VARIANT_RG35XX_H (VARIANT_PLATFORM_BASE + 1) // 720x720 square (CubeXX)
-#define VARIANT_RG35XX_SP (VARIANT_PLATFORM_BASE + 2) // 720x480 widescreen
+#define VARIANT_RG35XX_VGA    (VARIANT_PLATFORM_BASE + 0) // 640x480 (most devices)
+#define VARIANT_RG35XX_SQUARE (VARIANT_PLATFORM_BASE + 1) // 720x720 (CubeXX)
+#define VARIANT_RG35XX_WIDE   (VARIANT_PLATFORM_BASE + 2) // 720x480 (RG34XX)
 
 // Legacy compatibility macros (for gradual migration)
-#define is_cubexx (platform_variant.variant == VARIANT_RG35XX_H)
-#define is_rg34xx (platform_variant.variant == VARIANT_RG35XX_SP)
+#define is_cubexx (platform_variant.variant == VARIANT_RG35XX_SQUARE)
+#define is_rg34xx (platform_variant.variant == VARIANT_RG35XX_WIDE)
 
 // Note: on_hdmi is a struct member in SDL2_RenderContext, not a global
 // Access HDMI state via platform_variant.hdmi_active instead
