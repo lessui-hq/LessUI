@@ -267,6 +267,9 @@ static struct VID_Context {
 
 	int direct;
 	int cleared;
+
+	// Game rendering flag (set by PLAT_blitRenderer, cleared by PLAT_flip)
+	int in_game;
 } vid;
 
 // Use shared EffectState from effect_system.h
@@ -538,6 +541,13 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
+	vid.in_game = 1;
+
+	// Clear to black when effects enabled to ensure clean black borders
+	if (effect_state.next_type != EFFECT_NONE) {
+		memset(renderer->dst, 0, renderer->dst_p * FIXED_HEIGHT);
+	}
+
 	void* dst = renderer->dst + (renderer->dst_y * renderer->dst_p) + (renderer->dst_x * FIXED_BPP);
 	((scaler_t)renderer->blit)(renderer->src, dst, renderer->src_w, renderer->src_h,
 	                           renderer->src_p, renderer->dst_w, renderer->dst_h, renderer->dst_p);
@@ -547,8 +557,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	if (!vid.direct)
 		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
 
-	// Update and composite effect overlay AFTER scaling
-	if (!vid.direct) {
+	// Apply effect overlay when in game mode (not menus)
+	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
 		if (vid.effect) {
 			GFX_BlitSurfaceExec(vid.effect, NULL, vid.video, NULL, 0, 0, 0);
@@ -556,6 +566,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	}
 
 	SDL_Flip(vid.video);
+
+	vid.in_game = 0;
 
 	if (!vid.direct) {
 		vid.page ^= 1;

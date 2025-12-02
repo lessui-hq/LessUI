@@ -174,6 +174,7 @@ static struct VID_Context {
 
 	int cleared;
 	int resized;
+	int in_game; // 1 when PLAT_blitRenderer was called this frame
 } vid;
 
 // Use shared EffectState from effect_system.h
@@ -414,6 +415,7 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
+	vid.in_game = 1; // Mark that we're in game rendering mode
 	vid.renderer = renderer;
 	int p = ((renderer->src_h + 7) / 8) * 8 * FIXED_BPP;
 
@@ -446,10 +448,12 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 }
 
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	updateEffectOverlay();
-
-	if (vid.effect && effect_state.type != EFFECT_NONE) {
-		SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+	// Update and composite effect overlay (only in game mode, not menus)
+	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
+		updateEffectOverlay();
+		if (vid.effect) {
+			SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+		}
 	}
 
 	if (!vid.renderer)
@@ -481,6 +485,7 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	}
 
 	vid.renderer = NULL;
+	vid.in_game = 0; // Clear game mode flag
 }
 
 ///////////////////////////////
