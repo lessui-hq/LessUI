@@ -25,4 +25,20 @@
 SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int target_w,
                                        int target_h);
 
+/**
+ * Loads a base pattern PNG, applies color tinting, scales it, and tiles it into an SDL_Surface.
+ *
+ * Same as EFFECT_createTiledSurface but with color replacement for non-transparent pixels.
+ * Used for GameBoy DMG color palettes where the grid effect is tinted to match.
+ *
+ * @param pattern_path Path to base pattern PNG
+ * @param scale Integer scale factor (2-11)
+ * @param target_w Target surface width
+ * @param target_h Target surface height
+ * @param color RGB565 color to tint non-transparent pixels (0 = no tinting, use black)
+ * @return SDL_Surface with tiled pattern (caller must SDL_FreeSurface), or NULL on error
+ */
+SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int scale, int target_w,
+                                                int target_h, int color);
+
 #endif

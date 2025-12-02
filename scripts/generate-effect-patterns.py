@@ -32,8 +32,10 @@ OUT_DIR = "skeleton/SYSTEM/res"
 # All patterns use opaque black (255) and control visibility via global opacity.
 # This allows per-scale opacity tuning in the C code.
 
-# Lines: horizontal scanline shadow
-LINES_SHADOW = 255
+# Lines: horizontal scanline shadow with dimensional falloff
+LINES_LEADIN = 30       # Light lead-in before scanline
+LINES_SHADOW = 80       # Primary scanline (dark)
+LINES_TRAIL = 10        # Very light trail after scanline
 
 # Grid: 2×2 pixel grid
 GRID_ALPHA = 255
@@ -42,11 +44,13 @@ GRID_ALPHA = 255
 # Vertical shadow bars between phosphor stripes
 # Phosphor = transparent (light passes), Bar = shadow (darkens)
 GRILLE_BAR = 255       # Opaque shadow on vertical bars
+GRILLE_GLOW = 60       # Phosphor edge glow near bars
 
 # Slot Mask: Consumer TV-style
 # Metal mask with slot openings
 # Slot = transparent (light passes), Metal = shadow (darkens)
 SLOT_METAL = 255       # Opaque shadow on mask metal
+SLOT_GLOW = 60         # Phosphor edge glow inside slots
 
 # Dot Mask: Triad-like phosphor dots
 # Phosphor dots with metal mask between
@@ -74,91 +78,145 @@ LCD_GAP = 255          # Opaque gap shadow
 
 def generate_lines_scale(scale):
     """
-    Generate 1×N scanline pattern for specific pixel scale.
+    Generate scanline pattern for specific pixel scale.
 
-    For scale N, creates N-pixel tall pattern with:
-    - Row 0: Shadow (LINES_SHADOW alpha)
-    - Rows 1 to N-1: Transparent (no darkening)
+    Tile size: scale × scale (aligned to pixel grid)
 
-    This ensures one scanline shadow per scaled game pixel.
+    Pattern based on perfect CRT overlay:
+    - At scale 2: Simple 1-row scanline (row 0: alpha 255)
+    - At scale 3+: 3-row dimensional scanline
+      - Row 0: Light lead-in (alpha 30)
+      - Row 1: Main dark scanline (alpha 80)
+      - Row 2: Very light trail (alpha 10)
+      - Rows 3+: Transparent
+
+    The 3-row pattern creates CRT phosphor glow with dimensional falloff.
     """
-    img = Image.new('RGBA', (1, scale))
-    img.putpixel((0, 0), (0, 0, 0, LINES_SHADOW))
-    for y in range(1, scale):
-        img.putpixel((0, y), (0, 0, 0, 0))
+    img = Image.new('RGBA', (scale, scale))
+    for y in range(scale):
+        for x in range(scale):
+            if scale == 2:
+                # Scale 2: simple scanline
+                if y == 0:
+                    img.putpixel((x, y), (0, 0, 0, 255))
+                else:
+                    img.putpixel((x, y), (0, 0, 0, 0))
+            else:
+                # Scale 3+: dimensional scanline with lead-in and trail
+                if y == 0:
+                    img.putpixel((x, y), (0, 0, 0, LINES_LEADIN))
+                elif y == 1:
+                    img.putpixel((x, y), (0, 0, 0, LINES_SHADOW))
+                elif y == 2:
+                    img.putpixel((x, y), (0, 0, 0, LINES_TRAIL))
+                else:
+                    img.putpixel((x, y), (0, 0, 0, 0))
     return img
 
 def generate_grid_scale(scale):
     """
-    Generate 2×N grid pattern for specific pixel scale.
+    Generate NxN LCD pixel grid pattern for specific pixel scale.
 
-    Base 2×2 pattern (3 opaque corners, 1 transparent) is scaled
-    up to 2×(2*scale) to match pixel scaling.
+    Creates a scale×scale tile where:
+    - Row 0: all black (horizontal border between pixels)
+    - Column 0: all black (vertical border between pixels)
+    - Rest: transparent (the LCD pixel interior where light passes)
+
+    This mimics the appearance of LCD subpixel borders on handheld screens.
+    When tiled, creates a grid of scale×scale "pixels" with 1px dark borders.
     """
-    size = 2 * scale
-    img = Image.new('RGBA', (size, size))
+    img = Image.new('RGBA', (scale, scale))
 
-    for y in range(size):
-        for x in range(size):
-            base_x = x // scale
-            base_y = y // scale
-            # Bottom-right corner is transparent, rest opaque
-            if base_x == 1 and base_y == 1:
-                img.putpixel((x, y), (0, 0, 0, 0))
-            else:
+    for y in range(scale):
+        for x in range(scale):
+            # Row 0 or column 0 = border (black opaque)
+            # Everything else = pixel interior (transparent)
+            if y == 0 or x == 0:
                 img.putpixel((x, y), (0, 0, 0, GRID_ALPHA))
+            else:
+                img.putpixel((x, y), (255, 255, 255, 0))
     return img
 
 def generate_grille_scale(scale):
     """
     Generate aperture grille pattern (Trinitron-style).
 
-    Tile Size: 2×1 (alternating phosphor/bar columns)
+    Tile size: scale × scale (aligned to pixel grid)
 
-    Pattern:
-    | Pixel | Description        | Alpha      |
-    |-------|--------------------|------------|
-    | 0     | Phosphor stripe    | 0 (clear)  |
-    | 1     | Vertical bar       | 255 (dark) |
+    Alternating phosphor stripes and vertical bars (50% each).
+    - First half: phosphor (transparent) with edge glow near bar
+    - Second half: vertical bar (shadow)
 
-    Scale determines height (tiles vertically at 1:1).
+    At scale 2: Simple stripe (no room for glow)
+    At scale 3+: Add subtle glow on rightmost phosphor column
     """
-    img = Image.new('RGBA', (2, scale))
+    img = Image.new('RGBA', (scale, scale))
+    mid = scale // 2
     for y in range(scale):
-        img.putpixel((0, y), (0, 0, 0, 0))            # Phosphor (transparent)
-        img.putpixel((1, y), (0, 0, 0, GRILLE_BAR))   # Bar (shadow)
+        for x in range(scale):
+            if x < mid:
+                # Phosphor stripe - add glow on right edge (next to bar) for scale 3+
+                if x == mid - 1 and scale >= 3:
+                    img.putpixel((x, y), (0, 0, 0, GRILLE_GLOW))
+                else:
+                    img.putpixel((x, y), (0, 0, 0, 0))
+            else:
+                img.putpixel((x, y), (0, 0, 0, GRILLE_BAR))   # Bar (shadow)
     return img
 
 def generate_slot_scale(scale):
     """
-    Generate slot mask pattern (consumer TV-style).
+    Generate slot mask pattern (consumer TV-style) with staggered slots.
 
-    Tile Size: 4×3 (scaled by pixel scale)
+    Tile must align to pixel grid: scale × (scale * 2)
+    Single column of slots, staggered between top and bottom rows.
 
-    Pattern Layout:
-    Row 0: metal metal metal metal   (shadow bar)
-    Row 1: metal slot  slot  metal   (vertical bars + clear slot)
-    Row 2: metal metal metal metal   (shadow bar)
+    At scale 2: Simple slots (no room for glow)
+    At scale 3+: Add subtle phosphor glow on edges adjacent to metal borders
 
-    Metal = shadow (alpha=255), Slot = clear (alpha=0)
+    At scale 4 (4×8 tile):
+      ████    Row 0: top border
+      █▒··    Row 1: border, glow, slot opening
+      █···    Rows 2-3: border + slot opening
+      ████    Row 4: middle border
+      ··▒█    Row 5: slot opening, glow, border (staggered)
+      ···█    Rows 6-7: slot opening + border
+
+    Phosphor glow creates softer edges on the slot openings.
     """
-    base_w, base_h = 4, 3
-    img = Image.new('RGBA', (base_w * scale, base_h * scale))
+    tile_w = scale
+    tile_h = scale * 2
+    mid_y = scale  # Divider between top and bottom rows
 
-    for y in range(base_h * scale):
-        for x in range(base_w * scale):
-            base_x = x // scale
-            base_y = y // scale
+    img = Image.new('RGBA', (tile_w, tile_h))
 
-            # Row 0 and 2: all metal (shadow)
-            if base_y == 0 or base_y == 2:
+    for y in range(tile_h):
+        for x in range(tile_w):
+            # Top borders (row 0 and row mid_y)
+            if y == 0 or y == mid_y:
                 img.putpixel((x, y), (0, 0, 0, SLOT_METAL))
-            # Row 1: metal on edges (shadow), slot interior clear
-            elif base_y == 1:
-                if base_x == 0 or base_x == 3:
-                    img.putpixel((x, y), (0, 0, 0, SLOT_METAL))
+                continue
+
+            # Top half (rows 1 to mid_y-1): border on LEFT, slot on right
+            if 1 <= y < mid_y:
+                if x == 0:
+                    img.putpixel((x, y), (0, 0, 0, SLOT_METAL))  # Left border
+                # Add glow on first row after border (vertical beam falloff)
+                elif y == 1 and scale >= 3:
+                    img.putpixel((x, y), (0, 0, 0, SLOT_GLOW))
                 else:
-                    img.putpixel((x, y), (0, 0, 0, 0))  # Slot (transparent)
+                    img.putpixel((x, y), (255, 255, 255, 0))      # Slot opening
+
+            # Bottom half (rows mid_y+1 to end): slot on left, border on RIGHT (staggered)
+            else:
+                if x == tile_w - 1:
+                    img.putpixel((x, y), (0, 0, 0, SLOT_METAL))  # Right border
+                # Add glow on first row after border (vertical beam falloff)
+                elif y == mid_y + 1 and scale >= 3:
+                    img.putpixel((x, y), (0, 0, 0, SLOT_GLOW))
+                else:
+                    img.putpixel((x, y), (255, 255, 255, 0))      # Slot opening
+
     return img
 
 def generate_dot_scale(scale):
@@ -254,23 +312,33 @@ def generate_lcd_scale(scale):
     """
     Generate RGB stripe LCD pattern (GBA SP-style).
 
-    Tile Size: 3×1 (vertical stripes, height = scale)
+    Tile size: scale × scale (aligned to pixel grid)
 
-    Pattern:
-    | Pixel | Description     | Alpha      |
-    |-------|-----------------|------------|
-    | 0     | Subpixel        | 0 (clear)  |
-    | 1     | Gap             | 255 (dark) |
-    | 2     | Subpixel        | 0 (clear)  |
+    Thin vertical shadow stripe in the middle (~33% of width).
+    Similar to grille but thinner shadow lines (more light passes through).
 
-    Subpixel = clear (alpha=0), Gap = shadow (alpha=255)
-    Subtle vertical shadow stripes for modern handheld LCD look.
+    At scale 2: Can't do 33% width with 1px, so use reduced opacity
+                to simulate the lighter/softer look (170 vs 255 = ~66%)
+    At scale 3+: ~33% shadow width, full opacity
     """
-    img = Image.new('RGBA', (3, scale))
+    img = Image.new('RGBA', (scale, scale))
+
+    # Calculate shadow stripe position (centered, ~1/3 width)
+    shadow_width = max(1, scale // 3)
+    mid = scale // 2
+    shadow_start = mid - shadow_width // 2
+    shadow_end = shadow_start + shadow_width
+
+    # At scale 2, we can't make the stripe thinner, so reduce opacity instead
+    # to simulate ~33% coverage vs grille's 50% (170/255 ≈ 66%)
+    alpha = 170 if scale == 2 else LCD_GAP
+
     for y in range(scale):
-        img.putpixel((0, y), (0, 0, 0, 0))         # Subpixel (transparent)
-        img.putpixel((1, y), (0, 0, 0, LCD_GAP))   # Gap (shadow)
-        img.putpixel((2, y), (0, 0, 0, 0))         # Subpixel (transparent)
+        for x in range(scale):
+            if shadow_start <= x < shadow_end:
+                img.putpixel((x, y), (0, 0, 0, alpha))   # Gap (shadow)
+            else:
+                img.putpixel((x, y), (0, 0, 0, 0))       # Subpixel (transparent)
     return img
 
 def show_pattern(name, img):
@@ -306,7 +374,6 @@ def main():
         ("grid", generate_grid_scale),
         ("grille", generate_grille_scale),
         ("slot", generate_slot_scale),
-        ("lcd", generate_lcd_scale),
     ]
 
     patterns = []

@@ -3,7 +3,42 @@
  */
 
 #include "effect_utils.h"
+
 #include <stdlib.h>
+
+#include "render_common.h"
+
+/**
+ * Helper to apply color tint to a surface's non-transparent pixels.
+ * Replaces RGB values while preserving alpha channel.
+ */
+static void tintSurface(SDL_Surface* surface, int color) {
+	if (!surface || !color)
+		return;
+
+	// Convert RGB565 to RGB888
+	uint8_t r, g, b;
+	RENDER_rgb565ToRgb888(color, &r, &g, &b);
+
+	// Lock surface for direct pixel access
+	if (SDL_MUSTLOCK(surface))
+		SDL_LockSurface(surface);
+
+	uint32_t* pixels = (uint32_t*)surface->pixels;
+	int pixel_count = surface->w * surface->h;
+
+	for (int i = 0; i < pixel_count; i++) {
+		uint32_t pixel = pixels[i];
+		uint8_t a = (pixel >> 24) & 0xFF;
+		// Only tint pixels that have alpha (are visible)
+		if (a > 0) {
+			pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+		}
+	}
+
+	if (SDL_MUSTLOCK(surface))
+		SDL_UnlockSurface(surface);
+}
 
 /**
  * Loads a base pattern PNG and creates a scaled/tiled texture.
@@ -12,6 +47,14 @@
  */
 SDL_Texture* EFFECT_loadAndTile(SDL_Renderer* renderer, const char* pattern_path, int scale,
                                 int target_w, int target_h) {
+	return EFFECT_loadAndTileWithColor(renderer, pattern_path, scale, target_w, target_h, 0);
+}
+
+/**
+ * Loads a base pattern PNG, applies color tinting, and creates a scaled/tiled texture.
+ */
+SDL_Texture* EFFECT_loadAndTileWithColor(SDL_Renderer* renderer, const char* pattern_path,
+                                         int scale, int target_w, int target_h, int color) {
 	if (!renderer || !pattern_path || scale < 1)
 		return NULL;
 
@@ -23,7 +66,7 @@ SDL_Texture* EFFECT_loadAndTile(SDL_Renderer* renderer, const char* pattern_path
 	int pattern_w = base->w * scale;
 	int pattern_h = base->h * scale;
 
-	// Create target surface for tiled pattern
+	// Create target surface for tiled pattern (ARGB8888 format)
 	SDL_Surface* tiled = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0x00FF0000, 0x0000FF00,
 	                                          0x000000FF, 0xFF000000);
 	if (!tiled) {
@@ -41,6 +84,11 @@ SDL_Texture* EFFECT_loadAndTile(SDL_Renderer* renderer, const char* pattern_path
 	}
 
 	SDL_FreeSurface(base);
+
+	// Apply color tinting if specified
+	if (color) {
+		tintSurface(tiled, color);
+	}
 
 	// Convert surface to texture
 	SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, tiled);

@@ -96,9 +96,6 @@ const char* EFFECT_getPatternPath(char* buf, int bufsize, int type, int scale) {
 	case EFFECT_SLOT:
 		pattern_name = "slot";
 		break;
-	case EFFECT_LCD:
-		pattern_name = "lcd";
-		break;
 	default:
 		return NULL;
 	}

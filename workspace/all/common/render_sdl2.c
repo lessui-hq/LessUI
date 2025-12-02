@@ -98,11 +98,15 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	int target_w = ctx->device_width;
 	int target_h = ctx->device_height;
 
-	LOG_info("Effect: creating type=%d scale=%d opacity=%d pattern=%s\n", fx->type, fx->scale,
-	         opacity, pattern);
+	// Get color for grid effect tinting (GameBoy DMG palettes)
+	int color = (fx->type == EFFECT_GRID) ? fx->color : 0;
 
-	// Load and tile pattern
-	SDL_Texture* tiled = EFFECT_loadAndTile(ctx->renderer, pattern, 1, target_w, target_h);
+	LOG_info("Effect: creating type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n", fx->type,
+	         fx->scale, opacity, color, pattern);
+
+	// Load and tile pattern (with optional color tinting for grid)
+	SDL_Texture* tiled =
+	    EFFECT_loadAndTileWithColor(ctx->renderer, pattern, 1, target_w, target_h, color);
 	if (tiled) {
 		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
 		SDL_SetTextureAlphaMod(tiled, opacity);

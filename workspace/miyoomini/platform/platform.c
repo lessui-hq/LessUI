@@ -447,13 +447,17 @@ static void updateEffectOverlay(void) {
 	// Use shared EFFECT_getOpacity()
 	int opacity = EFFECT_getOpacity(scale);
 
-	LOG_info("Effect: creating overlay type=%d scale=%d opacity=%d pattern=%s\n", effect_state.type,
-	         scale, opacity, pattern);
+	// Get color for grid effect tinting (GameBoy DMG palettes)
+	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
+
+	LOG_info("Effect: creating overlay type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n",
+	         effect_state.type, scale, opacity, color, pattern);
 
 	// Pattern is pre-sized for this scale, tile at 1:1 (no scaling)
-	SDL_Surface* temp = EFFECT_createTiledSurface(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT);
+	SDL_Surface* temp =
+	    EFFECT_createTiledSurfaceWithColor(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT, color);
 	if (!temp) {
-		LOG_info("Effect: EFFECT_createTiledSurface failed!\n");
+		LOG_info("Effect: EFFECT_createTiledSurfaceWithColor failed!\n");
 		return;
 	}
 

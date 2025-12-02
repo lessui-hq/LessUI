@@ -27,4 +27,21 @@
 SDL_Texture* EFFECT_loadAndTile(SDL_Renderer* renderer, const char* pattern_path, int scale,
                                 int target_w, int target_h);
 
+/**
+ * Loads a base pattern PNG, applies color tinting, and creates a scaled/tiled texture.
+ *
+ * Same as EFFECT_loadAndTile but with color replacement for non-transparent pixels.
+ * Used for GameBoy DMG color palettes where the grid effect is tinted to match.
+ *
+ * @param renderer SDL renderer
+ * @param pattern_path Path to base pattern PNG
+ * @param scale Integer scale factor (2-11)
+ * @param target_w Target texture width in pixels
+ * @param target_h Target texture height in pixels
+ * @param color RGB565 color to tint non-transparent pixels (0 = no tinting, use black)
+ * @return SDL texture with tiled pattern (caller must SDL_DestroyTexture), or NULL on error
+ */
+SDL_Texture* EFFECT_loadAndTileWithColor(SDL_Renderer* renderer, const char* pattern_path,
+                                         int scale, int target_w, int target_h, int color);
+
 #endif

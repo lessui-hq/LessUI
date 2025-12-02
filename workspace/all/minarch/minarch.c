@@ -942,7 +942,7 @@ typedef struct OptionList {
 
 static char* onoff_labels[] = {"Off", "On", NULL};
 static char* scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
-static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", "LCD", NULL};
+static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", NULL};
 static char* sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
 static char* tearing_labels[] = {"Off", "Lenient", "Strict", NULL};
 static char* max_ff_labels[] = {

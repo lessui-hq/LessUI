@@ -335,8 +335,7 @@ enum {
 	EFFECT_LINE, // Horizontal scanlines
 	EFFECT_GRID, // Pixel grid (2x2)
 	EFFECT_GRILLE, // Aperture grille (vertical stripes, 50% shadow)
-	EFFECT_SLOT, // Slot mask (horizontal rectangles, 17% shadow)
-	EFFECT_LCD, // LCD subpixel (vertical stripes, 33% shadow)
+	EFFECT_SLOT, // Slot mask (staggered vertical slots)
 	EFFECT_COUNT,
 };
 

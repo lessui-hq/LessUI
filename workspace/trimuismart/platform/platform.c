@@ -371,7 +371,10 @@ static void updateEffectOverlay(void) {
 	if (vid.effect)
 		SDL_FreeSurface(vid.effect);
 
-	vid.effect = EFFECT_createTiledSurface(pattern, 1, vid.width, vid.height);
+	// Get color for grid effect tinting (GameBoy DMG palettes)
+	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
+
+	vid.effect = EFFECT_createTiledSurfaceWithColor(pattern, 1, vid.width, vid.height, color);
 	if (vid.effect) {
 		int opacity = EFFECT_getOpacity(effect_state.scale);
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);

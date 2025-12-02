@@ -3,8 +3,36 @@
  */
 
 #include "effect_surface.h"
-#include "log.h"
+
 #include <stdlib.h>
+
+#include "log.h"
+#include "render_common.h"
+
+/**
+ * Helper to apply color tint to a surface's non-transparent pixels.
+ * Replaces RGB values while preserving alpha channel.
+ */
+static void tintSurface(SDL_Surface* surface, int color) {
+	if (!surface || !color)
+		return;
+
+	// Convert RGB565 to RGB888
+	uint8_t r, g, b;
+	RENDER_rgb565ToRgb888(color, &r, &g, &b);
+
+	uint32_t* pixels = (uint32_t*)surface->pixels;
+	int pixel_count = surface->w * surface->h;
+
+	for (int i = 0; i < pixel_count; i++) {
+		uint32_t pixel = pixels[i];
+		uint8_t a = (pixel >> 24) & 0xFF;
+		// Only tint pixels that have alpha (are visible)
+		if (a > 0) {
+			pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+		}
+	}
+}
 
 /**
  * Scales an SDL_Surface using nearest-neighbor (pixel replication).
@@ -44,8 +72,13 @@ static SDL_Surface* scaleSurface(SDL_Surface* src, int scale) {
 
 SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int target_w,
                                        int target_h) {
+	return EFFECT_createTiledSurfaceWithColor(pattern_path, scale, target_w, target_h, 0);
+}
+
+SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int scale, int target_w,
+                                                int target_h, int color) {
 	if (!pattern_path || scale < 1 || target_w < 1 || target_h < 1) {
-		LOG_info("EFFECT_createTiledSurface: invalid params\n");
+		LOG_info("EFFECT_createTiledSurfaceWithColor: invalid params\n");
 		return NULL;
 	}
 
@@ -114,6 +147,13 @@ SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int 
 	}
 
 	SDL_FreeSurface(scaled);
-	LOG_info("EFFECT_createTiledSurface: created %dx%d tiled surface\n", target_w, target_h);
+
+	// Apply color tinting if specified
+	if (color) {
+		tintSurface(tiled, color);
+	}
+
+	LOG_info("EFFECT_createTiledSurfaceWithColor: created %dx%d tiled surface (color=0x%04x)\n",
+	         target_w, target_h, color);
 	return tiled;
 }
