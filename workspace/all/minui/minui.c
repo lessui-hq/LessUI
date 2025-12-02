@@ -65,7 +65,6 @@
 
 // Thumbnail animation
 #define THUMB_FADE_DURATION_MS 100 // Duration of fade-in animation in milliseconds
-#define THUMB_FADE_FRAME_MS 16 // Assumed frame time (60fps = ~16ms)
 #define THUMB_ALPHA_MAX 255 // Fully opaque
 #define THUMB_ALPHA_MIN 0 // Fully transparent
 
@@ -2227,6 +2226,7 @@ int main(int argc, char* argv[]) {
 	Entry* last_rendered_entry = NULL; // Last entry we rendered (for change detection)
 	int thumb_exists = 0; // Whether thumbnail exists for current entry
 	int thumb_alpha = THUMB_ALPHA_MAX; // Current fade alpha, starts full for instant display
+	unsigned long thumb_fade_start_ms = 0; // When fade started (0 = not fading)
 
 	LOG_debug("Entering main loop");
 	while (!quit) {
@@ -2420,27 +2420,35 @@ int main(int argc, char* argv[]) {
 			last_rendered_entry = current_entry;
 		}
 
-		// Check if thumbnail is actually loaded and ready to display
-		int showing_thumb = (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
-		                     cached_thumb->h > 0);
-
 		// Poll for async thumbnail load completion
 		if (thumb_exists && !cached_thumb && cached_thumb_path[0]) {
 			SDL_Surface* loaded = ThumbLoader_get(cached_thumb_path);
 			if (loaded) {
 				cached_thumb = loaded;
 				thumb_alpha = THUMB_ALPHA_MIN; // Start fade from transparent
+				thumb_fade_start_ms = now; // Record when fade started
 				dirty = 1;
 			}
 		}
 
-		// Animate thumbnail fade-in
-		if (cached_thumb && thumb_alpha < THUMB_ALPHA_MAX) {
-			int fade_step = (THUMB_ALPHA_MAX * THUMB_FADE_FRAME_MS) / THUMB_FADE_DURATION_MS;
-			thumb_alpha += fade_step;
-			if (thumb_alpha > THUMB_ALPHA_MAX)
-				thumb_alpha = THUMB_ALPHA_MAX;
-			dirty = 1;
+		// Check if thumbnail is actually loaded and ready to display (after polling)
+		int showing_thumb = (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
+		                     cached_thumb->h > 0);
+
+		// Animate thumbnail fade-in with smoothstep easing
+		if (cached_thumb && thumb_fade_start_ms > 0) {
+			unsigned long elapsed = now - thumb_fade_start_ms;
+			if (elapsed >= THUMB_FADE_DURATION_MS) {
+				thumb_alpha = THUMB_ALPHA_MAX; // Fade complete
+				thumb_fade_start_ms = 0; // Stop fading
+				dirty = 1; // Render final frame
+			} else {
+				// Smoothstep easing: f(t) = t * t * (3 - 2 * t)
+				float t = (float)elapsed / THUMB_FADE_DURATION_MS;
+				float eased = t * t * (3.0f - 2.0f * t);
+				thumb_alpha = (int)(eased * THUMB_ALPHA_MAX);
+				dirty = 1; // Keep rendering while animating
+			}
 		}
 
 		// Rendering
@@ -2457,7 +2465,7 @@ int main(int argc, char* argv[]) {
 				oy = (ui.screen_height_px - cached_thumb->h) / 2;
 				// Clamp alpha to valid range for SDL compatibility
 				int safe_alpha = (thumb_alpha < 0) ? 0 : ((thumb_alpha > 255) ? 255 : thumb_alpha);
-				SDLX_SetAlpha(cached_thumb, SDL_SRCALPHA, safe_alpha);
+				SDLX_SetAlphaMod(cached_thumb, safe_alpha);
 				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
@@ -2565,7 +2573,7 @@ int main(int argc, char* argv[]) {
 						// Calculate available width in pixels
 						// Use fixed widths when thumbnail is showing (prevents text reflow)
 						int available_width;
-						if (showing_thumb) {
+						if (thumb_exists) {
 							if (j == selected_row) {
 								// Selected item gets more width
 								available_width =
