@@ -51,9 +51,152 @@
 #include <mi_gfx.h>
 #include <mi_sys.h>
 
-// Hardware variant flags (detected at runtime)
-int is_560p = 0; // 1 if device supports 752x560 resolution
-int is_plus = 0; // 1 if device is Miyoo Mini Plus with AXP223 PMIC
+///////////////////////////////
+// Device Registry and Variant Configuration
+///////////////////////////////
+
+// Device registry - all known devices that work with this platform
+static const DeviceInfo miyoomini_devices[] = {
+    // Standard Miyoo Mini
+    {.device_id = "miyoomini", .display_name = "Mini", .manufacturer = "Miyoo"},
+
+    // Miyoo Mini Plus (640x480)
+    {.device_id = "miyoominiplus", .display_name = "Mini Plus", .manufacturer = "Miyoo"},
+
+    // Miyoo Mini Plus (560p variant)
+    {.device_id = "miyoominiplus560p", .display_name = "Mini Plus (560p)", .manufacturer = "Miyoo"},
+
+    // Miyoo Mini Flip (MY285 - same as standard but clamshell form factor)
+    {.device_id = "miyoominiflip", .display_name = "Mini Flip", .manufacturer = "Miyoo"},
+
+    // Sentinel
+    {NULL, NULL, NULL}};
+
+// Variant configuration table
+typedef struct {
+	VariantType variant;
+	int screen_width;
+	int screen_height;
+	float screen_diagonal_default;
+	uint32_t hw_features;
+} VariantConfig;
+
+static const VariantConfig miyoomini_variants[] = {
+    {.variant = VARIANT_MINI_STANDARD,
+     .screen_width = 640,
+     .screen_height = 480,
+     .screen_diagonal_default = 2.8f,
+     .hw_features = HW_FEATURE_NEON},
+    {.variant = VARIANT_MINI_PLUS,
+     .screen_width = 640,
+     .screen_height = 480,
+     .screen_diagonal_default = 2.8f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
+    {.variant = VARIANT_MINI_PLUS_560P,
+     .screen_width = 752,
+     .screen_height = 560,
+     .screen_diagonal_default = 2.8f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
+    {.variant = VARIANT_NONE} // Sentinel
+};
+
+// Device-to-variant mapping
+typedef struct {
+	int has_pmic; // AXP223 PMIC detected
+	int has_560p; // 560p screen mode available
+	VariantType variant;
+	const DeviceInfo* device;
+} DeviceVariantMap;
+
+static const DeviceVariantMap miyoomini_device_map[] = {
+    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini
+    {1, 0, VARIANT_MINI_PLUS, &miyoomini_devices[1]}, // Plus (480p)
+    {1, 1, VARIANT_MINI_PLUS_560P, &miyoomini_devices[2]}, // Plus (560p)
+    {-1, -1, VARIANT_NONE, NULL} // Sentinel
+};
+
+static const VariantConfig* getVariantConfig(VariantType variant) {
+	for (int i = 0; miyoomini_variants[i].variant != VARIANT_NONE; i++) {
+		if (miyoomini_variants[i].variant == variant)
+			return &miyoomini_variants[i];
+	}
+	return NULL;
+}
+
+static int hasMode(const char* path, const char* mode) {
+	FILE* f = fopen(path, "r");
+	if (!f)
+		return 0;
+	char s[128];
+	while (fgets(s, sizeof s, f))
+		if (strstr(s, mode))
+			return fclose(f), 1;
+	fclose(f);
+	return 0;
+}
+
+void PLAT_detectVariant(PlatformVariant* v) {
+	v->platform = PLATFORM;
+	v->has_hdmi = 0;
+
+	// Check for Miyoo Mini Flip (MY285) - NOTE: This is NOT the RK3566 Miyoo Flip!
+	// MY285 is a clamshell variant of the original Miyoo Mini (R16/SSD202D)
+	char* model = getenv("MY_MODEL");
+	if (exactMatch(model, "MY285")) {
+		// Flip uses standard Mini variant but different screen size
+		v->device = &miyoomini_devices[3]; // Mini Flip
+		v->variant = VARIANT_MINI_STANDARD;
+		const VariantConfig* config = getVariantConfig(v->variant);
+		if (config) {
+			v->screen_width = config->screen_width;
+			v->screen_height = config->screen_height;
+			v->screen_diagonal = 3.5f; // Mini Flip has 3.5" screen (vs 2.8" Mini)
+			v->hw_features = config->hw_features;
+		}
+		LOG_info("Detected device: %s %s (%dx%d, %.1f\")\n", v->device->manufacturer,
+		         v->device->display_name, v->screen_width, v->screen_height, v->screen_diagonal);
+		return;
+	}
+
+	// Detect Plus variant via PMIC presence
+	int has_pmic = exists("/customer/app/axp_test");
+
+	// Detect 560p screen mode
+	int has_560p = hasMode("/sys/class/graphics/fb0/modes", "752x560p");
+
+	// Look up device in mapping table
+	const DeviceVariantMap* map = NULL;
+	for (int i = 0; miyoomini_device_map[i].variant != VARIANT_NONE; i++) {
+		if (miyoomini_device_map[i].has_pmic == has_pmic &&
+		    miyoomini_device_map[i].has_560p == has_560p) {
+			map = &miyoomini_device_map[i];
+			break;
+		}
+	}
+
+	// Fallback to standard if not found
+	if (!map) {
+		LOG_warn("Unknown device configuration (PMIC=%d, 560p=%d), defaulting to Miyoo Mini\n",
+		         has_pmic, has_560p);
+		map = &miyoomini_device_map[0];
+	}
+
+	// Set device info
+	v->device = map->device;
+	v->variant = map->variant;
+
+	// Apply variant configuration
+	const VariantConfig* config = getVariantConfig(map->variant);
+	if (config) {
+		v->screen_width = config->screen_width;
+		v->screen_height = config->screen_height;
+		v->screen_diagonal = config->screen_diagonal_default;
+		v->hw_features = config->hw_features;
+	}
+
+	LOG_info("Detected device: %s %s (%dx%d, %.1f\")\n", v->device->manufacturer,
+	         v->device->display_name, v->screen_width, v->screen_height, v->screen_diagonal);
+}
 
 // SDL surface extension: stores physical address for MI_GFX
 #define pixelsPa unused1
@@ -277,22 +420,9 @@ static EffectState effect_state;
 
 #define MODES_PATH "/sys/class/graphics/fb0/modes"
 
-static int hasMode(const char* path, const char* mode) {
-	FILE* f = fopen(path, "r");
-	if (!f)
-		return 0;
-	char s[128];
-	while (fgets(s, sizeof s, f))
-		if (strstr(s, mode))
-			return fclose(f), 1;
-	fclose(f);
-	return 0;
-}
-
 SDL_Surface* PLAT_initVideo(void) {
-	is_plus = exists("/customer/app/axp_test");
-	is_560p = hasMode(MODES_PATH, "752x560p");
-	LOG_info("is 560p: %i\n", is_560p);
+	// Detect device variant
+	PLAT_detectVariant(&platform_variant);
 
 	putenv("SDL_HIDE_BATTERY=1");
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
@@ -649,8 +779,9 @@ int axp_read(unsigned char address) {
 static int online = 0;
 
 void PLAT_getBatteryStatus(int* is_charging, int* charge) {
-	*is_charging =
-	    is_plus ? (axp_read(0x00) & 0x4) > 0 : getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
+	*is_charging = (platform_variant.hw_features & HW_FEATURE_PMIC)
+	                   ? (axp_read(0x00) & 0x4) > 0
+	                   : getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
 
 	int i = getInt("/tmp/battery");
 
@@ -772,13 +903,7 @@ int PLAT_pickSampleRate(int requested, int max) {
 ///////////////////////////////
 
 char* PLAT_getModel(void) {
-	char* model = getenv("MY_MODEL");
-	if (exactMatch(model, "MY285"))
-		return "Miyoo Mini Flip";
-	else if (is_plus)
-		return "Miyoo Mini Plus";
-	else
-		return "Miyoo Mini";
+	return (char*)PLAT_getDeviceName();
 }
 
 int PLAT_isOnline(void) {

@@ -21,7 +21,7 @@ SDL?=SDL
 
 TARGET = minui
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
-SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/str_compare.c ../../$(PLATFORM)/platform/platform.c
+SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c ../common/gfx_text.c ../common/str_compare.c ../common/platform_variant.c ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
 SOURCE += ../common/effect_system.c ../common/render_common.c

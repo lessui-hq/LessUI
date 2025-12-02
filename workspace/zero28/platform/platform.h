@@ -1,7 +1,10 @@
 /**
- * zero28/platform/platform.h - Platform definitions for Zero28 handheld
+ * zero28/platform/platform.h - Platform definitions for MagicX Mini Zero 28
  *
- * The Zero28 is a retro handheld gaming device with:
+ * Supported devices (Allwinner A133 Plus, Cortex-A53):
+ * - MagicX Mini Zero 28: 2.8" 640x480 display
+ *
+ * Hardware features:
  * - 640x480 display (VGA resolution, 2x scaled)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2) with L3/R3 support
@@ -27,6 +30,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

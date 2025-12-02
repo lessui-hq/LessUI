@@ -40,9 +40,147 @@
 #include "render_sdl2.h"
 #include "scaler.h"
 
-// Device variant flags (set during init)
-int is_cubexx = 0;
-int is_rg34xx = 0;
+// Paths for HDMI detection and display blanking
+#define HDMI_STATE_PATH "/sys/class/switch/hdmi/cable.0/state"
+#define BLANK_PATH "/sys/class/graphics/fb0/blank"
+
+///////////////////////////////
+// Device Registry and Variant Configuration
+///////////////////////////////
+
+// Device registry - all known devices that work with this platform
+static const DeviceInfo rg35xxplus_devices[] = {
+    // 640x480 devices (VGA resolution - most devices!)
+    {.device_id = "rg35xxplus", .display_name = "RG35XX Plus", .manufacturer = "Anbernic"},
+    {.device_id = "rg28xx", .display_name = "RG28XX", .manufacturer = "Anbernic"},
+    {.device_id = "rg35xxh", .display_name = "RG35XX H", .manufacturer = "Anbernic"},
+    {.device_id = "rg35xxsp", .display_name = "RG35XX SP", .manufacturer = "Anbernic"},
+    {.device_id = "rg40xxh", .display_name = "RG40XX H", .manufacturer = "Anbernic"},
+    {.device_id = "rg40xxv", .display_name = "RG40XX V", .manufacturer = "Anbernic"},
+
+    // 720x720 square devices
+    {.device_id = "rgcubexx", .display_name = "RG CubeXX", .manufacturer = "Anbernic"},
+
+    // 720x480 widescreen devices
+    {.device_id = "rg34xx", .display_name = "RG34XX", .manufacturer = "Anbernic"},
+    {.device_id = "rg34xxsp", .display_name = "RG34XXSP", .manufacturer = "Anbernic"},
+
+    // Sentinel
+    {NULL, NULL, NULL}};
+
+// Variant configuration table
+typedef struct {
+	VariantType variant;
+	int screen_width;
+	int screen_height;
+	float screen_diagonal_default;
+	uint32_t hw_features;
+} VariantConfig;
+
+static const VariantConfig rg35xxplus_variants[] = {
+    {.variant = VARIANT_RG35XX_VGA,
+     .screen_width = 640,
+     .screen_height = 480,
+     .screen_diagonal_default = 3.5f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_LID | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_RG35XX_SQUARE,
+     .screen_width = 720,
+     .screen_height = 720,
+     .screen_diagonal_default = 3.95f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_LID | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_RG35XX_WIDE,
+     .screen_width = 720,
+     .screen_height = 480,
+     .screen_diagonal_default = 3.4f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_LID | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_NONE} // Sentinel
+};
+
+// Device-to-variant mapping
+typedef struct {
+	const char* model_string; // What to look for in RGXX_MODEL
+	VariantType variant; // Which variant config to use
+	const DeviceInfo* device; // Which device info to use
+	float screen_diagonal; // Override if different from variant default (0 = use default)
+} DeviceVariantMap;
+
+static const DeviceVariantMap rg35xxplus_device_map[] = {
+    // 640x480 devices - VARIANT_RG35XX_VGA (most devices!)
+    {"RG35xxPlus", VARIANT_RG35XX_VGA, &rg35xxplus_devices[0], 3.5f},
+    {"RG28xx", VARIANT_RG35XX_VGA, &rg35xxplus_devices[1], 2.8f},
+    {"RG35xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[2], 3.5f},
+    {"RG35xxSP", VARIANT_RG35XX_VGA, &rg35xxplus_devices[3], 3.5f},
+    {"RG40xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[4], 4.0f},
+    {"RG40xxV", VARIANT_RG35XX_VGA, &rg35xxplus_devices[5], 4.0f},
+
+    // 720x720 square devices - VARIANT_RG35XX_SQUARE
+    {"RGcubexx", VARIANT_RG35XX_SQUARE, &rg35xxplus_devices[6], 3.95f},
+
+    // 720x480 widescreen devices - VARIANT_RG35XX_WIDE
+    {"RG34xx", VARIANT_RG35XX_WIDE, &rg35xxplus_devices[7], 3.4f},
+    {"RG34xxSP", VARIANT_RG35XX_WIDE, &rg35xxplus_devices[8], 3.4f},
+
+    // Sentinel
+    {NULL, VARIANT_NONE, NULL, 0.0f}};
+
+static const VariantConfig* getVariantConfig(VariantType variant) {
+	for (int i = 0; rg35xxplus_variants[i].variant != VARIANT_NONE; i++) {
+		if (rg35xxplus_variants[i].variant == variant)
+			return &rg35xxplus_variants[i];
+	}
+	return NULL;
+}
+
+void PLAT_detectVariant(PlatformVariant* v) {
+	v->platform = PLATFORM;
+	v->has_hdmi = 1;
+
+	// Read model string from environment
+	char* model = getenv("RGXX_MODEL");
+
+	// Look up device in mapping table
+	const DeviceVariantMap* map = NULL;
+	for (int i = 0; rg35xxplus_device_map[i].model_string != NULL; i++) {
+		if (prefixMatch((char*)rg35xxplus_device_map[i].model_string, model)) {
+			map = &rg35xxplus_device_map[i];
+			break;
+		}
+	}
+
+	// Fallback to default if not found
+	if (!map) {
+		LOG_warn("Unknown device model '%s', defaulting to RG35XX Plus\n", model);
+		map = &rg35xxplus_device_map[0];
+	}
+
+	// Set device info
+	v->device = map->device;
+	v->variant = map->variant;
+
+	// Apply variant configuration
+	const VariantConfig* config = getVariantConfig(map->variant);
+	if (config) {
+		v->screen_width = config->screen_width;
+		v->screen_height = config->screen_height;
+		v->screen_diagonal =
+		    map->screen_diagonal > 0 ? map->screen_diagonal : config->screen_diagonal_default;
+		v->hw_features = config->hw_features;
+	}
+
+	// Check for HDMI connection (runtime override)
+	v->hdmi_active = getInt(HDMI_STATE_PATH);
+	if (v->hdmi_active) {
+		v->screen_width = HDMI_WIDTH;
+		v->screen_height = HDMI_HEIGHT;
+	}
+
+	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
+	         v->device->display_name,
+	         v->variant == VARIANT_RG35XX_SQUARE ? "square"
+	         : v->variant == VARIANT_RG35XX_WIDE ? "widescreen"
+	                                             : "VGA",
+	         v->screen_width, v->screen_height, v->screen_diagonal);
+}
 
 ///////////////////////////////
 // Video - Using shared SDL2 backend
@@ -58,24 +196,14 @@ static SDL2_Config vid_config = {
     .default_sharpness = SHARPNESS_SOFT,
 };
 
-// Paths for HDMI detection and display blanking
-#define HDMI_STATE_PATH "/sys/class/switch/hdmi/cable.0/state"
-#define BLANK_PATH "/sys/class/graphics/fb0/blank"
-
 SDL_Surface* PLAT_initVideo(void) {
 	// Detect device variant
-	char* model = getenv("RGXX_MODEL");
-	is_cubexx = exactMatch("RGcubexx", model);
-	is_rg34xx = prefixMatch("RG34xx", model);
+	PLAT_detectVariant(&platform_variant);
 
-	// Check for HDMI connection before init
+	// Use detected resolution (may be overridden by HDMI)
 	int w = FIXED_WIDTH;
 	int h = FIXED_HEIGHT;
-	if (getInt(HDMI_STATE_PATH)) {
-		w = HDMI_WIDTH;
-		h = HDMI_HEIGHT;
-		vid_ctx.on_hdmi = 1;
-	}
+	vid_ctx.on_hdmi = platform_variant.hdmi_active;
 
 	return SDL2_initVideo(&vid_ctx, w, h, &vid_config);
 }
@@ -139,7 +267,7 @@ void PLAT_flip(SDL_Surface* screen, int sync) {
 }
 
 int PLAT_supportsOverscan(void) {
-	return is_cubexx;
+	return VARIANT_IS(VARIANT_RG35XX_SQUARE);
 }
 
 ///////////////////////////////
@@ -706,19 +834,8 @@ int PLAT_pickSampleRate(int requested, int max) {
 	return MIN(requested, max);
 }
 
-static char model[256];
 char* PLAT_getModel(void) {
-	char* _model = getenv("RGXX_MODEL");
-	if (_model != NULL) {
-		if (exactMatch(_model, "RGcubexx"))
-			_model = "RG CubeXX";
-		sprintf(model, "Anbernic %s", _model);
-		char* tmp = strrchr(model, '_');
-		if (tmp)
-			*tmp = '\0';
-		return model;
-	}
-	return "Anbernic RG*XX";
+	return (char*)PLAT_getDeviceName();
 }
 
 int PLAT_isOnline(void) {

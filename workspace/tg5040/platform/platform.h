@@ -28,14 +28,16 @@
 // Dependencies
 ///////////////////////////////
 
+#include "platform_variant.h"
 #include "sdl.h"
 
 ///////////////////////////////
 // Platform Variant Detection
-// Runtime variables for hardware differences
 ///////////////////////////////
 
-extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
+// TG5040 family variants
+#define VARIANT_TG5040_STANDARD (VARIANT_PLATFORM_BASE + 0) // 1280x720 widescreen
+#define VARIANT_TG5040_BRICK (VARIANT_PLATFORM_BASE + 1) // 1024x768 (4:3)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -122,13 +124,13 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 #define JOY_R1 5
 #define JOY_L2 JOY_NA // Analog trigger (handled via axis)
 #define JOY_R2 JOY_NA // Analog trigger (handled via axis)
-#define JOY_L3 (is_brick ? 9 : JOY_NA) // L3 available on Brick only
-#define JOY_R3 (is_brick ? 10 : JOY_NA) // R3 available on Brick only
+#define JOY_L3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 9 : JOY_NA)
+#define JOY_R3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 10 : JOY_NA)
 
 #define JOY_MENU 8
 #define JOY_POWER 102 // Matches CODE_POWER
-#define JOY_PLUS (is_brick ? 14 : 128) // Button 14 (Brick) or code 128 (standard)
-#define JOY_MINUS (is_brick ? 13 : 129) // Button 13 (Brick) or code 129 (standard)
+#define JOY_PLUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 14 : 128)
+#define JOY_MINUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 13 : 129)
 
 ///////////////////////////////
 // Analog Stick and Trigger Axis Mappings
@@ -161,10 +163,10 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 // Runtime-configurable for Brick variant
 ///////////////////////////////
 
-#define SCREEN_DIAGONAL (is_brick ? 3.2f : 4.95f) // Diagonal: 3.2" (Brick) or 4.95" (Smart Pro)
+#define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
 #define EDGE_PADDING 5 // Reduced edge padding - bezel provides visual margin
-#define FIXED_WIDTH (is_brick ? 1024 : 1280) // Width: 1024px (Brick) or 1280px (standard)
-#define FIXED_HEIGHT (is_brick ? 768 : 720) // Height: 768px (Brick) or 720px (standard)
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

@@ -1,7 +1,10 @@
 /**
- * rg35xx/platform/platform.h - Platform definitions for Anbernic RG35XX handheld
+ * rg35xx/platform/platform.h - Platform definitions for Anbernic RG35XX (original)
  *
- * The Anbernic RG35XX is a popular retro handheld gaming device with:
+ * Supported devices (Actions ATM7039S):
+ * - Anbernic RG35XX: 3.5" 640x480 display
+ *
+ * Hardware features:
  * - 640x480 display (VGA resolution, 2x scaled)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
@@ -11,6 +14,7 @@
  * - Japanese-themed SDL key mappings (SDLK_KATAKANA, etc.)
  *
  * @note SDL keyboard mappings use unusual Japanese input keys as hardware quirk
+ * @note This is the original RG35XX, NOT the H700-based RG35XX Plus/H/SP (see rg35xxplus)
  */
 
 #ifndef PLATFORM_H
@@ -27,6 +31,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

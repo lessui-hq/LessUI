@@ -40,8 +40,110 @@
 #include "render_sdl2.h"
 #include "scaler.h"
 
-// Device variant flag (set during init)
-int is_brick = 0;
+///////////////////////////////
+// Device Registry and Variant Configuration
+///////////////////////////////
+
+// Device registry - all known devices that work with this platform
+static const DeviceInfo tg5040_devices[] = {
+    // Standard TG5040
+    {.device_id = "tg5040", .display_name = "Smart Pro", .manufacturer = "Trimui"},
+
+    // Brick variant
+    {.device_id = "brick", .display_name = "Brick", .manufacturer = "Trimui"},
+
+    // Sentinel
+    {NULL, NULL, NULL}};
+
+// Variant configuration table
+typedef struct {
+	VariantType variant;
+	int screen_width;
+	int screen_height;
+	float screen_diagonal_default;
+	uint32_t hw_features;
+} VariantConfig;
+
+static const VariantConfig tg5040_variants[] = {
+    {.variant = VARIANT_TG5040_STANDARD,
+     .screen_width = 1280,
+     .screen_height = 720,
+     .screen_diagonal_default = 4.95f,
+     .hw_features = HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_TG5040_BRICK,
+     .screen_width = 1024,
+     .screen_height = 768,
+     .screen_diagonal_default = 3.2f,
+     .hw_features = HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_NONE} // Sentinel
+};
+
+// Device-to-variant mapping
+typedef struct {
+	const char* device_string; // What to look for in DEVICE env var
+	VariantType variant;
+	const DeviceInfo* device;
+} DeviceVariantMap;
+
+static const DeviceVariantMap tg5040_device_map[] = {
+    // Standard TG5040 - VARIANT_TG5040_STANDARD
+    {NULL, VARIANT_TG5040_STANDARD, &tg5040_devices[0]}, // Default (no DEVICE set)
+
+    // Brick variant - VARIANT_TG5040_BRICK
+    {"brick", VARIANT_TG5040_BRICK, &tg5040_devices[1]},
+
+    // Sentinel
+    {NULL, VARIANT_NONE, NULL}};
+
+static const VariantConfig* getVariantConfig(VariantType variant) {
+	for (int i = 0; tg5040_variants[i].variant != VARIANT_NONE; i++) {
+		if (tg5040_variants[i].variant == variant)
+			return &tg5040_variants[i];
+	}
+	return NULL;
+}
+
+void PLAT_detectVariant(PlatformVariant* v) {
+	v->platform = PLATFORM;
+	v->has_hdmi = 0;
+
+	// Read device string from environment
+	char* device = getenv("DEVICE");
+
+	// Look up device in mapping table
+	const DeviceVariantMap* map = NULL;
+	if (device) {
+		for (int i = 0; tg5040_device_map[i].device_string != NULL; i++) {
+			if (exactMatch((char*)tg5040_device_map[i].device_string, device)) {
+				map = &tg5040_device_map[i];
+				break;
+			}
+		}
+	}
+
+	// Fallback to default if not found (standard TG5040)
+	if (!map) {
+		map = &tg5040_device_map[0];
+	}
+
+	// Set device info
+	v->device = map->device;
+	v->variant = map->variant;
+
+	// Apply variant configuration
+	const VariantConfig* config = getVariantConfig(map->variant);
+	if (config) {
+		v->screen_width = config->screen_width;
+		v->screen_height = config->screen_height;
+		v->screen_diagonal = config->screen_diagonal_default;
+		v->hw_features = config->hw_features;
+	}
+
+	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
+	         v->device->display_name,
+	         v->variant == VARIANT_TG5040_BRICK ? "Brick (4:3)" : "standard (16:9)",
+	         v->screen_width, v->screen_height, v->screen_diagonal);
+}
 
 ///////////////////////////////
 // Video - Using shared SDL2 backend
@@ -57,9 +159,8 @@ static const SDL2_Config vid_config = {
 };
 
 SDL_Surface* PLAT_initVideo(void) {
-	// Detect Brick variant
-	char* device = getenv("DEVICE");
-	is_brick = exactMatch("brick", device);
+	// Detect device variant
+	PLAT_detectVariant(&platform_variant);
 
 	return SDL2_initVideo(&vid_ctx, FIXED_WIDTH, FIXED_HEIGHT, &vid_config);
 }
@@ -191,15 +292,15 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 static void PLAT_enableLED(int enable) {
 	if (enable) {
 		putInt(LED_PATH1, 60);
-		if (is_brick)
+		if (VARIANT_IS(VARIANT_TG5040_BRICK))
 			putInt(LED_PATH2, 60);
-		if (is_brick)
+		if (VARIANT_IS(VARIANT_TG5040_BRICK))
 			putInt(LED_PATH3, 60);
 	} else {
 		putInt(LED_PATH1, 0);
-		if (is_brick)
+		if (VARIANT_IS(VARIANT_TG5040_BRICK))
 			putInt(LED_PATH2, 0);
-		if (is_brick)
+		if (VARIANT_IS(VARIANT_TG5040_BRICK))
 			putInt(LED_PATH3, 0);
 	}
 }
@@ -217,7 +318,7 @@ static void PLAT_enableLED(int enable) {
 void PLAT_enableBacklight(int enable) {
 	if (enable) {
 		// Brick needs minimum brightness to be visible
-		if (is_brick)
+		if (VARIANT_IS(VARIANT_TG5040_BRICK))
 			SetRawBrightness(8);
 		SetBrightness(GetBrightness());
 	} else {

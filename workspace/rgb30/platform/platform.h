@@ -1,7 +1,10 @@
 /**
- * rgb30/platform/platform.h - Platform definitions for Anbernic RGB30 handheld
+ * rgb30/platform/platform.h - Platform definitions for PowKiddy RGB30
  *
- * The Anbernic RGB30 is a retro handheld gaming device with:
+ * Supported devices (Rockchip RK3566, Cortex-A55):
+ * - PowKiddy RGB30: 4.0" 720x720 display
+ *
+ * Hardware features:
  * - 720x720 square display (1:1 aspect ratio)
  * - 1280x720 HDMI output support
  * - D-pad and face buttons (A/B/X/Y)
@@ -27,6 +30,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

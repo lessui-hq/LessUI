@@ -74,7 +74,7 @@ This platform supports two hardware variants detected at runtime:
 - **L3/R3**: Buttons 9 and 10 respectively
 - **LED Control**: Additional LED strips (max_scale_lr, max_scale_f1f2)
 
-**Detection**: The boot script checks for "Trimui Brick" string in `/usr/trimui/bin/MainUI`. The `is_brick` flag is set via `DEVICE` environment variable and propagates to all platform code.
+**Detection**: The boot script checks for "Trimui Brick" string in `/usr/trimui/bin/MainUI`, sets `DEVICE=brick` environment variable, and the platform detects the variant at runtime. The system applies the appropriate variant configuration (resolution, button mappings, LED control, etc.).
 
 ## Directory Structure
 
@@ -296,15 +296,13 @@ Runtime detection is performed in multiple layers:
 
 2. **Settings Library** (`libmsettings`):
    - Reads `DEVICE` environment variable
-   - Sets `is_brick` flag
    - Uses variant-specific brightness tables
 
-3. **Platform Header** (`platform.h`):
-   - Declares `extern int is_brick`
-   - Uses ternary operators for runtime configuration:
-     - `FIXED_SCALE = is_brick ? 3 : 2`
-     - `FIXED_WIDTH = is_brick ? 1024 : 1280`
-     - `JOY_L3 = is_brick ? 9 : JOY_NA`
+3. **Platform Code** (`platform.h`):
+   - Uses variant detection helpers for runtime configuration:
+     - `VARIANT_IS(VARIANT_TG5040_BRICK)` for checks
+     - `JOY_L3 = (VARIANT_IS(VARIANT_TG5040_BRICK) ? 9 : JOY_NA)`
+     - Display dimensions from `platform_variant.screen_width/height`
 
 ### Audio Configuration
 

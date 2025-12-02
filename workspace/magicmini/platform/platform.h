@@ -1,7 +1,10 @@
 /**
- * magicmini/platform/platform.h - Platform definitions for Magic Mini handheld
+ * magicmini/platform/platform.h - Platform definitions for Magic Mini
  *
- * The Magic Mini is a retro handheld gaming device with:
+ * Supported devices:
+ * - Magic Mini: 640x480 display (VGA resolution, 2x scaled)
+ *
+ * Hardware features:
  * - 640x480 display (VGA resolution, 2x scaled)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
@@ -25,6 +28,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

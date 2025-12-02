@@ -6,9 +6,9 @@ Platform implementation for the Anbernic RG35XX Plus series retro handheld devic
 
 ### Display
 - **Resolution**: Variable by model (runtime-detected)
-  - RG35XX Plus: 640x480 (VGA)
-  - RG35XX H (CubeXX): 720x720 (square)
-  - RG35XX SP (RG34XX): 720x480 (widescreen)
+  - 640x480 (VGA): RG28XX, RG35XX Plus, RG35XX H, RG35XX SP, RG40XX H, RG40XX V
+  - 720x720 (square): RG CubeXX
+  - 720x480 (widescreen): RG34XX, RG34XXSP
 - **HDMI Output**: 1280x720 (720p) - all variants
 - **Color Depth**: 16-bit RGB565
 - **UI Scale**: 2x (uses `assets@2x.png`)
@@ -47,24 +47,25 @@ Platform implementation for the Anbernic RG35XX Plus series retro handheld devic
 
 ## Platform Variants
 
-This platform supports **three hardware variants** detected at runtime:
+This platform supports **9 devices across 3 hardware variants** detected at runtime:
 
-### RG35XX Plus (Standard)
+### VGA Variant (640x480)
+**Devices**: RG28XX, RG35XX Plus, RG35XX H, RG35XX SP, RG40XX H, RG40XX V
 - 640x480 display
-- Standard aspect ratio
-- Base variant (`RGXX_MODEL` detection)
+- Standard 4:3 aspect ratio
+- Most common variant
 - Framebuffer: Standard or rotated (480x640)
 
-### RG35XX H (CubeXX)
+### Square Variant (720x720)
+**Devices**: RG CubeXX
 - 720x720 square display
-- Unique aspect ratio for arcade/vertical games
-- Detected via `RGcubexx` model string
+- 1:1 aspect ratio for arcade/vertical games
 - UI adjustments: 8 rows, 40px padding
 
-### RG35XX SP (RG34XX)
+### Widescreen Variant (720x480)
+**Devices**: RG34XX, RG34XXSP
 - 720x480 widescreen display
 - 3:2 aspect ratio
-- Detected via `RG34xx*` model string (wildcard for variants)
 - UI adjustments: Standard rows (6), standard padding (10px)
 
 ### HDMI Output Mode
@@ -74,7 +75,7 @@ This platform supports **three hardware variants** detected at runtime:
 - Volume forced to 100% when HDMI connected
 - Brightness control disabled during HDMI output
 
-**Detection**: Variants are auto-detected at boot by reading `/mnt/vendor/bin/dmenu.bin` for model string. The `is_cubexx`, `is_rg34xx`, and `on_hdmi` flags configure display resolution, UI layout, and input handling accordingly.
+**Detection**: Variants are auto-detected at runtime via `RGXX_MODEL` environment variable. The system detects the specific device model and applies the appropriate variant configuration (resolution, UI layout, etc.).
 
 ## Directory Structure
 
@@ -280,24 +281,19 @@ This ensures users can seamlessly upgrade from the older platform naming.
 
 ### Runtime Variant Detection
 
-The platform uses **runtime configuration** based on detected hardware:
+The platform uses the **platform variant system** for runtime configuration:
 
 ```c
-// Runtime flags set during initialization
-extern int is_cubexx;  // RG35XX H (720x720 square)
-extern int is_rg34xx;  // RG35XX SP (720x480 widescreen)
-extern int on_hdmi;    // HDMI output active
+// Variant checks use helper macros
+if (VARIANT_IS(VARIANT_RG35XX_SQUARE))
+    enable_overscan_support();
 
-// Display resolution adapts to variant
-#define FIXED_WIDTH  (is_cubexx?720:(is_rg34xx?720:640))
-#define FIXED_HEIGHT (is_cubexx?720:480)
-
-// UI layout adapts to variant/HDMI
-#define MAIN_ROW_COUNT (is_cubexx||on_hdmi?8:6)
-#define PADDING (is_cubexx||on_hdmi?40:10)
+// Display resolution from detected variant
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 ```
 
-This single binary supports all three hardware variants without recompilation.
+This single binary supports all 9 devices across 3 hardware variants without recompilation.
 
 ### HDMI Monitoring
 
