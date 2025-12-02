@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """
-Generate effect pattern PNGs for CRT/scanline effects.
+Generate effect pattern PNGs for CRT/LCD effects.
 
 All patterns use shadow-based approach (black pixels, varying alpha)
 to darken the image without color washing.
+
+Pattern Types:
+- Lines: Horizontal scanline shadow (existing)
+- Grid: 2×2 pixel grid (existing)
+- Grille: Aperture grille / Trinitron-style vertical stripes
+- Slot: Slot mask (consumer TV-style)
+- Dot: Dot/shadow mask (triad phosphor pattern)
+- DMG: Game Boy DMG LCD (chunky pixel borders)
+- GBC: Game Boy Color LCD (finer grid)
+- LCD: RGB stripe LCD (GBA SP-style)
 
 Usage:
     python3 scripts/generate-effect-patterns.py
@@ -19,17 +29,44 @@ OUT_DIR = "skeleton/SYSTEM/res"
 # TUNING PARAMETERS - adjust these to taste
 # =============================================================================
 
+# All patterns use opaque black (255) and control visibility via global opacity.
+# This allows per-scale opacity tuning in the C code.
+
 # Lines: horizontal scanline shadow
-# Use opaque black (255) in pattern, control visibility via global opacity (like GRID)
-# This allows per-scale opacity tuning to keep fine patterns visible
-LINES_SHADOW = 255  # α for scanline shadow (255=opaque black, controlled via opacity)
+LINES_SHADOW = 255
 
-# Grid: 2×2 pixel grid (unchanged from original)
-GRID_ALPHA = 255    # α for black pixels
+# Grid: 2×2 pixel grid
+GRID_ALPHA = 255
 
-# CRT: 6-column vertical stripe pattern (aperture-style)
-# Use opaque black for all shadow pixels, control via global opacity
-CRT_SHADOW = 255    # α for shadow columns (opaque black, controlled via opacity)
+# Grille: Aperture grille (Trinitron-style)
+# Vertical shadow bars between phosphor stripes
+# Phosphor = transparent (light passes), Bar = shadow (darkens)
+GRILLE_BAR = 255       # Opaque shadow on vertical bars
+
+# Slot Mask: Consumer TV-style
+# Metal mask with slot openings
+# Slot = transparent (light passes), Metal = shadow (darkens)
+SLOT_METAL = 255       # Opaque shadow on mask metal
+
+# Dot Mask: Triad-like phosphor dots
+# Phosphor dots with metal mask between
+# Dot = transparent (light passes), Metal = shadow (darkens)
+DOT_METAL = 255        # Opaque shadow on mask metal
+
+# DMG LCD: Original Game Boy (gray brick)
+# Large, chunky pixel grid with thick borders
+# Cell = transparent (light passes), Border = shadow (darkens)
+DMG_BORDER = 255       # Opaque border shadow
+
+# GBC LCD: Game Boy Color
+# Finer grid, lighter borders
+# Cell = transparent (light passes), Border = shadow (darkens)
+GBC_BORDER = 255       # Opaque border shadow
+
+# LCD Stripe: RGB stripe LCD (GBA SP-style)
+# Subtle vertical shadow stripes between subpixels
+# Subpixel = transparent (light passes), Gap = shadow (darkens)
+LCD_GAP = 255          # Opaque gap shadow
 
 # =============================================================================
 # Pattern Generation
@@ -40,15 +77,15 @@ def generate_lines_scale(scale):
     Generate 1×N scanline pattern for specific pixel scale.
 
     For scale N, creates N-pixel tall pattern with:
-    - Row 0: Shadow (LINES_DARK alpha)
+    - Row 0: Shadow (LINES_SHADOW alpha)
     - Rows 1 to N-1: Transparent (no darkening)
 
     This ensures one scanline shadow per scaled game pixel.
     """
     img = Image.new('RGBA', (1, scale))
-    img.putpixel((0, 0), (0, 0, 0, LINES_SHADOW))   # shadow on first row
+    img.putpixel((0, 0), (0, 0, 0, LINES_SHADOW))
     for y in range(1, scale):
-        img.putpixel((0, y), (0, 0, 0, 0))          # transparent for remaining rows
+        img.putpixel((0, y), (0, 0, 0, 0))
     return img
 
 def generate_grid_scale(scale):
@@ -61,10 +98,8 @@ def generate_grid_scale(scale):
     size = 2 * scale
     img = Image.new('RGBA', (size, size))
 
-    # Scale up the base 2×2 pattern using nearest-neighbor
     for y in range(size):
         for x in range(size):
-            # Map to base 2×2 pattern coordinates
             base_x = x // scale
             base_y = y // scale
             # Bottom-right corner is transparent, rest opaque
@@ -74,28 +109,176 @@ def generate_grid_scale(scale):
                 img.putpixel((x, y), (0, 0, 0, GRID_ALPHA))
     return img
 
-def generate_crt_scale(scale):
+def generate_grille_scale(scale):
     """
-    Generate 6×N CRT pattern for specific pixel scale.
+    Generate aperture grille pattern (Trinitron-style).
 
-    Creates vertical shadow columns (opaque black), controlled via global opacity.
-    Alternating columns for phosphor grid appearance.
+    Tile Size: 2×1 (alternating phosphor/bar columns)
+
+    Pattern:
+    | Pixel | Description        | Alpha      |
+    |-------|--------------------|------------|
+    | 0     | Phosphor stripe    | 0 (clear)  |
+    | 1     | Vertical bar       | 255 (dark) |
+
+    Scale determines height (tiles vertically at 1:1).
     """
-    img = Image.new('RGBA', (6, scale))
-    # Alternating shadow/transparent columns (matches phosphor grid)
-    # Columns 0,2,4: shadow, Columns 1,3,5: transparent
+    img = Image.new('RGBA', (2, scale))
     for y in range(scale):
-        for x in range(6):
-            if x % 2 == 0:
-                img.putpixel((x, y), (0, 0, 0, CRT_SHADOW))  # Shadow column
+        img.putpixel((0, y), (0, 0, 0, 0))            # Phosphor (transparent)
+        img.putpixel((1, y), (0, 0, 0, GRILLE_BAR))   # Bar (shadow)
+    return img
+
+def generate_slot_scale(scale):
+    """
+    Generate slot mask pattern (consumer TV-style).
+
+    Tile Size: 4×3 (scaled by pixel scale)
+
+    Pattern Layout:
+    Row 0: metal metal metal metal   (shadow bar)
+    Row 1: metal slot  slot  metal   (vertical bars + clear slot)
+    Row 2: metal metal metal metal   (shadow bar)
+
+    Metal = shadow (alpha=255), Slot = clear (alpha=0)
+    """
+    base_w, base_h = 4, 3
+    img = Image.new('RGBA', (base_w * scale, base_h * scale))
+
+    for y in range(base_h * scale):
+        for x in range(base_w * scale):
+            base_x = x // scale
+            base_y = y // scale
+
+            # Row 0 and 2: all metal (shadow)
+            if base_y == 0 or base_y == 2:
+                img.putpixel((x, y), (0, 0, 0, SLOT_METAL))
+            # Row 1: metal on edges (shadow), slot interior clear
+            elif base_y == 1:
+                if base_x == 0 or base_x == 3:
+                    img.putpixel((x, y), (0, 0, 0, SLOT_METAL))
+                else:
+                    img.putpixel((x, y), (0, 0, 0, 0))  # Slot (transparent)
+    return img
+
+def generate_dot_scale(scale):
+    """
+    Generate dot/shadow mask pattern (triad-like).
+
+    Tile Size: 3×3 (scaled by pixel scale)
+
+    Pattern:
+    [ metal, dot,   metal ]
+    [ dot,   metal, dot   ]
+    [ metal, dot,   metal ]
+
+    Dot = clear (alpha=0), Metal = shadow (alpha=255)
+    Creates a diamond/staggered pattern of clear holes.
+    """
+    base_size = 3
+    img = Image.new('RGBA', (base_size * scale, base_size * scale))
+
+    # Base 3x3 pattern: 1 = dot hole (clear), 0 = metal (shadow)
+    base_pattern = [
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+    ]
+
+    for y in range(base_size * scale):
+        for x in range(base_size * scale):
+            base_x = x // scale
+            base_y = y // scale
+            if base_pattern[base_y][base_x] == 1:
+                img.putpixel((x, y), (0, 0, 0, 0))          # Dot hole (transparent)
             else:
-                img.putpixel((x, y), (0, 0, 0, 0))  # Transparent column
+                img.putpixel((x, y), (0, 0, 0, DOT_METAL))  # Metal (shadow)
+    return img
+
+def generate_dmg_scale(scale):
+    """
+    Generate Game Boy DMG LCD pattern.
+
+    Tile Size: 3×3 (scaled by pixel scale)
+
+    Pattern:
+    [ border, border, border ]
+    [ border, cell,   border ]
+    [ border, border, border ]
+
+    Cell = clear (alpha=0), Border = shadow (alpha=255)
+    Large, visible LCD pixels with thick dark borders.
+    """
+    base_size = 3
+    img = Image.new('RGBA', (base_size * scale, base_size * scale))
+
+    for y in range(base_size * scale):
+        for x in range(base_size * scale):
+            base_x = x // scale
+            base_y = y // scale
+            # Only center pixel is cell (clear), rest is border (shadow)
+            if base_x == 1 and base_y == 1:
+                img.putpixel((x, y), (0, 0, 0, 0))            # Cell (transparent)
+            else:
+                img.putpixel((x, y), (0, 0, 0, DMG_BORDER))   # Border (shadow)
+    return img
+
+def generate_gbc_scale(scale):
+    """
+    Generate Game Boy Color LCD pattern.
+
+    Tile Size: 2×2 (scaled by pixel scale)
+
+    Pattern:
+    [ border, border ]
+    [ border, cell   ]
+
+    Cell = clear (alpha=0), Border = shadow (alpha=255)
+    Finer grid than DMG.
+    """
+    base_size = 2
+    img = Image.new('RGBA', (base_size * scale, base_size * scale))
+
+    for y in range(base_size * scale):
+        for x in range(base_size * scale):
+            base_x = x // scale
+            base_y = y // scale
+            # Bottom-right is cell (clear), rest is border (shadow)
+            if base_x == 1 and base_y == 1:
+                img.putpixel((x, y), (0, 0, 0, 0))            # Cell (transparent)
+            else:
+                img.putpixel((x, y), (0, 0, 0, GBC_BORDER))   # Border (shadow)
+    return img
+
+def generate_lcd_scale(scale):
+    """
+    Generate RGB stripe LCD pattern (GBA SP-style).
+
+    Tile Size: 3×1 (vertical stripes, height = scale)
+
+    Pattern:
+    | Pixel | Description     | Alpha      |
+    |-------|-----------------|------------|
+    | 0     | Subpixel        | 0 (clear)  |
+    | 1     | Gap             | 255 (dark) |
+    | 2     | Subpixel        | 0 (clear)  |
+
+    Subpixel = clear (alpha=0), Gap = shadow (alpha=255)
+    Subtle vertical shadow stripes for modern handheld LCD look.
+    """
+    img = Image.new('RGBA', (3, scale))
+    for y in range(scale):
+        img.putpixel((0, y), (0, 0, 0, 0))         # Subpixel (transparent)
+        img.putpixel((1, y), (0, 0, 0, LCD_GAP))   # Gap (shadow)
+        img.putpixel((2, y), (0, 0, 0, 0))         # Subpixel (transparent)
     return img
 
 def show_pattern(name, img):
     """Display pattern info."""
     print(f"\n{name}.png ({img.width}×{img.height}):")
-    for y in range(img.height):
+    # Only show first 8 rows to keep output manageable
+    max_rows = min(img.height, 8)
+    for y in range(max_rows):
         row = []
         for x in range(img.width):
             a = img.getpixel((x, y))[3]
@@ -103,25 +286,33 @@ def show_pattern(name, img):
                 row.append("  · ")
             elif a < 50:
                 row.append(f"░{a:3d}")
-            elif a < 150:
+            elif a < 100:
                 row.append(f"▒{a:3d}")
             else:
                 row.append(f"▓{a:3d}")
         print(f"  {''.join(row)}")
+    if img.height > max_rows:
+        print(f"  ... ({img.height - max_rows} more rows)")
 
 def main():
     print("Generating effect patterns...")
     print(f"Output: {OUT_DIR}/")
 
     # Generate patterns for common pixel scales (2-8)
-    # Scale 1 is never used (1:1 scaling has no interpolation artifacts needing effects)
     scales = [2, 3, 4, 5, 6, 7, 8]
+
+    generators = [
+        ("line", generate_lines_scale),
+        ("grid", generate_grid_scale),
+        ("grille", generate_grille_scale),
+        ("slot", generate_slot_scale),
+        ("lcd", generate_lcd_scale),
+    ]
 
     patterns = []
     for scale in scales:
-        patterns.append((f"line-{scale}", generate_lines_scale(scale)))
-        patterns.append((f"grid-{scale}", generate_grid_scale(scale)))
-        patterns.append((f"crt-{scale}", generate_crt_scale(scale)))
+        for name, gen_func in generators:
+            patterns.append((f"{name}-{scale}", gen_func(scale)))
 
     for name, img in patterns:
         path = os.path.join(OUT_DIR, f"{name}.png")
@@ -129,19 +320,16 @@ def main():
         show_pattern(name, img)
         print(f"  Saved: {path} ({os.path.getsize(path)} bytes)")
 
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print(f"Generated {len(patterns)} pattern files for scales: {scales}")
-    print("\nPattern structure:")
-    print(f"  LINE-N: 1×N pixels (shadow on row 0, transparent on rows 1 to N-1)")
-    print(f"  GRID-N: {2*scale}×{2*scale} pixels (base 2×2 pattern scaled up)")
-    print(f"  CRT-N:  6×N pixels (6-column phosphor pattern)")
-    print("\nTuning parameters (edit script to adjust):")
-    print(f"  LINES: shadow={LINES_SHADOW} (opaque black, control via opacity)")
-    print(f"  GRID:  alpha={GRID_ALPHA} (opaque black, control via opacity)")
-    print(f"  CRT:   shadow={CRT_SHADOW} (opaque black, control via opacity)")
-    print("\nUsage: Load pattern-N.png and tile at 1:1 (no scaling)")
-    print("  All patterns use opaque shadows - adjust global opacity per scale")
-    print("=" * 50)
+    print("\nPattern types:")
+    for name, _ in generators:
+        print(f"  {name.upper()}")
+    print("\nAll patterns use shadow-only approach:")
+    print("  - Clear pixels (alpha=0) where light passes through")
+    print("  - Shadow pixels (alpha=255) where darkening occurs")
+    print("  - Global opacity controlled via EFFECT_getOpacity()")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()

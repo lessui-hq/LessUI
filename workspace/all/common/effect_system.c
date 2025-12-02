@@ -90,14 +90,20 @@ const char* EFFECT_getPatternPath(char* buf, int bufsize, int type, int scale) {
 	case EFFECT_GRID:
 		pattern_name = "grid";
 		break;
-	case EFFECT_CRT:
-		pattern_name = "crt";
+	case EFFECT_GRILLE:
+		pattern_name = "grille";
+		break;
+	case EFFECT_SLOT:
+		pattern_name = "slot";
+		break;
+	case EFFECT_LCD:
+		pattern_name = "lcd";
 		break;
 	default:
 		return NULL;
 	}
 
-	// All patterns are scale-specific: line-2.png, grid-3.png, crt-4.png, etc.
+	// All patterns are scale-specific: line-2.png, grid-3.png, etc.
 	snprintf(buf, bufsize, RES_PATH "/%s-%d.png", pattern_name, EFFECT_getPatternScale(scale));
 	return buf;
 }

@@ -67,7 +67,7 @@ void EFFECT_init(EffectState* state);
  * The change is deferred until EFFECT_applyPending() is called.
  *
  * @param state Effect state to modify
- * @param type  Effect type (EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, EFFECT_CRT)
+ * @param type  Effect type (EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, etc.)
  */
 void EFFECT_setType(EffectState* state, int type);
 

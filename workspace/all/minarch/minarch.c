@@ -942,7 +942,7 @@ typedef struct OptionList {
 
 static char* onoff_labels[] = {"Off", "On", NULL};
 static char* scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
-static char* effect_labels[] = {"None", "Lines", "Grid", "CRT", NULL};
+static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", "LCD", NULL};
 static char* sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
 static char* tearing_labels[] = {"Off", "Lenient", "Strict", NULL};
 static char* max_ff_labels[] = {
@@ -1296,13 +1296,14 @@ static struct Config {
                             {
                                 .key = "minarch_screen_effect",
                                 .name = "Screen Effect",
-                                .desc = "CRT simulates phosphor scanlines.\n"
+                                .desc = "CRT effects: Grille, Slot, Dot.\n"
+                                        "LCD effects: DMG, GBC, LCD.\n"
                                         "Effects look best at native scaling.",
                                 .full = NULL,
                                 .var = NULL,
                                 .default_value = 0,
                                 .value = 0,
-                                .count = 4,
+                                .count = 6,
                                 .lock = 0,
                                 .values = effect_labels,
                                 .labels = effect_labels,

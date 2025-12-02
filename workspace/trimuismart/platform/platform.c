@@ -345,12 +345,13 @@ void PLAT_setSharpness(int sharpness) {}
 /**
  * Updates the effect overlay surface.
  * Uses shared effect_system for pattern paths and opacity.
+ * Supports all pattern-based effects (line, grid, grille, slot, dot, dmg, gbc, lcd).
  */
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
 
-	// Trimui Smart only supports CRT effect
-	if (effect_state.type != EFFECT_CRT) {
+	// No effect - clear overlay
+	if (effect_state.type == EFFECT_NONE) {
 		if (vid.effect) {
 			SDL_FreeSurface(vid.effect);
 			vid.effect = NULL;

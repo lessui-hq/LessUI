@@ -152,7 +152,7 @@ void SDL2_setSharpness(SDL2_RenderContext* ctx, int sharpness);
  * Sets effect type for next frame.
  *
  * @param ctx  Render context
- * @param type EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, or EFFECT_CRT
+ * @param type Effect type (EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, etc.)
  */
 void SDL2_setEffect(SDL2_RenderContext* ctx, int type);
 

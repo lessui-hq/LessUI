@@ -446,14 +446,23 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 /**
- * Updates the CRT effect overlay surface.
+ * Checks if effect type uses overlay (vs scaler-based rendering).
+ * LINE and GRID use scaler functions, all other effects use overlays.
+ */
+static int effectUsesOverlay(int type) {
+	return type != EFFECT_NONE && type != EFFECT_LINE && type != EFFECT_GRID;
+}
+
+/**
+ * Updates the effect overlay surface.
  * Uses shared effect_system for pattern paths and opacity.
  */
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
 
-	// CRT effect uses overlay, LINE/GRID use scaler functions
-	if (effect_state.type != EFFECT_CRT) {
+	// Only overlay effects (grille, slot, dot, dmg, gbc, lcd) use this path
+	// LINE/GRID use scaler functions instead
+	if (!effectUsesOverlay(effect_state.type)) {
 		if (vid.effect) {
 			SDL_FreeSurface(vid.effect);
 			vid.effect = NULL;
