@@ -39,9 +39,6 @@
 #define VARIANT_TG5040_STANDARD (VARIANT_PLATFORM_BASE + 0) // 1280x720 widescreen
 #define VARIANT_TG5040_BRICK (VARIANT_PLATFORM_BASE + 1) // 1024x768 (4:3)
 
-// Legacy compatibility macros (for gradual migration)
-#define is_brick (platform_variant.variant == VARIANT_TG5040_BRICK)
-
 ///////////////////////////////
 // SDL Keyboard Button Mappings
 // TG5040 does not use SDL keyboard input
@@ -127,13 +124,13 @@
 #define JOY_R1 5
 #define JOY_L2 JOY_NA // Analog trigger (handled via axis)
 #define JOY_R2 JOY_NA // Analog trigger (handled via axis)
-#define JOY_L3 (is_brick ? 9 : JOY_NA) // L3 available on Brick only
-#define JOY_R3 (is_brick ? 10 : JOY_NA) // R3 available on Brick only
+#define JOY_L3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 9 : JOY_NA)
+#define JOY_R3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 10 : JOY_NA)
 
 #define JOY_MENU 8
 #define JOY_POWER 102 // Matches CODE_POWER
-#define JOY_PLUS (is_brick ? 14 : 128) // Button 14 (Brick) or code 128 (standard)
-#define JOY_MINUS (is_brick ? 13 : 129) // Button 13 (Brick) or code 129 (standard)
+#define JOY_PLUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 14 : 128)
+#define JOY_MINUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 13 : 129)
 
 ///////////////////////////////
 // Analog Stick and Trigger Axis Mappings

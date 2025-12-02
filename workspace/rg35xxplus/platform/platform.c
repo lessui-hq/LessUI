@@ -267,7 +267,7 @@ void PLAT_flip(SDL_Surface* screen, int sync) {
 }
 
 int PLAT_supportsOverscan(void) {
-	return platform_variant.variant == VARIANT_RG35XX_SQUARE;
+	return VARIANT_IS(VARIANT_RG35XX_SQUARE);
 }
 
 ///////////////////////////////

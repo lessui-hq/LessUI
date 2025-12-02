@@ -96,6 +96,22 @@ typedef struct {
 extern PlatformVariant platform_variant;
 
 ///////////////////////////////
+// Convenience Macros
+///////////////////////////////
+
+/**
+ * Syntactic sugar for variant checking.
+ * Usage: VARIANT_IS(VARIANT_TG5040_BRICK)
+ */
+#define VARIANT_IS(v) (platform_variant.variant == (v))
+
+/**
+ * Syntactic sugar for feature checking.
+ * Usage: HAS_FEATURE(HW_FEATURE_PMIC)
+ */
+#define HAS_FEATURE(f) (platform_variant.hw_features & (f))
+
+///////////////////////////////
 // Platform API
 ///////////////////////////////
 

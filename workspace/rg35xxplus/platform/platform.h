@@ -39,13 +39,6 @@
 #define VARIANT_RG35XX_SQUARE (VARIANT_PLATFORM_BASE + 1) // 720x720 (CubeXX)
 #define VARIANT_RG35XX_WIDE (VARIANT_PLATFORM_BASE + 2) // 720x480 (RG34XX)
 
-// Legacy compatibility macros (for gradual migration)
-#define is_cubexx (platform_variant.variant == VARIANT_RG35XX_SQUARE)
-#define is_rg34xx (platform_variant.variant == VARIANT_RG35XX_WIDE)
-
-// Note: on_hdmi is a struct member in SDL2_RenderContext, not a global
-// Access HDMI state via platform_variant.hdmi_active instead
-
 ///////////////////////////////
 // SDL Keyboard Button Mappings
 // RG35XX Plus does not use SDL keyboard input

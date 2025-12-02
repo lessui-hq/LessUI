@@ -37,10 +37,6 @@
 #define VARIANT_MINI_PLUS (VARIANT_PLATFORM_BASE + 1) // 640x480, AXP223 PMIC
 #define VARIANT_MINI_PLUS_560P (VARIANT_PLATFORM_BASE + 2) // 752x560, AXP223 PMIC
 
-// Legacy compatibility macros (for gradual migration)
-#define is_plus (platform_variant.variant >= VARIANT_MINI_PLUS)
-#define is_560p (platform_variant.variant == VARIANT_MINI_PLUS_560P)
-
 ///////////////////////////////
 // SDL Keyboard Button Mappings
 // Maps physical buttons to SDL key codes
@@ -140,11 +136,10 @@
 #define BTN_RESUME BTN_X // Button to resume from save state
 #define BTN_SLEEP BTN_POWER // Button to enter sleep mode
 #define BTN_WAKE BTN_POWER // Button to wake from sleep
-#define BTN_MOD_VOLUME                                                                             \
-	(is_plus ? BTN_NONE : BTN_SELECT) // Hold SELECT for volume (standard) or none (Plus)
-#define BTN_MOD_BRIGHTNESS (is_plus ? BTN_MENU : BTN_START) // Hold START/MENU for brightness
-#define BTN_MOD_PLUS (is_plus ? BTN_PLUS : BTN_R1) // Increase with dedicated button (Plus) or R1
-#define BTN_MOD_MINUS (is_plus ? BTN_MINUS : BTN_L1) // Decrease with dedicated button (Plus) or L1
+#define BTN_MOD_VOLUME (HAS_FEATURE(HW_FEATURE_VOLUME_HW) ? BTN_NONE : BTN_SELECT)
+#define BTN_MOD_BRIGHTNESS (HAS_FEATURE(HW_FEATURE_VOLUME_HW) ? BTN_MENU : BTN_START)
+#define BTN_MOD_PLUS (HAS_FEATURE(HW_FEATURE_VOLUME_HW) ? BTN_PLUS : BTN_R1)
+#define BTN_MOD_MINUS (HAS_FEATURE(HW_FEATURE_VOLUME_HW) ? BTN_MINUS : BTN_L1)
 
 ///////////////////////////////
 // Display Specifications
@@ -152,13 +147,13 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
-#define SCALE_MODIFIER (is_plus ? 1.0f : 0.92f) // Standard: reduce UI size; Plus: default
-#define EDGE_PADDING (is_plus ? 10 : 5) // Standard: reduced padding; Plus: default
+#define SCALE_MODIFIER ((platform_variant.variant >= VARIANT_MINI_PLUS) ? 1.0f : 0.92f)
+#define EDGE_PADDING ((platform_variant.variant >= VARIANT_MINI_PLUS) ? 10 : 5)
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
 
 // Page buffer overscaling (560p uses less to save memory)
-#define PAGE_SCALE (is_560p ? 2 : 3)
+#define PAGE_SCALE (VARIANT_IS(VARIANT_MINI_PLUS_560P) ? 2 : 3)
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings
