@@ -2229,9 +2229,9 @@ int main(int argc, char* argv[]) {
 	unsigned long thumb_fade_start_ms = 0; // When fade started (0 = not fading)
 
 	// Pre-calculate thumbnail dimensions (these don't change at runtime)
-	int padding = DP(ui.edge_padding);
-	int thumb_max_width = (ui.screen_width_px * THUMB_MAX_WIDTH_PERCENT) / 100 - padding;
-	int thumb_max_height = ui.screen_height_px - (padding * 2);
+	int thumb_padding = DP(ui.edge_padding);
+	int thumb_max_width = (ui.screen_width_px * THUMB_MAX_WIDTH_PERCENT) / 100 - thumb_padding;
+	int thumb_max_height = ui.screen_height_px - (thumb_padding * 2);
 
 	LOG_debug("Entering main loop");
 	while (!quit) {

@@ -110,7 +110,7 @@
  * SDL 1.2 does not support surface-level alpha modulation for RGBA surfaces.
  * This is a no-op - fade effects are not supported on SDL 1.2.
  */
-#define SDLX_SetAlphaMod(surface, value) ((void)0)
+#define SDLX_SetAlphaMod(surface, value) ((void)(surface), (void)(value))
 
 /**
  * Check if surface alpha modulation is supported on this SDL version.
