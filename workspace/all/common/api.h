@@ -882,6 +882,7 @@ typedef struct PAD_Context {
 	int just_released; // Bitmask of buttons released this frame
 	int just_repeated; // Bitmask of buttons auto-repeated this frame
 	uint32_t repeat_at[BTN_ID_COUNT]; // Timestamp for next repeat per button
+	uint32_t hold_start[BTN_ID_COUNT]; // Timestamp when button was first pressed (for accel)
 	PAD_Axis laxis; // Left analog stick state
 	PAD_Axis raxis; // Right analog stick state
 } PAD_Context;
@@ -892,6 +893,8 @@ extern PAD_Context pad;
  */
 #define PAD_REPEAT_DELAY 300 // Milliseconds before first repeat
 #define PAD_REPEAT_INTERVAL 100 // Milliseconds between repeats
+#define PAD_ACCEL_AFTER 1500 // Milliseconds before acceleration kicks in
+#define PAD_REPEAT_FAST_INTERVAL 50 // Milliseconds between repeats when accelerated
 
 /**
  * Initializes the input subsystem.

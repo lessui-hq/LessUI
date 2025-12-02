@@ -88,6 +88,9 @@ void PAD_reset(void) {
 	pad.is_pressed = BTN_NONE;
 	pad.just_released = BTN_NONE;
 	pad.just_repeated = BTN_NONE;
+	for (int i = 0; i < BTN_ID_COUNT; i++) {
+		pad.hold_start[i] = 0;
+	}
 }
 
 /**

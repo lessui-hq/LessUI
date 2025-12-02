@@ -37,6 +37,7 @@ typedef struct PAD_Context {
 	int just_released; // Bitmask of buttons released this frame
 	int just_repeated; // Bitmask of buttons auto-repeated this frame
 	uint32_t repeat_at[BTN_ID_COUNT]; // Timestamp for next repeat per button
+	uint32_t hold_start[BTN_ID_COUNT]; // Timestamp when button was first pressed (for accel)
 	PAD_Axis laxis; // Left analog stick state
 	PAD_Axis raxis; // Right analog stick state
 } PAD_Context;

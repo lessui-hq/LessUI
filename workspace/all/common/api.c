@@ -2086,7 +2086,11 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 		int btn = 1 << i;
 		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
 			pad.just_repeated |= btn; // set
-			pad.repeat_at[i] += PAD_REPEAT_INTERVAL;
+			// Use faster interval if held long enough
+			uint32_t hold_duration = tick - pad.hold_start[i];
+			int interval =
+			    (hold_duration > PAD_ACCEL_AFTER) ? PAD_REPEAT_FAST_INTERVAL : PAD_REPEAT_INTERVAL;
+			pad.repeat_at[i] += interval;
 		}
 	}
 
@@ -2310,11 +2314,13 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 					pad.is_pressed &= ~btn; // unset
 					pad.just_repeated &= ~btn; // unset
 					pad.just_released |= btn; // set
+					pad.hold_start[id] = 0; // clear hold tracking
 				} else if (state == 1 && (pad.is_pressed & btn) == BTN_NONE) {
 					pad.just_pressed |= btn; // set
 					pad.just_repeated |= btn; // set
 					pad.is_pressed |= btn; // set
 					pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
+					pad.hold_start[id] = tick; // track when hold started
 				}
 			}
 			btn = BTN_NONE; // already handled, force continue
@@ -2363,11 +2369,13 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 			pad.is_pressed &= ~btn; // unset
 			pad.just_repeated &= ~btn; // unset
 			pad.just_released |= btn; // set
+			pad.hold_start[id] = 0; // clear hold tracking
 		} else if ((pad.is_pressed & btn) == BTN_NONE) {
 			pad.just_pressed |= btn; // set
 			pad.just_repeated |= btn; // set
 			pad.is_pressed |= btn; // set
 			pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
+			pad.hold_start[id] = tick; // track when hold started
 		}
 	}
 
