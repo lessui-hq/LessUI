@@ -2,6 +2,7 @@
 // Tests all utility functions organized by category
 
 #include "../../../../workspace/all/common/utils.h"
+#include "../../../../workspace/all/common/defines.h"
 #include "../../../support/unity/unity.h"
 #include "../../../support/platform.h"
 #include <stdint.h>
@@ -342,6 +343,69 @@ void test_putInt_negative(void) {
 void test_allocFile_nonexistent(void) {
 	char* content = allocFile("/tmp/nonexistent_file_12345.txt");
 	TEST_ASSERT_NULL(content);
+}
+
+void test_getEmuPath_platform_specific_exists(void) {
+	// Create platform-specific pak directory structure
+	char platform_dir[512];
+	char platform_file[512];
+	sprintf(platform_dir, "%s/Emus/%s/fceux.pak", SDCARD_PATH, PLATFORM);
+	sprintf(platform_file, "%s/launch.sh", platform_dir);
+
+	// Create directory and file
+	char mkdir_cmd[1024];
+	sprintf(mkdir_cmd, "mkdir -p \"%s\"", platform_dir);
+	system(mkdir_cmd);
+	touch(platform_file);
+
+	char result[512];
+	getEmuPath("fceux", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/%s/fceux.pak/launch.sh", SDCARD_PATH, PLATFORM);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
+
+	// Cleanup
+	unlink(platform_file);
+	char rmdir_cmd[1024];
+	sprintf(rmdir_cmd, "rm -rf \"%s/Emus\"", SDCARD_PATH);
+	system(rmdir_cmd);
+}
+
+void test_getEmuPath_shared_only(void) {
+	// Create shared pak only (no platform-specific)
+	char shared_dir[512];
+	char shared_file[512];
+	sprintf(shared_dir, "%s/Emus/gambatte.pak", PAKS_PATH);
+	sprintf(shared_file, "%s/launch.sh", shared_dir);
+
+	// Create directory and file
+	char mkdir_cmd[1024];
+	sprintf(mkdir_cmd, "mkdir -p \"%s\"", shared_dir);
+	system(mkdir_cmd);
+	touch(shared_file);
+
+	char result[512];
+	getEmuPath("gambatte", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/gambatte.pak/launch.sh", PAKS_PATH);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
+
+	// Cleanup
+	unlink(shared_file);
+	char rmdir_cmd[1024];
+	sprintf(rmdir_cmd, "rm -rf \"%s/Emus\"", PAKS_PATH);
+	system(rmdir_cmd);
+}
+
+void test_getEmuPath_neither_exists_returns_shared(void) {
+	char result[512];
+	getEmuPath("nonexistent_core", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/nonexistent_core.pak/launch.sh", PAKS_PATH);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
 }
 
 ///////////////////////////////
@@ -876,6 +940,9 @@ int main(void) {
 	RUN_TEST(test_getInt_nonexistent_file);
 	RUN_TEST(test_putInt_negative);
 	RUN_TEST(test_allocFile_nonexistent);
+	RUN_TEST(test_getEmuPath_platform_specific_exists);
+	RUN_TEST(test_getEmuPath_shared_only);
+	RUN_TEST(test_getEmuPath_neither_exists_returns_shared);
 
 	// Name processing
 	RUN_TEST(test_getDisplayName_simple);

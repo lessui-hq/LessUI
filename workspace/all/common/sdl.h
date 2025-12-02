@@ -80,6 +80,11 @@
 		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_BLEND);                                     \
 	} while (0);
 
+/**
+ * Check if surface alpha modulation is supported on this SDL version.
+ */
+#define SDLX_SupportsSurfaceAlphaMod() 1
+
 ///////////////////////////////
 // SDL 1.2 configuration
 ///////////////////////////////
@@ -102,8 +107,16 @@
 
 /**
  * SDL 1.2 version of SDLX_SetAlphaMod.
+ * SDL 1.2 does not support surface-level alpha modulation for RGBA surfaces.
+ * This is a no-op - fade effects are not supported on SDL 1.2.
  */
-#define SDLX_SetAlphaMod(surface, value) SDL_SetAlpha(surface, SDL_SRCALPHA, value)
+#define SDLX_SetAlphaMod(surface, value) ((void)0)
+
+/**
+ * Check if surface alpha modulation is supported on this SDL version.
+ * SDL 1.2 does not support surface alpha modulation for RGBA surfaces.
+ */
+#define SDLX_SupportsSurfaceAlphaMod() 0
 
 #endif
 

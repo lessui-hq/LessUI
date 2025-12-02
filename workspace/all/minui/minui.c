@@ -2228,6 +2228,11 @@ int main(int argc, char* argv[]) {
 	int thumb_alpha = THUMB_ALPHA_MAX; // Current fade alpha, starts full for instant display
 	unsigned long thumb_fade_start_ms = 0; // When fade started (0 = not fading)
 
+	// Pre-calculate thumbnail dimensions (these don't change at runtime)
+	int padding = DP(ui.edge_padding);
+	int thumb_max_width = (ui.screen_width_px * THUMB_MAX_WIDTH_PERCENT) / 100 - padding;
+	int thumb_max_height = ui.screen_height_px - (padding * 2);
+
 	LOG_debug("Entering main loop");
 	while (!quit) {
 		GFX_startFrame();
@@ -2406,12 +2411,9 @@ int main(int argc, char* argv[]) {
 
 						// Request async load if thumbnail exists
 						if (thumb_exists) {
-							int padding = DP(ui.edge_padding);
-							int max_width =
-							    (ui.screen_width_px * THUMB_MAX_WIDTH_PERCENT) / 100 - padding;
-							int max_height = ui.screen_height_px - (padding * 2);
-							if (max_width > 0 && max_height > 0) {
-								ThumbLoader_request(cached_thumb_path, max_width, max_height);
+							if (thumb_max_width > 0 && thumb_max_height > 0) {
+								ThumbLoader_request(cached_thumb_path, thumb_max_width,
+								                    thumb_max_height);
 							}
 						}
 					}
@@ -2425,8 +2427,14 @@ int main(int argc, char* argv[]) {
 			SDL_Surface* loaded = ThumbLoader_get(cached_thumb_path);
 			if (loaded) {
 				cached_thumb = loaded;
-				thumb_alpha = THUMB_ALPHA_MIN; // Start fade from transparent
-				thumb_fade_start_ms = now; // Record when fade started
+				// Fade effects only supported on SDL 2.0
+				if (SDLX_SupportsSurfaceAlphaMod()) {
+					thumb_alpha = THUMB_ALPHA_MIN; // Start fade from transparent
+					thumb_fade_start_ms = now; // Record when fade started
+				} else {
+					thumb_alpha = THUMB_ALPHA_MAX; // Instant display on SDL 1.2
+					thumb_fade_start_ms = 0;
+				}
 				dirty = 1;
 			}
 		}
@@ -2435,8 +2443,8 @@ int main(int argc, char* argv[]) {
 		int showing_thumb = (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
 		                     cached_thumb->h > 0);
 
-		// Animate thumbnail fade-in with smoothstep easing
-		if (cached_thumb && thumb_fade_start_ms > 0) {
+		// Animate thumbnail fade-in with smoothstep easing (SDL 2.0 only)
+		if (SDLX_SupportsSurfaceAlphaMod() && cached_thumb && thumb_fade_start_ms > 0) {
 			unsigned long elapsed = now - thumb_fade_start_ms;
 			if (elapsed >= THUMB_FADE_DURATION_MS) {
 				thumb_alpha = THUMB_ALPHA_MAX; // Fade complete
@@ -2463,9 +2471,7 @@ int main(int argc, char* argv[]) {
 				int padding = DP(ui.edge_padding);
 				int ox = ui.screen_width_px - cached_thumb->w - padding;
 				oy = (ui.screen_height_px - cached_thumb->h) / 2;
-				// Clamp alpha to valid range for SDL compatibility
-				int safe_alpha = (thumb_alpha < 0) ? 0 : ((thumb_alpha > 255) ? 255 : thumb_alpha);
-				SDLX_SetAlphaMod(cached_thumb, safe_alpha);
+				SDLX_SetAlphaMod(cached_thumb, thumb_alpha);
 				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
