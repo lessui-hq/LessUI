@@ -35,6 +35,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 ///////////////////////////////

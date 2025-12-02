@@ -891,7 +891,7 @@ static int quit = 0; // Set to 1 to exit main loop
 static int can_resume = 0; // 1 if selected ROM has a save state
 static int should_resume = 0; // Set to 1 when X button pressed to resume
 static int simple_mode = 0; // 1 if simple mode enabled (hides Tools, disables sleep)
-static char slot_path[256]; // Path to save state slot file for can_resume check
+static char slot_path[MAX_PATH]; // Path to save state slot file for can_resume check
 
 // State restoration variables for preserving selection when navigating
 static int restore_depth = -1;
@@ -1112,14 +1112,14 @@ static int hasRecents(void) {
 				alias = tmp + 1;
 			}
 
-			char sd_path[256];
-			sprintf(sd_path, "%s%s", SDCARD_PATH, path);
+			char sd_path[MAX_PATH];
+			snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, path);
 			if (exists(sd_path)) {
 				if (recents->count < MAX_RECENTS) {
 					// this logic replaces an existing disc from a multi-disc game with the last used
-					char m3u_path[256];
+					char m3u_path[MAX_PATH];
 					if (hasM3u(sd_path, m3u_path)) { // TODO: this might tank launch speed
-						char parent_path[256];
+						char parent_path[MAX_PATH];
 						strcpy(parent_path, path);
 						char* sep = strrchr(parent_path, '/') + 1;
 						sep[0] = '\0';
@@ -1422,8 +1422,8 @@ static Array* getCollection(char* path) {
 			if (strlen(line) == 0)
 				continue; // skip empty lines
 
-			char sd_path[256];
-			sprintf(sd_path, "%s%s", SDCARD_PATH, line);
+			char sd_path[MAX_PATH];
+			snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, line);
 			if (exists(sd_path)) {
 				int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM;
 				Array_push(entries, Entry_new(sd_path, type));
@@ -1463,16 +1463,16 @@ static Array* getDiscs(char* path) {
 			if (strlen(line) == 0)
 				continue; // skip empty lines
 
-			char disc_path[256];
-			sprintf(disc_path, "%s%s", base_path, line);
+			char disc_path[MAX_PATH];
+			snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
 
 			if (exists(disc_path)) {
 				disc += 1;
 				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
 				if (!entry)
 					continue;
-				char name[16];
-				sprintf(name, "Disc %i", disc);
+				char name[24];
+				snprintf(name, sizeof(name), "Disc %i", disc);
 				if (!Entry_setName(entry, name)) {
 					Entry_free(entry);
 					continue;
@@ -1704,13 +1704,13 @@ static char* escapeSingleQuotes(char* str) {
 static void readyResumePath(char* rom_path, int type) {
 	char* tmp;
 	can_resume = 0;
-	char path[256];
+	char path[MAX_PATH];
 	strcpy(path, rom_path);
 
 	if (!prefixMatch(ROMS_PATH, path))
 		return;
 
-	char auto_path[256];
+	char auto_path[MAX_PATH];
 	if (type == ENTRY_DIR) {
 		if (!hasCue(path, auto_path)) { // no cue?
 			tmp = strrchr(auto_path, '.') + 1; // extension
@@ -1722,22 +1722,22 @@ static void readyResumePath(char* rom_path, int type) {
 	}
 
 	if (!suffixMatch(".m3u", path)) {
-		char m3u_path[256];
+		char m3u_path[MAX_PATH];
 		if (hasM3u(path, m3u_path)) {
 			// change path to m3u path
 			strcpy(path, m3u_path);
 		}
 	}
 
-	char emu_name[256];
+	char emu_name[MAX_PATH];
 	getEmuName(path, emu_name);
 
-	char rom_file[256];
+	char rom_file[MAX_PATH];
 	tmp = strrchr(path, '/') + 1;
 	strcpy(rom_file, tmp);
 
-	sprintf(slot_path, "%s/.minui/%s/%s.txt", SHARED_USERDATA_PATH, emu_name,
-	        rom_file); // /.userdata/.minui/<EMU>/<romname>.ext.txt
+	snprintf(slot_path, sizeof(slot_path), "%s/.minui/%s/%s.txt", SHARED_USERDATA_PATH, emu_name,
+	         rom_file); // /.userdata/.minui/<EMU>/<romname>.ext.txt
 
 	can_resume = exists(slot_path);
 }
@@ -1754,22 +1754,22 @@ static int autoResume(void) {
 	if (!exists(AUTO_RESUME_PATH))
 		return 0;
 
-	char path[256];
-	getFile(AUTO_RESUME_PATH, path, 256);
+	char path[MAX_PATH];
+	getFile(AUTO_RESUME_PATH, path, MAX_PATH);
 	unlink(AUTO_RESUME_PATH);
 	sync();
 
 	// make sure rom still exists
-	char sd_path[256];
-	sprintf(sd_path, "%s%s", SDCARD_PATH, path);
+	char sd_path[MAX_PATH];
+	snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, path);
 	if (!exists(sd_path))
 		return 0;
 
 	// make sure emu still exists
-	char emu_name[256];
+	char emu_name[MAX_PATH];
 	getEmuName(sd_path, emu_name);
 
-	char emu_path[256];
+	char emu_path[MAX_PATH];
 	getEmuPath(emu_name, emu_path);
 
 	if (!exists(emu_path))
@@ -1777,8 +1777,9 @@ static int autoResume(void) {
 
 	// putFile(LAST_PATH, FAUX_RECENT_PATH); // saveLast() will crash here because top is NULL
 
-	char cmd[256];
-	sprintf(cmd, "'%s' '%s'", escapeSingleQuotes(emu_path), escapeSingleQuotes(sd_path));
+	char cmd[MAX_PATH * 2];
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
+	         escapeSingleQuotes(sd_path));
 	putInt(RESUME_SLOT_PATH, AUTO_RESUME_SLOT);
 	queueNext(cmd);
 	return 1;
@@ -1829,20 +1830,20 @@ static void openPak(char* path) {
 static void openRom(char* path, char* last) {
 	LOG_info("openRom(%s,%s)", path, last);
 
-	char sd_path[256];
+	char sd_path[MAX_PATH];
 	strcpy(sd_path, path);
 
-	char m3u_path[256];
+	char m3u_path[MAX_PATH];
 	int has_m3u = hasM3u(sd_path, m3u_path);
 
-	char recent_path[256];
+	char recent_path[MAX_PATH];
 	strcpy(recent_path, has_m3u ? m3u_path : sd_path);
 
 	if (has_m3u && suffixMatch(".m3u", sd_path)) {
 		getFirstDisc(m3u_path, sd_path);
 	}
 
-	char emu_name[256];
+	char emu_name[MAX_PATH];
 	getEmuName(sd_path, emu_name);
 
 	if (should_resume) {
@@ -1852,18 +1853,19 @@ static void openRom(char* path, char* last) {
 		should_resume = 0;
 
 		if (has_m3u) {
-			char rom_file[256];
+			char rom_file[MAX_PATH];
 			strcpy(rom_file, strrchr(m3u_path, '/') + 1);
 
 			// get disc for state
-			char disc_path_path[256];
-			sprintf(disc_path_path, "%s/.minui/%s/%s.%s.txt", SHARED_USERDATA_PATH, emu_name,
-			        rom_file, slot); // /.userdata/arm-480/.minui/<EMU>/<romname>.ext.0.txt
+			char disc_path_path[MAX_PATH];
+			snprintf(disc_path_path, sizeof(disc_path_path), "%s/.minui/%s/%s.%s.txt",
+			         SHARED_USERDATA_PATH, emu_name, rom_file,
+			         slot); // /.userdata/arm-480/.minui/<EMU>/<romname>.ext.0.txt
 
 			if (exists(disc_path_path)) {
 				// switch to disc path
-				char disc_path[256];
-				getFile(disc_path_path, disc_path, 256);
+				char disc_path[MAX_PATH];
+				getFile(disc_path_path, disc_path, MAX_PATH);
 				if (disc_path[0] == '/')
 					strcpy(sd_path, disc_path); // absolute
 				else { // relative
@@ -1876,7 +1878,7 @@ static void openRom(char* path, char* last) {
 	} else
 		putInt(RESUME_SLOT_PATH, 8); // resume hidden default state
 
-	char emu_path[256];
+	char emu_path[MAX_PATH];
 	getEmuPath(emu_name, emu_path);
 
 	// NOTE: escapeSingleQuotes() modifies the passed string
@@ -1884,8 +1886,9 @@ static void openRom(char* path, char* last) {
 	addRecent(recent_path, recent_alias); // yiiikes
 	saveLast(last == NULL ? sd_path : last);
 
-	char cmd[256];
-	sprintf(cmd, "'%s' '%s'", escapeSingleQuotes(emu_path), escapeSingleQuotes(sd_path));
+	char cmd[MAX_PATH * 2];
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
+	         escapeSingleQuotes(sd_path));
 	queueNext(cmd);
 }
 /**
@@ -1977,17 +1980,17 @@ static void Entry_open(Entry* self) {
 	recent_alias = self->name; // Passed to addRecent via global
 	if (self->type == ENTRY_ROM) {
 		char* last = NULL;
-		char last_path[256]; // Moved outside if block to fix invalidLifetime bug
+		char last_path[MAX_PATH]; // Moved outside if block to fix invalidLifetime bug
 		// Collection ROMs use collection path for state restoration
 		if (prefixMatch(COLLECTIONS_PATH, top->path)) {
 			char* tmp;
-			char filename[256];
+			char filename[MAX_PATH];
 
 			tmp = strrchr(self->path, '/');
 			if (tmp)
 				strcpy(filename, tmp + 1);
 
-			sprintf(last_path, "%s/%s", top->path, filename);
+			snprintf(last_path, sizeof(last_path), "%s/%s", top->path, filename);
 			last = last_path;
 		}
 		openRom(self->path, last);

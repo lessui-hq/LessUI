@@ -27,6 +27,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "effect_utils.h"
 #include "scaler.h"
 
 ///////////////////////////////
@@ -93,6 +94,7 @@ static struct VID_Context {
 	SDL_Window* window;
 	SDL_Renderer* renderer;
 	SDL_Texture* texture;
+	SDL_Texture* effect;
 	SDL_Surface* buffer;
 	SDL_Surface* screen;
 
@@ -102,6 +104,14 @@ static struct VID_Context {
 	int height;
 	int pitch;
 } vid;
+
+static struct {
+	int type;
+	int next_type;
+	int scale;
+	int next_scale;
+	int live_type;
+} effect = {0};
 
 static int device_width;
 static int device_height;
@@ -280,7 +290,29 @@ void PLAT_vsync(int remaining) {
 }
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
+	effect.next_scale = renderer->scale;
 	return scale1x1_c16;
+}
+
+static void updateEffect(void) {
+	// Desktop platform: effects are stubbed (no game rendering)
+	// Apply pending changes
+	effect.type = effect.next_type;
+	effect.scale = effect.next_scale;
+
+	// Clear effect texture if disabled
+	if (effect.type == EFFECT_NONE && vid.effect) {
+		SDL_DestroyTexture(vid.effect);
+		vid.effect = NULL;
+	}
+}
+
+void PLAT_setEffect(int next_type) {
+	effect.next_type = next_type;
+}
+
+void PLAT_setEffectColor(int next_color) {
+	// Desktop platform doesn't support DMG color tinting
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
@@ -306,6 +338,8 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
  * @param ignored Unused integer parameter
  */
 void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
+	updateEffect();
+
 	if (!vid.blit) {
 		resizeVideo(device_width, device_height, FIXED_PITCH); // !!!???
 		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
@@ -318,6 +352,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 			LOG_info("not rotated\n");
 			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
 		}
+
+		if (vid.effect && effect.type != EFFECT_NONE) {
+			SDL_RenderCopy(vid.renderer, vid.effect, NULL, NULL);
+		}
+
 		SDL_RenderPresent(vid.renderer);
 		return;
 	}
@@ -371,6 +410,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 		}
 	}
 	SDL_RenderCopy(vid.renderer, vid.texture, src_rect, dst_rect);
+
+	if (vid.effect && effect.type != EFFECT_NONE && dst_rect) {
+		SDL_RenderCopy(vid.renderer, vid.effect, NULL, dst_rect);
+	}
+
 	SDL_RenderPresent(vid.renderer);
 	vid.blit = NULL;
 }

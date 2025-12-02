@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 200809L // Required for strdup()
 
 #include "m3u_parser.h"
+#include "defines.h"
 #include "log.h"
 #include "utils.h"
 #include <errno.h>
@@ -101,18 +102,18 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 	}
 
 	{
-		char line[256];
+		char line[MAX_PATH];
 		int disc_num = 0;
 
-		while (fgets(line, 256, file) != NULL && *disc_count < 10) {
+		while (fgets(line, sizeof(line), file) != NULL && *disc_count < 10) {
 			normalizeNewline(line);
 			trimTrailingNewlines(line);
 			if (strlen(line) == 0)
 				continue; // skip empty lines
 
 			// Construct full disc path
-			char disc_path[256];
-			sprintf(disc_path, "%s%s", base_path, line);
+			char disc_path[MAX_PATH];
+			snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
 
 			// Only include discs that exist
 			if (exists(disc_path)) {
@@ -131,8 +132,8 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 					continue;
 				}
 
-				char name[16];
-				sprintf(name, "Disc %i", disc_num);
+				char name[24];
+				snprintf(name, sizeof(name), "Disc %i", disc_num);
 				disc->name = strdup(name);
 				if (!disc->name) {
 					LOG_warn("Failed to duplicate disc name: %s", name);

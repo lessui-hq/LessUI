@@ -325,12 +325,17 @@ enum {
 };
 
 /**
- * CRT-style visual effects.
+ * CRT/LCD visual effects.
+ *
+ * All effects use shadow-only overlays (black pixels with alpha).
+ * Patterns based on MAME HLSL shaders by cgwg, Themaister, et al.
  */
 enum {
 	EFFECT_NONE, // No effect
 	EFFECT_LINE, // Horizontal scanlines
-	EFFECT_GRID, // Grid pattern
+	EFFECT_GRID, // Pixel grid (2x2)
+	EFFECT_GRILLE, // Aperture grille (vertical stripes, 50% shadow)
+	EFFECT_SLOT, // Slot mask (staggered vertical slots)
 	EFFECT_COUNT,
 };
 

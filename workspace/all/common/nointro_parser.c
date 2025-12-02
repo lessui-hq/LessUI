@@ -153,6 +153,9 @@ static bool extractTag(char* str, char open, char close, char* out, size_t out_s
  * This will be replaced with tiny-regex-c implementation.
  */
 static void classifyTag(const char* tag, NoIntroName* parsed) {
+	if (!tag || !parsed)
+		return;
+
 	// Status flags (single character)
 	if (strlen(tag) == 1) {
 		strcpy(parsed->status, tag);
@@ -227,6 +230,9 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 void parseNoIntroName(const char* filename, NoIntroName* parsed) {
 	char work[NOINTRO_MAX_TITLE];
 	char tag[NOINTRO_MAX_FIELD];
+
+	if (!filename || !parsed)
+		return;
 
 	initNoIntroName(parsed);
 
