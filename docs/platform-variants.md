@@ -173,26 +173,27 @@ if (HAS_FEATURE(HW_FEATURE_PMIC))
 
 ### Before vs After
 
-**Before (nested ternaries):**
+**Before (verbose checks):**
 ```c
-#define FIXED_WIDTH (is_cubexx ? 720 : (is_rg34xx ? 720 : 640))
-
 if (platform_variant.variant == VARIANT_TG5040_BRICK)
     SetRawBrightness(8);
 
 if (platform_variant.hw_features & HW_FEATURE_PMIC)
     use_pmic_battery();
+
+#define BTN_MOD_VOLUME \
+    ((platform_variant.hw_features & HW_FEATURE_VOLUME_HW) ? BTN_NONE : BTN_SELECT)
 ```
 
 **After (clean helpers):**
 ```c
-#define FIXED_WIDTH (platform_variant.screen_width)
-
 if (VARIANT_IS(VARIANT_TG5040_BRICK))
     SetRawBrightness(8);
 
 if (HAS_FEATURE(HW_FEATURE_PMIC))
     use_pmic_battery();
+
+#define BTN_MOD_VOLUME (HAS_FEATURE(HW_FEATURE_VOLUME_HW) ? BTN_NONE : BTN_SELECT)
 ```
 
 ## Detection Methods
@@ -238,18 +239,6 @@ If a device has truly different hardware:
    ```
 
 3. Update device mapping to reference new variant
-
-## Backward Compatibility
-
-Legacy `is_*` macros are maintained during migration:
-
-```c
-// In platform.h
-#define is_cubexx (platform_variant.variant == VARIANT_RG35XX_SQUARE)
-#define is_plus (platform_variant.hw_features & HW_FEATURE_PMIC)
-```
-
-These allow existing code to work unchanged while gradually migrating to direct `platform_variant` access.
 
 ## Implementation Status
 

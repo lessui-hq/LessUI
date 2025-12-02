@@ -51,8 +51,8 @@
 // Device registry - all known devices that work with this platform
 static const DeviceInfo rg35xxplus_devices[] = {
     // 640x480 devices (VGA resolution - most devices!)
-    {.device_id = "rg28xx", .display_name = "RG28XX", .manufacturer = "Anbernic"},
     {.device_id = "rg35xxplus", .display_name = "RG35XX Plus", .manufacturer = "Anbernic"},
+    {.device_id = "rg28xx", .display_name = "RG28XX", .manufacturer = "Anbernic"},
     {.device_id = "rg35xxh", .display_name = "RG35XX H", .manufacturer = "Anbernic"},
     {.device_id = "rg35xxsp", .display_name = "RG35XX SP", .manufacturer = "Anbernic"},
     {.device_id = "rg40xxh", .display_name = "RG40XX H", .manufacturer = "Anbernic"},
@@ -106,8 +106,8 @@ typedef struct {
 
 static const DeviceVariantMap rg35xxplus_device_map[] = {
     // 640x480 devices - VARIANT_RG35XX_VGA (most devices!)
-    {"RG28xx", VARIANT_RG35XX_VGA, &rg35xxplus_devices[0], 2.8f},
-    {"RG35xxPlus", VARIANT_RG35XX_VGA, &rg35xxplus_devices[1], 3.5f},
+    {"RG35xxPlus", VARIANT_RG35XX_VGA, &rg35xxplus_devices[0], 3.5f},
+    {"RG28xx", VARIANT_RG35XX_VGA, &rg35xxplus_devices[1], 2.8f},
     {"RG35xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[2], 3.5f},
     {"RG35xxSP", VARIANT_RG35XX_VGA, &rg35xxplus_devices[3], 3.5f},
     {"RG40xxH", VARIANT_RG35XX_VGA, &rg35xxplus_devices[4], 4.0f},
