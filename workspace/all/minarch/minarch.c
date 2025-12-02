@@ -4721,16 +4721,18 @@ static int OptionEmulator_optionChanged(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
 	// NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores) - option IS used in LOG_info below
 	Option* option = OptionList_getOption(&config.core, item->key);
-	LOG_info("%s (%s) changed from `%s` (%s) to `%s` (%s)", item->name, item->key,
-	         item->values[option->value], option->values[option->value], item->values[item->value],
-	         option->values[item->value]);
+	if (option) {
+		LOG_info("%s (%s) changed from `%s` (%s) to `%s` (%s)", item->name, item->key,
+		         item->values[option->value], option->values[option->value],
+		         item->values[item->value], option->values[item->value]);
+	}
 	OptionList_setOptionRawValue(&config.core, item->key, item->value);
 	return MENU_CALLBACK_NOP;
 }
 static int OptionEmulator_optionDetail(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
 	Option* option = OptionList_getOption(&config.core, item->key);
-	if (option->full)
+	if (option && option->full)
 		return Menu_message(option->full, (char*[]){"B", "BACK", NULL});
 	else
 		return MENU_CALLBACK_NOP;
