@@ -188,11 +188,13 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 static SDL2_RenderContext vid_ctx;
 
-// rg35xxplus has HDMI support
 static SDL2_Config vid_config = {
-    .auto_rotate = 1, // Auto-detect portrait displays
-    .has_hdmi = 1, // Platform supports HDMI
-    .brightness_alpha = 0,
+    // Rotation: 270° CCW with {0,0} center
+    .auto_rotate = 1,
+    .rotate_cw = 0,
+    .rotate_null_center = 0,
+    // Display features
+    .has_hdmi = 1,
     .default_sharpness = SHARPNESS_SOFT,
 };
 

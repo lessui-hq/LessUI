@@ -153,9 +153,12 @@ void PLAT_detectVariant(PlatformVariant* v) {
 static SDL2_RenderContext vid_ctx;
 
 static const SDL2_Config vid_config = {
+    // No rotation needed (landscape display)
     .auto_rotate = 0,
+    .rotate_cw = 0,
+    .rotate_null_center = 0,
+    // Display features
     .has_hdmi = 0,
-    .brightness_alpha = 0,
     .default_sharpness = SHARPNESS_SOFT,
 };
 

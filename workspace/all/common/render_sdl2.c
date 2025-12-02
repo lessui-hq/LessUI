@@ -134,8 +134,9 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		ctx->config = *config;
 	} else {
 		ctx->config.auto_rotate = 0;
+		ctx->config.rotate_cw = 0;
+		ctx->config.rotate_null_center = 0;
 		ctx->config.has_hdmi = 0;
-		ctx->config.brightness_alpha = 0;
 		ctx->config.default_sharpness = SHARPNESS_SOFT;
 	}
 
@@ -162,7 +163,10 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_GetCurrentDisplayMode(0, &mode);
 		LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
 		if (mode.h > mode.w) {
-			ctx->rotate = 3; // 270 degrees
+			// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
+			ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
+			LOG_debug("Rotation enabled: rotate=%d (%s)\n", ctx->rotate,
+			          ctx->config.rotate_cw ? "CW" : "CCW");
 		}
 	}
 
@@ -268,11 +272,16 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 		SDL_UpdateTexture(ctx->texture, NULL, ctx->screen->pixels, ctx->screen->pitch);
 
 		if (ctx->rotate && !ctx->on_hdmi) {
-			// Rotated render
-			SDL_RenderCopyEx(
-			    ctx->renderer, ctx->texture, NULL,
-			    &(SDL_Rect){0, ctx->device_width, ctx->device_width, ctx->device_height},
-			    ctx->rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
+			// Rotated render - rect position derived from rotation direction
+			// CW (90°): rect at {dh, 0}  |  CCW (270°): rect at {0, dw}
+			int rect_x = ctx->config.rotate_cw ? ctx->device_height : 0;
+			int rect_y = ctx->config.rotate_cw ? 0 : ctx->device_width;
+			SDL_Point center_point = {0, 0};
+			SDL_Point* center = ctx->config.rotate_null_center ? NULL : &center_point;
+
+			SDL_RenderCopyEx(ctx->renderer, ctx->texture, NULL,
+			                 &(SDL_Rect){rect_x, rect_y, ctx->device_width, ctx->device_height},
+			                 ctx->rotate * 90, center, SDL_FLIP_NONE);
 		} else {
 			SDL_RenderCopy(ctx->renderer, ctx->texture, NULL, NULL);
 		}

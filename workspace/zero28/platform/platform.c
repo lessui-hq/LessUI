@@ -73,9 +73,12 @@ void PLAT_quitInput(void) {
 static SDL2_RenderContext vid_ctx;
 
 static const SDL2_Config vid_config = {
+    // Rotation: 90° CW with {0,0} center (unique to zero28)
     .auto_rotate = 1,
+    .rotate_cw = 1,
+    .rotate_null_center = 0,
+    // Display features
     .has_hdmi = 0,
-    .brightness_alpha = 0,
     .default_sharpness = SHARPNESS_SOFT,
 };
 

@@ -336,9 +336,12 @@ int PLAT_shouldWake(void) {
 static SDL2_RenderContext vid_ctx;
 
 static const SDL2_Config vid_config = {
+    // Rotation: 270° CCW with NULL center (rotate around rect center)
     .auto_rotate = 1,
+    .rotate_cw = 0,
+    .rotate_null_center = 1,
+    // Display features
     .has_hdmi = 0,
-    .brightness_alpha = 1, // Enable brightness-based alpha for low brightness compensation
     .default_sharpness = SHARPNESS_SOFT,
 };
 

@@ -34,12 +34,25 @@
  *
  * Platform-specific settings that control rendering behavior.
  * Set once during initialization.
+ *
+ * Rotation settings (for portrait displays that need rotation):
+ *   auto_rotate      - Enable auto-detection of portrait mode
+ *   rotate_cw        - Rotation direction: 0=CCW/270° (most platforms), 1=CW/90° (zero28)
+ *   rotate_null_center - Rotation pivot: 0={0,0} (most), 1=NULL/rect-center (magicmini)
+ *
+ * Display features:
+ *   has_hdmi         - Platform has HDMI output support
+ *   default_sharpness - Initial scaling mode
  */
 typedef struct SDL2_Config {
-	int auto_rotate; // Auto-detect and apply rotation for portrait displays
-	int has_hdmi; // Platform supports HDMI output
-	int brightness_alpha; // Use brightness for effect alpha (magicmini)
-	int default_sharpness; // Initial sharpness (SHARPNESS_SOFT, SHARPNESS_CRISP, SHARPNESS_SHARP)
+	// Rotation settings
+	int auto_rotate; // 1 = auto-detect portrait mode and apply rotation
+	int rotate_cw; // Rotation direction: 0=270° CCW (default), 1=90° CW (zero28)
+	int rotate_null_center; // Rotation pivot: 0={0,0}, 1=NULL/rect-center (magicmini)
+
+	// Display features
+	int has_hdmi; // 1 = platform has HDMI output support
+	int default_sharpness; // Initial scaling: SHARPNESS_SOFT/CRISP/SHARP
 } SDL2_Config;
 
 /**
