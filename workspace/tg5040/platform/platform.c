@@ -292,15 +292,15 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 static void PLAT_enableLED(int enable) {
 	if (enable) {
 		putInt(LED_PATH1, 60);
-		if (is_brick)
+		if (platform_variant.variant == VARIANT_TG5040_BRICK)
 			putInt(LED_PATH2, 60);
-		if (is_brick)
+		if (platform_variant.variant == VARIANT_TG5040_BRICK)
 			putInt(LED_PATH3, 60);
 	} else {
 		putInt(LED_PATH1, 0);
-		if (is_brick)
+		if (platform_variant.variant == VARIANT_TG5040_BRICK)
 			putInt(LED_PATH2, 0);
-		if (is_brick)
+		if (platform_variant.variant == VARIANT_TG5040_BRICK)
 			putInt(LED_PATH3, 0);
 	}
 }
@@ -318,7 +318,7 @@ static void PLAT_enableLED(int enable) {
 void PLAT_enableBacklight(int enable) {
 	if (enable) {
 		// Brick needs minimum brightness to be visible
-		if (is_brick)
+		if (platform_variant.variant == VARIANT_TG5040_BRICK)
 			SetRawBrightness(8);
 		SetBrightness(GetBrightness());
 	} else {

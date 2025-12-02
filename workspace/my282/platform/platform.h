@@ -1,7 +1,10 @@
 /**
- * my282/platform/platform.h - Platform definitions for MY282 handheld
+ * my282/platform/platform.h - Platform definitions for Miyoo A30
  *
- * The MY282 is a retro handheld gaming device with:
+ * Supported devices (Allwinner A33, Cortex-A7):
+ * - Miyoo A30: 2.8" 640x480 display
+ *
+ * Hardware features:
  * - 640x480 display (VGA resolution, 2x scaled)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
@@ -24,6 +27,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

@@ -1,7 +1,10 @@
 /**
- * trimuismart/platform/platform.h - Platform definitions for Trimui Smart handheld
+ * trimuismart/platform/platform.h - Platform definitions for Trimui Smart
  *
- * The Trimui Smart is a compact retro handheld gaming device with:
+ * Supported devices (Allwinner F1C100s/F1C200s):
+ * - Trimui Smart: 2.4" 320x240 display (QVGA)
+ *
+ * Hardware features:
  * - 320x240 display (QVGA resolution, 1x scale - no scaling)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1 only, no L2/R2)
@@ -25,6 +28,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

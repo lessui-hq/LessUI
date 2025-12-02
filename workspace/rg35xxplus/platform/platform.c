@@ -177,8 +177,8 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
 	         v->device->display_name,
 	         v->variant == VARIANT_RG35XX_SQUARE ? "square"
-	         : v->variant == VARIANT_RG35XX_WIDE   ? "widescreen"
-	                                               : "VGA",
+	         : v->variant == VARIANT_RG35XX_WIDE ? "widescreen"
+	                                             : "VGA",
 	         v->screen_width, v->screen_height, v->screen_diagonal);
 }
 
@@ -267,7 +267,7 @@ void PLAT_flip(SDL_Surface* screen, int sync) {
 }
 
 int PLAT_supportsOverscan(void) {
-	return is_cubexx;
+	return platform_variant.variant == VARIANT_RG35XX_SQUARE;
 }
 
 ///////////////////////////////

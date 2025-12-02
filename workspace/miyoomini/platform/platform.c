@@ -779,8 +779,9 @@ int axp_read(unsigned char address) {
 static int online = 0;
 
 void PLAT_getBatteryStatus(int* is_charging, int* charge) {
-	*is_charging =
-	    is_plus ? (axp_read(0x00) & 0x4) > 0 : getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
+	*is_charging = (platform_variant.hw_features & HW_FEATURE_PMIC)
+	                   ? (axp_read(0x00) & 0x4) > 0
+	                   : getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
 
 	int i = getInt("/tmp/battery");
 

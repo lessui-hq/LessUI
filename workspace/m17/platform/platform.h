@@ -1,7 +1,10 @@
 /**
- * m17/platform/platform.h - Platform definitions for M17 handheld
+ * m17/platform/platform.h - Platform definitions for M17
  *
- * The M17 is a retro handheld gaming device with:
+ * Supported devices:
+ * - M17: 480x273 display (16:9 widescreen)
+ *
+ * Hardware features:
  * - 480x273 widescreen display (16:9 aspect ratio)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
@@ -24,6 +27,12 @@
 ///////////////////////////////
 
 #include "sdl.h"
+
+///////////////////////////////
+// Platform Variant Detection
+///////////////////////////////
+
+// No device variants (single hardware configuration)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

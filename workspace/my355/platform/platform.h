@@ -1,7 +1,10 @@
 /**
- * my355/platform/platform.h - Platform definitions for MY355 handheld
+ * my355/platform/platform.h - Platform definitions for MY355 / Miyoo Flip
  *
- * The MY355 is a retro handheld gaming device with:
+ * Supported devices (Rockchip RK3566, Cortex-A55):
+ * - MY355 / Miyoo Flip: 3.5" 640x480 display
+ *
+ * Hardware features:
  * - 640x480 display (VGA resolution, 2x scaled)
  * - 1280x720 HDMI output support
  * - D-pad and face buttons (A/B/X/Y)
@@ -10,6 +13,8 @@
  * - Menu and power buttons with volume controls
  * - Uses evdev input codes
  * - Runtime HDMI detection
+ *
+ * @note Different from miyoomini platform (R16/SSD202D) and MY285 Mini Flip (clamshell)
  */
 
 #ifndef PLATFORM_H
@@ -29,8 +34,10 @@
 
 ///////////////////////////////
 // Platform Variant Detection
-// Runtime variables for HDMI output
 ///////////////////////////////
+
+// No device variants (single hardware configuration)
+// Runtime HDMI detection handled via on_hdmi variable
 
 extern int on_hdmi; // Set to 1 when HDMI output is active
 
