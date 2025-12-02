@@ -128,16 +128,16 @@ void EFFECT_markLive(EffectState* state);
  * All effect patterns use opaque black (alpha=255 in PNG). Visibility is
  * controlled via global opacity using a simple linear formula:
  *
- *   opacity = 40 + (scale * 20)
+ *   opacity = 30 + (scale * 20)
  *
  * This gives:
- *   Scale 2: 80    (coarse patterns, subtle)
- *   Scale 3: 100
- *   Scale 4: 120
- *   Scale 5: 140
- *   Scale 6: 160
- *   Scale 7: 180
- *   Scale 8: 200   (fine patterns, more visible)
+ *   Scale 2: 70    (coarse patterns, subtle)
+ *   Scale 3: 90
+ *   Scale 4: 110
+ *   Scale 5: 130
+ *   Scale 6: 150
+ *   Scale 7: 170
+ *   Scale 8: 190   (fine patterns, more visible)
  *
  * @param scale Current scale factor
  * @return Opacity value 0-255

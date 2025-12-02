@@ -63,14 +63,13 @@ RenderDestRect RENDER_calcDestRect(const GFX_Renderer* renderer, int device_w, i
  *
  * The hard_scale factor is chosen based on source resolution:
  * - Native or larger than device: 1 (no intermediate upscale)
- * - Medium sources (h >= 160): 2 (limits GBA and up to 2x)
- * - Small sources (h < 160): 4 (for GB, NES, etc.)
+ * - Smaller sources: 4 (crisp nearest-neighbor for retro content)
  *
  * @param src_w    Source width in pixels
  * @param src_h    Source height in pixels
  * @param device_w Device screen width
  * @param device_h Device screen height
- * @return Hard scale factor (1, 2, or 4)
+ * @return Hard scale factor (1 or 4)
  */
 int RENDER_calcHardScale(int src_w, int src_h, int device_w, int device_h);
 

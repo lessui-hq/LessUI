@@ -62,12 +62,12 @@ void EFFECT_markLive(EffectState* state) {
 int EFFECT_getOpacity(int scale) {
 	// All effects use opaque black patterns (alpha=255 in PNG).
 	// Control visibility via global opacity, scaling linearly:
-	// - Lower scales (coarser patterns) = lower opacity to stay subtle
-	// - Higher scales (finer patterns) = higher opacity to remain visible
+	// - Lower scales (larger pixels/coarser patterns) = lighter/more subtle
+	// - Higher scales (smaller pixels/finer patterns) = darker to remain visible
 	//
-	// Formula: opacity = 40 + (scale * 20)
-	// Scale 2: 80, Scale 3: 100, ... Scale 8: 200
-	int opacity = 40 + (scale * 20);
+	// Formula: opacity = 30 + (scale * 20)
+	// Scale 2: 70, Scale 3: 90, Scale 4: 110, ... Scale 8: 190
+	int opacity = 30 + (scale * 20);
 	return (opacity > 255) ? 255 : opacity;
 }
 

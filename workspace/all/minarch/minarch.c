@@ -1296,9 +1296,8 @@ static struct Config {
                             {
                                 .key = "minarch_screen_effect",
                                 .name = "Screen Effect",
-                                .desc = "CRT effects: Grille, Slot, Dot.\n"
-                                        "LCD effects: DMG, GBC, LCD.\n"
-                                        "Effects look best at native scaling.",
+                                .desc = "Simulates classic CRT and LCD displays.\n"
+                                        "Works best at native scaling.",
                                 .full = NULL,
                                 .var = NULL,
                                 .default_value = 0,

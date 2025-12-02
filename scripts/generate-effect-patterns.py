@@ -33,9 +33,9 @@ OUT_DIR = "skeleton/SYSTEM/res"
 # This allows per-scale opacity tuning in the C code.
 
 # Lines: horizontal scanline shadow with dimensional falloff
-LINES_LEADIN = 30       # Light lead-in before scanline
-LINES_SHADOW = 80       # Primary scanline (dark)
-LINES_TRAIL = 10        # Very light trail after scanline
+LINES_LEADIN = 128      # Light lead-in before scanline
+LINES_SHADOW = 255      # Primary scanline (dark) - full opacity like MinUI
+LINES_TRAIL = 64        # Very light trail after scanline
 
 # Grid: 2×2 pixel grid
 GRID_ALPHA = 255
