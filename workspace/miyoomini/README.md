@@ -36,22 +36,30 @@ Platform implementation for the Miyoo Mini and Miyoo Mini Plus retro handheld de
 
 ## Platform Variants
 
-This platform supports two hardware variants detected at runtime:
+This platform supports **4 devices across 3 hardware variants** detected at runtime:
 
-### Standard Miyoo Mini
+### Standard Miyoo Mini (640x480, SAR ADC)
+**Devices**: Miyoo Mini, Miyoo Mini Flip (MY285)
 - 640x480 display
 - SAR ADC battery monitoring
 - Volume control via SELECT + L1/R1
 - Brightness control via START + L1/R1
 
-### Miyoo Mini Plus
-- Optional 752x560 display (560p)
+### Miyoo Mini Plus (640x480, PMIC)
+**Devices**: Miyoo Mini Plus
+- 640x480 display
 - AXP223 PMIC battery monitoring (`/customer/app/axp_test` present)
 - Dedicated hardware volume buttons (PLUS/MINUS)
-- Volume control also works with standalone VOLUMEUP/DOWN
 - Brightness control via MENU + VOLUMEUP/DOWN or MENU + L1/R1
 
-**Detection**: Variants are auto-detected at runtime by `keymon`. The `is_plus` and `is_560p` flags configure UI layout and input handling accordingly.
+### Miyoo Mini Plus 560p (752x560, PMIC)
+**Devices**: Miyoo Mini Plus (560p variant)
+- 752x560 display
+- AXP223 PMIC battery monitoring
+- Dedicated hardware volume buttons (PLUS/MINUS)
+- Brightness control via MENU + VOLUMEUP/DOWN or MENU + L1/R1
+
+**Detection**: Variants are auto-detected at runtime by checking for PMIC presence and screen mode. The system detects the specific device configuration and applies appropriate settings (resolution, battery monitoring method, button mappings).
 
 ## Directory Structure
 
