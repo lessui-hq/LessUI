@@ -68,6 +68,9 @@
 #define THUMB_ALPHA_MAX 255 // Fully opaque
 #define THUMB_ALPHA_MIN 0 // Fully transparent
 
+// Thumbnail cache
+#define THUMB_CACHE_SIZE 3 // Number of thumbnails to keep in cache (prev, current, next)
+
 ///////////////////////////////
 // Async thumbnail loader
 //
@@ -86,11 +89,16 @@ static pthread_cond_t thumb_cond = PTHREAD_COND_INITIALIZER;
 static char thumb_request_path[MAX_PATH]; // Path to load (empty = no request)
 static int thumb_request_width; // Max width for scaling
 static int thumb_request_height; // Max height for scaling
+static int thumb_request_entry_index; // Entry index for cache tracking
+static char thumb_preload_hint_path[MAX_PATH]; // Path to preload after current
+static int thumb_preload_hint_index; // Entry index of preload hint
+static int thumb_is_preload; // Whether current request is a preload
 static int thumb_shutdown; // Signal thread to exit
 
 // Result state (protected by thumb_mutex)
 static SDL_Surface* thumb_result; // Loaded surface (NULL if no thumbnail)
 static char thumb_result_path[MAX_PATH]; // Path that was loaded
+static int thumb_result_entry_index; // Entry index of result
 
 /**
  * Background thread function for loading thumbnails.
@@ -101,7 +109,8 @@ static void* thumb_loader_thread(void* arg) {
 	LOG_debug("Thumbnail thread started");
 
 	char path[MAX_PATH];
-	int max_w, max_h;
+	int max_w, max_h, entry_index;
+	int is_preload;
 	while (1) {
 		// Wait for a request
 		pthread_mutex_lock(&thumb_mutex);
@@ -118,6 +127,8 @@ static void* thumb_loader_thread(void* arg) {
 		strcpy(path, thumb_request_path);
 		max_w = thumb_request_width;
 		max_h = thumb_request_height;
+		entry_index = thumb_request_entry_index;
+		is_preload = thumb_is_preload;
 		thumb_request_path[0] = '\0'; // Clear request
 		pthread_mutex_unlock(&thumb_mutex);
 
@@ -134,14 +145,40 @@ static void* thumb_loader_thread(void* arg) {
 		// Post result
 		pthread_mutex_lock(&thumb_mutex);
 		// Check if request was superseded while we were loading
-		if (thumb_request_path[0] == '\0') {
-			// No new request - post our result
+		// Accept result if: queue is empty OR same path was re-requested (fast scrolling case)
+		if (thumb_request_path[0] == '\0' || exactMatch(thumb_request_path, path)) {
+			// No new request or same path re-requested - post our result
 			if (thumb_result)
 				SDL_FreeSurface(thumb_result);
 			thumb_result = loaded;
 			strcpy(thumb_result_path, path);
+			thumb_result_entry_index = entry_index;
+			LOG_debug("thumb: loaded idx=%d%s", entry_index, is_preload ? " (preload)" : "");
+
+			// Clear the request if it matched (avoid re-processing same request)
+			if (thumb_request_path[0] != '\0' && exactMatch(thumb_request_path, path)) {
+				thumb_request_path[0] = '\0';
+			}
+
+			// If this was a current (not preload) request and we have a hint, queue it
+			if (!is_preload && thumb_preload_hint_path[0] != '\0') {
+				// Small delay to avoid starving main thread
+				pthread_mutex_unlock(&thumb_mutex);
+				usleep(5000); // 5ms
+				pthread_mutex_lock(&thumb_mutex);
+
+				// Only queue preload if no new request came in
+				if (thumb_request_path[0] == '\0') {
+					strcpy(thumb_request_path, thumb_preload_hint_path);
+					thumb_request_entry_index = thumb_preload_hint_index;
+					thumb_is_preload = 1;
+					thumb_preload_hint_path[0] = '\0'; // Clear hint
+					LOG_debug("thumb: preloading idx=%d", thumb_preload_hint_index);
+				}
+			}
 		} else {
-			// Request was superseded - discard our result
+			// Request was superseded by different path - discard our result
+			LOG_debug("thumb: idx=%d discarded (superseded)", entry_index);
 			if (loaded)
 				SDL_FreeSurface(loaded);
 		}
@@ -158,7 +195,12 @@ static void* thumb_loader_thread(void* arg) {
 static void ThumbLoader_init(void) {
 	thumb_request_path[0] = '\0';
 	thumb_result_path[0] = '\0';
+	thumb_preload_hint_path[0] = '\0';
 	thumb_result = NULL;
+	thumb_request_entry_index = -1;
+	thumb_result_entry_index = -1;
+	thumb_preload_hint_index = -1;
+	thumb_is_preload = 0;
 	thumb_shutdown = 0;
 	thumb_thread_valid = 0;
 	int rc = pthread_create(&thumb_thread, NULL, thumb_loader_thread, NULL);
@@ -196,35 +238,123 @@ static void ThumbLoader_quit(void) {
  * @param path Path to image file
  * @param max_w Maximum width after scaling
  * @param max_h Maximum height after scaling
+ * @param entry_index Index of entry in directory (for cache tracking)
+ * @param is_preload Whether this is a preload (superseded by non-preload requests)
+ * @param hint_path Optional path to preload after this one (can be NULL)
+ * @param hint_index Entry index of hint path
  */
-static void ThumbLoader_request(const char* path, int max_w, int max_h) {
+static void ThumbLoader_request(const char* path, int max_w, int max_h, int entry_index,
+                                int is_preload, const char* hint_path, int hint_index) {
 	pthread_mutex_lock(&thumb_mutex);
-	strcpy(thumb_request_path, path);
-	thumb_request_width = max_w;
-	thumb_request_height = max_h;
-	pthread_cond_signal(&thumb_cond);
+
+	// Current (non-preload) requests always supersede preload requests
+	if (!is_preload || !thumb_is_preload) {
+		strcpy(thumb_request_path, path);
+		thumb_request_width = max_w;
+		thumb_request_height = max_h;
+		thumb_request_entry_index = entry_index;
+		thumb_is_preload = is_preload;
+
+		// Set preload hint if provided and this is not already a preload
+		if (!is_preload && hint_path && hint_path[0] != '\0') {
+			strcpy(thumb_preload_hint_path, hint_path);
+			thumb_preload_hint_index = hint_index;
+		} else {
+			thumb_preload_hint_path[0] = '\0';
+			thumb_preload_hint_index = -1;
+		}
+
+		pthread_cond_signal(&thumb_cond);
+	}
+
 	pthread_mutex_unlock(&thumb_mutex);
 }
 
 /**
  * Checks if a thumbnail is ready and retrieves it.
- * Non-blocking - returns NULL if not ready or path doesn't match.
+ * Non-blocking - returns NULL if not ready.
+ * Returns ANY completed result (current or preload) so caller can cache it.
  *
- * @param path Path that was requested
- * @return Surface if ready and path matches (caller takes ownership), NULL otherwise
+ * @param out_entry_index Output parameter for entry index (can be NULL)
+ * @param out_path Output buffer for result path (must be MAX_PATH, can be NULL)
+ * @return Surface if ready (caller takes ownership), NULL otherwise
  */
-static SDL_Surface* ThumbLoader_get(const char* path) {
+static SDL_Surface* ThumbLoader_get(int* out_entry_index, char* out_path) {
 	SDL_Surface* result = NULL;
 
 	pthread_mutex_lock(&thumb_mutex);
-	if (thumb_result && exactMatch(thumb_result_path, path)) {
+	if (thumb_result) {
 		result = thumb_result;
+		if (out_entry_index)
+			*out_entry_index = thumb_result_entry_index;
+		if (out_path)
+			strcpy(out_path, thumb_result_path);
 		thumb_result = NULL;
 		thumb_result_path[0] = '\0';
+		thumb_result_entry_index = -1;
 	}
 	pthread_mutex_unlock(&thumb_mutex);
 
 	return result;
+}
+
+///////////////////////////////
+// Thumbnail cache management
+///////////////////////////////
+
+// Cache item structure (defined here for use in cache functions)
+typedef struct {
+	SDL_Surface* surface;
+	char path[MAX_PATH];
+	int entry_index;
+} CacheItem;
+
+/**
+ * Find item in cache by entry index.
+ */
+static CacheItem* find_in_cache(CacheItem* cache, int size, int entry_index) {
+	for (int i = 0; i < size; i++) {
+		if (cache[i].entry_index == entry_index) {
+			return &cache[i];
+		}
+	}
+	return NULL;
+}
+
+/**
+ * Add item to cache (evict oldest if full).
+ * Uses FIFO eviction policy - oldest items fall off the front.
+ */
+static void cache_push(CacheItem* cache, int* size, SDL_Surface* surface, const char* path,
+                       int entry_index) {
+	if (*size == THUMB_CACHE_SIZE) {
+		// Evict oldest (first item)
+		if (cache[0].surface)
+			SDL_FreeSurface(cache[0].surface);
+
+		// Shift left
+		memmove(&cache[0], &cache[1], (THUMB_CACHE_SIZE - 1) * sizeof(CacheItem));
+		(*size)--;
+	}
+
+	// Add to end
+	cache[*size].surface = surface;
+	strcpy(cache[*size].path, path);
+	cache[*size].entry_index = entry_index;
+	(*size)++;
+}
+
+/**
+ * Clear all cache items and free surfaces.
+ */
+static void cache_clear(CacheItem* cache, int* size) {
+	for (int i = 0; i < *size; i++) {
+		if (cache[i].surface) {
+			SDL_FreeSurface(cache[i].surface);
+			cache[i].surface = NULL;
+		}
+	}
+	*size = 0;
 }
 
 ///////////////////////////////
@@ -2220,9 +2350,14 @@ int main(int argc, char* argv[]) {
 	int show_setting = 0; // 1=brightness, 2=volume overlay
 	int was_online = PLAT_isOnline();
 
-	// Async thumbnail loading state
-	SDL_Surface* cached_thumb = NULL; // Currently displayed thumbnail
-	char cached_thumb_path[MAX_PATH] = {0}; // Path of cached thumbnail
+	// Thumbnail cache - dynamic LRU with push/pop
+	CacheItem thumb_cache[THUMB_CACHE_SIZE] = {0};
+	int cache_size = 0; // Number of items currently in cache
+	int last_selected_index = -1; // For direction detection
+	Directory* last_directory = NULL; // For detecting directory changes
+
+	// Currently displayed thumbnail state
+	SDL_Surface* displayed_thumb = NULL; // What's currently shown
 	Entry* last_rendered_entry = NULL; // Last entry we rendered (for change detection)
 	int thumb_exists = 0; // Whether thumbnail exists for current entry
 	int thumb_alpha = THUMB_ALPHA_MAX; // Current fade alpha, starts full for instant display
@@ -2387,52 +2522,132 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
-		// Thumbnail handling - all logic in one place
-		// Detect when selected entry changes and update thumbnail state
-		Entry* current_entry = (total > 0) ? top->entries->items[top->selected] : NULL;
-		if (current_entry != last_rendered_entry) {
-			// Selection changed - reset thumbnail state
-			if (cached_thumb) {
-				SDL_FreeSurface(cached_thumb);
-				cached_thumb = NULL;
+		// Clear cache if directory changed (navigation between folders)
+		if (top != last_directory) {
+			if (cache_size > 0)
+				LOG_debug("thumb: clearing cache (%d items)", cache_size);
+			cache_clear(thumb_cache, &cache_size);
+			displayed_thumb = NULL;
+			last_selected_index = -1;
+			last_directory = top;
+		}
+
+		// Poll for async thumbnail load completion FIRST (catch preloads before cache check)
+		{
+			char result_path[MAX_PATH];
+			int loaded_index;
+			SDL_Surface* loaded = ThumbLoader_get(&loaded_index, result_path);
+			if (loaded) {
+				// Add to cache (might be current item or preload)
+				cache_push(thumb_cache, &cache_size, loaded, result_path, loaded_index);
 			}
-			cached_thumb_path[0] = '\0';
+		}
+
+		// Thumbnail handling with cache - all logic in one place
+		// Detect when selected entry changes and update thumbnail state
+		Entry* current_entry = (top && total > 0) ? top->entries->items[top->selected] : NULL;
+		int current_selected = top ? top->selected : -1;
+		if (current_entry != last_rendered_entry) {
+			// Selection changed - determine what to do with thumbnails
+			displayed_thumb = NULL;
 			thumb_exists = 0;
 
-			if (current_entry && current_entry->path && !show_version) {
+			// Gather context upfront
+			int has_path = current_entry && current_entry->path && !show_version;
+			int nav_held = (PAD_isPressed(BTN_UP) && !PAD_justPressed(BTN_UP)) ||
+			               (PAD_isPressed(BTN_DOWN) && !PAD_justPressed(BTN_DOWN)) ||
+			               (PAD_isPressed(BTN_LEFT) && !PAD_justPressed(BTN_LEFT)) ||
+			               (PAD_isPressed(BTN_RIGHT) && !PAD_justPressed(BTN_RIGHT));
+
+			// Build thumbnail path if we have a valid entry
+			char thumb_path[MAX_PATH] = "";
+			if (has_path) {
 				char* last_slash = strrchr(current_entry->path, '/');
 				if (last_slash && last_slash[1] != '\0') {
-					// Build thumbnail path: /dir/.res/filename.png
 					int dir_len = (int)(last_slash - current_entry->path);
-					if (dir_len > 0 && dir_len < MAX_PATH - 32) { // Leave room for /.res/name.png
-						snprintf(cached_thumb_path, MAX_PATH, "%.*s/.res/%s.png", dir_len,
+					if (dir_len > 0 && dir_len < MAX_PATH - 32) {
+						snprintf(thumb_path, MAX_PATH, "%.*s/.res/%s.png", dir_len,
 						         current_entry->path, last_slash + 1);
-						thumb_exists = exists(cached_thumb_path);
+						thumb_exists = exists(thumb_path);
+					}
+				}
+			}
 
-						// Request async load if thumbnail exists
-						if (thumb_exists) {
-							if (thumb_max_width > 0 && thumb_max_height > 0) {
-								ThumbLoader_request(cached_thumb_path, thumb_max_width,
-								                    thumb_max_height);
+			// Check cache
+			CacheItem* cached =
+			    thumb_exists ? find_in_cache(thumb_cache, cache_size, current_selected) : NULL;
+			int in_cache = cached && cached->surface;
+
+			// Decide what to do
+			int thumb_handled = 0;
+
+			if (!has_path) {
+				// No valid path (null entry, showing version, etc) - nothing to do
+				thumb_handled = 1;
+			} else if (!thumb_exists) {
+				// Thumbnail file doesn't exist for this entry
+				thumb_handled = 1;
+			} else if (in_cache) {
+				// Cache HIT - display with fade for visual consistency
+				LOG_debug("thumb: idx=%d CACHE HIT", current_selected);
+				displayed_thumb = cached->surface;
+				if (SDLX_SupportsSurfaceAlphaMod()) {
+					thumb_alpha = THUMB_ALPHA_MIN;
+					thumb_fade_start_ms = now;
+				} else {
+					thumb_alpha = THUMB_ALPHA_MAX;
+					thumb_fade_start_ms = 0;
+				}
+				dirty = 1;
+				thumb_handled = 1;
+			} else if (nav_held) {
+				// Fast scrolling - skip load, will retry when released
+				thumb_handled = 0;
+			} else {
+				// Cache MISS - request load with preload hint
+				int direction = (current_selected > last_selected_index) ? 1 : -1;
+				int hint_index = current_selected + direction;
+				char hint_path[MAX_PATH] = "";
+
+				if (hint_index >= 0 && hint_index < total) {
+					Entry* hint_entry = top->entries->items[hint_index];
+					if (hint_entry && hint_entry->path) {
+						char* hint_slash = strrchr(hint_entry->path, '/');
+						if (hint_slash && hint_slash[1] != '\0') {
+							int hint_dir_len = (int)(hint_slash - hint_entry->path);
+							if (hint_dir_len > 0 && hint_dir_len < MAX_PATH - 32) {
+								snprintf(hint_path, MAX_PATH, "%.*s/.res/%s.png", hint_dir_len,
+								         hint_entry->path, hint_slash + 1);
 							}
 						}
 					}
 				}
+
+				LOG_debug("thumb: idx=%d MISS -> requesting (hint=%d)", current_selected,
+				          hint_path[0] ? hint_index : -1);
+				ThumbLoader_request(thumb_path, thumb_max_width, thumb_max_height, current_selected,
+				                    0, hint_path[0] ? hint_path : NULL, hint_index);
+				thumb_handled = 1;
 			}
-			last_rendered_entry = current_entry;
+
+			// Only mark as rendered if we actually handled it
+			if (thumb_handled) {
+				last_rendered_entry = current_entry;
+				last_selected_index = current_selected;
+			}
 		}
 
-		// Poll for async thumbnail load completion
-		if (thumb_exists && !cached_thumb && cached_thumb_path[0]) {
-			SDL_Surface* loaded = ThumbLoader_get(cached_thumb_path);
-			if (loaded) {
-				cached_thumb = loaded;
-				// Fade effects only supported on SDL 2.0
+		// Also display if we just got the current item from polling (no selection change)
+		if (thumb_exists && !displayed_thumb) {
+			CacheItem* cached = find_in_cache(thumb_cache, cache_size, current_selected);
+			if (cached && cached->surface) {
+				LOG_debug("thumb: idx=%d ready", current_selected);
+				displayed_thumb = cached->surface;
 				if (SDLX_SupportsSurfaceAlphaMod()) {
-					thumb_alpha = THUMB_ALPHA_MIN; // Start fade from transparent
-					thumb_fade_start_ms = now; // Record when fade started
+					thumb_alpha = THUMB_ALPHA_MIN;
+					thumb_fade_start_ms = now;
 				} else {
-					thumb_alpha = THUMB_ALPHA_MAX; // Instant display on SDL 1.2
+					thumb_alpha = THUMB_ALPHA_MAX;
 					thumb_fade_start_ms = 0;
 				}
 				dirty = 1;
@@ -2440,11 +2655,11 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Check if thumbnail is actually loaded and ready to display (after polling)
-		int showing_thumb = (!show_version && total > 0 && cached_thumb && cached_thumb->w > 0 &&
-		                     cached_thumb->h > 0);
+		int showing_thumb = (!show_version && total > 0 && displayed_thumb &&
+		                     displayed_thumb->w > 0 && displayed_thumb->h > 0);
 
 		// Animate thumbnail fade-in with smoothstep easing (SDL 2.0 only)
-		if (SDLX_SupportsSurfaceAlphaMod() && cached_thumb && thumb_fade_start_ms > 0) {
+		if (SDLX_SupportsSurfaceAlphaMod() && displayed_thumb && thumb_fade_start_ms > 0) {
 			unsigned long elapsed = now - thumb_fade_start_ms;
 			if (elapsed >= THUMB_FADE_DURATION_MS) {
 				thumb_alpha = THUMB_ALPHA_MAX; // Fade complete
@@ -2466,13 +2681,13 @@ int main(int argc, char* argv[]) {
 			int oy;
 
 
-			// Display cached thumbnail if available (right-aligned with padding)
+			// Display thumbnail if available (right-aligned with padding)
 			if (showing_thumb) {
 				int padding = DP(ui.edge_padding);
-				int ox = ui.screen_width_px - cached_thumb->w - padding;
-				oy = (ui.screen_height_px - cached_thumb->h) / 2;
-				SDLX_SetAlphaMod(cached_thumb, thumb_alpha);
-				SDL_BlitSurface(cached_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
+				int ox = ui.screen_width_px - displayed_thumb->w - padding;
+				oy = (ui.screen_height_px - displayed_thumb->h) / 2;
+				SDLX_SetAlphaMod(displayed_thumb, thumb_alpha);
+				SDL_BlitSurface(displayed_thumb, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
 			// Text area width when thumbnail is showing (unselected items)
@@ -2702,8 +2917,7 @@ int main(int argc, char* argv[]) {
 
 	if (version)
 		SDL_FreeSurface(version);
-	if (cached_thumb)
-		SDL_FreeSurface(cached_thumb);
+	cache_clear(thumb_cache, &cache_size);
 
 	ThumbLoader_quit();
 	Menu_quit();
