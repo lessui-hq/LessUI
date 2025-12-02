@@ -27,16 +27,24 @@
 // Dependencies
 ///////////////////////////////
 
+#include "platform_variant.h"
 #include "sdl.h"
 
 ///////////////////////////////
 // Platform Variant Detection
-// Runtime variables for hardware differences
 ///////////////////////////////
 
-extern int is_cubexx; // Set to 1 for RG35XX H (square 720x720 screen)
-extern int is_rg34xx; // Set to 1 for RG35XX SP/RG34XX (720x480 widescreen)
-extern int on_hdmi; // Set to 1 when HDMI output is active
+// RG35XX Plus family variants
+#define VARIANT_RG35XX_PLUS (VARIANT_PLATFORM_BASE + 0) // 640x480 standard
+#define VARIANT_RG35XX_H (VARIANT_PLATFORM_BASE + 1) // 720x720 square (CubeXX)
+#define VARIANT_RG35XX_SP (VARIANT_PLATFORM_BASE + 2) // 720x480 widescreen
+
+// Legacy compatibility macros (for gradual migration)
+#define is_cubexx (platform_variant.variant == VARIANT_RG35XX_H)
+#define is_rg34xx (platform_variant.variant == VARIANT_RG35XX_SP)
+
+// Note: on_hdmi is a struct member in SDL2_RenderContext, not a global
+// Access HDMI state via platform_variant.hdmi_active instead
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -147,11 +155,9 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 // Runtime-configurable for device variants
 ///////////////////////////////
 
-#define SCREEN_DIAGONAL                                                                            \
-	(is_cubexx ? 3.95f                                                                             \
-	           : (is_rg34xx ? 3.4f : 3.5f)) // Diagonal: 3.95" (Cube) / 3.4" (34XX) / 3.5" (Plus)
-#define FIXED_WIDTH (is_cubexx ? 720 : (is_rg34xx ? 720 : 640)) // Width: 720 (H/SP) or 640 (Plus)
-#define FIXED_HEIGHT (is_cubexx ? 720 : 480) // Height: 720 (H) or 480 (Plus/SP)
+#define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 
 ///////////////////////////////
 // HDMI Output Specifications

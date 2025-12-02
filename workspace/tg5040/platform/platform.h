@@ -28,14 +28,19 @@
 // Dependencies
 ///////////////////////////////
 
+#include "platform_variant.h"
 #include "sdl.h"
 
 ///////////////////////////////
 // Platform Variant Detection
-// Runtime variables for hardware differences
 ///////////////////////////////
 
-extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
+// TG5040 family variants
+#define VARIANT_TG5040_STANDARD (VARIANT_PLATFORM_BASE + 0) // 1280x720 widescreen
+#define VARIANT_TG5040_BRICK (VARIANT_PLATFORM_BASE + 1) // 1024x768 (4:3)
+
+// Legacy compatibility macros (for gradual migration)
+#define is_brick (platform_variant.variant == VARIANT_TG5040_BRICK)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -161,10 +166,10 @@ extern int is_brick; // Set to 1 for Brick variant (1024x768 display)
 // Runtime-configurable for Brick variant
 ///////////////////////////////
 
-#define SCREEN_DIAGONAL (is_brick ? 3.2f : 4.95f) // Diagonal: 3.2" (Brick) or 4.95" (Smart Pro)
+#define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
 #define EDGE_PADDING 5 // Reduced edge padding - bezel provides visual margin
-#define FIXED_WIDTH (is_brick ? 1024 : 1280) // Width: 1024px (Brick) or 1280px (standard)
-#define FIXED_HEIGHT (is_brick ? 768 : 720) // Height: 768px (Brick) or 720px (standard)
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings

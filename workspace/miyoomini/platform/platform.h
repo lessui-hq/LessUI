@@ -25,15 +25,21 @@
 // Dependencies
 ///////////////////////////////
 
+#include "platform_variant.h"
 #include "sdl.h"
 
 ///////////////////////////////
 // Platform Variant Detection
-// Runtime variables for hardware differences
 ///////////////////////////////
 
-extern int is_plus; // Set to 1 for Miyoo Mini Plus variant
-extern int is_560p; // Set to 1 for 560p screen variant
+// Miyoo Mini family variants
+#define VARIANT_MINI_STANDARD (VARIANT_PLATFORM_BASE + 0) // 640x480, SAR ADC
+#define VARIANT_MINI_PLUS (VARIANT_PLATFORM_BASE + 1) // 640x480, AXP223 PMIC
+#define VARIANT_MINI_PLUS_560P (VARIANT_PLATFORM_BASE + 2) // 752x560, AXP223 PMIC
+
+// Legacy compatibility macros (for gradual migration)
+#define is_plus (platform_variant.variant >= VARIANT_MINI_PLUS)
+#define is_560p (platform_variant.variant == VARIANT_MINI_PLUS_560P)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -145,11 +151,11 @@ extern int is_560p; // Set to 1 for 560p screen variant
 // Runtime-configurable for 560p variant
 ///////////////////////////////
 
-#define SCREEN_DIAGONAL 2.8f // Physical screen diagonal in inches
+#define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
 #define SCALE_MODIFIER (is_plus ? 1.0f : 0.92f) // Standard: reduce UI size; Plus: default
 #define EDGE_PADDING (is_plus ? 10 : 5) // Standard: reduced padding; Plus: default
-#define FIXED_WIDTH (is_560p ? 752 : 640) // Screen width: 752px (560p) or 640px (standard)
-#define FIXED_HEIGHT (is_560p ? 560 : 480) // Screen height: 560px (560p) or 480px (standard)
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 
 // Page buffer overscaling (560p uses less to save memory)
 #define PAGE_SCALE (is_560p ? 2 : 3)

@@ -23,7 +23,7 @@ TARGET = minarch
 INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
-         ../common/gfx_text.c ../common/minui_file_utils.c \
+         ../common/gfx_text.c ../common/minui_file_utils.c ../common/platform_variant.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
