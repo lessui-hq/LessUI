@@ -87,7 +87,7 @@ typedef struct {
 
 static const DeviceVariantMap tg5040_device_map[] = {
     // Standard TG5040 - VARIANT_TG5040_STANDARD
-    {NULL, VARIANT_TG5040_STANDARD, &tg5040_devices[0]}, // Default (no DEVICE set)
+    {"smartpro", VARIANT_TG5040_STANDARD, &tg5040_devices[0]},
 
     // Brick variant - VARIANT_TG5040_BRICK
     {"brick", VARIANT_TG5040_BRICK, &tg5040_devices[1]},
@@ -121,9 +121,10 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		}
 	}
 
-	// Fallback to default if not found (standard TG5040)
+	// Fallback to default if not found
 	if (!map) {
-		map = &tg5040_device_map[0];
+		LOG_warn("Unknown DEVICE '%s', defaulting to Smart Pro\n", device ? device : "(unset)");
+		map = &tg5040_device_map[0]; // Smart Pro
 	}
 
 	// Set device info

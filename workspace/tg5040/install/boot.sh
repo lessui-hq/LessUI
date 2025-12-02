@@ -25,7 +25,9 @@ if [ -f "$UPDATE_PATH" ]; then
 	export PATH=/usr/trimui/bin:$PATH
 
 	TRIMUI_MODEL=`strings /usr/trimui/bin/MainUI | grep ^Trimui`
-	if [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
+	if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
+		DEVICE="smartpro"
+	elif [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
 		DEVICE="brick"
 	fi
 

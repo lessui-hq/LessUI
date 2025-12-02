@@ -41,7 +41,9 @@ fi
 
 TRIMUI_MODEL=`strings /usr/trimui/bin/MainUI | grep ^Trimui`
 export TRIMUI_MODEL
-if [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
+if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
+	export DEVICE="smartpro"
+elif [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
 	export DEVICE="brick"
 fi
 
