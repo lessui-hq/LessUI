@@ -838,24 +838,33 @@ void PLAT_powerOff(void) {
 
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
+	const char* level_name = "UNKNOWN";
 	switch (speed) {
 	case CPU_SPEED_MENU:
 		freq = 504000;
+		level_name = "MENU";
 		break;
 	case CPU_SPEED_POWERSAVE:
 		freq = 1104000;
+		level_name = "POWERSAVE";
 		break;
 	case CPU_SPEED_NORMAL:
 		freq = 1296000;
+		level_name = "NORMAL";
 		break;
 	case CPU_SPEED_PERFORMANCE:
 		freq = 1488000;
+		level_name = "PERFORMANCE";
 		break;
 	}
 
+	LOG_info("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
 	char cmd[32];
 	sprintf(cmd, "overclock.elf %d\n", freq);
-	system(cmd);
+	int ret = system(cmd);
+	if (ret != 0) {
+		LOG_warn("overclock.elf returned %d for freq %d\n", ret, freq);
+	}
 }
 
 ///////////////////////////////

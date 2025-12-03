@@ -148,7 +148,31 @@ static enum retro_pixel_format pixel_format =
 static int show_debug = 0; // Display FPS/CPU usage overlay
 static int max_ff_speed = 3; // Fast-forward speed (0=2x, 3=4x)
 static int fast_forward = 0; // Currently fast-forwarding
-static int overclock = 1; // CPU speed (0=underclock, 1=normal, 2=overclock)
+static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
+
+// Auto CPU Scaling State (when overclock == 3)
+// Monitors audio rate control stress to dynamically adjust CPU speed
+static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
+static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
+static float auto_cpu_stress_sum = 0.0f; // Accumulated stress for current window
+static int auto_cpu_frame_count = 0; // Frames in current window
+static int auto_cpu_high_windows = 0; // Consecutive windows with high stress
+static int auto_cpu_low_windows = 0; // Consecutive windows with low stress
+static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
+static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
+
+// Background thread for applying CPU changes without blocking main loop
+static pthread_t auto_cpu_thread;
+static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int auto_cpu_thread_running = 0;
+
+// Auto CPU Scaling Tuning Constants
+#define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
+#define AUTO_CPU_HIGH_THRESHOLD 0.6f // Stress above this = needs more CPU
+#define AUTO_CPU_LOW_THRESHOLD 0.2f // Stress below this = can save power
+#define AUTO_CPU_BOOST_WINDOWS 2 // Consecutive high windows before boosting
+#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive low windows before reducing
+#define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
 
 // Input Settings
 static int has_custom_controllers = 0; // Custom controller mappings defined
@@ -1219,10 +1243,7 @@ static char* button_labels[] = {
     "MENU+L2", "MENU+R2", "MENU+L3", "MENU+R3",    NULL,
 };
 static char* overclock_labels[] = {
-    "Powersave",
-    "Normal",
-    "Performance",
-    NULL,
+    "Powersave", "Normal", "Performance", "Auto", NULL,
 };
 
 // TODO: this should be provided by the core
@@ -1343,13 +1364,14 @@ static struct Config {
                             {
                                 .key = "minarch_cpu_speed",
                                 .name = "CPU Speed",
-                                .desc = "Over- or underclock the CPU to prioritize\npure "
-                                        "performance or power savings.",
+                                .desc = "Over- or underclock the CPU to prioritize\n"
+                                        "performance or power savings.\n"
+                                        "Auto adjusts based on emulation demand.",
                                 .full = NULL,
                                 .var = NULL,
                                 .default_value = 1,
                                 .value = 1,
-                                .count = 3,
+                                .count = 4,
                                 .lock = 0,
                                 .values = overclock_labels,
                                 .labels = overclock_labels,
@@ -1520,7 +1542,143 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
 	return 1;
 }
 
+/**
+ * Background thread that applies CPU frequency changes.
+ *
+ * Runs in the background and watches auto_cpu_target_level.
+ * When target differs from current, calls PWR_setCPUSpeed() to apply the change.
+ *
+ * This keeps expensive system() calls (overclock.elf) off the main emulation loop,
+ * preventing frame drops and audio glitches during CPU scaling.
+ *
+ * Thread safety: Uses auto_cpu_mutex to protect shared state.
+ */
+static void* auto_cpu_scaling_thread(void* arg) {
+	LOG_debug("Auto CPU thread: started\n");
+
+	while (auto_cpu_thread_running) {
+		// Read current state (thread-safe)
+		pthread_mutex_lock(&auto_cpu_mutex);
+		int target = auto_cpu_target_level;
+		int current = auto_cpu_current_level;
+		pthread_mutex_unlock(&auto_cpu_mutex);
+
+		// Apply change if needed (this may block with system() call)
+		if (target != current) {
+			int cpu_speed;
+			const char* level_name;
+
+			switch (target) {
+			case 0:
+				cpu_speed = CPU_SPEED_POWERSAVE;
+				level_name = "POWERSAVE";
+				break;
+			case 1:
+				cpu_speed = CPU_SPEED_NORMAL;
+				level_name = "NORMAL";
+				break;
+			case 2:
+				cpu_speed = CPU_SPEED_PERFORMANCE;
+				level_name = "PERFORMANCE";
+				break;
+			default:
+				cpu_speed = CPU_SPEED_NORMAL;
+				level_name = "NORMAL (fallback)";
+				break;
+			}
+
+			LOG_info("Auto CPU thread: applying %s (level %d)\n", level_name, target);
+			PWR_setCPUSpeed(cpu_speed);
+
+			// Update current state
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_current_level = target;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+		}
+
+		// Check every 50ms (responsive but not wasteful)
+		usleep(50000);
+	}
+
+	LOG_debug("Auto CPU thread: stopped\n");
+	return NULL;
+}
+
+/**
+ * Starts the auto CPU scaling background thread.
+ *
+ * Call when entering Auto mode (overclock == 3).
+ * Thread will run until auto_cpu_stopThread() is called.
+ */
+static void auto_cpu_startThread(void) {
+	if (auto_cpu_thread_running)
+		return;
+
+	auto_cpu_thread_running = 1;
+	if (pthread_create(&auto_cpu_thread, NULL, auto_cpu_scaling_thread, NULL) != 0) {
+		LOG_error("Failed to create auto CPU scaling thread\n");
+		auto_cpu_thread_running = 0;
+	} else {
+		LOG_debug("Auto CPU: thread started\n");
+	}
+}
+
+/**
+ * Stops the auto CPU scaling background thread.
+ *
+ * Call when exiting Auto mode or when game ends.
+ * Waits for thread to finish before returning.
+ */
+static void auto_cpu_stopThread(void) {
+	if (!auto_cpu_thread_running)
+		return;
+
+	auto_cpu_thread_running = 0;
+	pthread_join(auto_cpu_thread, NULL);
+	LOG_debug("Auto CPU: thread stopped\n");
+}
+
+/**
+ * Requests a CPU level change (non-blocking).
+ *
+ * Sets the target level which the background thread will apply.
+ * Returns immediately without blocking the main loop.
+ *
+ * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
+ */
+static void auto_cpu_setTargetLevel(int level) {
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_target_level = level;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+static void resetAutoCPUState(void) {
+	auto_cpu_stress_sum = 0.0f;
+	auto_cpu_frame_count = 0;
+	auto_cpu_high_windows = 0;
+	auto_cpu_low_windows = 0;
+	auto_cpu_last_underrun = SND_getUnderrunCount();
+	auto_cpu_startup_frames = 0;
+
+	// Reset levels (thread-safe)
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_target_level = 1; // Start at NORMAL
+	auto_cpu_current_level = 1;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+
+	LOG_info("Auto CPU: enabled, starting at NORMAL (level 1)\n");
+	LOG_debug(
+	    "Auto CPU: thresholds high=%.2f low=%.2f, windows boost=%d reduce=%d, grace=%d frames\n",
+	    AUTO_CPU_HIGH_THRESHOLD, AUTO_CPU_LOW_THRESHOLD, AUTO_CPU_BOOST_WINDOWS,
+	    AUTO_CPU_REDUCE_WINDOWS, AUTO_CPU_STARTUP_GRACE);
+}
+
 static void setOverclock(int i) {
+	// Stop auto thread if leaving auto mode
+	if (overclock == 3 && i != 3) {
+		auto_cpu_stopThread();
+	}
+
 	overclock = i;
 	switch (i) {
 	case 0:
@@ -1532,8 +1690,123 @@ static void setOverclock(int i) {
 	case 2:
 		PWR_setCPUSpeed(CPU_SPEED_PERFORMANCE);
 		break;
+	case 3: // Auto
+		resetAutoCPUState();
+		// Apply NORMAL immediately (synchronous) to avoid startup underrun
+		// Background thread will then maintain this or adjust as needed
+		PWR_setCPUSpeed(CPU_SPEED_NORMAL);
+		pthread_mutex_lock(&auto_cpu_mutex);
+		auto_cpu_current_level = 1; // Mark as applied
+		pthread_mutex_unlock(&auto_cpu_mutex);
+		auto_cpu_startThread();
+		break;
 	}
 }
+
+/**
+ * Updates auto CPU scaling based on audio rate control stress.
+ *
+ * Called every frame from the main emulation loop when overclock == 3 (Auto).
+ * Uses a window-based algorithm with hysteresis to avoid oscillation:
+ *
+ * 1. Accumulate stress over a window (~500ms)
+ * 2. At end of window, check average stress
+ * 3. Count consecutive high/low stress windows
+ * 4. Boost CPU after 2 consecutive high windows (~1s)
+ * 5. Reduce CPU after 4 consecutive low windows (~2s)
+ *
+ * Also handles emergency escalation on actual audio underruns.
+ */
+static void updateAutoCPU(void) {
+	// Skip if not in auto mode or during special states
+	if (overclock != 3 || fast_forward || show_menu)
+		return;
+
+	// Startup grace period - don't scale during initial buffer fill
+	if (auto_cpu_startup_frames < AUTO_CPU_STARTUP_GRACE) {
+		auto_cpu_startup_frames++;
+		if (auto_cpu_startup_frames == AUTO_CPU_STARTUP_GRACE) {
+			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
+		}
+		return;
+	}
+
+	// Get current target level (thread-safe read)
+	pthread_mutex_lock(&auto_cpu_mutex);
+	int current_target = auto_cpu_target_level;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+
+	// Emergency: check for actual underruns (panic path)
+	unsigned underruns = SND_getUnderrunCount();
+	if (underruns > auto_cpu_last_underrun && current_target < 2) {
+		// Underrun detected - request immediate boost to PERFORMANCE
+		auto_cpu_setTargetLevel(2);
+		auto_cpu_high_windows = 0;
+		auto_cpu_low_windows = 0;
+		SND_resetUnderrunCount();
+		auto_cpu_last_underrun = 0;
+		LOG_info("Auto CPU: PANIC - underrun detected, requesting PERFORMANCE\n");
+		return;
+	}
+	// Update underrun tracking (even if at max level)
+	if (underruns > auto_cpu_last_underrun) {
+		auto_cpu_last_underrun = underruns;
+	}
+
+	// Accumulate stress for current window
+	float stress = SND_getRateControlStress();
+	auto_cpu_stress_sum += stress;
+	auto_cpu_frame_count++;
+
+	// Check if window is complete
+	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
+		float avg_stress = auto_cpu_stress_sum / (float)auto_cpu_frame_count;
+
+		LOG_debug("Auto CPU: window complete, avg_stress=%.3f target=%d high_win=%d low_win=%d\n",
+		          avg_stress, current_target, auto_cpu_high_windows, auto_cpu_low_windows);
+
+		// Categorize window stress level
+		if (avg_stress > AUTO_CPU_HIGH_THRESHOLD) {
+			auto_cpu_high_windows++;
+			auto_cpu_low_windows = 0;
+			LOG_debug("Auto CPU: HIGH stress window (%.3f > %.2f), high_count=%d\n", avg_stress,
+			          AUTO_CPU_HIGH_THRESHOLD, auto_cpu_high_windows);
+		} else if (avg_stress < AUTO_CPU_LOW_THRESHOLD) {
+			auto_cpu_low_windows++;
+			auto_cpu_high_windows = 0;
+			LOG_debug("Auto CPU: LOW stress window (%.3f < %.2f), low_count=%d\n", avg_stress,
+			          AUTO_CPU_LOW_THRESHOLD, auto_cpu_low_windows);
+		} else {
+			// In the sweet spot - reset both counters
+			auto_cpu_high_windows = 0;
+			auto_cpu_low_windows = 0;
+			LOG_debug("Auto CPU: NORMAL stress window (%.3f in sweet spot)\n", avg_stress);
+		}
+
+		// Boost CPU if sustained high stress
+		if (auto_cpu_high_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
+			int new_level = current_target + 1;
+			auto_cpu_setTargetLevel(new_level);
+			auto_cpu_high_windows = 0;
+			LOG_info("Auto CPU: BOOST requested, level %d (stress=%.3f, %d windows)\n", new_level,
+			         avg_stress, AUTO_CPU_BOOST_WINDOWS);
+		}
+
+		// Reduce CPU if sustained low stress
+		if (auto_cpu_low_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
+			int new_level = current_target - 1;
+			auto_cpu_setTargetLevel(new_level);
+			auto_cpu_low_windows = 0;
+			LOG_info("Auto CPU: REDUCE requested, level %d (stress=%.3f, %d windows)\n", new_level,
+			         avg_stress, AUTO_CPU_REDUCE_WINDOWS);
+		}
+
+		// Reset window
+		auto_cpu_stress_sum = 0.0f;
+		auto_cpu_frame_count = 0;
+	}
+}
+
 static int toggle_thread = 0;
 static void Config_syncFrontend(char* key, int value) {
 	int i = -1;
@@ -4134,6 +4407,17 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		               debug_height);
 
 		sprintf(debug_text, "%.01f/%.01f %i%%", fps_double, cpu_double, (int)use_double);
+
+		// Show auto CPU info when enabled (append to FPS line)
+		if (overclock == 3) {
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int current = auto_cpu_current_level;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			char cpu_info[32];
+			sprintf(cpu_info, " C%d:S%.0f%%", current, SND_getRateControlStress() * 100.0f);
+			strcat(debug_text, cpu_info);
+		}
 		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
@@ -4445,6 +4729,9 @@ void Core_quit(void) {
 	}
 }
 void Core_close(void) {
+	// Stop auto CPU scaling thread if running
+	auto_cpu_stopThread();
+
 	// Free pixel format conversion buffer
 	convert_buffer_free();
 
@@ -6433,6 +6720,7 @@ static void* coreThread(void* arg) {
 			core.run();
 			limitFF();
 			trackFPS();
+			updateAutoCPU();
 		}
 	}
 	pthread_exit(NULL);
@@ -6595,6 +6883,7 @@ int main(int argc, char* argv[]) {
 			core.run();
 			limitFF();
 			trackFPS();
+			updateAutoCPU();
 		}
 
 		if (thread_video && !quit) {

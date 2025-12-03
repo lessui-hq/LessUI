@@ -1675,6 +1675,10 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
+// Maximum pitch deviation for dynamic rate control (0.5%)
+// Paper recommends d = 0.002 to 0.005 for inaudible adjustment
+#define SND_RATE_CONTROL_D 0.005f
+
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
 	int initialized;
@@ -1683,7 +1687,7 @@ static struct SND_Context {
 	int sample_rate_in;
 	int sample_rate_out;
 
-	int buffer_seconds; // current_audio_buffer_size
+	int buffer_video_frames; // How many video frames of audio to buffer (~83ms at 60fps)
 	SND_Frame* buffer; // buf
 	size_t frame_count; // buf_len
 
@@ -1693,6 +1697,10 @@ static struct SND_Context {
 
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
+
+	// Rate control stress tracking (for auto CPU scaling)
+	float last_rate_adjust; // Last calculated rate adjustment (1.0 ± d)
+	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
 } snd = {0};
 
 /**
@@ -1736,6 +1744,8 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 
 	// Handle underrun: repeat last frame or output silence
 	if (len > 0) {
+		snd.underrun_count++; // Track for auto CPU scaling panic path
+
 		if (snd.frame_filled >= 0 && snd.frame_filled < (int)snd.frame_count) {
 			// Repeat last consumed frame to avoid click
 			SND_Frame last = snd.buffer[snd.frame_filled];
@@ -1754,17 +1764,18 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 /**
  * Resizes the audio ring buffer based on sample rate and frame rate.
  *
- * Calculates buffer size to hold buffer_seconds worth of audio.
+ * Buffer holds buffer_video_frames worth of audio samples.
+ * At 60fps this is ~83ms, at 50fps ~100ms.
  * Locks audio thread during resize to prevent corruption.
  *
  * @note Called during init and when audio parameters change
  */
 static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
-	snd.frame_count = snd.buffer_seconds * snd.sample_rate_in / snd.frame_rate;
+	snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 	if (snd.frame_count == 0)
 		return;
 
-	// LOG_info("frame_count: %i (%i * %i / %f)\n", snd.frame_count, snd.buffer_seconds, snd.sample_rate_in, snd.frame_rate);
+	// LOG_info("frame_count: %i (%i * %i / %f)\n", snd.frame_count, snd.buffer_video_frames, snd.sample_rate_in, snd.frame_rate);
 	// snd.frame_count *= 2; // no help
 
 	SDL_LockAudio();
@@ -1816,7 +1827,7 @@ static float SND_getBufferFillLevel(void) {
  *
  * Where:
  *   - fill = current buffer level (0.0 to 1.0)
- *   - d = maximum allowed pitch deviation
+ *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 0.5%)
  *
  * This creates smooth, continuous feedback that naturally converges to 50% fill:
  *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer
@@ -1827,25 +1838,19 @@ static float SND_getBufferFillLevel(void) {
  * providing maximum headroom for timing jitter in both directions.
  *
  * @return Rate adjustment factor (1.0 ± d)
+ * @note Also stores result in snd.last_rate_adjust for stress monitoring
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
-
-	// Maximum pitch deviation (d) - choose based on content type
-	// Paper recommends d = 0.002 to 0.005 for inaudible adjustment
-	// PAL content (50Hz on 60Hz display) needs ~17% speed difference,
-	// but that's handled by the base resampling ratio, not dynamic control.
-	// Dynamic control only handles drift and jitter, so keep d small.
-	//
-	// We use a slightly larger value (0.5%) to handle hardware timing
-	// variations on budget handheld devices with less precise oscillators.
-	const float d = 0.005f;
 
 	// Our formula (inverted from paper to match resampler convention):
 	// When fill=0: adjustment = 1 - d  (smaller steps, more outputs, fills buffer)
 	// When fill=0.5: adjustment = 1.0  (no change)
 	// When fill=1: adjustment = 1 + d  (larger steps, fewer outputs, drains buffer)
-	float adjust = 1.0f - (1.0f - 2.0f * fill) * d;
+	float adjust = 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
+
+	// Store for stress monitoring (used by auto CPU scaling)
+	snd.last_rate_adjust = adjust;
 
 	return adjust;
 }
@@ -1968,7 +1973,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_seconds = 5;
+	snd.buffer_video_frames = 5; // Buffer 5 video frames of audio (~83ms at 60fps)
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
@@ -1996,6 +2001,70 @@ unsigned SND_getBufferOccupancy(void) {
 	float fill = SND_getBufferFillLevel();
 	SDL_UnlockAudio();
 	return (unsigned)(fill * 100.0f);
+}
+
+/**
+ * Gets the current rate control stress level.
+ *
+ * Measures how hard the dynamic rate control is working to maintain sync.
+ * Based on the last rate adjustment factor from SND_calculateRateAdjust().
+ *
+ * Stress interpretation:
+ *   - 0.0: Equilibrium, buffer at 50%, no adjustment needed
+ *   - 0.5: Moderate stress, rate control working at half capacity
+ *   - 1.0: Maximum stress, rate control at limit (±0.5% pitch)
+ *
+ * For auto CPU scaling:
+ *   - High sustained stress (>0.6) suggests CPU can't keep up
+ *   - Low sustained stress (<0.2) suggests CPU has headroom to spare
+ *
+ * @return Stress level 0.0-1.0 (clamped)
+ * @note Returns 0.0 if audio not initialized or no samples processed yet
+ */
+float SND_getRateControlStress(void) {
+	if (!snd.initialized || snd.last_rate_adjust == 0.0f)
+		return 0.0f;
+
+	// Stress = how far from equilibrium (1.0) we are, normalized by max deviation
+	// last_rate_adjust ranges from (1-d) to (1+d), i.e., 0.995 to 1.005
+	// When adjust < 1.0: buffer is low, we're trying to fill it (positive stress)
+	// When adjust > 1.0: buffer is high, we're trying to drain it (negative stress)
+	// We care about absolute stress in either direction
+	float deviation = snd.last_rate_adjust - 1.0f;
+	float stress = fabsf(deviation) / SND_RATE_CONTROL_D;
+
+	// Clamp to 0.0-1.0 range
+	if (stress < 0.0f)
+		stress = 0.0f;
+	if (stress > 1.0f)
+		stress = 1.0f;
+
+	return stress;
+}
+
+/**
+ * Gets the count of audio buffer underruns since initialization.
+ *
+ * An underrun occurs when the audio callback needs samples but the buffer
+ * is empty. This causes audible glitches (crackling/popping).
+ *
+ * For auto CPU scaling, underruns are an emergency signal - if rate control
+ * stress is high AND underruns are occurring, immediate CPU boost is needed.
+ *
+ * @return Number of underruns since SND_init() or last SND_resetUnderrunCount()
+ */
+unsigned SND_getUnderrunCount(void) {
+	return snd.underrun_count;
+}
+
+/**
+ * Resets the underrun counter to zero.
+ *
+ * Call after handling an underrun event (e.g., after boosting CPU)
+ * to track new underruns going forward.
+ */
+void SND_resetUnderrunCount(void) {
+	snd.underrun_count = 0;
 }
 
 /**
