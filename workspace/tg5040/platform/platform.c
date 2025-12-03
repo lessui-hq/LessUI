@@ -358,7 +358,7 @@ void PLAT_powerOff(void) {
  * Sets CPU frequency based on performance mode.
  *
  * Frequencies:
- * - MENU: 600MHz (minimal power for UI)
+ * - MENU: 1.2GHz (64-bit needs more headroom than 32-bit platforms)
  * - POWERSAVE: 1.2GHz
  * - NORMAL: 1.608GHz
  * - PERFORMANCE: 2GHz (maximum)
@@ -369,7 +369,7 @@ void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
 	case CPU_SPEED_MENU:
-		freq = 600000;
+		freq = 800000;
 		break;
 	case CPU_SPEED_POWERSAVE:
 		freq = 1200000;

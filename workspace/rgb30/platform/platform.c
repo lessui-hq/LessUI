@@ -370,7 +370,7 @@ void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
 	case CPU_SPEED_MENU:
-		freq = 600000;
+		freq = 800000;
 		break;
 	case CPU_SPEED_POWERSAVE:
 		freq = 1104000;

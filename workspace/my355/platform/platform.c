@@ -329,7 +329,7 @@ void PLAT_powerOff(void) {
  * Sets CPU clock speed based on performance level.
  *
  * Speed mappings:
- * - CPU_SPEED_MENU:        600 MHz (minimal power for menus)
+ * - CPU_SPEED_MENU:       1200 MHz (64-bit needs more headroom)
  * - CPU_SPEED_POWERSAVE:  1104 MHz (battery-friendly gaming)
  * - CPU_SPEED_NORMAL:     1608 MHz (default gaming)
  * - CPU_SPEED_PERFORMANCE: 1992 MHz (demanding games)
@@ -340,7 +340,7 @@ void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
 	case CPU_SPEED_MENU:
-		freq = 600000;
+		freq = 800000;
 		break;
 	case CPU_SPEED_POWERSAVE:
 		freq = 1104000;
