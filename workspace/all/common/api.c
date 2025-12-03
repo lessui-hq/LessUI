@@ -2076,96 +2076,63 @@ FALLBACK_IMPLEMENTATION int PLAT_lidChanged(int* state) {
  * @note Platforms can override this to handle custom input hardware
  */
 FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
-	// reset transient state
-	pad.just_pressed = BTN_NONE;
-	pad.just_released = BTN_NONE;
-	pad.just_repeated = BTN_NONE;
-
 	uint32_t tick = SDL_GetTicks();
-	for (int i = 0; i < BTN_ID_COUNT; i++) {
-		int btn = 1 << i;
-		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
-			pad.just_repeated |= btn; // set
-			pad.repeat_at[i] += PAD_REPEAT_INTERVAL;
-		}
-	}
+	PAD_beginPolling();
+	PAD_handleRepeat(tick);
 
-	// the actual poll
+	// Poll SDL events
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		int btn = BTN_NONE;
 		int pressed = 0; // 0=up,1=down
-		int id = -1;
 		if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
 			int code = event.key.keysym.scancode;
 			pressed = event.type == SDL_KEYDOWN;
 			// LOG_info("key event: %i (%i)\n", code,pressed);
 			if (code == CODE_UP) {
 				btn = BTN_DPAD_UP;
-				id = BTN_ID_DPAD_UP;
 			} else if (code == CODE_DOWN) {
 				btn = BTN_DPAD_DOWN;
-				id = BTN_ID_DPAD_DOWN;
 			} else if (code == CODE_LEFT) {
 				btn = BTN_DPAD_LEFT;
-				id = BTN_ID_DPAD_LEFT;
 			} else if (code == CODE_RIGHT) {
 				btn = BTN_DPAD_RIGHT;
-				id = BTN_ID_DPAD_RIGHT;
 			} else if (code == CODE_A) {
 				btn = BTN_A;
-				id = BTN_ID_A;
 			} else if (code == CODE_B) {
 				btn = BTN_B;
-				id = BTN_ID_B;
 			} else if (code == CODE_X) {
 				btn = BTN_X;
-				id = BTN_ID_X;
 			} else if (code == CODE_Y) {
 				btn = BTN_Y;
-				id = BTN_ID_Y;
 			} else if (code == CODE_START) {
 				btn = BTN_START;
-				id = BTN_ID_START;
 			} else if (code == CODE_SELECT) {
 				btn = BTN_SELECT;
-				id = BTN_ID_SELECT;
 			} else if (code == CODE_MENU) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (code == CODE_MENU_ALT) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (code == CODE_L1) {
 				btn = BTN_L1;
-				id = BTN_ID_L1;
 			} else if (code == CODE_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 			} else if (code == CODE_L3) {
 				btn = BTN_L3;
-				id = BTN_ID_L3;
 			} else if (code == CODE_R1) {
 				btn = BTN_R1;
-				id = BTN_ID_R1;
 			} else if (code == CODE_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 			} else if (code == CODE_R3) {
 				btn = BTN_R3;
-				id = BTN_ID_R3;
 			} else if (code == CODE_PLUS) {
 				btn = BTN_PLUS;
-				id = BTN_ID_PLUS;
 			} else if (code == CODE_MINUS) {
 				btn = BTN_MINUS;
-				id = BTN_ID_MINUS;
 			} else if (code == CODE_POWER) {
 				btn = BTN_POWER;
-				id = BTN_ID_POWER;
 			} else if (code == CODE_POWEROFF) {
 				btn = BTN_POWEROFF;
-				id = BTN_ID_POWEROFF;
 			} // nano-only
 		} else if (event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP) {
 			int joy = event.jbutton.button;
@@ -2173,70 +2140,48 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 			// LOG_info("joy event: %i (%i)\n", joy,pressed);
 			if (joy == JOY_UP) {
 				btn = BTN_DPAD_UP;
-				id = BTN_ID_DPAD_UP;
 			} else if (joy == JOY_DOWN) {
 				btn = BTN_DPAD_DOWN;
-				id = BTN_ID_DPAD_DOWN;
 			} else if (joy == JOY_LEFT) {
 				btn = BTN_DPAD_LEFT;
-				id = BTN_ID_DPAD_LEFT;
 			} else if (joy == JOY_RIGHT) {
 				btn = BTN_DPAD_RIGHT;
-				id = BTN_ID_DPAD_RIGHT;
 			} else if (joy == JOY_A) {
 				btn = BTN_A;
-				id = BTN_ID_A;
 			} else if (joy == JOY_B) {
 				btn = BTN_B;
-				id = BTN_ID_B;
 			} else if (joy == JOY_X) {
 				btn = BTN_X;
-				id = BTN_ID_X;
 			} else if (joy == JOY_Y) {
 				btn = BTN_Y;
-				id = BTN_ID_Y;
 			} else if (joy == JOY_START) {
 				btn = BTN_START;
-				id = BTN_ID_START;
 			} else if (joy == JOY_SELECT) {
 				btn = BTN_SELECT;
-				id = BTN_ID_SELECT;
 			} else if (joy == JOY_MENU) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_MENU_ALT) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_MENU_ALT2) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_L1) {
 				btn = BTN_L1;
-				id = BTN_ID_L1;
 			} else if (joy == JOY_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 			} else if (joy == JOY_L3) {
 				btn = BTN_L3;
-				id = BTN_ID_L3;
 			} else if (joy == JOY_R1) {
 				btn = BTN_R1;
-				id = BTN_ID_R1;
 			} else if (joy == JOY_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 			} else if (joy == JOY_R3) {
 				btn = BTN_R3;
-				id = BTN_ID_R3;
 			} else if (joy == JOY_PLUS) {
 				btn = BTN_PLUS;
-				id = BTN_ID_PLUS;
 			} else if (joy == JOY_MINUS) {
 				btn = BTN_MINUS;
-				id = BTN_ID_MINUS;
 			} else if (joy == JOY_POWER) {
 				btn = BTN_POWER;
-				id = BTN_ID_POWER;
 			}
 		} else if (event.type == SDL_JOYHATMOTION) {
 			int hats[4] = {-1, -1, -1, -1}; // -1=no change,0=up,1=down,2=left,3=right btn_ids
@@ -2303,18 +2248,11 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 				break;
 			}
 
-			for (id = 0; id < 4; id++) {
+			for (int id = 0; id < 4; id++) {
 				int state = hats[id];
-				btn = 1 << id;
-				if (state == 0) {
-					pad.is_pressed &= ~btn; // unset
-					pad.just_repeated &= ~btn; // unset
-					pad.just_released |= btn; // set
-				} else if (state == 1 && (pad.is_pressed & btn) == BTN_NONE) {
-					pad.just_pressed |= btn; // set
-					pad.just_repeated |= btn; // set
-					pad.is_pressed |= btn; // set
-					pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
+				if (state >= 0) { // -1 means no change
+					btn = 1 << id;
+					PAD_updateButton(btn, state, tick);
 				}
 			}
 			btn = BTN_NONE; // already handled, force continue
@@ -2326,11 +2264,9 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 			// triggers on tg5040
 			if (axis == AXIS_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 				pressed = val > 0;
 			} else if (axis == AXIS_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 				pressed = val > 0;
 			}
 
@@ -2356,19 +2292,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 		}
 		// else if (event.type==SDL_QUIT) PWR_powerOff(); // added for macOS debug
 
-		if (btn == BTN_NONE)
-			continue;
-
-		if (!pressed) {
-			pad.is_pressed &= ~btn; // unset
-			pad.just_repeated &= ~btn; // unset
-			pad.just_released |= btn; // set
-		} else if ((pad.is_pressed & btn) == BTN_NONE) {
-			pad.just_pressed |= btn; // set
-			pad.just_repeated |= btn; // set
-			pad.is_pressed |= btn; // set
-			pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
-		}
+		PAD_updateButton(btn, pressed, tick);
 	}
 
 	if (lid.has_lid && PLAT_lidChanged(NULL))

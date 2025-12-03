@@ -105,21 +105,11 @@ struct input_event {
  * and PAD_REPEAT_INTERVAL.
  */
 void PLAT_pollInput(void) {
-	// reset transient state
-	pad.just_pressed = BTN_NONE;
-	pad.just_released = BTN_NONE;
-	pad.just_repeated = BTN_NONE;
-
 	uint32_t tick = SDL_GetTicks();
-	for (int i = 0; i < BTN_ID_COUNT; i++) {
-		int btn = 1 << i;
-		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
-			pad.just_repeated |= btn; // set
-			pad.repeat_at[i] += PAD_REPEAT_INTERVAL;
-		}
-	}
+	PAD_beginPolling();
+	PAD_handleRepeat(tick);
 
-	// the actual poll
+	// Poll input devices
 	int input;
 	static struct input_event event;
 	for (int i = 0; i < INPUT_COUNT; i++) {
@@ -130,7 +120,6 @@ void PLAT_pollInput(void) {
 
 			int btn = BTN_NONE;
 			int pressed = 0; // 0=up,1=down
-			int id = -1;
 			int type = event.type;
 			int code = event.code;
 			int value = event.value;
@@ -144,55 +133,38 @@ void PLAT_pollInput(void) {
 				// LOG_info("key event: %i (%i)\n", code,pressed); // no L3/R3
 				if (code == RAW_UP) {
 					btn = BTN_DPAD_UP;
-					id = BTN_ID_DPAD_UP;
 				} else if (code == RAW_DOWN) {
 					btn = BTN_DPAD_DOWN;
-					id = BTN_ID_DPAD_DOWN;
 				} else if (code == RAW_LEFT) {
 					btn = BTN_DPAD_LEFT;
-					id = BTN_ID_DPAD_LEFT;
 				} else if (code == RAW_RIGHT) {
 					btn = BTN_DPAD_RIGHT;
-					id = BTN_ID_DPAD_RIGHT;
 				} else if (code == RAW_A) {
 					btn = BTN_A;
-					id = BTN_ID_A;
 				} else if (code == RAW_B) {
 					btn = BTN_B;
-					id = BTN_ID_B;
 				} else if (code == RAW_X) {
 					btn = BTN_X;
-					id = BTN_ID_X;
 				} else if (code == RAW_Y) {
 					btn = BTN_Y;
-					id = BTN_ID_Y;
 				} else if (code == RAW_START) {
 					btn = BTN_START;
-					id = BTN_ID_START;
 				} else if (code == RAW_SELECT) {
 					btn = BTN_SELECT;
-					id = BTN_ID_SELECT;
 				} else if (code == RAW_MENU) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_MENU1) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_MENU2) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_L1) {
 					btn = BTN_L1;
-					id = BTN_ID_L1;
 				} else if (code == RAW_L2) {
 					btn = BTN_L2;
-					id = BTN_ID_L2;
 				} else if (code == RAW_R1) {
 					btn = BTN_R1;
-					id = BTN_ID_R1;
 				} else if (code == RAW_R2) {
 					btn = BTN_R2;
-					id = BTN_ID_R2;
 				}
 			} else if (type == EV_ABS) {
 				// LOG_info("axis: %i (%i)\n",code,value);
@@ -204,19 +176,7 @@ void PLAT_pollInput(void) {
 				btn = BTN_NONE; // already handled, force continue
 			}
 
-			if (btn == BTN_NONE)
-				continue;
-
-			if (!pressed) {
-				pad.is_pressed &= ~btn; // unset
-				pad.just_repeated &= ~btn; // unset
-				pad.just_released |= btn; // set
-			} else if ((pad.is_pressed & btn) == BTN_NONE) {
-				pad.just_pressed |= btn; // set
-				pad.just_repeated |= btn; // set
-				pad.is_pressed |= btn; // set
-				pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
-			}
+			PAD_updateButton(btn, pressed, tick);
 		}
 	}
 }

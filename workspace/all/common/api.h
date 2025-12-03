@@ -14,6 +14,7 @@
 #include "api_types.h"
 #include "defines.h"
 #include "log.h"
+#include "pad.h"
 #include "platform.h"
 #include "scaler.h"
 #include "sdl.h"
@@ -882,16 +883,13 @@ typedef struct PAD_Context {
 	int just_released; // Bitmask of buttons released this frame
 	int just_repeated; // Bitmask of buttons auto-repeated this frame
 	uint32_t repeat_at[BTN_ID_COUNT]; // Timestamp for next repeat per button
+	uint32_t hold_start[BTN_ID_COUNT]; // Timestamp when button was first pressed (for accel)
 	PAD_Axis laxis; // Left analog stick state
 	PAD_Axis raxis; // Right analog stick state
 } PAD_Context;
 extern PAD_Context pad;
 
-/**
- * Auto-repeat timing constants.
- */
-#define PAD_REPEAT_DELAY 300 // Milliseconds before first repeat
-#define PAD_REPEAT_INTERVAL 100 // Milliseconds between repeats
+// Note: PAD_REPEAT_* and PAD_ACCEL_* constants are now defined in pad.h
 
 /**
  * Initializes the input subsystem.

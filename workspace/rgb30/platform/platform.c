@@ -43,9 +43,12 @@
 static SDL2_RenderContext vid_ctx;
 
 static const SDL2_Config vid_config = {
+    // No rotation needed (square 720x720 display)
     .auto_rotate = 0,
+    .rotate_cw = 0,
+    .rotate_null_center = 0,
+    // Display features
     .has_hdmi = 0,
-    .brightness_alpha = 0,
     .default_sharpness = SHARPNESS_SOFT,
 };
 
@@ -166,18 +169,9 @@ struct input_event {
 #define EV_ABS 0x03
 
 void PLAT_pollInput(void) {
-	pad.just_pressed = BTN_NONE;
-	pad.just_released = BTN_NONE;
-	pad.just_repeated = BTN_NONE;
-
 	uint32_t tick = SDL_GetTicks();
-	for (int i = 0; i < BTN_ID_COUNT; i++) {
-		int btn = 1 << i;
-		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
-			pad.just_repeated |= btn;
-			pad.repeat_at[i] += PAD_REPEAT_INTERVAL;
-		}
-	}
+	PAD_beginPolling();
+	PAD_handleRepeat(tick);
 
 	int input;
 	static struct input_event event;
@@ -189,7 +183,6 @@ void PLAT_pollInput(void) {
 
 			int btn = BTN_NONE;
 			int pressed = 0;
-			int id = -1;
 			int type = event.type;
 			int code = event.code;
 			int value = event.value;
@@ -201,70 +194,48 @@ void PLAT_pollInput(void) {
 				LOG_info("key event: %i (%i)\n", code, pressed);
 				if (code == RAW_UP) {
 					btn = BTN_DPAD_UP;
-					id = BTN_ID_DPAD_UP;
 				} else if (code == RAW_DOWN) {
 					btn = BTN_DPAD_DOWN;
-					id = BTN_ID_DPAD_DOWN;
 				} else if (code == RAW_LEFT) {
 					btn = BTN_DPAD_LEFT;
-					id = BTN_ID_DPAD_LEFT;
 				} else if (code == RAW_RIGHT) {
 					btn = BTN_DPAD_RIGHT;
-					id = BTN_ID_DPAD_RIGHT;
 				} else if (code == RAW_A) {
 					btn = BTN_A;
-					id = BTN_ID_A;
 				} else if (code == RAW_B) {
 					btn = BTN_B;
-					id = BTN_ID_B;
 				} else if (code == RAW_X) {
 					btn = BTN_X;
-					id = BTN_ID_X;
 				} else if (code == RAW_Y) {
 					btn = BTN_Y;
-					id = BTN_ID_Y;
 				} else if (code == RAW_START) {
 					btn = BTN_START;
-					id = BTN_ID_START;
 				} else if (code == RAW_SELECT) {
 					btn = BTN_SELECT;
-					id = BTN_ID_SELECT;
 				} else if (code == RAW_MENU) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_MENU1) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_MENU2) {
 					btn = BTN_MENU;
-					id = BTN_ID_MENU;
 				} else if (code == RAW_L1) {
 					btn = BTN_L1;
-					id = BTN_ID_L1;
 				} else if (code == RAW_L2) {
 					btn = BTN_L2;
-					id = BTN_ID_L2;
 				} else if (code == RAW_L3) {
 					btn = BTN_L3;
-					id = BTN_ID_L3;
 				} else if (code == RAW_R1) {
 					btn = BTN_R1;
-					id = BTN_ID_R1;
 				} else if (code == RAW_R2) {
 					btn = BTN_R2;
-					id = BTN_ID_R2;
 				} else if (code == RAW_R3) {
 					btn = BTN_R3;
-					id = BTN_ID_R3;
 				} else if (code == RAW_PLUS) {
 					btn = BTN_PLUS;
-					id = BTN_ID_PLUS;
 				} else if (code == RAW_MINUS) {
 					btn = BTN_MINUS;
-					id = BTN_ID_MINUS;
 				} else if (code == RAW_POWER) {
 					btn = BTN_POWER;
-					id = BTN_ID_POWER;
 				}
 			} else if (type == EV_ABS) {
 				LOG_info("abs event: %i (%i==%i)\n", code, value, (value * 32767) / 1800);
@@ -276,28 +247,16 @@ void PLAT_pollInput(void) {
 					pad.laxis.y = (value * 32767) / 1800;
 					PAD_setAnalog(BTN_ID_ANALOG_UP, BTN_ID_ANALOG_DOWN, pad.laxis.y,
 					              tick + PAD_REPEAT_DELAY);
-				}
-				// Right stick axes are swapped in hardware
-				else if (code == RAW_RSX)
+					// Right stick axes are swapped in hardware
+				} else if (code == RAW_RSX) {
 					pad.raxis.y = (value * 32767) / 1800;
-				else if (code == RAW_RSY)
+				} else if (code == RAW_RSY) {
 					pad.raxis.x = (value * 32767) / 1800;
+				}
 				btn = BTN_NONE;
 			}
 
-			if (btn == BTN_NONE)
-				continue;
-
-			if (!pressed) {
-				pad.is_pressed &= ~btn;
-				pad.just_repeated &= ~btn;
-				pad.just_released |= btn;
-			} else if ((pad.is_pressed & btn) == BTN_NONE) {
-				pad.just_pressed |= btn;
-				pad.just_repeated |= btn;
-				pad.is_pressed |= btn;
-				pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
-			}
+			PAD_updateButton(btn, pressed, tick);
 		}
 	}
 }
@@ -367,7 +326,7 @@ void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
 	case CPU_SPEED_MENU:
-		freq = 600000;
+		freq = 800000;
 		break;
 	case CPU_SPEED_POWERSAVE:
 		freq = 1104000;
