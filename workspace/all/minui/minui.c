@@ -158,7 +158,7 @@ static void* thumb_loader_thread(void* arg) {
 			LOG_debug("thumb: loaded idx=%d%s", entry_index, is_preload ? " (preload)" : "");
 
 			// Clear the request if it matched (avoid re-processing same request)
-			if (thumb_request_path[0] != '\0' && exactMatch(thumb_request_path, path)) {
+			if (thumb_request_path[0] != '\0') {
 				thumb_request_path[0] = '\0';
 			}
 

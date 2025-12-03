@@ -249,7 +249,7 @@ void PLAT_powerOff(void) {
  * Sets CPU frequency based on performance profile.
  *
  * CPU frequencies:
- * - MENU: 1.2 GHz (64-bit needs more headroom than 32-bit platforms)
+ * - MENU: 800 MHz (64-bit needs more headroom than 32-bit platforms)
  * - POWERSAVE: 816 MHz (low-demand games)
  * - NORMAL: 1416 MHz (most games)
  * - PERFORMANCE: 1800 MHz (demanding games)

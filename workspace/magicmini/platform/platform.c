@@ -432,7 +432,7 @@ void PLAT_powerOff(void) {
  * Sets CPU/GPU/memory frequency based on performance mode.
  *
  * RK3566 frequency settings:
- * - MENU: 1.2GHz (64-bit needs more headroom than 32-bit platforms)
+ * - MENU: 800MHz (64-bit needs more headroom than 32-bit platforms)
  * - POWERSAVE: 816MHz (conservative for simple games)
  * - NORMAL: 1.416GHz (balanced for most games)
  * - PERFORMANCE: 2.016GHz (maximum, GPU/DMC also set to performance)

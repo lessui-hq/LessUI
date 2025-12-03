@@ -358,7 +358,7 @@ void PLAT_powerOff(void) {
  * Sets CPU frequency based on performance mode.
  *
  * Frequencies:
- * - MENU: 1.2GHz (64-bit needs more headroom than 32-bit platforms)
+ * - MENU: 800MHz (64-bit needs more headroom than 32-bit platforms)
  * - POWERSAVE: 1.2GHz
  * - NORMAL: 1.608GHz
  * - PERFORMANCE: 2GHz (maximum)
