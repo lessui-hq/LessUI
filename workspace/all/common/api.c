@@ -1973,7 +1973,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_video_frames = 5; // Buffer 5 video frames of audio (~83ms at 60fps)
+	snd.buffer_video_frames = 8; // Buffer 8 video frames of audio (~133ms at 60fps)
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 

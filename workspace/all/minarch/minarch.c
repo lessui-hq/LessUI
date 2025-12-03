@@ -161,17 +161,29 @@ static int auto_cpu_low_windows = 0; // Consecutive windows with low stress
 static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
 static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
 
+// Pending log info (set by main thread, consumed by CPU thread)
+static float auto_cpu_pending_stress = 0.0f;
+static float auto_cpu_pending_cpu_usage = 0.0f;
+static const char* auto_cpu_pending_reason = NULL;
+
+// CPU usage for logging (defined here for access from auto CPU code)
+static double use_double = 0;
+
 // Background thread for applying CPU changes without blocking main loop
 static pthread_t auto_cpu_thread;
 static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
 
+// Forward declaration for CSV logging (called from thread)
+static void auto_cpu_logChange(int old_level, int new_level, float stress, float cpu_usage,
+                               const char* reason);
+
 // Auto CPU Scaling Tuning Constants
 #define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define AUTO_CPU_HIGH_THRESHOLD 0.6f // Stress above this = needs more CPU
-#define AUTO_CPU_LOW_THRESHOLD 0.2f // Stress below this = can save power
+#define AUTO_CPU_HIGH_THRESHOLD 0.7f // Stress above this = needs more CPU
+#define AUTO_CPU_LOW_THRESHOLD 0.25f // Stress below this = can save power
 #define AUTO_CPU_BOOST_WINDOWS 2 // Consecutive high windows before boosting
-#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive low windows before reducing
+#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive low windows before reducing (2s)
 #define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
 
 // Input Settings
@@ -1561,6 +1573,9 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		pthread_mutex_lock(&auto_cpu_mutex);
 		int target = auto_cpu_target_level;
 		int current = auto_cpu_current_level;
+		float pending_stress = auto_cpu_pending_stress;
+		float pending_cpu_usage = auto_cpu_pending_cpu_usage;
+		const char* pending_reason = auto_cpu_pending_reason;
 		pthread_mutex_unlock(&auto_cpu_mutex);
 
 		// Apply change if needed (this may block with system() call)
@@ -1590,9 +1605,16 @@ static void* auto_cpu_scaling_thread(void* arg) {
 			LOG_info("Auto CPU thread: applying %s (level %d)\n", level_name, target);
 			PWR_setCPUSpeed(cpu_speed);
 
+			// Log to CSV for analysis
+			if (pending_reason) {
+				auto_cpu_logChange(current, target, pending_stress, pending_cpu_usage,
+				                   pending_reason);
+			}
+
 			// Update current state
 			pthread_mutex_lock(&auto_cpu_mutex);
 			auto_cpu_current_level = target;
+			auto_cpu_pending_reason = NULL; // Clear pending log
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		}
 
@@ -1646,10 +1668,38 @@ static void auto_cpu_stopThread(void) {
  *
  * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
  */
-static void auto_cpu_setTargetLevel(int level) {
+static void auto_cpu_setTargetLevel(int level, float stress, float cpu_usage, const char* reason) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	auto_cpu_target_level = level;
+	auto_cpu_pending_stress = stress;
+	auto_cpu_pending_cpu_usage = cpu_usage;
+	auto_cpu_pending_reason = reason;
 	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+/**
+ * Log CPU scaling event to CSV for analysis.
+ * Called from background thread after applying change.
+ */
+static void auto_cpu_logChange(int old_level, int new_level, float stress, float cpu_usage,
+                               const char* reason) {
+	char csv_path[MAX_PATH];
+	sprintf(csv_path, "%s/logs", USERDATA_PATH);
+	mkdir(csv_path, 0755);
+	strcat(csv_path, "/auto_cpu.csv");
+
+	int needs_header = (access(csv_path, F_OK) != 0);
+	FILE* f = fopen(csv_path, "a");
+	if (!f)
+		return;
+
+	if (needs_header) {
+		fprintf(f, "timestamp,path,old_level,new_level,stress,cpu_usage,reason\n");
+	}
+
+	fprintf(f, "%u,%s,%d,%d,%.1f,%.1f,%s\n", SDL_GetTicks(), game.path, old_level, new_level,
+	        stress * 100.0f, cpu_usage, reason);
+	fclose(f);
 }
 
 static void resetAutoCPUState(void) {
@@ -1740,7 +1790,7 @@ static void updateAutoCPU(void) {
 	unsigned underruns = SND_getUnderrunCount();
 	if (underruns > auto_cpu_last_underrun && current_target < 2) {
 		// Underrun detected - request immediate boost to PERFORMANCE
-		auto_cpu_setTargetLevel(2);
+		auto_cpu_setTargetLevel(2, 1.0f, (float)use_double, "panic");
 		auto_cpu_high_windows = 0;
 		auto_cpu_low_windows = 0;
 		SND_resetUnderrunCount();
@@ -1786,7 +1836,7 @@ static void updateAutoCPU(void) {
 		// Boost CPU if sustained high stress
 		if (auto_cpu_high_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
 			int new_level = current_target + 1;
-			auto_cpu_setTargetLevel(new_level);
+			auto_cpu_setTargetLevel(new_level, avg_stress, (float)use_double, "boost");
 			auto_cpu_high_windows = 0;
 			LOG_info("Auto CPU: BOOST requested, level %d (stress=%.3f, %d windows)\n", new_level,
 			         avg_stress, AUTO_CPU_BOOST_WINDOWS);
@@ -1795,7 +1845,7 @@ static void updateAutoCPU(void) {
 		// Reduce CPU if sustained low stress
 		if (auto_cpu_low_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
 			int new_level = current_target - 1;
-			auto_cpu_setTargetLevel(new_level);
+			auto_cpu_setTargetLevel(new_level, avg_stress, (float)use_double, "reduce");
 			auto_cpu_low_windows = 0;
 			LOG_info("Auto CPU: REDUCE requested, level %d (stress=%.3f, %d windows)\n", new_level,
 			         avg_stress, AUTO_CPU_REDUCE_WINDOWS);
@@ -3583,10 +3633,12 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 	if (oy < 0)
 		oy = height - h + oy;
 
+	// Bounds check - need 1px margin for outline
+	if (ox < 1 || oy < 1 || ox + w + 1 > width || oy + h + 1 > height)
+		return;
+
 	data += oy * stride + ox;
-	uint16_t* row =
-	    data -
-	    stride; // TODO: this will crash and burn if ox,oy==0,0 but is fine as used currently :sweat_smile:
+	uint16_t* row = data - stride;
 	memset(row - 1, 0, (w + 2) * 2);
 	for (int y = 0; y < CHAR_HEIGHT; y++) {
 		row = data + y * stride;
@@ -3616,7 +3668,7 @@ static int fps_ticks = 0;
 static int use_ticks = 0;
 static double fps_double = 0;
 static double cpu_double = 0;
-static double use_double = 0;
+// use_double declared earlier for auto CPU logging access
 static uint32_t sec_start = 0;
 
 #ifdef USES_SWSCALER
@@ -4407,19 +4459,20 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		               debug_height);
 
 		sprintf(debug_text, "%.01f/%.01f %i%%", fps_double, cpu_double, (int)use_double);
+		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
+		               debug_height);
 
-		// Show auto CPU info when enabled (append to FPS line)
+		// Auto CPU info stacked above FPS line when enabled
 		if (overclock == 3) {
 			pthread_mutex_lock(&auto_cpu_mutex);
 			int current = auto_cpu_current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
-
-			char cpu_info[32];
-			sprintf(cpu_info, " C%d:S%.0f%%", current, SND_getRateControlStress() * 100.0f);
-			strcat(debug_text, cpu_info);
+			float avg_stress =
+			    (auto_cpu_frame_count > 0) ? (auto_cpu_stress_sum / auto_cpu_frame_count) : 0.0f;
+			sprintf(debug_text, "%dx%.0f%%", current, avg_stress * 100.0f);
+			blitBitmapText(debug_text, x, -y - 10, (uint16_t*)renderer.src, pitch_in_pixels,
+			               debug_width, debug_height);
 		}
-		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
 
 		sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
 		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,

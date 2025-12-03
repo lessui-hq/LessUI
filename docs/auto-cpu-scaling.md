@@ -87,9 +87,14 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - [x] Updated option count from 3 to 4
 - [x] Updated description to mention Auto mode
 - [x] Persists via existing config system (`minarch_cpu_speed`)
-- [x] **Debug HUD**: Shows "CPU:X S:XX%" when auto mode active
-  - CPU:0/1/2 = current level (POWERSAVE/NORMAL/PERFORMANCE)
-  - S:XX% = real-time rate control stress (0-100%)
+- [x] **Debug HUD**: Shows "XxYY%" stacked above FPS line when auto mode active
+  - X = current level (0/1/2 = POWERSAVE/NORMAL/PERFORMANCE)
+  - YY% = window-averaged stress (0-100%)
+  - Uses only bitmap font characters (0-9, x, %)
+- [x] **CSV Logging**: Logs every CPU change to `USERDATA_PATH/logs/auto_cpu.csv`
+  - Columns: timestamp, path, old_level, new_level, stress, cpu_usage, reason
+  - Reason: "boost", "reduce", or "panic"
+  - Enables data-driven tuning decisions
 
 ### Phase 6: Platform Support
 - [ ] Audit platforms - which have working `PLAT_setCPUSpeed`?
@@ -171,10 +176,10 @@ frame_count++;
 if (frame_count >= WINDOW_FRAMES) {
     float avg_stress = stress_sum / frame_count;
 
-    if (avg_stress > 0.6f) {
+    if (avg_stress > 0.7f) {
         high_stress_windows++;
         low_stress_windows = 0;
-    } else if (avg_stress < 0.2f) {
+    } else if (avg_stress < 0.25f) {
         low_stress_windows++;
         high_stress_windows = 0;
     } else {
@@ -235,14 +240,17 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 ## Audio Buffer Context
 
-Our audio buffer holds **5 video frames** of audio (~83ms at 60fps, ~100ms at 50fps):
+Our audio buffer holds **8 video frames** of audio (~133ms at 60fps, ~160ms at 50fps):
 
 ```c
-snd.buffer_video_frames = 5;
+snd.buffer_video_frames = 8;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-This is tight, which is why we use rate control stress (buffer-independent) rather than raw buffer occupancy.
+**Buffer size history:**
+- Started at 5 frames (~83ms) - caused spurious underruns at low CPU usage
+- CSV logging revealed underruns happening at 30-40% CPU usage (not CPU-bound)
+- Increased to 8 frames - eliminated false underruns, stable scaling
 
 ## Testing Results
 
@@ -266,7 +274,7 @@ This is tight, which is why we use rate control stress (buffer-independent) rath
 
 ### Tuning Observations
 
-**Current thresholds:**
+**Iteration 1 thresholds (too conservative):**
 ```c
 AUTO_CPU_HIGH_THRESHOLD = 0.60   // 60%
 AUTO_CPU_LOW_THRESHOLD  = 0.20   // 20%
@@ -277,27 +285,29 @@ AUTO_CPU_REDUCE_WINDOWS = 4      // 2 seconds
 - Occasionally <20% → counts as LOW
 - Occasionally >20% → resets to NORMAL, counter resets
 - Never achieves 4 consecutive LOW windows
-- Could run at POWERSAVE (1104 MHz) but stays at PERFORMANCE (1488 MHz)
 
-**Proposed fix:**
+**Iteration 2:**
+- Raised LOW_THRESHOLD to 25% - still oscillating
+
+**Iteration 3 (current):**
 ```c
-AUTO_CPU_LOW_THRESHOLD  = 0.25   // Raise to 25% (was 20%)
-AUTO_CPU_REDUCE_WINDOWS = 3      // Reduce to 3 windows = 1.5s (was 4 = 2s)
+AUTO_CPU_HIGH_THRESHOLD = 0.70   // Raised to 70% (was 60%)
+AUTO_CPU_LOW_THRESHOLD  = 0.25   // Raised to 25% (was 20%)
+snd.buffer_video_frames = 8      // Increased from 5 (was causing false underruns)
 ```
 
-**Reasoning:**
-- 25% threshold catches 19-24% stress range consistently
-- Still maintains 35% deadband from high threshold (25% to 60%)
-- Faster reduction (1.5s) for better battery savings on easy games
-- More aggressive power savings without sacrificing responsiveness
-
-**Risk**: May cause oscillation if a game needs exactly NORMAL level. Need more testing.
+**Key insight from CSV logging:**
+- Tetris was panicking (underrun) at 30-40% CPU usage
+- CPU wasn't the bottleneck - audio buffer was too small
+- Increasing buffer from 5→8 frames eliminated spurious underruns
+- Now games reduce smoothly: 2→1→0 without panic oscillation
 
 ### Known Issues
 
-1. **Startup underrun** - Fixed by applying initial NORMAL synchronously
-2. **Low threshold too conservative** - Prevents reduction on easy games
-3. **Debug HUD segfault** - Needs investigation (boundary issue in blitBitmapText)
+1. ~~**Startup underrun**~~ - Fixed: apply initial NORMAL synchronously
+2. ~~**Low threshold too conservative**~~ - Fixed: raised to 25%
+3. ~~**Debug HUD segfault**~~ - Fixed: use only bitmap font characters, added bounds checking
+4. ~~**False underruns at low CPU usage**~~ - Fixed: increased audio buffer from 5→8 frames
 
 ## References
 
@@ -310,18 +320,27 @@ AUTO_CPU_REDUCE_WINDOWS = 3      // Reduce to 3 windows = 1.5s (was 4 = 2s)
 
 | Parameter | Current | Status | Notes |
 |-----------|---------|--------|-------|
+| Audio buffer | 8 frames (133ms) | ✅ Fixed | Was 5 frames, caused false underruns |
 | Window size | 30 frames (500ms) | ✅ Good | 6 buffer cycles, filters noise well |
-| High threshold | 60% | ✅ Good | Catches struggling games before crisis |
-| Low threshold | 20% | ⚠️ **Too low** | Tetris hovers 19-24%, can't reduce. Try 25% |
+| High threshold | 70% | ✅ Adjusted | Was 60%, raised for more headroom |
+| Low threshold | 25% | ✅ Adjusted | Was 20%, raised to catch 19-24% stress games |
 | Boost windows | 2 (1s) | ✅ Good | Fast response to performance issues |
-| Reduce windows | 4 (2s) | ⚠️ **Too slow?** | Combined with low threshold, prevents reduction. Try 3 |
+| Reduce windows | 4 (2s) | ✅ Good | Conservative to prevent oscillation |
 | Startup grace | 60 frames (1s) | ✅ Good | Avoids false positives during buffer fill |
 
-### Recommended Next Iteration
+### Current Values (Iteration 3)
 
 ```c
-#define AUTO_CPU_LOW_THRESHOLD 0.25f   // Raise from 0.20 to 0.25
-#define AUTO_CPU_REDUCE_WINDOWS 3      // Reduce from 4 to 3 (1.5s)
+// api.c
+snd.buffer_video_frames = 8;           // ~133ms at 60fps (was 5)
+
+// minarch.c
+#define AUTO_CPU_WINDOW_FRAMES 30      // ~500ms at 60fps
+#define AUTO_CPU_HIGH_THRESHOLD 0.7f   // Stress above 70% = needs more CPU
+#define AUTO_CPU_LOW_THRESHOLD 0.25f   // Stress below 25% = can save power
+#define AUTO_CPU_BOOST_WINDOWS 2       // Boost after 1s of high stress
+#define AUTO_CPU_REDUCE_WINDOWS 4      // Reduce after 2s of low stress
+#define AUTO_CPU_STARTUP_GRACE 60      // Ignore first ~1s after game start
 ```
 
-This should allow Tetris-class games to reduce to POWERSAVE while maintaining stability.
+Tetris now reduces smoothly to POWERSAVE without oscillation. CSV logging confirmed the fix.
