@@ -1,0 +1,1629 @@
+#!/bin/sh
+#
+# System Report - Comprehensive device information collector
+#
+# Generates a detailed report for platform development including:
+# - CPU frequency scaling capabilities (governors, frequencies, write test)
+# - Binary architecture support (32-bit vs 64-bit ELF)
+# - System information (kernel, memory, storage)
+# - Hardware paths and capabilities
+#
+
+###############################################################################
+# Logging helpers - Markdown formatted output
+###############################################################################
+
+log_h1() {
+    echo ""
+    echo "# $*"
+    echo ""
+}
+
+log_h2() {
+    echo ""
+    echo "## $*"
+    echo ""
+}
+
+log_h3() {
+    echo ""
+    echo "### $*"
+    echo ""
+}
+
+log_info() {
+    echo "- **Info:** $*"
+}
+
+log_warn() {
+    echo "- **Warning:** $*"
+}
+
+log_error() {
+    echo "- **Error:** $*"
+}
+
+log_ok() {
+    echo "- ✓ $*"
+}
+
+log_fail() {
+    echo "- ✗ $*"
+}
+
+# Code block helpers
+code_start() {
+    echo '```'
+}
+
+code_end() {
+    echo '```'
+}
+
+###############################################################################
+# CPU Frequency Scaling Detection (Most important for auto CPU scaling)
+###############################################################################
+
+fn_cpu_scaling() {
+    log_h1 "CPU FREQUENCY SCALING ANALYSIS"
+
+    log_h2 "Architecture Detection"
+
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    echo "| uname -m | \`$(uname -m 2>/dev/null || echo 'N/A')\` |"
+    echo "| uname -a | \`$(uname -a 2>/dev/null || echo 'N/A')\` |"
+
+    log_h2 "CPU Info"
+    if [ -f /proc/cpuinfo ]; then
+        code_start
+        cat /proc/cpuinfo 2>/dev/null || echo "[read error]"
+        code_end
+    else
+        log_info "/proc/cpuinfo not found"
+    fi
+
+    log_h2 "CPU Topology"
+
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    echo "| Online CPUs | \`$(cat /sys/devices/system/cpu/online 2>/dev/null || echo 'N/A')\` |"
+    echo "| Possible CPUs | \`$(cat /sys/devices/system/cpu/possible 2>/dev/null || echo 'N/A')\` |"
+    echo "| Present CPUs | \`$(cat /sys/devices/system/cpu/present 2>/dev/null || echo 'N/A')\` |"
+
+    log_h2 "CPUFreq Subsystem Detection"
+
+    # Check for cpufreq support
+    if [ -d /sys/devices/system/cpu/cpufreq ]; then
+        log_ok "cpufreq subsystem present"
+        code_start
+        ls -la /sys/devices/system/cpu/cpufreq/ 2>/dev/null || true
+        code_end
+    else
+        log_warn "cpufreq subsystem not found at /sys/devices/system/cpu/cpufreq"
+    fi
+
+    # Check both common path patterns
+    log_h3 "Path Pattern: policy0"
+    POLICY0_PATH="/sys/devices/system/cpu/cpufreq/policy0"
+    if [ -d "$POLICY0_PATH" ]; then
+        log_ok "policy0 path exists"
+        code_start
+        ls -la "$POLICY0_PATH/" 2>/dev/null || true
+        code_end
+        echo ""
+        echo "| File | Value |"
+        echo "|------|-------|"
+        for f in scaling_governor scaling_available_governors scaling_cur_freq \
+                 scaling_min_freq scaling_max_freq scaling_available_frequencies \
+                 scaling_setspeed cpuinfo_cur_freq cpuinfo_min_freq cpuinfo_max_freq \
+                 affected_cpus related_cpus; do
+            if [ -f "$POLICY0_PATH/$f" ]; then
+                echo "| $f | \`$(cat "$POLICY0_PATH/$f" 2>/dev/null || echo '[read error]')\` |"
+            fi
+        done
+    else
+        log_warn "policy0 path not found"
+    fi
+
+    log_h3 "Path Pattern: cpu0/cpufreq"
+    CPU0_PATH="/sys/devices/system/cpu/cpu0/cpufreq"
+    if [ -d "$CPU0_PATH" ]; then
+        log_ok "cpu0/cpufreq path exists"
+        code_start
+        ls -la "$CPU0_PATH/" 2>/dev/null || true
+        code_end
+        echo ""
+        echo "| File | Value |"
+        echo "|------|-------|"
+        for f in scaling_governor scaling_available_governors scaling_cur_freq \
+                 scaling_min_freq scaling_max_freq scaling_available_frequencies \
+                 scaling_setspeed cpuinfo_cur_freq cpuinfo_min_freq cpuinfo_max_freq \
+                 affected_cpus related_cpus; do
+            if [ -f "$CPU0_PATH/$f" ]; then
+                echo "| $f | \`$(cat "$CPU0_PATH/$f" 2>/dev/null || echo '[read error]')\` |"
+            fi
+        done
+    else
+        log_warn "cpu0/cpufreq path not found"
+    fi
+
+    log_h2 "CPU Frequency Write Test"
+    log_info "Testing if we can actually change CPU frequency..."
+
+    # Determine which path to use
+    FREQ_PATH=""
+    GOV_PATH=""
+    if [ -f "$POLICY0_PATH/scaling_setspeed" ]; then
+        FREQ_PATH="$POLICY0_PATH/scaling_setspeed"
+        GOV_PATH="$POLICY0_PATH/scaling_governor"
+    elif [ -f "$CPU0_PATH/scaling_setspeed" ]; then
+        FREQ_PATH="$CPU0_PATH/scaling_setspeed"
+        GOV_PATH="$CPU0_PATH/scaling_governor"
+    fi
+
+    if [ -n "$FREQ_PATH" ]; then
+        log_info "Using frequency path: $FREQ_PATH"
+        log_info "Using governor path: $GOV_PATH"
+
+        # Save original state (CRITICAL: must restore both governor AND frequency)
+        ORIG_GOV=""
+        ORIG_FREQ=""
+        if [ -f "$GOV_PATH" ]; then
+            ORIG_GOV=$(cat "$GOV_PATH")
+            log_info "Current governor: $ORIG_GOV"
+        fi
+
+        # Save original frequency BEFORE any writes
+        for path in "$POLICY0_PATH/scaling_cur_freq" "$CPU0_PATH/scaling_cur_freq" \
+                    "$POLICY0_PATH/cpuinfo_cur_freq" "$CPU0_PATH/cpuinfo_cur_freq"; do
+            if [ -f "$path" ]; then
+                ORIG_FREQ=$(cat "$path" 2>/dev/null)
+                if [ -n "$ORIG_FREQ" ]; then
+                    log_info "Current frequency: $ORIG_FREQ kHz (will restore after test)"
+                    break
+                fi
+            fi
+        done
+
+        # Read available frequencies
+        AVAIL_FREQS=""
+        for path in "$POLICY0_PATH/scaling_available_frequencies" "$CPU0_PATH/scaling_available_frequencies"; do
+            if [ -f "$path" ]; then
+                AVAIL_FREQS=$(cat "$path" 2>/dev/null)
+                if [ -n "$AVAIL_FREQS" ]; then
+                    log_info "Available frequencies: $AVAIL_FREQS"
+                    break
+                fi
+            fi
+        done
+
+        # Read available governors
+        AVAIL_GOVS=""
+        for path in "$POLICY0_PATH/scaling_available_governors" "$CPU0_PATH/scaling_available_governors"; do
+            if [ -f "$path" ]; then
+                AVAIL_GOVS=$(cat "$path" 2>/dev/null)
+                if [ -n "$AVAIL_GOVS" ]; then
+                    break
+                fi
+            fi
+        done
+
+        # Test 1: Governor switching (always safe, shows what freq each governor picks)
+        if [ -n "$AVAIL_GOVS" ]; then
+            log_h2 "Governor Switching Test"
+            log_info "Testing each available governor to see what frequency it selects..."
+            echo ""
+            echo "| Governor | Resulting Frequency (kHz) |"
+            echo "|----------|---------------------------|"
+            for gov in $AVAIL_GOVS; do
+                if echo "$gov" > "$GOV_PATH" 2>/dev/null; then
+                    sleep 1
+                    freq=$(cat "$POLICY0_PATH/scaling_cur_freq" 2>/dev/null || cat "$CPU0_PATH/scaling_cur_freq" 2>/dev/null || echo "N/A")
+                    echo "| $gov | \`$freq\` |"
+                else
+                    echo "| $gov | *write failed* |"
+                fi
+            done
+            log_info "Governor test complete"
+        fi
+
+        # Test 2: Manual frequency control (only if we can switch to userspace)
+        log_h2 "Manual Frequency Control Test"
+        if echo "userspace" > "$GOV_PATH" 2>/dev/null; then
+            sleep 1
+            if [ "$(cat "$GOV_PATH" 2>/dev/null)" = "userspace" ]; then
+                log_ok "Switched to userspace governor for manual control"
+                log_h3 "Frequency Write Test"
+
+            # Get min and max
+            MIN_FREQ=""
+            MAX_FREQ=""
+            for path in "$POLICY0_PATH" "$CPU0_PATH"; do
+                if [ -z "$MIN_FREQ" ] && [ -f "$path/scaling_min_freq" ]; then
+                    MIN_FREQ=$(cat "$path/scaling_min_freq")
+                fi
+                if [ -z "$MAX_FREQ" ] && [ -f "$path/scaling_max_freq" ]; then
+                    MAX_FREQ=$(cat "$path/scaling_max_freq")
+                fi
+            done
+
+            log_info "Min frequency: $MIN_FREQ kHz"
+            log_info "Max frequency: $MAX_FREQ kHz"
+
+            # Test writing min frequency
+            if [ -n "$MIN_FREQ" ]; then
+                log_info "Attempting to write $MIN_FREQ to $FREQ_PATH..."
+                if echo "$MIN_FREQ" > "$FREQ_PATH" 2>/dev/null; then
+                    sleep 1
+                    NEW_FREQ=$(cat "$POLICY0_PATH/scaling_cur_freq" 2>/dev/null || cat "$CPU0_PATH/scaling_cur_freq" 2>/dev/null)
+                    if [ "$NEW_FREQ" = "$MIN_FREQ" ]; then
+                        log_ok "Frequency successfully changed to $MIN_FREQ kHz"
+                    else
+                        log_warn "Write succeeded but frequency is $NEW_FREQ (expected $MIN_FREQ)"
+                    fi
+                else
+                    log_fail "Could not write frequency (permission denied?)"
+                fi
+            fi
+
+            # Test writing max frequency
+            if [ -n "$MAX_FREQ" ]; then
+                log_info "Attempting to write $MAX_FREQ to $FREQ_PATH..."
+                if echo "$MAX_FREQ" > "$FREQ_PATH" 2>/dev/null; then
+                    sleep 1
+                    NEW_FREQ=$(cat "$POLICY0_PATH/scaling_cur_freq" 2>/dev/null || cat "$CPU0_PATH/scaling_cur_freq" 2>/dev/null)
+                    if [ "$NEW_FREQ" = "$MAX_FREQ" ]; then
+                        log_ok "Frequency successfully changed to $MAX_FREQ kHz"
+                    else
+                        log_warn "Write succeeded but frequency is $NEW_FREQ (expected $MAX_FREQ)"
+                    fi
+                else
+                    log_fail "Could not write frequency (permission denied?)"
+                fi
+            fi
+
+            # If we have available frequencies, test a sweep
+            if [ -n "$AVAIL_FREQS" ]; then
+                log_h3 "Frequency Sweep Test"
+                echo ""
+                echo "| Frequency (kHz) | Result |"
+                echo "|-----------------|--------|"
+                for freq in $AVAIL_FREQS; do
+                    if echo "$freq" > "$FREQ_PATH" 2>/dev/null; then
+                        sleep 1
+                        actual=$(cat "$POLICY0_PATH/scaling_cur_freq" 2>/dev/null || cat "$CPU0_PATH/scaling_cur_freq" 2>/dev/null)
+                        if [ "$actual" = "$freq" ]; then
+                            echo "| $freq | ✓ OK |"
+                        else
+                            echo "| $freq | ⚠ wrote OK but actual=$actual |"
+                        fi
+                    else
+                        echo "| $freq | ✗ WRITE FAILED |"
+                    fi
+                done
+            fi
+            else
+                log_warn "Could not switch to userspace - manual frequency control not available"
+            fi
+        fi
+
+        # Restore original state
+        if [ -n "$ORIG_GOV" ]; then
+            echo "$ORIG_GOV" > "$GOV_PATH" 2>/dev/null
+            log_info "Restored governor: $ORIG_GOV"
+        fi
+        if [ -n "$ORIG_FREQ" ]; then
+            echo "$ORIG_FREQ" > "$FREQ_PATH" 2>/dev/null
+            log_info "Restored frequency: $ORIG_FREQ kHz"
+        fi
+    else
+        log_warn "No scaling_setspeed file found"
+    fi
+
+    log_h2 "CPU Scaling Summary"
+    echo ""
+    echo "| Path | Value |"
+    echo "|------|-------|"
+    if [ -n "$FREQ_PATH" ]; then
+        echo "| scaling_setspeed | \`$FREQ_PATH\` |"
+        echo "| scaling_governor | \`$GOV_PATH\` |"
+    else
+        echo "| scaling_setspeed | *not found* |"
+    fi
+}
+
+###############################################################################
+# GPU / Device Frequency Scaling
+###############################################################################
+
+fn_gpu() {
+    log_h1 "GPU / DEVFREQ"
+
+    log_h2 "Device Frequency Scaling"
+    if [ -d /sys/class/devfreq ]; then
+        for dev in /sys/class/devfreq/*; do
+            if [ -d "$dev" ]; then
+                log_h3 "$(basename "$dev")"
+                echo "| Property | Value |"
+                echo "|----------|-------|"
+                for f in governor available_governors cur_freq min_freq max_freq \
+                         available_frequencies target_freq; do
+                    if [ -f "$dev/$f" ]; then
+                        echo "| $f | \`$(cat "$dev/$f" 2>/dev/null || echo '[error]')\` |"
+                    fi
+                done
+            fi
+        done
+    else
+        log_info "/sys/class/devfreq not found"
+    fi
+
+    log_h2 "Mali GPU"
+    found_mali=0
+    for mali in /sys/class/misc/mali* /sys/devices/platform/*.gpu /sys/devices/platform/*/gpu; do
+        if [ -d "$mali" ]; then
+            found_mali=1
+            log_h3 "$mali"
+            code_start
+            ls -la "$mali/" 2>/dev/null || true
+            code_end
+        fi
+    done 2>/dev/null
+    if [ "$found_mali" = "0" ]; then
+        log_info "No Mali GPU paths found"
+    fi
+}
+
+###############################################################################
+# Audio Subsystem
+###############################################################################
+
+fn_audio() {
+    log_h1 "AUDIO SUBSYSTEM"
+
+    log_h2 "ALSA Sound Cards"
+    if [ -f /proc/asound/cards ]; then
+        code_start
+        cat /proc/asound/cards 2>/dev/null || echo "[read error]"
+        code_end
+    else
+        log_info "/proc/asound/cards not found"
+    fi
+
+    log_h2 "ALSA Devices"
+    if [ -d /proc/asound ]; then
+        code_start
+        ls -la /proc/asound/ 2>/dev/null || true
+        code_end
+    else
+        log_info "/proc/asound not found"
+    fi
+
+    log_h2 "Sound Class"
+    if [ -d /sys/class/sound ]; then
+        code_start
+        ls -la /sys/class/sound/ 2>/dev/null || true
+        code_end
+        echo ""
+        found_cards=0
+        for card in /sys/class/sound/card*; do
+            if [ -d "$card" ]; then
+                if [ "$found_cards" = "0" ]; then
+                    echo "| Card | ID |"
+                    echo "|------|-----|"
+                    found_cards=1
+                fi
+                cardname=$(basename "$card")
+                cardid=$(cat "$card/id" 2>/dev/null || echo "unknown")
+                echo "| $cardname | \`$cardid\` |"
+            fi
+        done 2>/dev/null
+        if [ "$found_cards" = "0" ]; then
+            log_info "No sound cards found"
+        fi
+    else
+        log_info "/sys/class/sound not found"
+    fi
+
+    log_h2 "PCM Devices"
+    if [ -f /proc/asound/pcm ]; then
+        code_start
+        cat /proc/asound/pcm 2>/dev/null || echo "[read error]"
+        code_end
+    else
+        log_info "/proc/asound/pcm not found"
+    fi
+
+    log_h2 "Audio Device Nodes"
+    code_start
+    ls -la /dev/snd/* 2>/dev/null || echo "No /dev/snd devices"
+    ls -la /dev/dsp /dev/audio /dev/mixer 2>/dev/null || true
+    code_end
+
+    log_h2 "ALSA Configuration Files"
+    found_cfg=0
+    for cfg in /etc/asound.conf ~/.asoundrc /usr/share/alsa/alsa.conf; do
+        if [ -f "$cfg" ]; then
+            found_cfg=1
+            log_ok "Found: $cfg"
+            code_start
+            head -30 "$cfg" 2>/dev/null || true
+            code_end
+        fi
+    done
+    if [ "$found_cfg" = "0" ]; then
+        log_info "No ALSA config files found"
+    fi
+}
+
+###############################################################################
+# Display/Framebuffer
+###############################################################################
+
+fn_display() {
+    log_h1 "DISPLAY / FRAMEBUFFER"
+
+    log_h2 "Framebuffer Devices"
+    code_start
+    ls -la /dev/fb* 2>/dev/null || echo "No framebuffer devices found"
+    code_end
+
+    log_h2 "Framebuffer 0 Details"
+    FB0="/sys/class/graphics/fb0"
+    if [ -d "$FB0" ]; then
+        code_start
+        ls -la "$FB0/" 2>/dev/null || true
+        code_end
+        echo ""
+        echo "| Property | Value |"
+        echo "|----------|-------|"
+        for f in bits_per_pixel virtual_size stride name modes pan; do
+            if [ -f "$FB0/$f" ]; then
+                echo "| $f | \`$(cat "$FB0/$f" 2>/dev/null || echo '[read error]')\` |"
+            fi
+        done
+    else
+        log_info "/sys/class/graphics/fb0 not found"
+    fi
+
+    log_h2 "fbset Output"
+    if command -v fbset >/dev/null 2>&1; then
+        code_start
+        fbset 2>/dev/null || echo "fbset failed"
+        code_end
+    else
+        log_info "fbset not available"
+    fi
+
+    log_h2 "DRM Subsystem"
+    if [ -d /sys/class/drm ]; then
+        code_start
+        ls -la /sys/class/drm/ 2>/dev/null || true
+        code_end
+        for card in /sys/class/drm/card*; do
+            if [ -d "$card" ]; then
+                log_h3 "$(basename "$card")"
+                echo "| Property | Value |"
+                echo "|----------|-------|"
+                for f in status enabled modes; do
+                    if [ -f "$card/$f" ]; then
+                        echo "| $f | \`$(cat "$card/$f" 2>/dev/null || echo '[read error]')\` |"
+                    fi
+                done
+            fi
+        done 2>/dev/null
+    else
+        log_info "/sys/class/drm not found"
+    fi
+
+    log_h2 "HDMI Detection"
+    found_hdmi=0
+    echo "| Path | State |"
+    echo "|------|-------|"
+    for hdmi_path in \
+        /sys/class/switch/hdmi/cable.0/state \
+        /sys/class/switch/hdmi/state \
+        /sys/class/drm/card0-HDMI-A-1/status \
+        /sys/class/drm/card1-HDMI-A-1/status \
+        /sys/devices/virtual/switch/hdmi/state; do
+        if [ -f "$hdmi_path" ]; then
+            found_hdmi=1
+            echo "| \`$hdmi_path\` | \`$(cat "$hdmi_path" 2>/dev/null || echo '[read error]')\` |"
+        fi
+    done 2>/dev/null
+    if [ "$found_hdmi" = "0" ]; then
+        echo "| *No HDMI state files found* | - |"
+    fi
+
+    log_h2 "Screen Rotation Detection"
+
+    # Method 1: Direct rotate sysfs node
+    if [ -f "$FB0/rotate" ]; then
+        ROTATE=$(cat "$FB0/rotate" 2>/dev/null || echo "N/A")
+        case "$ROTATE" in
+            0) log_ok "Rotation: **0° (normal)** - \`$FB0/rotate\`" ;;
+            1) log_ok "Rotation: **90° clockwise** - \`$FB0/rotate\`" ;;
+            2) log_ok "Rotation: **180°** - \`$FB0/rotate\`" ;;
+            3) log_ok "Rotation: **270° clockwise (90° CCW)** - \`$FB0/rotate\`" ;;
+            *) log_info "Rotation value: $ROTATE - \`$FB0/rotate\`" ;;
+        esac
+    else
+        log_info "No rotate sysfs node at \`$FB0/rotate\`"
+    fi
+
+    # Method 2: Compare virtual_size vs fbset geometry (dimension swap indicates rotation)
+    if [ -f "$FB0/virtual_size" ] && command -v fbset >/dev/null 2>&1; then
+        VIRTUAL_SIZE=$(cat "$FB0/virtual_size" 2>/dev/null)
+        FBSET_GEOM=$(fbset 2>/dev/null | grep "geometry" | head -1)
+        if [ -n "$VIRTUAL_SIZE" ] && [ -n "$FBSET_GEOM" ]; then
+            VIRT_W=$(echo "$VIRTUAL_SIZE" | cut -d, -f1)
+            VIRT_H=$(echo "$VIRTUAL_SIZE" | cut -d, -f2)
+            PHYS_W=$(echo "$FBSET_GEOM" | awk '{print $2}')
+            PHYS_H=$(echo "$FBSET_GEOM" | awk '{print $3}')
+
+            echo ""
+            echo "| Dimension | Virtual | Physical |"
+            echo "|-----------|---------|----------|"
+            echo "| Width | $VIRT_W | $PHYS_W |"
+            echo "| Height | $VIRT_H | $PHYS_H |"
+
+            if [ "$VIRT_W" != "$PHYS_W" ] || [ "$VIRT_H" != "$PHYS_H" ]; then
+                if [ "$VIRT_W" = "$PHYS_H" ] && [ "$VIRT_H" = "$PHYS_W" ]; then
+                    log_warn "Dimensions swapped - likely **90° or 270° rotation**"
+                else
+                    log_warn "Virtual/physical size mismatch - possible rotation or scaling"
+                fi
+            else
+                log_info "Virtual and physical sizes match (no dimension swap)"
+            fi
+        fi
+    fi
+
+    # Method 3: Kernel command line rotation parameter
+    if [ -f /proc/cmdline ]; then
+        if grep -q "fbcon=rotate" /proc/cmdline 2>/dev/null; then
+            ROTATE_PARAM=$(grep -o 'fbcon=rotate:[0-9]' /proc/cmdline 2>/dev/null || echo "")
+            log_ok "Kernel cmdline rotation: \`$ROTATE_PARAM\`"
+        fi
+    fi
+
+    # Method 4: DRM rotation (if available)
+    for plane in /sys/class/drm/card*/card*/rotation; do
+        if [ -f "$plane" ]; then
+            DRM_ROT=$(cat "$plane" 2>/dev/null)
+            log_info "DRM rotation property: \`$DRM_ROT\` at \`$plane\`"
+        fi
+    done 2>/dev/null
+}
+
+###############################################################################
+# Device Tree
+###############################################################################
+
+fn_device_tree() {
+    log_h1 "DEVICE TREE"
+
+    log_h2 "Device Identification"
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    if [ -f /proc/device-tree/model ]; then
+        echo "| Model | \`$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || echo '[read error]')\` |"
+    else
+        echo "| Model | *not found* |"
+    fi
+    if [ -f /proc/device-tree/compatible ]; then
+        echo "| Compatible | \`$(cat /proc/device-tree/compatible 2>/dev/null | tr '\0' ' ' || echo '[read error]')\` |"
+    else
+        echo "| Compatible | *not found* |"
+    fi
+
+    log_h2 "SoC/Chip Info"
+    echo "| Path | Value |"
+    echo "|------|-------|"
+    for f in /proc/device-tree/soc/compatible \
+             /sys/firmware/devicetree/base/compatible \
+             /sys/devices/soc0/soc_id \
+             /sys/devices/soc0/machine \
+             /sys/devices/soc0/family \
+             /sys/devices/soc0/revision; do
+        if [ -f "$f" ]; then
+            val=$(cat "$f" 2>/dev/null | tr '\0' ' ' || echo '[read error]')
+            echo "| \`$f\` | \`$val\` |"
+        fi
+    done
+
+    log_h2 "Device Tree Base Structure"
+    if [ -d /proc/device-tree ]; then
+        code_start
+        ls /proc/device-tree/ 2>/dev/null | head -30 || true
+        code_end
+    elif [ -d /sys/firmware/devicetree/base ]; then
+        code_start
+        ls /sys/firmware/devicetree/base/ 2>/dev/null | head -30 || true
+        code_end
+    else
+        log_info "No device tree found"
+    fi
+}
+
+###############################################################################
+# Kernel Messages
+###############################################################################
+
+fn_dmesg() {
+    log_h1 "KERNEL MESSAGES (last 100 lines)"
+
+    if command -v dmesg >/dev/null 2>&1; then
+        code_start
+        dmesg 2>/dev/null | tail -100 || echo "dmesg failed"
+        code_end
+    else
+        log_info "dmesg not available"
+    fi
+}
+
+###############################################################################
+# Kernel Modules
+###############################################################################
+
+fn_modules() {
+    log_h1 "KERNEL MODULES"
+
+    log_h2 "Loaded Modules"
+    if command -v lsmod >/dev/null 2>&1; then
+        code_start
+        lsmod 2>/dev/null || echo "lsmod failed"
+        code_end
+    elif [ -f /proc/modules ]; then
+        code_start
+        cat /proc/modules 2>/dev/null || echo "Could not read /proc/modules"
+        code_end
+    else
+        log_info "No module information available"
+    fi
+
+    log_h2 "Module Parameters"
+    if [ -d /sys/module ]; then
+        echo "| Module | Parameters |"
+        echo "|--------|------------|"
+        for mod in /sys/module/*/parameters; do
+            if [ -d "$mod" ]; then
+                modname=$(dirname "$mod" | xargs basename)
+                params=$(ls "$mod" 2>/dev/null | head -5 | tr '\n' ' ')
+                if [ -n "$params" ]; then
+                    echo "| $modname | \`$params\` |"
+                fi
+            fi
+        done 2>/dev/null | head -30
+    else
+        log_info "/sys/module not found"
+    fi
+}
+
+###############################################################################
+# PWM Subsystem
+###############################################################################
+
+fn_pwm() {
+    log_h1 "PWM SUBSYSTEM"
+
+    if [ -d /sys/class/pwm ]; then
+        code_start
+        ls -la /sys/class/pwm/ 2>/dev/null || true
+        code_end
+        for chip in /sys/class/pwm/pwmchip*; do
+            if [ -d "$chip" ]; then
+                log_h2 "$(basename "$chip")"
+                echo "| Property | Value |"
+                echo "|----------|-------|"
+                if [ -f "$chip/npwm" ]; then
+                    echo "| npwm | \`$(cat "$chip/npwm" 2>/dev/null || echo '[read error]')\` |"
+                fi
+                # List any exported PWM channels
+                for pwm in "$chip"/pwm*; do
+                    if [ -d "$pwm" ]; then
+                        log_h3 "$(basename "$pwm")"
+                        echo "| Property | Value |"
+                        echo "|----------|-------|"
+                        for pf in period duty_cycle enable polarity; do
+                            if [ -f "$pwm/$pf" ]; then
+                                pval=$(cat "$pwm/$pf" 2>/dev/null || echo '[read error]')
+                                echo "| $pf | \`$pval\` |"
+                            fi
+                        done
+                    fi
+                done 2>/dev/null
+            fi
+        done 2>/dev/null
+    else
+        log_info "/sys/class/pwm not found"
+    fi
+}
+
+###############################################################################
+# System Buses (I2C, SPI, USB)
+###############################################################################
+
+fn_buses() {
+    log_h1 "SYSTEM BUSES"
+
+    log_h2 "I2C Devices"
+    if [ -d /sys/bus/i2c/devices ]; then
+        code_start
+        ls -la /sys/bus/i2c/devices/ 2>/dev/null || true
+        code_end
+    else
+        log_info "/sys/bus/i2c/devices not found"
+    fi
+
+    log_h2 "SPI Devices"
+    if [ -d /sys/bus/spi/devices ]; then
+        code_start
+        ls -la /sys/bus/spi/devices/ 2>/dev/null || true
+        code_end
+    else
+        log_info "/sys/bus/spi/devices not found"
+    fi
+
+    log_h2 "USB Devices"
+    if command -v lsusb >/dev/null 2>&1; then
+        code_start
+        lsusb 2>/dev/null || echo "lsusb failed"
+        code_end
+    else
+        log_info "lsusb not available"
+    fi
+
+    # USB device tree via sysfs
+    if [ -d /sys/bus/usb/devices ]; then
+        log_h3 "USB Device Tree"
+        code_start
+        ls /sys/bus/usb/devices/ 2>/dev/null || true
+        code_end
+    fi
+
+    log_h2 "USB OTG / Gadget Mode"
+    if [ -d /sys/class/udc ]; then
+        code_start
+        ls -la /sys/class/udc/ 2>/dev/null || true
+        code_end
+        for udc in /sys/class/udc/*; do
+            if [ -d "$udc" ]; then
+                log_h3 "$(basename "$udc")"
+                echo "| Property | Value |"
+                echo "|----------|-------|"
+                for f in state current_speed maximum_speed; do
+                    if [ -f "$udc/$f" ]; then
+                        echo "| $f | \`$(cat "$udc/$f" 2>/dev/null || echo 'N/A')\` |"
+                    fi
+                done
+            fi
+        done 2>/dev/null
+    else
+        log_info "/sys/class/udc not found (no USB gadget support)"
+    fi
+}
+
+###############################################################################
+# SDL Library Detection
+###############################################################################
+
+fn_sdl_libraries() {
+    log_h1 "SDL LIBRARIES"
+
+    log_h2 "SDL Library Search"
+
+    # Build search path from common locations + LD_LIBRARY_PATH
+    SEARCH_PATHS="/lib /usr/lib /usr/local/lib /lib32 /usr/lib32 /lib64 /usr/lib64"
+    if [ -n "$LD_LIBRARY_PATH" ]; then
+        SEARCH_PATHS="$SEARCH_PATHS $(echo "$LD_LIBRARY_PATH" | tr ':' ' ')"
+    fi
+
+    found_sdl=0
+    SDL1_FOUND=0
+    SDL2_FOUND=0
+
+    echo "| Library | Path |"
+    echo "|---------|------|"
+
+    # Search for SDL libraries
+    for searchdir in $SEARCH_PATHS; do
+        if [ -d "$searchdir" ]; then
+            for lib in "$searchdir"/libSDL*.so* "$searchdir"/libSDL*.a; do
+                if [ -f "$lib" ] && [ ! -L "$lib" ]; then
+                    found_sdl=1
+                    libname=$(basename "$lib")
+                    echo "| \`$libname\` | \`$searchdir\` |"
+
+                    # Track SDL version
+                    case "$libname" in
+                        libSDL2*) SDL2_FOUND=1 ;;
+                        libSDL-1.*|libSDL.so.1.*) SDL1_FOUND=1 ;;
+                    esac
+                fi
+            done 2>/dev/null
+        fi
+    done
+
+    if [ "$found_sdl" = "0" ]; then
+        echo "| *No SDL libraries found* | - |"
+    fi
+
+    log_h2 "SDL Version Summary"
+    echo "| SDL Version | Status |"
+    echo "|-------------|--------|"
+    if [ "$SDL1_FOUND" = "1" ]; then
+        echo "| SDL 1.2 | ✓ Found |"
+    else
+        echo "| SDL 1.2 | ✗ Not found |"
+    fi
+    if [ "$SDL2_FOUND" = "1" ]; then
+        echo "| SDL 2.x | ✓ Found |"
+    else
+        echo "| SDL 2.x | ✗ Not found |"
+    fi
+
+    # Check for SDL modules/extensions
+    log_h2 "SDL Modules/Extensions"
+    echo "| Module | SDL 1.2 | SDL 2.x |"
+    echo "|--------|---------|---------|"
+
+    for mod in image ttf mixer net gfx; do
+        sdl1_mod=""
+        sdl2_mod=""
+
+        for searchdir in $SEARCH_PATHS; do
+            if [ -d "$searchdir" ]; then
+                # Check for SDL 1.2 module (matches libSDL_module.so* and libSDL_module-*.so*)
+                if ls "$searchdir"/libSDL_"$mod"*.so* >/dev/null 2>&1; then
+                    sdl1_mod="✓"
+                fi
+                # Check for SDL 2.x module (matches libSDL2_module.so* and libSDL2_module-*.so*)
+                if ls "$searchdir"/libSDL2_"$mod"*.so* >/dev/null 2>&1; then
+                    sdl2_mod="✓"
+                fi
+            fi
+        done 2>/dev/null
+
+        [ -z "$sdl1_mod" ] && sdl1_mod="✗"
+        [ -z "$sdl2_mod" ] && sdl2_mod="✗"
+
+        echo "| SDL_$mod | $sdl1_mod | $sdl2_mod |"
+    done
+
+    # Try pkg-config for detailed version info
+    log_h2 "pkg-config SDL Info"
+    if command -v pkg-config >/dev/null 2>&1; then
+        for sdl in sdl SDL sdl2 SDL2; do
+            if pkg-config --exists "$sdl" 2>/dev/null; then
+                version=$(pkg-config --modversion "$sdl" 2>/dev/null)
+                cflags=$(pkg-config --cflags "$sdl" 2>/dev/null | cut -c1-60)
+                log_ok "$sdl version: $version"
+                log_info "CFLAGS: \`$cflags\`"
+            fi
+        done
+    else
+        log_info "pkg-config not available"
+    fi
+}
+
+###############################################################################
+# Binary Architecture Test
+###############################################################################
+
+fn_arch_test() {
+    log_h1 "BINARY ARCHITECTURE TEST"
+
+    log_h2 "System Architecture"
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    echo "| uname -m | \`$(uname -m 2>/dev/null || echo 'N/A')\` |"
+
+    # Check kernel config for multilib support
+    if [ -f /proc/config.gz ]; then
+        if zcat /proc/config.gz 2>/dev/null | grep -q "CONFIG_COMPAT=y"; then
+            echo "| 32-bit compat | ✓ CONFIG_COMPAT=y |"
+        else
+            echo "| 32-bit compat | ✗ not enabled |"
+        fi
+    else
+        echo "| 32-bit compat | *unknown (/proc/config.gz not available)* |"
+    fi
+
+    log_h2 "Dynamic Linker Detection"
+    echo "| Linker | Type |"
+    echo "|--------|------|"
+    for dir in /lib /lib64 /lib32 /usr/lib /usr/lib64 /usr/lib32; do
+        if [ -d "$dir" ]; then
+            find "$dir" -maxdepth 1 -name 'ld-*' -type f 2>/dev/null | while read -r ld; do
+                if command -v file >/dev/null 2>&1; then
+                    file_info=$(file "$ld" 2>/dev/null | sed 's/.*: //')
+                    [ -z "$file_info" ] && file_info="unknown"
+                else
+                    file_info="(file command not available)"
+                fi
+                echo "| \`$ld\` | $file_info |"
+            done
+        fi
+    done 2>/dev/null
+
+    log_h2 "Architecture Detection (System Introspection)"
+
+    # Get base architecture
+    ARCH=$(uname -m 2>/dev/null || echo "unknown")
+    IS_64BIT="no"
+    IS_32BIT="no"
+    HAS_32BIT_COMPAT="no"
+    HAS_NEON="no"
+
+    case "$ARCH" in
+        aarch64|arm64)
+            IS_64BIT="yes"
+            log_ok "Native architecture: **64-bit ARM (aarch64)**"
+            ;;
+        armv7*|armv6*|arm*)
+            IS_32BIT="yes"
+            log_ok "Native architecture: **32-bit ARM ($ARCH)**"
+            ;;
+        x86_64)
+            IS_64BIT="yes"
+            log_ok "Native architecture: **64-bit x86**"
+            ;;
+        i?86)
+            IS_32BIT="yes"
+            log_ok "Native architecture: **32-bit x86 ($ARCH)**"
+            ;;
+        *)
+            log_warn "Unknown architecture: $ARCH"
+            ;;
+    esac
+
+    # Check for 32-bit compatibility on 64-bit systems
+    log_h3 "32-bit Compatibility (on 64-bit systems)"
+    if [ "$IS_64BIT" = "yes" ]; then
+        # Method 1: Check kernel config
+        if [ -f /proc/config.gz ]; then
+            if zcat /proc/config.gz 2>/dev/null | grep -q "CONFIG_COMPAT=y"; then
+                HAS_32BIT_COMPAT="yes"
+                log_ok "Kernel CONFIG_COMPAT=y (32-bit syscall support)"
+            else
+                log_info "Kernel CONFIG_COMPAT not enabled"
+            fi
+        fi
+
+        # Method 2: Check for 32-bit dynamic linkers
+        for linker in /lib/ld-linux-armhf.so* /lib/ld-linux.so* /lib32/ld-linux* /usr/lib32/ld-linux*; do
+            if [ -e "$linker" ]; then
+                HAS_32BIT_COMPAT="yes"
+                log_ok "32-bit linker found: \`$linker\`"
+                break
+            fi
+        done 2>/dev/null
+
+        # Method 3: Check for multilib directories
+        for libdir in /lib32 /usr/lib32 /lib/arm-linux-gnueabihf; do
+            if [ -d "$libdir" ]; then
+                HAS_32BIT_COMPAT="yes"
+                log_ok "32-bit library path found: \`$libdir\`"
+                break
+            fi
+        done 2>/dev/null
+
+        if [ "$HAS_32BIT_COMPAT" = "no" ]; then
+            log_info "No 32-bit compatibility detected"
+        fi
+    else
+        log_info "N/A (native 32-bit system)"
+    fi
+
+    # NEON/SIMD detection from /proc/cpuinfo
+    log_h3 "NEON/SIMD Support"
+    if [ -f /proc/cpuinfo ]; then
+        CPU_FEATURES=$(grep -m1 "^Features" /proc/cpuinfo 2>/dev/null | cut -d: -f2 || echo "")
+
+        if echo "$CPU_FEATURES" | grep -qw "neon"; then
+            HAS_NEON="yes"
+            log_ok "NEON detected in CPU features (32-bit ARM)"
+        fi
+
+        if echo "$CPU_FEATURES" | grep -qw "asimd"; then
+            HAS_NEON="yes"
+            log_ok "ASIMD (Advanced SIMD/NEON) detected in CPU features (64-bit ARM)"
+        fi
+
+        # Also check for other useful features
+        log_info "CPU Features: \`$(echo "$CPU_FEATURES" | tr -s ' ')\`"
+
+        if [ "$HAS_NEON" = "no" ]; then
+            # Double-check via /proc/cpuinfo flags for x86
+            if grep -q "sse\|avx" /proc/cpuinfo 2>/dev/null; then
+                log_info "x86 SIMD detected (SSE/AVX)"
+            else
+                log_warn "No NEON/ASIMD detected in CPU features"
+            fi
+        fi
+    else
+        log_warn "/proc/cpuinfo not available"
+    fi
+
+    # Architecture Support Summary
+    log_h3 "Architecture Support Summary"
+    echo "| Capability | Status | Detection Method |"
+    echo "|------------|--------|------------------|"
+
+    if [ "$IS_64BIT" = "yes" ]; then
+        echo "| 64-bit ARM (aarch64) | ✓ Native | uname -m |"
+        if [ "$HAS_32BIT_COMPAT" = "yes" ]; then
+            echo "| 32-bit ARM compat | ✓ Yes | CONFIG_COMPAT / linker |"
+        else
+            echo "| 32-bit ARM compat | ✗ No | CONFIG_COMPAT / linker |"
+        fi
+    elif [ "$IS_32BIT" = "yes" ]; then
+        echo "| 32-bit ARM | ✓ Native | uname -m |"
+        echo "| 64-bit ARM (aarch64) | ✗ No | (32-bit system) |"
+    fi
+
+    if [ "$HAS_NEON" = "yes" ]; then
+        echo "| NEON/ASIMD SIMD | ✓ Yes | /proc/cpuinfo |"
+    else
+        echo "| NEON/ASIMD SIMD | ✗ No | /proc/cpuinfo |"
+    fi
+
+    log_h2 "System Binaries"
+    if command -v file >/dev/null 2>&1; then
+        echo "| Binary | Architecture |"
+        echo "|--------|--------------|"
+        for bin in /bin/sh /bin/ls /bin/cat /usr/bin/file /usr/bin/uname; do
+            if [ -x "$bin" ]; then
+                file_info=$(file "$bin" 2>/dev/null | sed 's/.*: //' | cut -c1-60)
+                [ -z "$file_info" ] && file_info="unknown"
+                echo "| \`$bin\` | $file_info |"
+            fi
+        done 2>/dev/null
+    else
+        log_info "file command not available - skipping binary analysis"
+    fi
+}
+
+###############################################################################
+# System Information
+###############################################################################
+
+fn_system() {
+    log_h1 "SYSTEM INFORMATION"
+
+    log_h2 "Basic Info"
+    echo "| Property | Value |"
+    echo "|----------|-------|"
+    echo "| Hostname | \`$(hostname 2>/dev/null || echo 'N/A')\` |"
+    echo "| Date | \`$(date 2>/dev/null || echo 'N/A')\` |"
+    echo "| Uptime | \`$(uptime 2>/dev/null || echo 'N/A')\` |"
+
+    log_h2 "Kernel"
+    code_start
+    uname -a 2>/dev/null || echo "uname failed"
+    code_end
+
+    if [ -f /etc/os-release ]; then
+        log_h3 "/etc/os-release"
+        code_start
+        cat /etc/os-release 2>/dev/null || true
+        code_end
+    fi
+
+    if [ -f /etc/issue ]; then
+        log_h3 "/etc/issue"
+        code_start
+        cat /etc/issue 2>/dev/null || true
+        code_end
+    fi
+
+    log_h2 "Memory"
+    if [ -f /proc/meminfo ]; then
+        code_start
+        head -20 /proc/meminfo 2>/dev/null || true
+        code_end
+    fi
+    if command -v free >/dev/null 2>&1; then
+        code_start
+        free -m 2>/dev/null || true
+        code_end
+    fi
+
+    log_h2 "Storage"
+    code_start
+    df -h 2>/dev/null || echo "df not available"
+    code_end
+
+    log_h3 "Mount Points"
+    code_start
+    mount 2>/dev/null | head -30 || true
+    code_end
+
+    log_h3 "Block Devices"
+    code_start
+    lsblk 2>/dev/null || ls -la /dev/mmcblk* /dev/sd* 2>/dev/null || echo "No block devices found"
+    code_end
+
+    log_h2 "Processes (top 30)"
+    code_start
+    ps aux 2>/dev/null | head -30 || ps 2>/dev/null | head -30 || echo "ps not available"
+    code_end
+}
+
+###############################################################################
+# Hardware Paths
+###############################################################################
+
+fn_hardware() {
+    log_h1 "HARDWARE PATHS"
+
+    log_h2 "Thermal Zones"
+    found_tz=0
+    for tz in /sys/class/thermal/thermal_zone*; do
+        if [ -d "$tz" ]; then
+            if [ "$found_tz" = "0" ]; then
+                echo "| Zone | Type | Temperature |"
+                echo "|------|------|-------------|"
+                found_tz=1
+            fi
+            name=$(cat "$tz/type" 2>/dev/null || echo "unknown")
+            temp=$(cat "$tz/temp" 2>/dev/null || echo "N/A")
+            echo "| \`$tz\` | $name | ${temp} mC |"
+        fi
+    done 2>/dev/null
+    if [ "$found_tz" = "0" ]; then
+        log_info "No thermal zones found"
+    fi
+
+    log_h2 "Power Supply"
+    for ps in /sys/class/power_supply/*; do
+        if [ -d "$ps" ]; then
+            log_h3 "$(basename "$ps")"
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            for f in type status capacity voltage_now current_now online; do
+                if [ -f "$ps/$f" ]; then
+                    echo "| $f | \`$(cat "$ps/$f" 2>/dev/null || echo 'N/A')\` |"
+                fi
+            done
+        fi
+    done 2>/dev/null
+
+    log_h2 "Backlight"
+    for bl in /sys/class/backlight/*; do
+        if [ -d "$bl" ]; then
+            log_h3 "$(basename "$bl")"
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            for f in brightness max_brightness actual_brightness; do
+                if [ -f "$bl/$f" ]; then
+                    echo "| $f | \`$(cat "$bl/$f" 2>/dev/null || echo 'N/A')\` |"
+                fi
+            done
+        fi
+    done 2>/dev/null
+
+    log_h2 "Input Devices"
+    found_input=0
+    for ev in /dev/input/event*; do
+        if [ -e "$ev" ]; then
+            if [ "$found_input" = "0" ]; then
+                echo "| Device | Name |"
+                echo "|--------|------|"
+                found_input=1
+            fi
+            num=$(basename "$ev" | sed 's/event//')
+            name=$(cat "/sys/class/input/event$num/device/name" 2>/dev/null || echo "unknown")
+            echo "| \`$ev\` | $name |"
+        fi
+    done 2>/dev/null
+    if [ "$found_input" = "0" ]; then
+        log_info "No input devices found"
+    fi
+
+    # Detailed input capabilities via sysfs
+    log_h2 "Input Device Capabilities"
+    for ev in /sys/class/input/event*; do
+        if [ -d "$ev" ]; then
+            evname=$(basename "$ev")
+            devname=$(cat "$ev/device/name" 2>/dev/null || echo "unknown")
+            log_h3 "$evname: $devname"
+
+            # Check capabilities bitmasks
+            capdir="$ev/device/capabilities"
+            if [ -d "$capdir" ]; then
+                echo "| Capability | Bitmask |"
+                echo "|------------|---------|"
+                for cap in ev key rel abs; do
+                    if [ -f "$capdir/$cap" ]; then
+                        val=$(cat "$capdir/$cap" 2>/dev/null || echo "0")
+                        if [ "$val" != "0" ]; then
+                            echo "| $cap | \`$val\` |"
+                        fi
+                    fi
+                done
+            fi
+
+            # Check for joystick-specific info
+            jsdir="$ev/device"
+            if [ -f "$jsdir/id/vendor" ]; then
+                vid=$(cat "$jsdir/id/vendor" 2>/dev/null || echo "N/A")
+                pid=$(cat "$jsdir/id/product" 2>/dev/null || echo "N/A")
+                echo ""
+                echo "- Vendor ID: \`$vid\`, Product ID: \`$pid\`"
+            fi
+        fi
+    done 2>/dev/null
+
+    log_h2 "Joystick Devices"
+    echo "| Device | Exists |"
+    echo "|--------|--------|"
+    for js in /dev/input/js0 /dev/input/js1 /dev/input/js2; do
+        if [ -e "$js" ]; then
+            echo "| \`$js\` | ✓ |"
+        fi
+    done 2>/dev/null
+    if [ ! -e /dev/input/js0 ]; then
+        echo "| /dev/input/js* | *none found* |"
+    fi
+
+    log_h2 "GPIO"
+    if [ -d /sys/class/gpio ]; then
+        code_start
+        ls -la /sys/class/gpio/ 2>/dev/null || true
+        code_end
+    else
+        log_info "No GPIO sysfs"
+    fi
+
+    log_h2 "LEDs"
+    if [ -d /sys/class/leds ]; then
+        echo "| LED | Brightness |"
+        echo "|-----|------------|"
+        for led in /sys/class/leds/*; do
+            if [ -d "$led" ]; then
+                echo "| $(basename "$led") | \`$(cat "$led/brightness" 2>/dev/null || echo 'N/A')\` |"
+            fi
+        done 2>/dev/null
+    else
+        log_info "No LEDs sysfs"
+    fi
+
+    log_h2 "Vibration/Rumble"
+    echo "| Path | Value |"
+    echo "|------|-------|"
+    found_rumble=0
+    for path in /sys/class/power_supply/*/moto \
+                /sys/class/gpio/gpio*/value \
+                /sys/class/timed_output/vibrator/enable; do
+        if [ -e "$path" ]; then
+            found_rumble=1
+            echo "| \`$path\` | \`$(cat "$path" 2>/dev/null || echo '[no read]')\` |"
+        fi
+    done 2>/dev/null
+    if [ "$found_rumble" = "0" ]; then
+        echo "| *No rumble paths found* | - |"
+    fi
+
+    log_h2 "RTC (Real Time Clock)"
+    if [ -d /sys/class/rtc ]; then
+        echo "| RTC | Time | Date |"
+        echo "|-----|------|------|"
+        for rtc in /sys/class/rtc/*; do
+            if [ -d "$rtc" ]; then
+                rtcname=$(basename "$rtc")
+                rtctime=$(cat "$rtc/time" 2>/dev/null || echo "N/A")
+                rtcdate=$(cat "$rtc/date" 2>/dev/null || echo "N/A")
+                echo "| $rtcname | \`$rtctime\` | \`$rtcdate\` |"
+            fi
+        done 2>/dev/null
+    else
+        log_info "No RTC sysfs"
+    fi
+
+    log_h2 "Voltage Regulators"
+    if [ -d /sys/class/regulator ]; then
+        echo "| Regulator | State | Voltage (uV) |"
+        echo "|-----------|-------|--------------|"
+        for reg in /sys/class/regulator/regulator.*; do
+            if [ -d "$reg" ]; then
+                name=$(cat "$reg/name" 2>/dev/null || basename "$reg")
+                state=$(cat "$reg/state" 2>/dev/null || echo "N/A")
+                uv=$(cat "$reg/microvolts" 2>/dev/null || echo "N/A")
+                echo "| $name | $state | $uv |"
+            fi
+        done 2>/dev/null | head -20
+    else
+        log_info "No regulator sysfs"
+    fi
+
+    log_h2 "Clocksource"
+    if [ -d /sys/devices/system/clocksource/clocksource0 ]; then
+        echo "| Property | Value |"
+        echo "|----------|-------|"
+        echo "| current | \`$(cat /sys/devices/system/clocksource/clocksource0/current_clocksource 2>/dev/null || echo 'N/A')\` |"
+        echo "| available | \`$(cat /sys/devices/system/clocksource/clocksource0/available_clocksource 2>/dev/null || echo 'N/A')\` |"
+    else
+        log_info "No clocksource sysfs"
+    fi
+}
+
+###############################################################################
+# Special Hardware Features (Platform-Specific)
+###############################################################################
+
+fn_special_hardware() {
+    log_h1 "SPECIAL HARDWARE FEATURES"
+
+    log_h2 "PMIC (Power Management IC) Detection"
+    echo "| PMIC Type | Path | Present |"
+    echo "|-----------|------|---------|"
+
+    # AXP PMICs (common in Allwinner devices)
+    found_pmic=0
+    for pmic_path in /sys/class/power_supply/axp*; do
+        if [ -d "$pmic_path" ]; then
+            found_pmic=1
+            echo "| AXP Series ($(basename "$pmic_path")) | \`$pmic_path\` | ✓ |"
+        fi
+    done 2>/dev/null
+
+    # Check I2C for known PMICs
+    for i2c_pmic in /sys/bus/i2c/devices/*/name; do
+        if [ -f "$i2c_pmic" ]; then
+            name=$(cat "$i2c_pmic" 2>/dev/null)
+            case "$name" in
+                *axp*|*AXP*|*rk8*|*RK8*|*act8*|*ACT8*|*tps*|*TPS*)
+                    found_pmic=1
+                    devpath=$(dirname "$i2c_pmic")
+                    echo "| $name | \`$devpath\` | ✓ |"
+                    ;;
+            esac
+        fi
+    done 2>/dev/null
+
+    if [ "$found_pmic" = "0" ]; then
+        echo "| *Unknown* | - | GPIO-based or not detected |"
+    fi
+
+    # SAR ADC (used on some Miyoo Mini variants for battery)
+    log_h2 "SAR ADC (Battery ADC)"
+    if [ -d /sys/class/saradc ]; then
+        log_ok "SAR ADC found"
+        code_start
+        ls -la /sys/class/saradc/ 2>/dev/null || true
+        code_end
+    elif [ -f /sys/bus/iio/devices/iio:device0/in_voltage0_raw ]; then
+        log_ok "IIO ADC device found"
+        echo "- Raw voltage: \`$(cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw 2>/dev/null || echo 'N/A')\`"
+    else
+        log_info "No SAR ADC / IIO ADC found"
+    fi
+
+    log_h2 "Lid/Hall Sensor"
+    echo "| Path | Value |"
+    echo "|------|-------|"
+    found_lid=0
+    for lid_path in \
+        /sys/devices/soc0/soc/soc:hall-mh248/hallvalue \
+        /sys/devices/platform/hall/hallvalue \
+        /sys/class/switch/lid/state \
+        /proc/driver/hall; do
+        if [ -e "$lid_path" ]; then
+            found_lid=1
+            echo "| \`$lid_path\` | \`$(cat "$lid_path" 2>/dev/null || echo '[no read]')\` |"
+        fi
+    done 2>/dev/null
+    if [ "$found_lid" = "0" ]; then
+        echo "| *No lid sensor found* | - |"
+    fi
+
+    log_h2 "Hardware Acceleration"
+    echo "| Feature | Path | Present |"
+    echo "|---------|------|---------|"
+
+    # Miyoo Mini MI_GFX
+    if [ -e /dev/mi_gfx ]; then
+        echo "| MI_GFX (Miyoo) | \`/dev/mi_gfx\` | ✓ |"
+    fi
+    if [ -d /dev/mi_sys ]; then
+        echo "| MI_SYS (Miyoo) | \`/dev/mi_sys\` | ✓ |"
+    fi
+
+    # Mali GPU device
+    if [ -e /dev/mali ] || [ -e /dev/mali0 ]; then
+        echo "| Mali GPU | \`/dev/mali*\` | ✓ |"
+    fi
+
+    # DRI/DRM render nodes
+    for render in /dev/dri/renderD*; do
+        if [ -e "$render" ]; then
+            echo "| DRI Render | \`$render\` | ✓ |"
+        fi
+    done 2>/dev/null
+
+    # Video codec devices
+    for codec in /dev/video* /dev/cedar* /dev/rkvdec /dev/rkvenc /dev/mpp_service; do
+        if [ -e "$codec" ]; then
+            echo "| Video Codec | \`$codec\` | ✓ |"
+        fi
+    done 2>/dev/null
+
+    log_h2 "Touchscreen"
+    found_ts=0
+    for ts in /dev/input/touchscreen* /sys/class/input/*/device/name; do
+        if [ -e "$ts" ]; then
+            if [ -f "$ts" ]; then
+                name=$(cat "$ts" 2>/dev/null)
+                case "$name" in
+                    *touch*|*Touch*|*ts*|*TS*|*ft5*|*gt9*|*goodix*)
+                        found_ts=1
+                        echo "- Touchscreen: $name"
+                        ;;
+                esac
+            else
+                found_ts=1
+                echo "- Touchscreen device: \`$ts\`"
+            fi
+        fi
+    done 2>/dev/null
+    if [ "$found_ts" = "0" ]; then
+        log_info "No touchscreen detected"
+    fi
+
+    log_h2 "Analog Stick ADC"
+    # Check for analog stick ADC paths (common on handhelds)
+    echo "| Path | Value |"
+    echo "|------|-------|"
+    found_analog=0
+    for adc_path in \
+        /sys/bus/iio/devices/iio:device*/in_voltage*_raw \
+        /sys/class/saradc/ch* \
+        /sys/devices/platform/*/adc/in_voltage*_raw; do
+        if [ -e "$adc_path" ]; then
+            # Only show first few to avoid spam
+            if [ "$found_analog" -lt 8 ]; then
+                found_analog=$((found_analog + 1))
+                echo "| \`$adc_path\` | \`$(cat "$adc_path" 2>/dev/null || echo 'N/A')\` |"
+            fi
+        fi
+    done 2>/dev/null
+    if [ "$found_analog" = "0" ]; then
+        echo "| *No analog ADC paths found* | - |"
+    fi
+}
+
+###############################################################################
+# Environment Variables
+###############################################################################
+
+fn_environment() {
+    log_h1 "ENVIRONMENT"
+
+    log_h2 "MinUI Environment Variables"
+    echo "| Variable | Value |"
+    echo "|----------|-------|"
+    echo "| PLATFORM | \`${PLATFORM:-unset}\` |"
+    echo "| SDCARD_PATH | \`${SDCARD_PATH:-unset}\` |"
+    echo "| SYSTEM_PATH | \`${SYSTEM_PATH:-unset}\` |"
+    echo "| USERDATA_PATH | \`${USERDATA_PATH:-unset}\` |"
+    echo "| LOGS_PATH | \`${LOGS_PATH:-unset}\` |"
+    echo "| SHARED_USERDATA_PATH | \`${SHARED_USERDATA_PATH:-unset}\` |"
+
+    log_h2 "All Environment Variables"
+    code_start
+    env 2>/dev/null | sort || true
+    code_end
+
+    log_h2 "PATH Components"
+    code_start
+    echo "$PATH" | tr ':' '\n'
+    code_end
+}
+
+###############################################################################
+# Network (brief)
+###############################################################################
+
+fn_network() {
+    log_h1 "NETWORK"
+
+    log_h2 "Interfaces"
+    code_start
+    ifconfig 2>/dev/null || ip addr 2>/dev/null || echo "No network tools available"
+    code_end
+
+    log_h2 "WiFi Status"
+    echo "| Interface | Property | Value |"
+    echo "|-----------|----------|-------|"
+    if [ -f /sys/class/net/wlan0/operstate ]; then
+        echo "| wlan0 | operstate | \`$(cat /sys/class/net/wlan0/operstate 2>/dev/null || echo 'N/A')\` |"
+    fi
+    if [ -f /sys/class/net/wlan0/address ]; then
+        echo "| wlan0 | address | \`$(cat /sys/class/net/wlan0/address 2>/dev/null || echo 'N/A')\` |"
+    fi
+    if [ ! -f /sys/class/net/wlan0/operstate ] && [ ! -f /sys/class/net/wlan0/address ]; then
+        echo "| wlan0 | - | *not found* |"
+    fi
+
+    log_h2 "Bluetooth Status"
+
+    # Check for Bluetooth interfaces
+    echo "| Interface | Property | Value |"
+    echo "|-----------|----------|-------|"
+    for hci in /sys/class/bluetooth/hci*; do
+        if [ -d "$hci" ]; then
+            hciname=$(basename "$hci")
+            if [ -f "$hci/address" ]; then
+                echo "| $hciname | address | \`$(cat "$hci/address" 2>/dev/null || echo 'N/A')\` |"
+            fi
+            if [ -f "$hci/name" ]; then
+                echo "| $hciname | name | \`$(cat "$hci/name" 2>/dev/null || echo 'N/A')\` |"
+            fi
+        fi
+    done 2>/dev/null
+
+    # Check rfkill status
+    if command -v rfkill >/dev/null 2>&1; then
+        log_h3 "RF Kill Status"
+        code_start
+        rfkill list all 2>/dev/null || echo "rfkill failed"
+        code_end
+    fi
+
+    # Check for Bluetooth daemon/services
+    if command -v hciconfig >/dev/null 2>&1; then
+        log_h3 "HCI Config"
+        code_start
+        hciconfig 2>/dev/null || echo "hciconfig failed"
+        code_end
+    fi
+
+    if [ ! -d /sys/class/bluetooth ] || [ -z "$(ls -A /sys/class/bluetooth 2>/dev/null)" ]; then
+        log_info "No Bluetooth interfaces found"
+    fi
+}
+
+###############################################################################
+# Main
+###############################################################################
+
+main() {
+    log_h1 "SYSTEM REPORT"
+    log_info "Generated: $(date '+%Y-%m-%d %H:%M:%S')"
+    log_info "Platform: ${PLATFORM:-unknown}"
+
+    # Core hardware detection (most important for platform bring-up)
+    fn_device_tree
+    fn_cpu_scaling
+    fn_gpu
+    fn_display
+    fn_audio
+
+    # Architecture and binary compatibility
+    fn_arch_test
+    fn_sdl_libraries
+
+    # System state
+    fn_system
+    fn_modules
+
+    # Hardware interfaces
+    fn_hardware
+    fn_pwm
+    fn_buses
+    fn_special_hardware
+
+    # Environment and config
+    fn_environment
+    fn_network
+
+    # Debug info (at end since it's verbose)
+    fn_dmesg
+
+    log_h1 "END OF REPORT"
+}
+
+main "$@"

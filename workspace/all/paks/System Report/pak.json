@@ -1,0 +1,22 @@
+{
+  "name": "System Report",
+  "type": "tool",
+  "description": "Generates detailed system report for platform development and CPU scaling tuning",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "m17",
+    "my282",
+    "magicmini"
+  ],
+
+  "launch": "launch.sh"
+}
