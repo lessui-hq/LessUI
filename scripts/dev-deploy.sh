@@ -98,6 +98,13 @@ else
     echo "  Skipping .tmp_update (--no-update specified)"
 fi
 
+# Sync Tools directory (tool paks like Benchmark, Clock, etc.)
+TOOLS_BASE="$PROJECT_ROOT/build/BASE/Tools"
+if [ -d "$TOOLS_BASE" ]; then
+    echo "  Syncing Tools/..."
+    rsync $RSYNC_OPTS --delete "$TOOLS_BASE/" "$SD_CARD/Tools/"
+fi
+
 # Eject the SD card
 echo ""
 echo "Ejecting SD card..."

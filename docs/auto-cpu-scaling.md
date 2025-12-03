@@ -224,14 +224,53 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 ## Platform CPU Speed Support
 
-| Platform | Status | Method | Frequencies |
-|----------|--------|--------|-------------|
-| tg5040 | ✅ Working | sysfs | 800/1200/1608/2000 MHz |
+### Benchmarked Platforms
+
+| Platform | Architecture | Available Frequencies (kHz) | Current Config | Status |
+|----------|--------------|------------------------------|----------------|--------|
+| **tg5040** | Cortex-A53 (64-bit) | 408, 600, **816**, 1008, **1200**, 1416, **1608**, 1800, **2000** | MENU=800→816, POWERSAVE=1200✓, NORMAL=1608✓, PERFORMANCE=2000✓ | ✅ Optimal |
+| **zero28** | Cortex-A53 (64-bit) | 408, 600, **816**, 1008, **1200**, 1416, **1608**, **1800** | MENU=800→816, POWERSAVE=816✓, NORMAL=1416✓, PERFORMANCE=1800✓ | ✅ Optimal |
+| **miyoomini** | Cortex-A7 (32-bit) | **400**, **600**, 800, 1000, **1100**, **1600** | MENU=504→600, POWERSAVE=1104→1100, NORMAL=1296→**1600!**, PERFORMANCE=1488→1600 | ⚠️ Needs tuning |
+
+**Bold frequencies** = currently configured bands
+
+### Performance Comparison
+
+| Platform | Max Freq | Max Performance | vs. miyoomini | IPC Advantage |
+|----------|----------|-----------------|---------------|---------------|
+| miyoomini | 1600 MHz | 371k iters | Baseline | - |
+| zero28 | 1800 MHz | 448k iters | +20.8% | +7.3% (A53 vs A7) |
+| tg5040 | 2000 MHz | 496k iters | +33.7% | +7.3% (A53 vs A7) |
+
+### Critical Issue: miyoomini Configuration
+
+**Hardware limitation confirmed via 50MHz sweep**: miyoomini has a **500 MHz gap** between 1100-1600 MHz. Any request in the range 1150-1600 snaps to maximum (1600 MHz).
+
+**Current problem**:
+- NORMAL (1296 kHz) overshoots to 1600 MHz (+23%, should be mid-tier)
+- PERFORMANCE (1488 kHz) reaches 1600 MHz (correct max)
+- **Both bands are identical** - no differentiation between NORMAL and PERFORMANCE
+
+**Recommended fix**:
+```c
+CPU_SPEED_MENU        = 600000   // was 504000 → 600 (align to hardware)
+CPU_SPEED_POWERSAVE   = 1000000  // was 1104000 → 1100 (use available step, -10% power)
+CPU_SPEED_NORMAL      = 1100000  // was 1296000 → 1600! (fix overshoot, -31% power!)
+CPU_SPEED_PERFORMANCE = 1600000  // was 1488000 → 1600 (align to hardware)
+```
+
+**Impact of fix**:
+- Restores proper differentiation between bands (1000/1100/1600 vs current 1100/1600/1600)
+- NORMAL power consumption reduced by ~31% (1100 vs 1600 MHz)
+- Battery life improvement for moderate gaming workloads
+
+### Other Platforms (Not Benchmarked)
+
+| Platform | Status | Method | Configured Frequencies |
+|----------|--------|--------|------------------------|
 | my355 | ✅ Working | sysfs | 800/1104/1608/1992 MHz |
 | rgb30 | ✅ Working | sysfs | 800/1104/1608/1992 MHz |
-| zero28 | ✅ Working | sysfs | 800/816/1416/1800 MHz |
 | magicmini | ✅ Working | sysfs+GPU | 800/816/1416/2016 MHz |
-| miyoomini | ✅ Working | overclock.elf | 504/1104/1296/1488 MHz |
 | trimuismart | ✅ Working | sysfs | 504/1104/1344/1536 MHz |
 | rg35xx | ✅ Working | overclock.elf | 504/1104/1296/1488 MHz |
 | my282 | ✅ Working | overclock.elf | 576-1512 MHz + core count |
@@ -309,12 +348,47 @@ snd.buffer_video_frames = 8      // Increased from 5 (was causing false underrun
 3. ~~**Debug HUD segfault**~~ - Fixed: use only bitmap font characters, added bounds checking
 4. ~~**False underruns at low CPU usage**~~ - Fixed: increased audio buffer from 5→8 frames
 
+## Benchmark Methodology
+
+The discovered frequency steps and performance data come from a custom CPU benchmark tool (`workspace/all/paks/Benchmark/`):
+
+**Workload**: xorshift PRNG (1000 iterations per call)
+- CPU-bound integer operations (XOR, shift, no memory bottleneck)
+- Prevents dead code elimination via `volatile` sink
+- Compiled with `-O2` for realistic optimization
+
+**Test protocol**:
+- 1500ms measurement window per frequency
+- 500ms warmup to stabilize frequency
+- 0.5s cooldown between tests (thermal management)
+- **Initial discovery**: 50MHz increments (min→max) to find all frequency steps
+- **Subsequent tests**: Use discovered exact steps for efficiency
+
+**miyoomini discovery process**:
+1. First run with hardcoded `overclock.c` values (240-1488 MHz in 10 steps)
+2. Results showed unexpected snapping (many requests → 1600 MHz)
+3. Second run with 50MHz sweep (400-1600 MHz, 25 steps)
+4. Confirmed hardware steps: 400, 600, 800, 1000, 1100, 1600 MHz
+5. **Discovered 500 MHz gap** between 1100-1600 MHz
+
+**Key discovery**: Running the presenter in background (`&`) during benchmarks interfered with CPU frequency scaling on some platforms. All visual feedback is now blocking to ensure accurate measurements.
+
+**Output**: CSV files in `USERDATA_PATH/logs/` with columns:
+- `timestamp`: ISO 8601 timestamp
+- `platform`: Platform identifier
+- `freq_khz`: Requested frequency
+- `actual_khz`: Kernel-reported frequency (validates hardware snapping)
+- `iterations`: Work units completed (scales linearly with freq)
+- `duration_ms`: Actual measurement duration
+- `temp_mC`: SoC temperature in millicelsius (thermal monitoring)
+
 ## References
 
 - [Dynamic Rate Control for Retro Game Emulators](https://docs.libretro.com/guides/ratecontrol.pdf) - Hans-Kristian Arntzen, 2012
 - [docs/audio-rate-control.md](audio-rate-control.md) - Our rate control implementation
 - [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`
 - [workspace/all/minarch/minarch.c](../workspace/all/minarch/minarch.c) - Main emulation loop
+- [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status
 

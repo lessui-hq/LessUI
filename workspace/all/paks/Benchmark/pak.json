@@ -1,0 +1,25 @@
+{
+  "name": "Benchmark",
+  "type": "tool",
+  "description": "CPU frequency benchmark for auto-scaling tuning",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "my282",
+    "magicmini"
+  ],
+
+  "build": {
+    "type": "native",
+    "binary": "benchmark.elf"
+  },
+
+  "launch": "launch.sh"
+}
