@@ -54,6 +54,14 @@ extern PAD_Context pad;
 #define AXIS_DEADZONE 0x4000
 
 /**
+ * Button repeat timing constants.
+ */
+#define PAD_REPEAT_DELAY 300 // Milliseconds before first repeat
+#define PAD_REPEAT_INTERVAL 100 // Milliseconds between repeats
+#define PAD_ACCEL_AFTER 1500 // Milliseconds before acceleration kicks in
+#define PAD_REPEAT_FAST_INTERVAL 50 // Milliseconds between repeats when accelerated
+
+/**
  * Processes analog stick movement and updates button state.
  *
  * Converts analog axis value to digital button presses (up/down/left/right).
@@ -67,6 +75,42 @@ extern PAD_Context pad;
  * @note Called internally by PLAT_pollInput for analog stick axes
  */
 void PAD_setAnalog(int neg_id, int pos_id, int value, int repeat_at);
+
+///////////////////////////////
+// Input Polling Helpers
+///////////////////////////////
+
+/**
+ * Resets transient button state at the start of each poll cycle.
+ *
+ * Call this at the beginning of PLAT_pollInput() before processing events.
+ * Clears just_pressed, just_released, and just_repeated flags.
+ */
+void PAD_beginPolling(void);
+
+/**
+ * Handles button repeat timing with acceleration.
+ *
+ * Call this after PAD_beginPolling() but before processing input events.
+ * Checks each held button and sets just_repeated if the repeat interval has elapsed.
+ * Uses faster repeat interval after button is held for PAD_ACCEL_AFTER ms.
+ *
+ * @param tick Current timestamp in milliseconds (e.g., SDL_GetTicks())
+ */
+void PAD_handleRepeat(uint32_t tick);
+
+/**
+ * Updates button state for a press or release event.
+ *
+ * Call this when an input event is received for a button.
+ * Handles setting is_pressed, just_pressed, just_released, just_repeated,
+ * and schedules repeat timing for held buttons.
+ *
+ * @param btn Button bitmask (e.g., BTN_A, BTN_DPAD_UP). Must be single bit or BTN_NONE.
+ * @param pressed 1 if button is pressed, 0 if released
+ * @param tick Current timestamp in milliseconds
+ */
+void PAD_updateButton(int btn, int pressed, uint32_t tick);
 
 /**
  * Resets all button states to unpressed.

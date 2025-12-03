@@ -14,6 +14,7 @@
 #include "api_types.h"
 #include "defines.h"
 #include "log.h"
+#include "pad.h"
 #include "platform.h"
 #include "scaler.h"
 #include "sdl.h"
@@ -888,13 +889,7 @@ typedef struct PAD_Context {
 } PAD_Context;
 extern PAD_Context pad;
 
-/**
- * Auto-repeat timing constants.
- */
-#define PAD_REPEAT_DELAY 300 // Milliseconds before first repeat
-#define PAD_REPEAT_INTERVAL 100 // Milliseconds between repeats
-#define PAD_ACCEL_AFTER 1500 // Milliseconds before acceleration kicks in
-#define PAD_REPEAT_FAST_INTERVAL 50 // Milliseconds between repeats when accelerated
+// Note: PAD_REPEAT_* and PAD_ACCEL_* constants are now defined in pad.h
 
 /**
  * Initializes the input subsystem.

@@ -42,6 +42,7 @@ void PAD_setAnalog(int neg_id, int pos_id, int value, int repeat_at) {
 			pad.just_pressed |= pos; // set
 			pad.just_repeated |= pos; // set
 			pad.repeat_at[pos_id] = repeat_at;
+			pad.hold_start[pos_id] = repeat_at - PAD_REPEAT_DELAY; // Backdate for acceleration
 
 			if (pad.is_pressed & neg) { // was pressing opposite
 				pad.is_pressed &= ~neg; // unset
@@ -55,6 +56,7 @@ void PAD_setAnalog(int neg_id, int pos_id, int value, int repeat_at) {
 			pad.just_pressed |= neg; // set
 			pad.just_repeated |= neg; // set
 			pad.repeat_at[neg_id] = repeat_at;
+			pad.hold_start[neg_id] = repeat_at - PAD_REPEAT_DELAY; // Backdate for acceleration
 
 			if (pad.is_pressed & pos) { // was pressing opposite
 				pad.is_pressed &= ~pos; // unset
@@ -73,6 +75,82 @@ void PAD_setAnalog(int neg_id, int pos_id, int value, int repeat_at) {
 			pad.just_repeated &= ~pos; // unset
 			pad.just_released |= pos; // set
 		}
+	}
+}
+
+///////////////////////////////
+// Input Polling Helpers
+//
+// These functions consolidate common input handling logic
+// that was previously duplicated across platform implementations.
+///////////////////////////////
+
+/**
+ * Resets transient button state at the start of each poll cycle.
+ *
+ * Call this at the beginning of PLAT_pollInput() before processing events.
+ * Clears just_pressed, just_released, and just_repeated flags.
+ */
+void PAD_beginPolling(void) {
+	pad.just_pressed = BTN_NONE;
+	pad.just_released = BTN_NONE;
+	pad.just_repeated = BTN_NONE;
+}
+
+/**
+ * Handles button repeat timing with acceleration.
+ *
+ * Call this after PAD_beginPolling() but before processing input events.
+ * Checks each held button and sets just_repeated if the repeat interval has elapsed.
+ * Uses faster repeat interval after button is held for PAD_ACCEL_AFTER ms.
+ *
+ * @param tick Current timestamp in milliseconds (e.g., SDL_GetTicks())
+ */
+void PAD_handleRepeat(uint32_t tick) {
+	for (int i = 0; i < BTN_ID_COUNT; i++) {
+		int btn = 1 << i;
+		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
+			pad.just_repeated |= btn;
+			// Use faster interval if held long enough (list acceleration)
+			uint32_t hold_duration = tick - pad.hold_start[i];
+			int interval =
+			    (hold_duration > PAD_ACCEL_AFTER) ? PAD_REPEAT_FAST_INTERVAL : PAD_REPEAT_INTERVAL;
+			pad.repeat_at[i] += interval;
+		}
+	}
+}
+
+/**
+ * Updates button state for a press or release event.
+ *
+ * Call this when an input event is received for a button.
+ * Handles setting is_pressed, just_pressed, just_released, just_repeated,
+ * and schedules repeat timing for held buttons.
+ *
+ * @param btn Button bitmask (e.g., BTN_A, BTN_DPAD_UP). Must be single bit or BTN_NONE.
+ * @param pressed 1 if button is pressed, 0 if released
+ * @param tick Current timestamp in milliseconds
+ */
+void PAD_updateButton(int btn, int pressed, uint32_t tick) {
+	if (btn == BTN_NONE)
+		return;
+
+	// Compute button ID from bitmask (bit position)
+	int id = __builtin_ctz(btn);
+	if (id >= BTN_ID_COUNT)
+		return; // Safety check
+
+	if (!pressed) {
+		pad.is_pressed &= ~btn;
+		pad.just_repeated &= ~btn;
+		pad.just_released |= btn;
+		pad.hold_start[id] = 0; // Clear hold tracking
+	} else if (!(pad.is_pressed & btn)) {
+		pad.just_pressed |= btn;
+		pad.just_repeated |= btn;
+		pad.is_pressed |= btn;
+		pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
+		pad.hold_start[id] = tick;
 	}
 }
 
