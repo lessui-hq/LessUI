@@ -1633,11 +1633,12 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 // Rate control sensitivity (d parameter from Arntzen's paper).
 // Controls how aggressively pitch is adjusted based on buffer fill level.
-// Paper recommends 0.002-0.005 (0.2-0.5%) for desktop systems.
-// We use 0.5% to handle timing jitter. Display/core rate mismatch is handled
-// separately via base_correction (measured from SDL at init).
+// Paper recommends 0.002-0.005 (0.2-0.5%) for desktop systems with stable displays.
+// We use 1.0% to handle timing jitter plus display rate measurement error.
+// Handheld devices have ±0.2% display rate measurement variance on top of
+// the 0.5-0.6% display/core mismatch. 1.0% provides adequate headroom.
 // See docs/audio-rate-control.md for detailed analysis.
-#define SND_RATE_CONTROL_D 0.005f
+#define SND_RATE_CONTROL_D 0.01f
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1658,12 +1659,26 @@ static struct SND_Context {
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
 
-	// Display refresh rate (from SDL, 0 = unknown)
+	// Display refresh rate (measured via vsync, 0 = unknown)
 	// Used to correct for display/core rate mismatch before applying rate control
 	float display_hz;
 
+	// Audio consumption rate (measured via callback timing, 0 = unknown)
+	// Used to correct for audio clock drift (actual vs nominal sample rate)
+	float audio_hz;
+
 	// Underrun tracking (for auto CPU scaling)
 	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
+
+	// Sample flow tracking (for diagnostics)
+	uint64_t samples_in;       // Total input samples fed to resampler
+	uint64_t samples_written;  // Total samples written to buffer (output side of resampler)
+	uint64_t samples_consumed; // Total samples consumed by audio callback
+	uint64_t samples_requested; // Total samples requested by SDL callback
+
+	// Cumulative tracking for window-averaged comparisons
+	double cumulative_total_adjust;  // Sum of total_adjust values applied
+	uint64_t total_adjust_count;     // Number of total_adjust applications
 } snd = {0};
 
 /**
@@ -1688,9 +1703,7 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 
 	int16_t* out = (int16_t*)stream;
 	len /= (sizeof(int16_t) * 2);
-	// int full_len = len;
-
-	// if (snd.frame_out!=snd.frame_in) LOG_info("%8i consuming samples (%i frames)\n", ms(), len);
+	int requested = len; // Track for sample flow diagnostics
 
 	while (snd.frame_out != snd.frame_in && len > 0) {
 		*out++ = snd.buffer[snd.frame_out].left;
@@ -1704,6 +1717,10 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 		if (snd.frame_out >= (int)snd.frame_count)
 			snd.frame_out = 0;
 	}
+
+	// Track sample flow for diagnostics
+	snd.samples_requested += requested;         // What SDL asked for
+	snd.samples_consumed += (requested - len);  // What we actually provided
 
 	// Handle underrun: repeat last frame or output silence
 	if (len > 0) {
@@ -1843,23 +1860,18 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	// Use measured display rate if available, otherwise assume display = core rate
 	float base_correction = (snd.display_hz > 0) ? snd.display_hz / (float)snd.frame_rate : 1.0f;
 
+	// Calculate audio clock correction (static offset for actual vs nominal consumption rate)
+	// Use measured audio rate if available, otherwise assume audio clock is accurate
+	float audio_correction =
+	    (snd.audio_hz > 0) ? (float)snd.sample_rate_out / snd.audio_hz : 1.0f;
+
 	// Calculate dynamic rate adjustment for jitter (1.0 ± d based on buffer fill)
 	float rate_adjust = SND_calculateRateAdjust();
 
-	// Combined adjustment: static correction × dynamic jitter compensation
-	float total_adjust = base_correction * rate_adjust;
+	// Combined adjustment: display correction × audio correction × dynamic jitter
+	float total_adjust = base_correction * audio_correction * rate_adjust;
 
-	// Sampled debug logging for audio rate control (every ~2 seconds at 60fps)
-	static int audio_debug_frames = 0;
-	if (++audio_debug_frames >= 120) {
-		audio_debug_frames = 0;
-		float fill = SND_getBufferFillLevel();
-		float d_actual = (snd.display_hz > 0) ? SND_RATE_CONTROL_D : 0.02f;
-		float adjust_pct = (rate_adjust - 1.0f) * 100.0f;
-		float total_pct = (total_adjust - 1.0f) * 100.0f;
-		LOG_debug("Audio: fill=%.0f%% base=%.4f adjust=%+.2f%% total=%+.2f%% (d=%.1f%%)\n",
-		          fill * 100.0f, base_correction, adjust_pct, total_pct, d_actual * 100.0f);
-	}
+	// Note: Debug logging moved to minarch's unified snapshot logging (SND_getSnapshot)
 
 	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
 	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
@@ -1902,6 +1914,14 @@ size_t SND_batchSamples(const SND_Frame* frames,
 
 	// Update ring buffer write position
 	snd.frame_in = ring.write_pos;
+
+	// Track sample flow for diagnostics
+	snd.samples_in += result.frames_consumed;      // Input samples consumed by resampler
+	snd.samples_written += result.frames_written;  // Output samples written to buffer
+
+	// Track cumulative total_adjust for window-averaged comparisons
+	snd.cumulative_total_adjust += total_adjust;
+	snd.total_adjust_count++;
 
 	// Note: frame_filled is managed by the audio callback (SND_audioCallback)
 	// to track what has been consumed. We don't update it here.
@@ -2009,6 +2029,65 @@ void SND_resetUnderrunCount(void) {
 }
 
 /**
+ * Captures an atomic snapshot of all audio state for diagnostics.
+ *
+ * All values are read while holding the audio lock to ensure consistency.
+ * Includes buffer state, sample flow counters, and rate control parameters.
+ *
+ * @return Snapshot of current audio state
+ */
+SND_Snapshot SND_getSnapshot(void) {
+	SND_Snapshot snap = {0};
+
+	SDL_LockAudio();
+
+	// Timestamp for delta calculations
+	snap.timestamp_us = getMicroseconds();
+
+	// Buffer state
+	snap.fill_pct = (unsigned)(SND_getBufferFillLevel() * 100.0f);
+	snap.frame_in = snd.frame_in;
+	snap.frame_out = snd.frame_out;
+	snap.frame_count = snd.frame_count;
+
+	// Sample flow counters
+	snap.samples_in = snd.samples_in;
+	snap.samples_written = snd.samples_written;
+	snap.samples_consumed = snd.samples_consumed;
+	snap.samples_requested = snd.samples_requested;
+
+	// Rate control parameters
+	snap.display_hz = snd.display_hz;
+	snap.audio_hz = snd.audio_hz;
+	snap.frame_rate = snd.frame_rate;
+	snap.base_correction = (snd.display_hz > 0) ? snd.display_hz / (float)snd.frame_rate : 1.0f;
+	snap.audio_correction = (snd.audio_hz > 0) ? (float)snd.sample_rate_out / snd.audio_hz : 1.0f;
+	snap.rate_adjust = SND_calculateRateAdjust();
+	snap.total_adjust = snap.base_correction * snap.audio_correction * snap.rate_adjust;
+
+	// Resampler state
+	snap.sample_rate_in = snd.sample_rate_in;
+	snap.sample_rate_out = snd.sample_rate_out;
+
+	// Resampler diagnostics
+	snap.resampler_frac_step = snd.resampler.frac_step;
+	snap.resampler_adjusted_step = snd.resampler.diag_last_adjusted_step;
+	snap.resampler_ratio_adjust = snd.resampler.diag_last_ratio_adjust;
+	snap.resampler_frac_pos = snd.resampler.frac_pos;
+
+	// Cumulative tracking for window-averaged comparisons
+	snap.cumulative_total_adjust = snd.cumulative_total_adjust;
+	snap.total_adjust_count = snd.total_adjust_count;
+
+	// Underrun tracking
+	snap.underrun_count = snd.underrun_count;
+
+	SDL_UnlockAudio();
+
+	return snap;
+}
+
+/**
  * Updates the display refresh rate for audio rate correction.
  *
  * Sets the measured display rate used for base correction in the rate control
@@ -2025,6 +2104,25 @@ void SND_setDisplayRate(float display_hz) {
 	float mismatch_pct = ((display_hz - (float)snd.frame_rate) / (float)snd.frame_rate) * 100.0f;
 	LOG_info("Audio: display rate set to %.2f Hz (core=%.2f Hz, base_correction=%.4f, %.2f%% mismatch)\n",
 	         display_hz, (float)snd.frame_rate, base_correction, mismatch_pct);
+}
+
+/**
+ * Updates the audio consumption rate for audio clock correction.
+ *
+ * Sets the measured audio consumption rate used for audio correction in the
+ * rate control algorithm. This handles audio clock drift (actual vs nominal).
+ *
+ * @param audio_hz Measured audio consumption rate in Hz
+ */
+void SND_setAudioRate(float audio_hz) {
+	if (!snd.initialized || snd.sample_rate_out <= 0)
+		return;
+
+	snd.audio_hz = audio_hz;
+	float audio_correction = (float)snd.sample_rate_out / audio_hz;
+	float drift_pct = ((audio_hz - (float)snd.sample_rate_out) / (float)snd.sample_rate_out) * 100.0f;
+	LOG_info("Audio: consumption rate set to %.2f Hz (nominal=%d Hz, audio_correction=%.4f, %+.2f%% drift)\n",
+	         audio_hz, snd.sample_rate_out, audio_correction, drift_pct);
 }
 
 /**

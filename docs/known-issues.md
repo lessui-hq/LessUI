@@ -4,47 +4,104 @@ Issues discovered during development and testing of LessUI.
 
 ## Audio Rate Control
 
-### Buffer Settling Above 50% (Active Investigation)
+### Buffer Now Settling Near 50% ✓
 
-**Status:** Under investigation
-**Severity:** Medium
-**Affected:** rg35xxplus (confirmed), possibly all platforms
+**Status:** Resolved with audio clock correction
+**Severity:** N/A (fixed)
+**Affected:** All platforms
+
+**Summary:**
+
+We implemented **audio clock correction** to complement the existing display clock correction. The buffer now settles near 50% on all tested platforms.
+
+**The Problem (before fix):**
+
+The buffer was settling at ~65% instead of 50% because we only corrected for display/core mismatch, not audio clock drift. SDL's actual consumption rate differs from the nominal 48,000 Hz.
+
+**The Solution:**
+
+Added `audio_correction` factor to the rate control formula:
+
+```c
+// Before:
+total_adjust = base_correction × rate_adjust
+
+// After:
+total_adjust = base_correction × audio_correction × rate_adjust
+
+// Where:
+base_correction = display_hz / core_fps        // display clock drift
+audio_correction = sample_rate_out / audio_hz  // audio clock drift
+rate_adjust = 1.0 ± d                          // dynamic jitter compensation
+```
+
+**Implementation:**
+
+1. `measureAudioRate()` tracks `samples_requested` over 2-second windows
+2. After 5 samples, applies median to `SND_setAudioRate()`
+3. `audio_correction` factor applied in `SND_batchSamples()`
+
+**Results (2025-12-04):**
+
+| Platform | Audio Hz | audio_correction | Fill (before) | Fill (after) |
+|----------|----------|------------------|---------------|--------------|
+| rg35xxplus | ~48000 | 1.0000 | ~65% | ~55% |
+| miyoomini | ~47896 | 1.0022 | ~65% | ~52% |
+
+**Diagnostic Logging:**
+
+```
+Audio: fill=52% balance=+16 dt=2.011s
+  rates: in=47649 out=48002 request=48000 consume=47855 (expect=48000)
+  ratio: actual=1.007408 expected=1.007392 diff=+0.0016% (window_adj=0.992662)
+  resamp: frac_pos=32440 (49.5%) step=65536/64917 (base/adj)
+  rctrl: d=1.0% base=0.9927 audio=1.0022 rate=1.0006 total=0.995401
+  vsync: measured=59.66Hz current=59.65Hz(±4.97) core=60.10Hz
+  audio: measured=47896Hz current=48363Hz nominal=48000Hz
+  cpu: p90=10900us/16638us (65%) level=2
+```
+
+---
+
+### Miyoo Mini - High Audio Callback Jitter
+
+**Status:** Known, hardware limitation
+**Severity:** Low (functional, just oscillates more)
+**Affected:** miyoomini
 
 **Symptoms:**
-- Buffer settles at 60-69% instead of target 50%
-- Rate control applying positive adjustments (draining)
-- Suggests over-production of audio samples
 
-**Evidence from rg35xxplus log (09:18:33):**
+Buffer fill oscillates widely (38-75%) even though average is ~52%:
 ```
-[INFO] Audio: display rate set to 59.71 Hz (base_correction=0.9934, -0.66% mismatch)
-[DEBUG] Audio: fill=49% base=0.9934 adjust=-0.01% total=-0.67% (d=0.5%)
-[DEBUG] Auto CPU: fill=59% level=0
-[DEBUG] Audio: fill=40% base=0.9934 adjust=-0.10% total=-0.75% (d=0.5%)
-[DEBUG] Auto CPU: fill=66% level=0
-[DEBUG] Audio: fill=46% base=0.9934 adjust=-0.04% total=-0.69% (d=0.5%)
-[DEBUG] Auto CPU: fill=69% level=0
+fill=72% → 39% → 48% → 58% → 51% → 61% → 38% → 48% → 57%
 ```
 
-Buffer oscillating 40-69%, averaging ~60%, not converging to 50%.
+**Root Cause:**
 
-**Expected behavior:**
-- fill=50%, adjust=0%, total=-0.66%
-- Stable equilibrium
+miyoomini's audio callback timing is extremely jittery:
+- Normal request: ~47855 samples/window
+- Burst request: 48364-48469 samples/window (+1% spike)
+- Spread: ~600-800 Hz (vs ~200 Hz on rg35xxplus)
 
-**Actual behavior:**
-- fill=60-69%, adjust=+0.3 to +0.5%
-- Oscillating, overfilling
+When SDL bursts, it drains the buffer faster than rate control can respond.
 
-**Hypothesis:**
-1. base_correction direction might be inverted
-2. Resampler interpretation of total_adjust might be wrong
-3. Need to verify: larger total_adjust → more outputs or fewer outputs?
+**Evidence:**
+```
+[22:04:09] fill=72% balance=+297
+[22:04:11] fill=39% balance=-1079 dt=2.028s  ← dropped 33% in one window!
+           rates: in=47255 request=48469     ← SDL requested a burst
+```
 
-**Investigation needed:**
-- Trace through resampler with actual values
-- Verify base_correction=0.9934 produces FEWER samples (as intended)
-- Check if we're multiplying when we should divide (or vice versa)
+**Why it doesn't underrun:**
+
+The ~52% average fill provides enough headroom. Even swings to 38% don't hit empty.
+
+**Possible mitigations (not implemented):**
+- Increase buffer size from 4 to 5-6 frames (+16ms latency)
+- Increase d parameter for faster response
+- Platform-specific tuning
+
+**Current decision:** Accept as hardware limitation. Audio is stable, just oscillates more than other platforms.
 
 ---
 
@@ -55,19 +112,14 @@ Buffer oscillating 40-69%, averaging ~60%, not converging to 50%.
 **Affected:** All platforms
 
 **Symptoms:**
-- 60+ audio underruns in the first second of gameplay
+- 60-90 audio underruns in the first 1-2 seconds of gameplay
 - Buffer not yet primed when audio callback starts
 - Causes brief audio glitches at startup
 
 **Evidence:**
 ```
-[WARN] Audio: 60 underrun(s) in last second
+[WARN] Audio: 78 underrun(s) in last second
 ```
-
-**Workarounds considered:**
-- Increase buffer from 4 to 5-6 frames (reduces underruns, increases latency)
-- Pre-fill buffer before starting audio (complex)
-- Accept as unavoidable with low-latency buffer
 
 **Current decision:** Accept as minor issue. Brief startup glitch is acceptable trade-off for 4-frame (~67ms) low latency.
 
@@ -91,7 +143,7 @@ Buffer oscillating 40-69%, averaging ~60%, not converging to 50%.
 [DEBUG] Auto CPU: grace period complete, monitoring active
 [WARN] Auto CPU: PANIC - underrun detected, boosting to PERFORMANCE
 [INFO] Auto CPU: applying PERFORMANCE (level 2)
-[DEBUG] Auto CPU: p90=6672us/16638us (40%) cpu=46% fill=53% level=2 (high=0 low=4)
+[DEBUG] Auto CPU: p90=6672us/16638us (40%) level=2
 [INFO] Auto CPU: REDUCE requested, level 1 (util=40%, 4 windows)
 ```
 
@@ -131,8 +183,30 @@ Buffer oscillating 40-69%, averaging ~60%, not converging to 50%.
 
 ---
 
+## Resolved Issues
+
+### Resampler Accuracy ✓
+
+**Status:** Verified correct
+**Resolution:** No fix needed
+
+The resampler was suspected of systematic bias, but logging proved it's accurate:
+- `diff` between actual and expected ratio: ±0.002% (essentially zero)
+- `frac_pos` varies randomly (no drift)
+- Window-averaged comparisons match within 0.002%
+
+### Display Rate Measurement ✓
+
+**Status:** Working correctly
+**Resolution:** Implemented adaptive d + stability detection
+
+- 30-sample median with 1.0 Hz stability threshold
+- Adaptive d: 2% during measurement, 1% after
+- Correctly measures display rates on all tested platforms
+
+---
+
 ## Document Updates Needed
 
 - [ ] Update main README.md with audio rate control summary
-- [ ] Document adaptive d parameter in code comments
-- [ ] Add troubleshooting section to docs/audio-rate-control.md
+- [ ] Update docs/audio-rate-control.md with audio_correction details

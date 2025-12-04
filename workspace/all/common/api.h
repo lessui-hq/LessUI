@@ -840,9 +840,71 @@ void SND_resetUnderrunCount(void);
 void SND_setDisplayRate(float display_hz);
 
 /**
+ * Updates the audio consumption rate for audio clock correction.
+ *
+ * @param audio_hz Measured audio consumption rate in Hz
+ */
+void SND_setAudioRate(float audio_hz);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
+
+/**
+ * Audio diagnostic snapshot - captures all relevant state atomically.
+ * Used for debugging rate control and buffer fill issues.
+ */
+typedef struct {
+	// Timestamp for delta calculations
+	uint64_t timestamp_us;     // Microseconds since epoch (for calculating actual rates)
+
+	// Buffer state
+	unsigned fill_pct;         // Buffer fill level (0-100%)
+	int frame_in;              // Write position
+	int frame_out;             // Read position
+	int frame_count;           // Buffer capacity
+
+	// Sample flow (for verifying resampler behavior)
+	uint64_t samples_in;       // Total input samples fed to resampler
+	uint64_t samples_written;  // Total output samples written (from resampler)
+	uint64_t samples_consumed; // Total samples consumed by audio callback
+	uint64_t samples_requested; // Total samples requested by SDL callback
+
+	// Rate control parameters
+	float display_hz;          // Measured display rate (0 if not measured)
+	float audio_hz;            // Measured audio consumption rate (0 if not measured)
+	float frame_rate;          // Core frame rate (e.g., 60.0988)
+	float base_correction;     // Static display/core correction
+	float audio_correction;    // Static audio clock drift correction
+	float rate_adjust;         // Dynamic rate control adjustment
+	float total_adjust;        // Combined adjustment (base * audio * rate)
+
+	// Resampler state
+	int sample_rate_in;        // Input sample rate (from core)
+	int sample_rate_out;       // Output sample rate (to soundcard)
+
+	// Resampler diagnostics (for debugging ratio issues)
+	uint32_t resampler_frac_step;      // Base step (fixed-point 16.16)
+	uint32_t resampler_adjusted_step;  // Last adjusted step used
+	float resampler_ratio_adjust;      // Last ratio_adjust passed to resampler
+	uint32_t resampler_frac_pos;       // Current fractional position (0 to FRAC_ONE-1)
+
+	// Cumulative tracking (for window-averaged comparisons)
+	double cumulative_total_adjust;    // Sum of total_adjust values applied
+	uint64_t total_adjust_count;       // Number of total_adjust applications
+
+	// Error tracking
+	unsigned underrun_count;   // Total underruns
+} SND_Snapshot;
+
+/**
+ * Captures an atomic snapshot of all audio state for diagnostics.
+ * Thread-safe: locks audio while reading.
+ *
+ * @return Snapshot of current audio state
+ */
+SND_Snapshot SND_getSnapshot(void);
 
 ///////////////////////////////
 // Lid sensor (LID) API

@@ -15,6 +15,8 @@ def simulate(
     clamp=0.05,
     frames=3000,
     initial_fill=0.5,
+    measured_display=None,  # What we measure (might differ from actual)
+    actual_consumption_rate=None,  # Actual soundcard rate (might differ from host_audio)
 ):
     """
     Simulate exactly what our C code does:
@@ -22,11 +24,17 @@ def simulate(
     1. r = core_audio / core_fps (input samples per frame)
     2. base_ratio = host_audio / core_audio (resampling ratio)
     3. rate_adjust = 1 + (1 - 2*fill) * d (Arntzen formula)
-    4. display_correction = display_fps / core_fps
+    4. display_correction = measured_display / core_fps (what we THINK the rate is)
     5. corrected_adjust = rate_adjust * display_correction
     6. samples_produced = r * base_ratio / corrected_adjust (inverted)
-    7. samples_consumed = host_audio / display_fps
+    7. samples_consumed = actual_consumption / display_fps (REAL consumption)
     """
+
+    # If not specified, measured = actual
+    if measured_display is None:
+        measured_display = display_fps
+    if actual_consumption_rate is None:
+        actual_consumption_rate = host_audio_rate
 
     # Input samples per frame
     r = core_audio_rate / core_fps
@@ -34,11 +42,11 @@ def simulate(
     # Base resampling ratio
     base_ratio = host_audio_rate / core_audio_rate
 
-    # Display correction (display / core)
-    display_correction = display_fps / core_fps
+    # Display correction uses MEASURED rate (what we think it is)
+    display_correction = measured_display / core_fps
 
-    # Consumption per frame (soundcard at display rate)
-    consumed_per_frame = host_audio_rate / display_fps
+    # Consumption uses ACTUAL rate (reality)
+    consumed_per_frame = actual_consumption_rate / display_fps
 
     buffer_level = buffer_size * initial_fill
     history = []
@@ -76,6 +84,8 @@ def simulate(
         'display_correction': display_correction,
         'base_output': r * base_ratio,
         'consumed': consumed_per_frame,
+        'measured_display': measured_display,
+        'actual_consumption': actual_consumption_rate,
     }
 
 
@@ -111,6 +121,10 @@ def main():
                         help='Display refresh rate in Hz (default: 59.71)')
     parser.add_argument('--core', type=float, default=60.10,
                         help='Core frame rate in Hz (default: 60.10)')
+    parser.add_argument('--core-audio', type=float, default=32040,
+                        help='Core audio rate in Hz (default: 32040)')
+    parser.add_argument('--host-audio', type=float, default=48000,
+                        help='Host audio rate in Hz (default: 48000)')
     parser.add_argument('--d', type=float, default=0.005,
                         help='Rate control d parameter (default: 0.005)')
     parser.add_argument('--clamp', type=float, default=0.05,
@@ -119,6 +133,12 @@ def main():
                         help='Buffer size (default: 4096)')
     parser.add_argument('--frames', type=int, default=3000,
                         help='Frames to simulate (default: 3000)')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Print per-frame details')
+    parser.add_argument('--measured-display', type=float, default=None,
+                        help='Measured display rate (if different from actual)')
+    parser.add_argument('--actual-consumption', type=float, default=None,
+                        help='Actual audio consumption rate (if different from host-audio)')
 
     args = parser.parse_args()
 
@@ -129,6 +149,8 @@ def main():
     print("=" * 70)
     print(f"Display:     {args.display:.2f} Hz")
     print(f"Core:        {args.core:.2f} Hz")
+    print(f"Core audio:  {args.core_audio:.0f} Hz")
+    print(f"Host audio:  {args.host_audio:.0f} Hz")
     print(f"Mismatch:    {mismatch:+.2f}%")
     print(f"d parameter: {args.d} ({args.d * 100:.1f}%)")
     print(f"Clamp:       {args.clamp} ({args.clamp * 100:.1f}%)")
@@ -137,10 +159,14 @@ def main():
     result = simulate(
         display_fps=args.display,
         core_fps=args.core,
+        core_audio_rate=args.core_audio,
+        host_audio_rate=args.host_audio,
         d_param=args.d,
         clamp=args.clamp,
         buffer_size=args.buffer,
         frames=args.frames,
+        measured_display=args.measured_display,
+        actual_consumption_rate=args.actual_consumption,
     )
 
     print(f"r (input samples/frame):      {result['r']:.2f}")

@@ -80,6 +80,10 @@ ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffe
 	if (adjusted_step > max_step)
 		adjusted_step = max_step;
 
+	// Store diagnostics
+	resampler->diag_last_adjusted_step = adjusted_step;
+	resampler->diag_last_ratio_adjust = ratio_adjust;
+
 	int input_idx = 0;
 	uint32_t frac_pos = resampler->frac_pos;
 	SND_Frame prev = resampler->prev_frame;

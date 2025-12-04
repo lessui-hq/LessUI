@@ -53,6 +53,7 @@
 #include <zlib.h>
 
 #include "api.h"
+#include "audio_resampler.h" // For FRAC_ONE in diagnostics
 #include "defines.h"
 #include "libretro.h"
 #include "minui_file_utils.h"
@@ -1732,6 +1733,13 @@ static void setOverclock(int i) {
 	}
 }
 
+// Ongoing display rate tracking (for diagnostics) - updated by measureDisplayRate()
+static float current_vsync_hz = 0;     // Most recent vsync rate measurement
+static float current_vsync_spread = 0; // Spread of last 10 measurements
+
+// Ongoing audio rate tracking (for diagnostics) - updated by measureAudioRate()
+static float current_audio_hz = 0; // Most recent audio consumption rate measurement
+
 /**
  * Updates auto CPU scaling based on frame timing (core.run() execution time).
  *
@@ -1829,13 +1837,92 @@ static void updateAutoCPU(void) {
 
 		// Sampled debug logging (every 4th window = ~2 seconds)
 		static int debug_window_count = 0;
+		static SND_Snapshot last_snap = {0};
 		if (++debug_window_count >= 4) {
 			debug_window_count = 0;
-			LOG_debug(
-			    "Auto CPU: p90=%lluus/%lluus (%u%%) cpu=%d%% fill=%u%% level=%d (high=%d low=%d)\n",
-			    (unsigned long long)p90_time, (unsigned long long)auto_cpu_frame_budget_us, util,
-			    (int)use_double, fill, current_target, auto_cpu_high_util_windows,
-			    auto_cpu_low_util_windows);
+
+			// Get unified audio snapshot
+			SND_Snapshot snap = SND_getSnapshot();
+
+			// Skip first sample (last_snap uninitialized)
+			if (last_snap.timestamp_us == 0) {
+				last_snap = snap;
+				goto skip_audio_logging;
+			}
+
+			// Calculate actual time delta (microseconds -> seconds)
+			uint64_t time_delta_us = snap.timestamp_us - last_snap.timestamp_us;
+			float time_delta_sec = time_delta_us / 1000000.0f;
+
+			// Calculate sample deltas
+			uint64_t in_delta = snap.samples_in - last_snap.samples_in;
+			uint64_t written_delta = snap.samples_written - last_snap.samples_written;
+			uint64_t consumed_delta = snap.samples_consumed - last_snap.samples_consumed;
+			uint64_t requested_delta = snap.samples_requested - last_snap.samples_requested;
+
+			// Calculate WINDOW-AVERAGED total_adjust (what was actually used during the window)
+			uint64_t adjust_count_delta = snap.total_adjust_count - last_snap.total_adjust_count;
+			double adjust_sum_delta = snap.cumulative_total_adjust - last_snap.cumulative_total_adjust;
+			float window_avg_adjust =
+			    (adjust_count_delta > 0) ? (float)(adjust_sum_delta / adjust_count_delta) : 1.0f;
+
+			// Calculate ACTUAL rates (samples per second)
+			float actual_in_rate = (time_delta_sec > 0) ? in_delta / time_delta_sec : 0;
+			float actual_out_rate = (time_delta_sec > 0) ? written_delta / time_delta_sec : 0;
+			float actual_consume_rate = (time_delta_sec > 0) ? consumed_delta / time_delta_sec : 0;
+			float actual_request_rate = (time_delta_sec > 0) ? requested_delta / time_delta_sec : 0;
+
+			// Calculate ACTUAL resampler ratio (out/in)
+			float actual_ratio = (in_delta > 0) ? (float)written_delta / in_delta : 0;
+
+			// Calculate EXPECTED resampler ratio using WINDOW-AVERAGED adjust (not instantaneous!)
+			float base_ratio = (snap.sample_rate_in > 0)
+			                       ? (float)snap.sample_rate_out / snap.sample_rate_in
+			                       : 1.0f;
+			float expected_ratio = base_ratio / window_avg_adjust;
+
+			// Calculate flow balance
+			int64_t flow_balance = (int64_t)written_delta - (int64_t)consumed_delta;
+
+			// Log line 1: Buffer state and flow
+			LOG_debug("Audio: fill=%u%% balance=%+lld dt=%.3fs\n", snap.fill_pct,
+			          (long long)flow_balance, time_delta_sec);
+
+			// Log line 2: Sample rates (actual vs expected)
+			// request=what SDL asked for, consume=what we provided, expect=nominal rate
+			LOG_debug("  rates: in=%.0f out=%.0f request=%.0f consume=%.0f (expect=%d)\n",
+			          actual_in_rate, actual_out_rate, actual_request_rate, actual_consume_rate,
+			          snap.sample_rate_out);
+
+			// Log line 3: Resampler ratio - now comparing against WINDOW-AVERAGED expected
+			float ratio_diff_pct =
+			    (expected_ratio > 0) ? (actual_ratio / expected_ratio - 1.0f) * 100.0f : 0;
+			LOG_debug("  ratio: actual=%.6f expected=%.6f diff=%+.4f%% (window_adj=%.6f)\n",
+			          actual_ratio, expected_ratio, ratio_diff_pct, window_avg_adjust);
+
+			// Log line 4: Resampler internals + frac_pos for drift detection
+			float frac_pos_pct = (float)snap.resampler_frac_pos / FRAC_ONE * 100.0f;
+			LOG_debug("  resamp: frac_pos=%u (%.1f%%) step=%u/%u (base/adj)\n",
+			          snap.resampler_frac_pos, frac_pos_pct, snap.resampler_frac_step,
+			          snap.resampler_adjusted_step);
+
+			// Log line 5: Rate control state (base × audio × rate = total)
+			LOG_debug("  rctrl: d=%.1f%% base=%.4f audio=%.4f rate=%.4f total=%.6f\n",
+			          (snap.display_hz > 0 ? 1.0f : 2.0f), snap.base_correction, snap.audio_correction,
+			          snap.rate_adjust, snap.total_adjust);
+
+			// Log line 6: Display and audio timing
+			LOG_debug("  vsync: measured=%.2fHz current=%.2fHz(±%.2f) core=%.2fHz\n", snap.display_hz,
+			          current_vsync_hz, current_vsync_spread, snap.frame_rate);
+			LOG_debug("  audio: measured=%.0fHz current=%.0fHz nominal=%dHz\n", snap.audio_hz,
+			          current_audio_hz, snap.sample_rate_out);
+
+			// Log line 7: CPU state
+			LOG_debug("  cpu: p90=%lluus/%lluus (%u%%) level=%d\n", (unsigned long long)p90_time,
+			          (unsigned long long)auto_cpu_frame_budget_us, util, current_target);
+
+			last_snap = snap;
+		skip_audio_logging:;
 		}
 
 		// Boost CPU if sustained high utilization
@@ -6608,25 +6695,35 @@ static void trackFPS(void) {
 }
 
 /**
+ * Comparison function for qsort (ascending order).
+ */
+static int compare_float(const void* a, const void* b) {
+	float fa = *(const float*)a;
+	float fb = *(const float*)b;
+	return (fa > fb) - (fa < fb);
+}
+
+/**
  * Measures display refresh rate via vsync timing with stability detection.
  *
  * Tracks vsync intervals in a sliding window and waits for stable readings
  * before applying the measurement. This filters out startup noise and
  * irregular frame timing during initialization.
  *
- * Stability criteria: 10 consecutive readings with spread < 0.5 Hz
+ * Improved accuracy:
+ * - Uses 30-sample window (0.5 sec) instead of 10 (better filtering)
+ * - Tighter stability: spread < 0.2 Hz instead of 0.5 Hz
+ * - Uses median instead of mean (filters outliers)
  *
- * Called every frame from main loop until measurement is applied.
+ * Called every frame from main loop. Continues tracking after initial
+ * measurement to support diagnostic logging.
  */
 static void measureDisplayRate(void) {
 	static uint64_t last_flip = 0;
-	static float interval_buffer[10]; // Last 10 vsync intervals (Hz)
+	static float interval_buffer[30]; // Last 30 vsync intervals (Hz)
 	static int buffer_index = 0;
 	static int samples = 0;
 	static int measurement_applied = 0;
-
-	if (measurement_applied)
-		return;
 
 	uint64_t now = getMicroseconds();
 
@@ -6636,42 +6733,117 @@ static void measureDisplayRate(void) {
 		float hz = 1000000.0f / (float)interval_us;
 
 		// Store in ring buffer
-		interval_buffer[buffer_index % 10] = hz;
+		interval_buffer[buffer_index % 30] = hz;
 		buffer_index++;
-		if (samples < 10)
+		if (samples < 30)
 			samples++;
 
-		// Once we have 10 samples, check stability
-		if (samples == 10) {
-			// Find min/max
-			float min_hz = interval_buffer[0];
-			float max_hz = interval_buffer[0];
-			for (int i = 1; i < 10; i++) {
-				if (interval_buffer[i] < min_hz)
-					min_hz = interval_buffer[i];
-				if (interval_buffer[i] > max_hz)
-					max_hz = interval_buffer[i];
-			}
+		// Once we have 30 samples, calculate stats
+		if (samples == 30) {
+			// Copy buffer for sorting (to find median without modifying original)
+			float sorted[30];
+			for (int i = 0; i < 30; i++)
+				sorted[i] = interval_buffer[i];
+			qsort(sorted, 30, sizeof(float), compare_float);
 
+			// Calculate median (middle value after sorting)
+			float median_hz = sorted[15]; // Middle of 30 samples
+
+			// Find min/max for spread
+			float min_hz = sorted[0];
+			float max_hz = sorted[29];
 			float spread = max_hz - min_hz;
 
-			// Stable if spread < 0.5 Hz
-			if (spread < 0.5f) {
-				// Average the stable readings
-				float sum = 0;
-				for (int i = 0; i < 10; i++)
-					sum += interval_buffer[i];
-				float avg_hz = sum / 10.0f;
+			// Always update current measurements (for diagnostic logging)
+			current_vsync_hz = median_hz;
+			current_vsync_spread = spread;
 
-				SND_setDisplayRate(avg_hz);
+			// Apply initial measurement when stable
+			// Threshold relaxed to 1.0 Hz for handheld devices with noisy vsync.
+			// Combined with 30-sample median, this still provides good accuracy.
+			if (!measurement_applied && spread < 1.0f) {
+				SND_setDisplayRate(median_hz);
 				measurement_applied = 1;
 				LOG_info("Display: %.2f Hz measured via vsync (stable after %d frames, spread=%.2f Hz)\n",
-				         avg_hz, buffer_index, spread);
+				         median_hz, buffer_index, spread);
 			}
 		}
 	}
 
 	last_flip = now;
+}
+
+/**
+ * Measures actual audio consumption rate by tracking SDL callback requests.
+ *
+ * Similar to measureDisplayRate, this tracks the actual rate at which SDL
+ * consumes audio samples. This may differ from the nominal rate (e.g., 48000 Hz)
+ * due to audio clock drift in the hardware.
+ *
+ * Uses a 2-second measurement window for accuracy. Once stable, calls
+ * SND_setAudioRate to enable audio clock correction.
+ */
+static void measureAudioRate(void) {
+	static uint64_t last_time = 0;
+	static uint64_t last_requested = 0;
+	static float rate_buffer[10];  // Last 10 rate measurements (over 2-sec windows)
+	static int buffer_index = 0;
+	static int samples = 0;
+	static int measurement_applied = 0;
+
+	SND_Snapshot snap = SND_getSnapshot();
+	uint64_t now = snap.timestamp_us;
+
+	if (last_time > 0 && snap.samples_requested > last_requested) {
+		// Calculate time delta in seconds
+		float dt = (now - last_time) / 1000000.0f;
+
+		// Only measure after ~2 seconds to get a good average
+		if (dt >= 2.0f) {
+			uint64_t requested_delta = snap.samples_requested - last_requested;
+			float hz = requested_delta / dt;
+
+			// Store in ring buffer
+			rate_buffer[buffer_index % 10] = hz;
+			buffer_index++;
+			if (samples < 10)
+				samples++;
+
+			// Update tracking
+			last_time = now;
+			last_requested = snap.samples_requested;
+
+			// Once we have enough samples, calculate stats
+			if (samples >= 5) {
+				// Calculate median
+				float sorted[10];
+				for (int i = 0; i < samples; i++)
+					sorted[i] = rate_buffer[i];
+				qsort(sorted, samples, sizeof(float), compare_float);
+				float median_hz = sorted[samples / 2];
+
+				// Find spread
+				float min_hz = sorted[0];
+				float max_hz = sorted[samples - 1];
+				float spread = max_hz - min_hz;
+
+				// Update current measurement for diagnostics
+				current_audio_hz = median_hz;
+
+				// Apply after we have enough samples (5+). Unlike vsync, audio callback
+				// timing has high jitter (up to 800 Hz on some platforms), but the
+				// median of 5+ two-second windows is stable regardless of spread.
+				if (!measurement_applied) {
+					SND_setAudioRate(median_hz);
+					measurement_applied = 1;
+				}
+			}
+		}
+	} else {
+		// Initialize tracking
+		last_time = now;
+		last_requested = snap.samples_requested;
+	}
 }
 
 /**
@@ -6878,6 +7050,7 @@ int main(int argc, char* argv[]) {
 		if (frame_ready_for_flip) {
 			GFX_flip(screen);
 			measureDisplayRate();
+			measureAudioRate();
 			frame_ready_for_flip = 0;
 		}
 
