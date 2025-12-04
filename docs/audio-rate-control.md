@@ -133,115 +133,165 @@ The paper recommends d = 0.2-0.5% for **desktop systems** because:
 
 ### Measured Display Timings
 
-| Platform | Measured Hz | Core expects | Mismatch |
-|----------|-------------|--------------|----------|
-| rg35xxplus | 59.71 Hz | 60.10 Hz (NES) | -0.65% |
-| tg5040 | ~60.5 Hz | 60.10 Hz (NES) | +0.67% |
+| Platform | Measured Hz | Swing | Core expects | Mismatch |
+|----------|-------------|-------|--------------|----------|
+| rg35xxplus | 59.77 Hz | 0.89 Hz | 60.10 Hz (NES) | -0.55% |
+| miyoomini | 59.66 Hz | 0.41 Hz | 60.10 Hz (NES) | -0.73% |
 
-### Solution: Adaptive d + Base Correction
+### Solution: Adaptive d + Dual Correction
 
-We use a two-phase approach that separates static mismatch from dynamic jitter:
+**Why not just use d=2% always?** Because it causes oscillation once corrections are applied.
 
-**Phase 1: Measurement (first ~10-50 frames)**
-- Use large d=2% to handle unknown display/core mismatch
-- Measure actual display rate via vsync timing
-- Wait for stable readings (10 consecutive frames with spread < 0.5 Hz)
+The problem: A large static d handles mismatch well, but becomes too aggressive once the mismatch is corrected. The solution is to **separate static mismatch from dynamic jitter** using dual correction + adaptive d.
 
-**Phase 2: Refined (after measurement)**
+We use a two-phase approach:
+
+**Phase 1: Measurement (first ~0.5-20 seconds)**
+- Use large d=2% to handle unknown display/audio mismatch
+- Measure display rate via vsync timing (per-frame samples)
+- Measure audio rate via callback timing (2-second windows)
+- Wait for stable readings (30 display samples with spread < 1.0 Hz, 10 audio samples with spread < 500 Hz)
+
+**Phase 2: Refined (after meters stable)**
 - Apply base_correction for static display/core offset
-- Switch to small d=0.5% for jitter only
+- Apply audio_correction for audio clock drift
+- Switch to small d=1% for jitter only
 
 ```c
-// Adaptive d parameter
-float d = (display_hz_measured) ? 0.005 : 0.02;  // 0.5% or 2%
+// Adaptive d parameter (2% before meters stable, 1% after)
+int meters_stable = RateMeter_isStable(&display_meter) && RateMeter_isStable(&audio_meter);
+float d = meters_stable ? 0.01 : 0.02;  // 1% or 2%
 
-// Base correction (static offset, measured once)
-float base_correction = display_hz / core_hz;  // e.g., 59.71/60.10 = 0.9935
+// Base correction (display clock drift)
+float base_correction = display_hz / core_hz;  // e.g., 59.77/60.10 = 0.9945
+
+// Audio correction (audio clock drift)
+float audio_correction = sample_rate_out / audio_hz;  // e.g., 48000/47969 = 1.0007
 
 // Dynamic adjustment (jitter compensation)
 float rate_adjust = 1 - (1 - 2*fill) * d;  // 1.0 ± d
 
-// Combined
-float total_adjust = base_correction * rate_adjust;
+// Combined (three corrections multiplied)
+float total_adjust = base_correction * audio_correction * rate_adjust;
 ```
 
-This keeps d optimal for each phase while handling real-world display variance.
+This keeps d optimal for each phase while handling real-world display variance and audio clock drift.
 
 ## Pitch Audibility
 
-With d=0.5% and base_correction handling display mismatch separately:
+With d=1% (after stable) and dual correction handling both display and audio clock drift separately:
 
-1. **Base correction**: Static offset (e.g., -0.65%), always applied, inaudible
-2. **Rate control**: Dynamic ±0.5% for jitter, averages ~0.06% in practice
-3. **Combined**: Total deviation well under 1% (human perception threshold)
-4. **Stable at 50%**: Maximum headroom for jitter in both directions
+1. **Base correction**: Static offset for display drift (e.g., -0.55%), always applied, inaudible
+2. **Audio correction**: Static offset for audio clock drift (e.g., +0.07%), always applied, inaudible
+3. **Rate control**: Dynamic ±1% for jitter, averages ~0.1% in practice
+4. **Combined**: Total deviation well under 1% (human perception threshold)
+5. **Stable at 50%**: Maximum headroom for jitter in both directions
 
 ## Implementation Details
 
 ### Components
 
-1. **Linear Interpolation Resampler** (`audio_resampler.c`)
+1. **RateMeter** (`rate_meter.c`) - Unified measurement module
+   - Ring buffer of Hz samples with running median
+   - Min/max tracking for swing detection (used for buffer sizing)
+   - Stability detection based on configurable spread threshold
+   - Same algorithm for both display and audio rates
+
+2. **Linear Interpolation Resampler** (`audio_resampler.c`)
    - Fixed-point 16.16 math for efficiency on ARM
    - Smoothly blends between adjacent samples
    - Zero memory allocation (uses ring buffer directly)
 
-2. **Dynamic Rate Control** (`api.c`)
+3. **Dynamic Rate Control** (`api.c`)
    - Calculates adjustment factor each audio batch
-   - Single formula, no averaging or filtering needed
+   - Single formula using meter values directly
+   - Values continuously improve as meters gather more samples
 
-3. **Safety Clamp** (`audio_resampler.h`)
-   - Limits ratio_adjust to ±5% absolute maximum
-   - Catches bugs/misconfiguration, separate from d parameter
+4. **Dynamic Buffer Sizing** (`api.c`)
+   - Base buffer of 4 frames (~67ms)
+   - Automatically increases based on measured swing
+   - Higher timing variance = more headroom needed
+   - Caps at 8 frames maximum
 
 ### Key Parameters
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Rate control d (adaptive) | 2% → 0.5% | Large during measurement, small after |
-| Base correction | Measured display_hz / core fps | Handles display/core mismatch statically |
-| Measurement | Sliding window, 10 frames | Waits for spread < 0.5 Hz (stable) |
+| Rate control d (adaptive) | 2% → 1% | Large before meters stable, small after |
+| Display meter window | 30 samples | ~0.5 sec at 60fps |
+| Display stability | spread < 1.0 Hz | Relaxed for handheld device jitter |
+| Display interval | Every frame | Per-frame vsync measurements |
+| Audio meter window | 10 samples | ~20 sec total (10 × 2s windows) |
+| Audio stability | spread < 500 Hz | SDL callback bursts cause 200-800 Hz variance |
+| Audio interval | 2.0 seconds | Averages out SDL callback burst patterns |
+| Base buffer | 4 frames | ~67ms latency at 60fps |
+| Max buffer | 8 frames | Hard limit (~133ms) |
 | Target fill | 50% | Maximum jitter headroom |
 | Safety clamp | ±5% | Catches bugs without limiting normal operation |
-| Buffer size | 4 frames | ~67ms latency, balanced headroom |
 
 ### Code Flow
 
 ```
 SND_init()
-  └─> display_hz = 0 (not measured yet)
+  └─> Initialize display_meter and audio_meter
 
 Main loop (frames 1-N):
   ├─> core.run()
   │     └─> audio_callback(samples)
   │           └─> SND_batchSamples()
-  │                 ├─> d = (display_hz > 0) ? 0.005 : 0.02  (adaptive!)
-  │                 ├─> base_correction = display_hz > 0 ? display_hz/core : 1.0
+  │                 ├─> base_correction = display_meter.median / core_fps
+  │                 ├─> audio_correction = sample_rate_out / audio_meter.median
+  │                 ├─> d = meters_stable ? 0.01 : 0.02
   │                 ├─> rate_adjust = 1 - (1 - 2*fill) * d
-  │                 ├─> total_adjust = base_correction * rate_adjust
-  │                 └─> AudioResampler_resample(..., total_adjust)
+  │                 └─> total_adjust = base × audio × rate
   │
-  └─> GFX_flip()
-        └─> measureDisplayRate()
-              └─> (after 10 stable frames) → SND_setDisplayRate(59.71)
-                    └─> display_hz now set, d switches to 0.5%
+  ├─> measureDisplayRate()
+  │     └─> SND_addDisplaySample(hz)
+  │           └─> (when stable) → SND_updateBufferForSwing()
+  │
+  └─> measureAudioRate()
+        └─> SND_addAudioSample(hz)
 ```
 
 ## Design Evolution
 
 | Iteration | Approach | Issue |
 |-----------|----------|-------|
-| 1 | Rate control d=0.5% only | Insufficient for display/core mismatch |
+| 1 | Rate control d=0.5% only | Insufficient for display/core mismatch (-0.73% on miyoomini) |
 | 2 | Rate control d=1.5% only | Worked on rg35xxplus, oscillated on tg5040 |
-| 3 | Rate control d=2% only | Worse oscillation, overcorrects jitter |
+| 3 | Rate control d=2% only | **Worse oscillation** - too aggressive after correction applied |
 | 4 | SDL display query + d=0.5% | SDL rounds to integer (60 vs 59.71), inaccurate |
 | 5 | Fixed 30-frame measurement | Captured startup noise, bad readings |
-| 6 | **Adaptive d + stability detection** | Handles bootstrap, filters noise, converges to 50% |
+| 6 | Adaptive d + dual correction | **Key insight**: Separate static mismatch from dynamic jitter |
+| 7 | Stability detection + median | Filters noise, waits for good data before switching d |
+| 8 | **Unified RateMeter + dynamic buffer** | Same algorithm for both, continuous refinement, adaptive buffer sizing |
 
-**Final approach**:
-- Start with d=2% to handle unknown mismatch during measurement
-- Measure display rate via vsync with stability detection (10 frames, spread < 0.5 Hz)
-- Once measured, apply base_correction and switch to d=0.5%
-- This separates static offset from dynamic jitter as the paper intended
+**The key lesson from iteration 3**: You can't just "raise d to handle handheld variance." A large static d overcorrects jitter once base/audio corrections eliminate the static mismatch. The solution requires **adaptive d** (large during bootstrap, small after correction) + **dual correction** (separate display and audio clock drift from jitter).
+
+**Current approach**:
+- Unified RateMeter module handles both display and audio measurement
+- Meters track running median, min/max swing, and stability
+- Values improve when better data arrives (smaller spread)
+- Display swing triggers dynamic buffer resizing (4-8 frames)
+- Large d (2%) until meters stable, then small d (1%) for jitter only
+
+### Measurement Interval Strategy
+
+Display and audio use different measurement intervals to match their signal characteristics:
+
+**Display (per-frame):**
+- Vsync timing is consistent frame-to-frame
+- 30 samples × 16.7ms = ~0.5 sec total
+- Median filters outliers from occasional frame drops
+- Achieves stability: spread < 1 Hz (typical: 0.4-0.9 Hz)
+
+**Audio (2-second windows):**
+- SDL callbacks have burst patterns (40-53 kHz per 100ms)
+- But average is stable over longer windows (47-48 kHz per 2s)
+- 10 samples × 2 sec = ~20 sec total measurement
+- Median filters occasional burst spikes
+- Achieves stability on clean devices: spread < 500 Hz (typical: 150-300 Hz)
+- Falls back gracefully on noisy devices (miyoomini: ~800 Hz spread)
 
 ## Comparison with Other Implementations
 
@@ -249,27 +299,82 @@ Main loop (frames 1-N):
 |--------|-------|--------|--------|
 | Resampling | Nearest-neighbor | libsamplerate | Linear interpolation |
 | Rate control | None (blocking) | Cubic + averaging | Linear (paper formula) |
-| Display correction | No | No | Yes (vsync measurement) |
-| Adaptive d | No | No | Yes (2% → 0.5%) |
+| Display correction | No | No | Yes (RateMeter) |
+| Audio correction | No | No | Yes (RateMeter) |
+| Adaptive d | No | No | Yes (2% → 1%) |
+| Dynamic buffer | No | No | Yes (swing-based) |
 | Memory | Zero | malloc/free per batch | Zero |
 | Dependencies | None | libsamplerate | None |
-| Max pitch shift | 0% | ±1% | ±0.5% (after measurement) |
-| Handles mismatch | No | Partially | Yes (via base correction) |
+| Max pitch shift | 0% | ±1% | ±2% → ±1% (adaptive) |
+| Handles mismatch | No | Partially | Yes (via dual correction) |
+
+## Augmentations for Handheld Devices
+
+LessUI extends the original Arntzen algorithm with the following enhancements for cheap handheld hardware:
+
+### 1. **Dual Clock Correction** (original paper had none)
+- **Base correction**: Measured display_hz / core_fps (handles display drift)
+- **Audio correction**: Measured sample_rate_out / audio_hz (handles audio clock drift)
+- **Why needed**: Cheap oscillators on handhelds cause both display and audio clock drift
+- **Original paper assumed**: Accurate clocks, only needed dynamic d for jitter
+
+### 2. **Adaptive d Parameter** (original paper used static d)
+- **Implementation**: 2% before meters stable, 1% after
+- **Why complexity is necessary**: You might think "just use d=2% always" but this causes bad oscillation
+- **The problem with static d=2%**:
+  - Works great during measurement phase (handles -0.73% mismatch + jitter)
+  - But once base_correction and audio_correction are applied, mismatch is eliminated
+  - Now d=2% is TOO AGGRESSIVE for jitter-only response
+  - Buffer oscillates instead of settling (e.g., tested on tg5040: 30-70% swings)
+- **The solution**: Separate static correction (base/audio) from dynamic adjustment (d)
+  - Large d (2%) during bootstrap handles unknown mismatch
+  - Small d (1%) after measurement handles only jitter (corrections handle mismatch)
+  - Buffer converges smoothly to 50% on all devices
+- **Original paper used**: Static 0.2-0.5% (sufficient for stable desktop monitors with no clock drift)
+
+### 3. **Unified RateMeter System** (original paper didn't measure rates)
+- **Implementation**: Same algorithm measures both display and audio rates continuously
+- **Features**: Median filtering, min/max tracking, stability detection, continuous refinement
+- **Why needed**: Handheld displays vary 57-62 Hz, need continuous measurement not SDL queries
+
+### 4. **Different Measurement Intervals** (original paper didn't specify)
+- **Display**: Per-frame samples (30 × 16.7ms = 0.5s window)
+- **Audio**: 2-second windows (10 × 2s = 20s total)
+- **Why needed**: SDL callback bursts (40-53 kHz per 100ms) need averaging over 2s windows
+
+### 5. **Dynamic Buffer Sizing** (original paper used static buffer)
+- **Implementation**: Base 4 frames, grows to 8 frames based on measured display swing
+- **Formula**: Extra frames = (swing_hz / display_hz) × base_frames × 1.5 safety
+- **Why needed**: High timing variance requires more headroom (miyoomini: 0.4 Hz swing, rg35xxplus: 0.9 Hz)
+
+### 6. **Relaxed Stability Thresholds** (original paper didn't address noisy signals)
+- **Display**: 1.0 Hz spread (vs desktop monitors: <0.1 Hz)
+- **Audio**: 500 Hz spread (accommodates SDL callback burst patterns)
+- **Why needed**: Cheap hardware has noisier timing, need thresholds that filter outliers but still converge
+
+### 7. **Graceful Fallback** (original paper assumed good data)
+- **Implementation**: If audio meter never stabilizes (spread > 500 Hz), returns 0 (no correction)
+- **Example**: Miyoomini audio meter sees 764 Hz spread, falls back to display correction only
+- **Why needed**: Some platforms have such noisy audio timing that correction would hurt, not help
 
 ## Why This Approach
 
-1. **Mathematically proven** - Paper proves exponential convergence to stable equilibrium
-2. **Separation of concerns** - Base correction for mismatch, adaptive d for jitter
-3. **Bootstrap-friendly** - Large d handles unknown mismatch during measurement
-4. **Filters startup noise** - Stability detection waits for clean readings
-5. **Zero allocations** - Critical for memory-constrained handhelds
-6. **No dependencies** - Easy cross-compilation for 15+ platforms
-7. **Stable on all devices** - Converges to 50% regardless of display timing
-8. **Simple code** - Clear inline calculation, easy to understand
+1. **Mathematically proven foundation** - Paper proves exponential convergence to stable equilibrium
+2. **Extended for real hardware** - Augmentations handle cheap handheld device realities
+3. **Unified algorithm** - Same RateMeter code handles both display and audio
+4. **Continuous refinement** - Values improve as meters gather more samples
+5. **Dynamic adaptation** - Buffer sizing and d parameter adjust to device characteristics
+6. **Bootstrap-friendly** - Large d handles unknown mismatch during measurement
+7. **Filters noise** - Median-based calculation ignores outliers
+8. **Zero allocations** - Critical for memory-constrained handhelds
+9. **No dependencies** - Easy cross-compilation for 15+ platforms
+10. **Stable on all devices** - Converges to 50% regardless of display/audio timing quality
+11. **Simple code** - Modular, testable, easy to understand
 
 ## References
 
 - Arntzen, H.K. (2012). ["Dynamic Rate Control for Retro Game Emulators"](https://docs.libretro.com/guides/ratecontrol.pdf)
-- Implementation: `workspace/all/common/audio_resampler.c`
-- Integration: `workspace/all/common/api.c` (`SND_calculateRateAdjust`)
+- Rate measurement: `workspace/all/common/rate_meter.c`
+- Resampling: `workspace/all/common/audio_resampler.c`
+- Integration: `workspace/all/common/api.c` (`SND_batchSamples`, `SND_addDisplaySample`, `SND_addAudioSample`)
 - CPU Scaling: `docs/auto-cpu-scaling.md` (uses frame timing, not buffer fill)

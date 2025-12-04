@@ -64,7 +64,7 @@ typedef struct AudioResampler {
 
 	// Diagnostics - track what the resampler is actually doing
 	uint32_t diag_last_adjusted_step; // Last adjusted_step used
-	float diag_last_ratio_adjust;     // Last ratio_adjust passed in
+	float diag_last_ratio_adjust; // Last ratio_adjust passed in
 } AudioResampler;
 
 /**
