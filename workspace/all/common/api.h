@@ -833,6 +833,13 @@ unsigned SND_getUnderrunCount(void);
 void SND_resetUnderrunCount(void);
 
 /**
+ * Sets display rate for audio rate correction.
+ *
+ * @param display_hz Measured display refresh rate in Hz
+ */
+void SND_setDisplayRate(float display_hz);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);

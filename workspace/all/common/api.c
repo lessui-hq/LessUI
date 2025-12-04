@@ -1656,6 +1656,10 @@ static struct SND_Context {
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
 
+	// Display rate correction factor (display_fps / core_fps)
+	// Adjusts resampler output to match actual display rate
+	float display_correction;
+
 	// Underrun tracking (for auto CPU scaling)
 	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
 } snd = {0};
@@ -1835,8 +1839,13 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	// Calculate dynamic rate adjustment based on buffer fill level
 	float rate_adjust = SND_calculateRateAdjust();
 
+	// Apply display rate correction
+	// Resampler produces host_audio/core_fps, but we consume host_audio/display_fps
+	// Correction factor (display/core) adjusts output to match actual consumption
+	float corrected_adjust = rate_adjust * snd.display_correction;
+
 	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
-	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, rate_adjust);
+	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, corrected_adjust);
 
 	// Calculate how much space is available in the ring buffer
 	int available;
@@ -1870,9 +1879,9 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	    .read_pos = snd.frame_out,
 	};
 
-	// Resample the audio with linear interpolation
+	// Resample the audio with linear interpolation and rate correction
 	ResampleResult result =
-	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, rate_adjust);
+	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, corrected_adjust);
 
 	// Update ring buffer write position
 	snd.frame_in = ring.write_pos;
@@ -1911,6 +1920,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 
 	memset(&snd, 0, sizeof(struct SND_Context));
 	snd.frame_rate = frame_rate;
+	snd.display_correction = 1.0f; // No correction until display rate is measured
 
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
@@ -1977,6 +1987,30 @@ unsigned SND_getUnderrunCount(void) {
  */
 void SND_resetUnderrunCount(void) {
 	snd.underrun_count = 0;
+}
+
+/**
+ * Sets the display refresh rate for audio rate correction.
+ *
+ * The resampler is configured for core_fps, but the loop runs at display_fps.
+ * This creates a mismatch: we produce host_audio/core_fps samples but consume
+ * host_audio/display_fps samples per frame.
+ *
+ * This function calculates a correction factor (display_fps / core_fps) that
+ * adjusts the resampler output to match the actual display rate.
+ *
+ * @param display_hz Measured display refresh rate in Hz
+ */
+void SND_setDisplayRate(float display_hz) {
+	if (!snd.initialized || snd.frame_rate <= 0)
+		return;
+
+	float core_hz = (float)snd.frame_rate;
+	snd.display_correction = display_hz / core_hz;
+
+	float mismatch_pct = (display_hz - core_hz) / core_hz * 100.0f;
+	LOG_info("SND_setDisplayRate: display=%.2f Hz, core=%.2f Hz, correction=%.4f (%.2f%% mismatch)\n",
+	         display_hz, core_hz, snd.display_correction, mismatch_pct);
 }
 
 /**

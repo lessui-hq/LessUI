@@ -6586,6 +6586,70 @@ static void trackFPS(void) {
 }
 
 /**
+ * Measures display refresh rate and applies audio rate correction when stable.
+ *
+ * Tracks vsync intervals and logs display timing every second. Once we have 3
+ * consecutive stable readings (within 0.5 Hz), applies the measured rate to
+ * audio rate correction to prevent buffer drift.
+ *
+ * @param flip_start_us Timestamp before GFX_flip (vsync boundary)
+ * @param flip_end_us Timestamp after GFX_flip (vsync + overhead)
+ * @param expected_hz Core frame rate (for comparison)
+ */
+static void measureDisplayRate(uint64_t flip_start_us, uint64_t flip_end_us, float expected_hz) {
+	static uint64_t last_flip_us = 0;
+	static uint64_t flip_sum = 0;
+	static int flip_count = 0;
+	static int display_rate_set = 0;
+	static float last_readings[3] = {0};
+	static int reading_index = 0;
+
+	// Measure interval between vsyncs
+	if (last_flip_us > 0) {
+		uint64_t flip_interval = flip_start_us - last_flip_us;
+		flip_sum += flip_interval;
+		flip_count++;
+
+		// Log every 60 flips (~1 second)
+		if (flip_count == 60) {
+			uint64_t avg_interval = flip_sum / 60;
+			float actual_hz = 1000000.0f / (float)avg_interval;
+			float mismatch_pct = ((actual_hz - expected_hz) / expected_hz) * 100.0f;
+			LOG_info(
+			    "Display: %.2f Hz (expected %.2f Hz, mismatch %.2f%%), vsync wait ~%lluus",
+			    actual_hz, expected_hz, mismatch_pct,
+			    (unsigned long long)(flip_end_us - flip_start_us));
+
+			// Track last 3 readings to detect stability
+			last_readings[reading_index] = actual_hz;
+			reading_index = (reading_index + 1) % 3;
+
+			// Check if we have 3 consistent readings (within 0.5 Hz)
+			if (!display_rate_set && last_readings[0] > 0 && last_readings[1] > 0 && last_readings[2] > 0) {
+				float min_hz = last_readings[0];
+				float max_hz = last_readings[0];
+				for (int i = 1; i < 3; i++) {
+					if (last_readings[i] < min_hz) min_hz = last_readings[i];
+					if (last_readings[i] > max_hz) max_hz = last_readings[i];
+				}
+
+				float spread = max_hz - min_hz;
+				if (spread < 0.5f) {
+					// Stable - use average
+					float avg_hz = (last_readings[0] + last_readings[1] + last_readings[2]) / 3.0f;
+					SND_setDisplayRate(avg_hz);
+					display_rate_set = 1;
+				}
+			}
+
+			flip_sum = 0;
+			flip_count = 0;
+		}
+	}
+	last_flip_us = flip_start_us;
+}
+
+/**
  * Limits fast-forward speed to configured maximum.
  *
  * When fast-forwarding, this function ensures we don't exceed max_ff_speed
@@ -6788,35 +6852,11 @@ int main(int argc, char* argv[]) {
 		// 1. Accurate frame time measurement (emulation only, no vsync wait)
 		// 2. Proper rate control (audio production matches core rate, not display rate)
 		if (frame_ready_for_flip) {
-			static uint64_t last_flip_us = 0;
-			static uint64_t flip_sum = 0;
-			static int flip_count = 0;
-
 			uint64_t flip_start = getMicroseconds();
 			GFX_flip(screen);
 			uint64_t flip_end = getMicroseconds();
 
-			// Measure actual display timing (time between vsyncs)
-			if (last_flip_us > 0) {
-				uint64_t flip_interval = flip_start - last_flip_us;
-				flip_sum += flip_interval;
-				flip_count++;
-
-				// Log every 60 flips (~1 second)
-				if (flip_count == 60) {
-					uint64_t avg_interval = flip_sum / 60;
-					float actual_hz = 1000000.0f / (float)avg_interval;
-					float expected_hz = core.fps;
-					float mismatch_pct = ((actual_hz - expected_hz) / expected_hz) * 100.0f;
-					LOG_info(
-					    "Display: %.2f Hz (expected %.2f Hz, mismatch %.2f%%), vsync wait ~%lluus",
-					    actual_hz, expected_hz, mismatch_pct,
-					    (unsigned long long)(flip_end - flip_start));
-					flip_sum = 0;
-					flip_count = 0;
-				}
-			}
-			last_flip_us = flip_start;
+			measureDisplayRate(flip_start, flip_end, core.fps);
 
 			frame_ready_for_flip = 0;
 		}
