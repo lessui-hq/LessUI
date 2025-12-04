@@ -139,19 +139,27 @@ static int fast_forward = 0; // Currently fast-forwarding
 static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
 
 // Auto CPU Scaling State (when overclock == 3)
-// Monitors audio buffer fill level to dynamically adjust CPU speed
+// Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
+// This directly measures CPU performance, unlike audio buffer fill which is
+// contaminated by display/audio timing mismatches.
 static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
 static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
-static unsigned auto_cpu_fill_sum = 0; // Accumulated fill % for current window
 static int auto_cpu_frame_count = 0; // Frames in current window
-static int auto_cpu_low_fill_windows = 0; // Consecutive windows with low fill (needs boost)
-static int auto_cpu_high_fill_windows = 0; // Consecutive windows with high fill (can reduce)
+static int auto_cpu_high_util_windows =
+    0; // Consecutive windows with high utilization (needs boost)
+static int auto_cpu_low_util_windows = 0; // Consecutive windows with low utilization (can reduce)
 static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
 static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
 
+// Frame timing data for percentile calculation
+static uint64_t auto_cpu_frame_times[64]; // Ring buffer of frame execution times (microseconds)
+static int auto_cpu_frame_time_index = 0; // Current position in ring buffer
+static uint64_t auto_cpu_frame_budget_us = 16667; // Target frame time (updated from core.fps)
+static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
+
 // Pending log info (set by main thread, consumed by CPU thread)
-static unsigned auto_cpu_pending_fill = 0;
-static float auto_cpu_pending_cpu_usage = 0.0f;
+static unsigned auto_cpu_pending_util = 0; // Utilization % for logging
+static unsigned auto_cpu_pending_fill = 0; // Buffer fill % for logging (kept for diagnostics)
 static const char* auto_cpu_pending_reason = NULL;
 
 // CPU usage for logging (defined here for access from auto CPU code)
@@ -163,15 +171,16 @@ static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
 
 // Forward declaration for CSV logging (called from thread)
-static void auto_cpu_logChange(int old_level, int new_level, unsigned fill, float cpu_usage,
+static void auto_cpu_logChange(int old_level, int new_level, unsigned util, unsigned fill,
                                const char* reason);
 
 // Auto CPU Scaling Tuning Constants
+// Frame timing thresholds (based on 90th percentile utilization)
 #define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define AUTO_CPU_FILL_LOW 25 // Buffer below this % = needs more CPU
-#define AUTO_CPU_FILL_HIGH 60 // Buffer above this % = can save power
-#define AUTO_CPU_BOOST_WINDOWS 2 // Consecutive low-fill windows before boosting
-#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive high-fill windows before reducing (2s)
+#define AUTO_CPU_UTIL_HIGH 85 // Utilization above 85% = needs boost (15% headroom for jitter)
+#define AUTO_CPU_UTIL_LOW 55 // Utilization below 55% = can reduce (conservative)
+#define AUTO_CPU_BOOST_WINDOWS 2 // Boost after ~1s of high utilization
+#define AUTO_CPU_REDUCE_WINDOWS 4 // Reduce after ~2s of low utilization (conservative)
 #define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
 
 // Input Settings
@@ -1525,8 +1534,8 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		pthread_mutex_lock(&auto_cpu_mutex);
 		int target = auto_cpu_target_level;
 		int current = auto_cpu_current_level;
+		unsigned pending_util = auto_cpu_pending_util;
 		unsigned pending_fill = auto_cpu_pending_fill;
-		float pending_cpu_usage = auto_cpu_pending_cpu_usage;
 		const char* pending_reason = auto_cpu_pending_reason;
 		pthread_mutex_unlock(&auto_cpu_mutex);
 
@@ -1553,7 +1562,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 
 			// Log to CSV for analysis
 			if (pending_reason) {
-				auto_cpu_logChange(current, target, pending_fill, pending_cpu_usage, pending_reason);
+				auto_cpu_logChange(current, target, pending_util, pending_fill, pending_reason);
 			}
 
 			// Update current state
@@ -1612,13 +1621,15 @@ static void auto_cpu_stopThread(void) {
  * Returns immediately without blocking the main loop.
  *
  * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
- * @param fill Current buffer fill percentage (0-100)
+ * @param util Current utilization percentage (0-100, from frame timing)
+ * @param fill Current buffer fill percentage (0-100, for diagnostics)
+ * @param reason Reason string for CSV logging ("boost", "reduce", "panic")
  */
-static void auto_cpu_setTargetLevel(int level, unsigned fill, float cpu_usage, const char* reason) {
+static void auto_cpu_setTargetLevel(int level, unsigned util, unsigned fill, const char* reason) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	auto_cpu_target_level = level;
+	auto_cpu_pending_util = util;
 	auto_cpu_pending_fill = fill;
-	auto_cpu_pending_cpu_usage = cpu_usage;
 	auto_cpu_pending_reason = reason;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
@@ -1626,8 +1637,14 @@ static void auto_cpu_setTargetLevel(int level, unsigned fill, float cpu_usage, c
 /**
  * Log CPU scaling event to CSV for analysis.
  * Called from background thread after applying change.
+ *
+ * @param old_level Previous CPU level (0-2)
+ * @param new_level New CPU level (0-2)
+ * @param util Frame timing utilization percentage (90th percentile)
+ * @param fill Audio buffer fill percentage (for diagnostics)
+ * @param reason Trigger reason ("boost", "reduce", "panic")
  */
-static void auto_cpu_logChange(int old_level, int new_level, unsigned fill, float cpu_usage,
+static void auto_cpu_logChange(int old_level, int new_level, unsigned util, unsigned fill,
                                const char* reason) {
 	char csv_path[MAX_PATH];
 	sprintf(csv_path, "%s/logs", USERDATA_PATH);
@@ -1640,21 +1657,31 @@ static void auto_cpu_logChange(int old_level, int new_level, unsigned fill, floa
 		return;
 
 	if (needs_header) {
-		fprintf(f, "timestamp,path,old_level,new_level,fill,cpu_usage,reason\n");
+		fprintf(f, "timestamp,path,old_level,new_level,util_p90,fill,reason\n");
 	}
 
-	fprintf(f, "%u,%s,%d,%d,%u,%.1f,%s\n", SDL_GetTicks(), game.path, old_level, new_level, fill,
-	        cpu_usage, reason);
+	fprintf(f, "%u,%s,%d,%d,%u,%u,%s\n", SDL_GetTicks(), game.path, old_level, new_level, util,
+	        fill, reason);
 	fclose(f);
 }
 
 static void resetAutoCPUState(void) {
-	auto_cpu_fill_sum = 0;
 	auto_cpu_frame_count = 0;
-	auto_cpu_low_fill_windows = 0;
-	auto_cpu_high_fill_windows = 0;
+	auto_cpu_high_util_windows = 0;
+	auto_cpu_low_util_windows = 0;
 	auto_cpu_last_underrun = SND_getUnderrunCount();
 	auto_cpu_startup_frames = 0;
+	auto_cpu_frame_time_index = 0;
+
+	// Calculate frame budget from core's declared FPS
+	if (core.fps > 0) {
+		auto_cpu_frame_budget_us = (uint64_t)(1000000.0 / core.fps);
+	} else {
+		auto_cpu_frame_budget_us = 16667; // Default to 60fps
+	}
+
+	// Clear frame time buffer
+	memset(auto_cpu_frame_times, 0, sizeof(auto_cpu_frame_times));
 
 	// Reset levels (thread-safe)
 	pthread_mutex_lock(&auto_cpu_mutex);
@@ -1662,10 +1689,12 @@ static void resetAutoCPUState(void) {
 	auto_cpu_current_level = 1;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
-	LOG_info("Auto CPU: enabled, starting at NORMAL (level 1)\n");
-	LOG_debug("Auto CPU: fill thresholds low=%d%% high=%d%%, windows boost=%d reduce=%d, grace=%d\n",
-	          AUTO_CPU_FILL_LOW, AUTO_CPU_FILL_HIGH, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
-	          AUTO_CPU_STARTUP_GRACE);
+	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps)\n",
+	         (unsigned long long)auto_cpu_frame_budget_us, core.fps);
+	LOG_debug(
+	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
+	    AUTO_CPU_UTIL_HIGH, AUTO_CPU_UTIL_LOW, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
+	    AUTO_CPU_STARTUP_GRACE);
 }
 
 static void setOverclock(int i) {
@@ -1699,25 +1728,27 @@ static void setOverclock(int i) {
 }
 
 /**
- * Updates auto CPU scaling based on audio buffer fill level.
+ * Updates auto CPU scaling based on frame timing (core.run() execution time).
  *
  * Called every frame from the main emulation loop when overclock == 3 (Auto).
- * Uses a window-based algorithm with hysteresis to avoid oscillation:
+ * Uses the 90th percentile of frame execution times to determine CPU utilization,
+ * which directly measures emulation performance independent of audio/display timing.
  *
- * 1. Accumulate buffer fill % over a window (~500ms)
- * 2. At end of window, check average fill
- * 3. Count consecutive low/high fill windows
- * 4. Boost CPU after 2 consecutive low-fill windows (~1s)
- * 5. Reduce CPU after 4 consecutive high-fill windows (~2s)
+ * Algorithm:
+ * 1. Store frame execution time (measured around core.run())
+ * 2. Every window (~500ms), calculate 90th percentile frame time
+ * 3. Compare to frame budget (1M/fps microseconds) for utilization %
+ * 4. Count consecutive high/low utilization windows
+ * 5. Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
  *
- * Also handles emergency escalation on actual audio underruns.
+ * Also handles emergency escalation on actual audio underruns (panic path).
  */
 static void updateAutoCPU(void) {
 	// Skip if not in auto mode or during special states
 	if (overclock != 3 || fast_forward || show_menu)
 		return;
 
-	// Startup grace period - don't scale during initial buffer fill
+	// Startup grace period - don't scale during initial warmup
 	if (auto_cpu_startup_frames < AUTO_CPU_STARTUP_GRACE) {
 		auto_cpu_startup_frames++;
 		if (auto_cpu_startup_frames == AUTO_CPU_STARTUP_GRACE) {
@@ -1731,13 +1762,16 @@ static void updateAutoCPU(void) {
 	int current_target = auto_cpu_target_level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
-	// Emergency: check for actual underruns (panic path)
+	// Get current buffer fill for diagnostics (kept for logging and HUD)
+	unsigned fill = SND_getBufferOccupancy();
+
+	// Emergency: check for actual underruns (panic path - keep this!)
 	unsigned underruns = SND_getUnderrunCount();
 	if (underruns > auto_cpu_last_underrun && current_target < 2) {
 		// Underrun detected - request immediate boost to PERFORMANCE
-		auto_cpu_setTargetLevel(2, 0, (float)use_double, "panic");
-		auto_cpu_low_fill_windows = 0;
-		auto_cpu_high_fill_windows = 0;
+		auto_cpu_setTargetLevel(2, 100, fill, "panic");
+		auto_cpu_high_util_windows = 0;
+		auto_cpu_low_util_windows = 0;
 		SND_resetUnderrunCount();
 		auto_cpu_last_underrun = 0;
 		LOG_info("Auto CPU: PANIC - underrun detected, requesting PERFORMANCE\n");
@@ -1748,58 +1782,74 @@ static void updateAutoCPU(void) {
 		auto_cpu_last_underrun = underruns;
 	}
 
-	// Accumulate buffer fill for current window
-	unsigned fill = SND_getBufferOccupancy();
-	auto_cpu_fill_sum += fill;
+	// Count frames in current window
 	auto_cpu_frame_count++;
 
 	// Check if window is complete
 	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
-		unsigned avg_fill = auto_cpu_fill_sum / auto_cpu_frame_count;
+		// Calculate 90th percentile frame time (ignores outliers like loading screens)
+		int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
+		                  ? auto_cpu_frame_time_index
+		                  : AUTO_CPU_WINDOW_FRAMES;
+		if (samples < 5) {
+			// Not enough samples yet - reset and wait
+			auto_cpu_frame_count = 0;
+			return;
+		}
 
-		LOG_debug("Auto CPU: window complete, avg_fill=%u%% target=%d low_win=%d high_win=%d\n",
-		          avg_fill, current_target, auto_cpu_low_fill_windows, auto_cpu_high_fill_windows);
+		uint64_t p90_time = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
 
-		// Categorize window by buffer fill level
-		if (avg_fill < AUTO_CPU_FILL_LOW) {
-			// Buffer is low - CPU struggling to keep up
-			auto_cpu_low_fill_windows++;
-			auto_cpu_high_fill_windows = 0;
-			LOG_debug("Auto CPU: LOW fill window (%u%% < %d%%), low_count=%d\n", avg_fill,
-			          AUTO_CPU_FILL_LOW, auto_cpu_low_fill_windows);
-		} else if (avg_fill > AUTO_CPU_FILL_HIGH) {
-			// Buffer is healthy - CPU has headroom
-			auto_cpu_high_fill_windows++;
-			auto_cpu_low_fill_windows = 0;
-			LOG_debug("Auto CPU: HIGH fill window (%u%% > %d%%), high_count=%d\n", avg_fill,
-			          AUTO_CPU_FILL_HIGH, auto_cpu_high_fill_windows);
+		// Calculate utilization as percentage of frame budget
+		unsigned util = 0;
+		if (auto_cpu_frame_budget_us > 0) {
+			util = (unsigned)((p90_time * 100) / auto_cpu_frame_budget_us);
+			if (util > 200)
+				util = 200; // Cap at 200% for sanity
+		}
+
+		LOG_debug("Auto CPU: window p90=%lluus budget=%lluus util=%u%% fill=%u%% target=%d\n",
+		          (unsigned long long)p90_time, (unsigned long long)auto_cpu_frame_budget_us, util,
+		          fill, current_target);
+
+		// Categorize window by utilization
+		if (util > AUTO_CPU_UTIL_HIGH) {
+			// CPU is struggling - near or over frame budget
+			auto_cpu_high_util_windows++;
+			auto_cpu_low_util_windows = 0;
+			LOG_debug("Auto CPU: HIGH util window (%u%% > %d%%), high_count=%d\n", util,
+			          AUTO_CPU_UTIL_HIGH, auto_cpu_high_util_windows);
+		} else if (util < AUTO_CPU_UTIL_LOW) {
+			// CPU has plenty of headroom
+			auto_cpu_low_util_windows++;
+			auto_cpu_high_util_windows = 0;
+			LOG_debug("Auto CPU: LOW util window (%u%% < %d%%), low_count=%d\n", util,
+			          AUTO_CPU_UTIL_LOW, auto_cpu_low_util_windows);
 		} else {
 			// In the sweet spot - reset both counters
-			auto_cpu_low_fill_windows = 0;
-			auto_cpu_high_fill_windows = 0;
-			LOG_debug("Auto CPU: NORMAL fill window (%u%% in sweet spot)\n", avg_fill);
+			auto_cpu_high_util_windows = 0;
+			auto_cpu_low_util_windows = 0;
+			LOG_debug("Auto CPU: NORMAL util window (%u%% in sweet spot)\n", util);
 		}
 
-		// Boost CPU if sustained low buffer fill
-		if (auto_cpu_low_fill_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
+		// Boost CPU if sustained high utilization
+		if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
 			int new_level = current_target + 1;
-			auto_cpu_setTargetLevel(new_level, avg_fill, (float)use_double, "boost");
-			auto_cpu_low_fill_windows = 0;
-			LOG_info("Auto CPU: BOOST requested, level %d (fill=%u%%, %d windows)\n", new_level,
-			         avg_fill, AUTO_CPU_BOOST_WINDOWS);
+			auto_cpu_setTargetLevel(new_level, util, fill, "boost");
+			auto_cpu_high_util_windows = 0;
+			LOG_info("Auto CPU: BOOST requested, level %d (util=%u%%, %d windows)\n", new_level,
+			         util, AUTO_CPU_BOOST_WINDOWS);
 		}
 
-		// Reduce CPU if sustained high buffer fill
-		if (auto_cpu_high_fill_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
+		// Reduce CPU if sustained low utilization
+		if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
 			int new_level = current_target - 1;
-			auto_cpu_setTargetLevel(new_level, avg_fill, (float)use_double, "reduce");
-			auto_cpu_high_fill_windows = 0;
-			LOG_info("Auto CPU: REDUCE requested, level %d (fill=%u%%, %d windows)\n", new_level,
-			         avg_fill, AUTO_CPU_REDUCE_WINDOWS);
+			auto_cpu_setTargetLevel(new_level, util, fill, "reduce");
+			auto_cpu_low_util_windows = 0;
+			LOG_info("Auto CPU: REDUCE requested, level %d (util=%u%%, %d windows)\n", new_level,
+			         util, AUTO_CPU_REDUCE_WINDOWS);
 		}
 
-		// Reset window
-		auto_cpu_fill_sum = 0;
+		// Reset window counter (frame times stay in ring buffer)
 		auto_cpu_frame_count = 0;
 	}
 }
@@ -4224,6 +4274,11 @@ static void selectScaler(int src_w, int src_h, int src_p) {
 	screen = GFX_resize(dst_w, dst_h, dst_p);
 	// }
 }
+// Flag to indicate a frame was rendered and is ready for flip
+// Set by video_refresh_callback, cleared after flip in main loop
+static int frame_ready_for_flip = 0;
+static uint32_t last_blit_time = 0; // For FF frame skip (blit cost savings)
+
 static void video_refresh_callback_main(const void* data, unsigned width, unsigned height,
                                         size_t pitch) {
 	// return;
@@ -4233,13 +4288,10 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// static int tmp_frameskip = 0;
 	// if ((tmp_frameskip++)%2) return;
 
-	static uint32_t last_flip_time = 0;
-
-	// 10 seems to be the sweet spot that allows 2x in NES and SNES and 8x in GB at 60fps
-	// 14 will let GB hit 10x but NES and SNES will drop to 1.5x at 30fps (not sure why)
-	// but 10 hurts PS...
-	// TODO: 10 was based on rg35xx, probably different results on other supported platforms
-	if (fast_forward && SDL_GetTicks() - last_flip_time < 10)
+	// During fast-forward, skip blitting if less than 10ms since last blit
+	// This saves CPU/GPU cost from the blit operation itself
+	// (The actual frame pacing is handled by limitFF() in main loop)
+	if (fast_forward && SDL_GetTicks() - last_blit_time < 10)
 		return;
 
 	// FFVII menus
@@ -4365,14 +4417,28 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		               debug_height);
 
 		// Auto CPU info stacked above FPS line when enabled
-		// Shows "Lxff%" where L=level (0/1/2), ff=buffer fill %
+		// Shows "Lx uu/ff" where L=level (0/1/2), uu=utilization P90%, ff=buffer fill %
 		if (overclock == 3) {
 			pthread_mutex_lock(&auto_cpu_mutex);
 			int current = auto_cpu_current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
-			unsigned avg_fill =
-			    (auto_cpu_frame_count > 0) ? (auto_cpu_fill_sum / auto_cpu_frame_count) : 0;
-			sprintf(debug_text, "%dx%u%%", current, avg_fill);
+
+			// Calculate current utilization from most recent frame times
+			unsigned util = 0;
+			int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
+			                  ? auto_cpu_frame_time_index
+			                  : AUTO_CPU_WINDOW_FRAMES;
+			if (samples >= 5 && auto_cpu_frame_budget_us > 0) {
+				uint64_t p90 = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
+				util = (unsigned)((p90 * 100) / auto_cpu_frame_budget_us);
+				if (util > 200)
+					util = 200;
+			}
+
+			// Get current buffer fill for reference
+			unsigned fill = SND_getBufferOccupancy();
+
+			sprintf(debug_text, "%dx %u/%u", current, util, fill);
 			blitBitmapText(debug_text, x, -y - 10, (uint16_t*)renderer.src, pitch_in_pixels,
 			               debug_width, debug_height);
 		}
@@ -4385,8 +4451,9 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
 	GFX_blitRenderer(&renderer);
-	GFX_flip(screen);
-	last_flip_time = SDL_GetTicks();
+	last_blit_time = SDL_GetTicks();
+	frame_ready_for_flip = 1; // Signal main loop to flip
+	// NOTE: GFX_flip moved to main loop - see "Decouple vsync from core.run()" change
 }
 
 /**
@@ -6432,6 +6499,11 @@ static void Menu_loop(void) {
 		GFX_setEffect(screen_effect);
 		GFX_clear(screen);
 		video_refresh_callback(renderer.src, renderer.true_w, renderer.true_h, renderer.src_p);
+		// Flip immediately since we're outside main loop (restoring game after menu)
+		if (frame_ready_for_flip) {
+			GFX_flip(screen);
+			frame_ready_for_flip = 0;
+		}
 
 		setOverclock(overclock); // restore overclock value
 		if (rumble_strength)
@@ -6694,7 +6766,61 @@ int main(int argc, char* argv[]) {
 			core.audio_buffer_status(true, occupancy, occupancy < 25);
 		}
 
+		// Measure frame execution time for auto CPU scaling
+		// Only measure when in auto mode and not fast-forwarding
+		uint64_t frame_start = 0;
+		if (overclock == 3 && !fast_forward && !show_menu) {
+			frame_start = getMicroseconds();
+		}
+
 		core.run();
+
+		// Store frame time for auto CPU scaling analysis
+		// Now this measures actual emulation time, not vsync wait
+		if (frame_start > 0) {
+			uint64_t frame_time = getMicroseconds() - frame_start;
+			auto_cpu_frame_times[auto_cpu_frame_time_index % AUTO_CPU_WINDOW_FRAMES] = frame_time;
+			auto_cpu_frame_time_index++;
+		}
+
+		// Flip to display - vsync happens HERE, after core.run() completes
+		// This decouples emulation timing from display timing, allowing:
+		// 1. Accurate frame time measurement (emulation only, no vsync wait)
+		// 2. Proper rate control (audio production matches core rate, not display rate)
+		if (frame_ready_for_flip) {
+			static uint64_t last_flip_us = 0;
+			static uint64_t flip_sum = 0;
+			static int flip_count = 0;
+
+			uint64_t flip_start = getMicroseconds();
+			GFX_flip(screen);
+			uint64_t flip_end = getMicroseconds();
+
+			// Measure actual display timing (time between vsyncs)
+			if (last_flip_us > 0) {
+				uint64_t flip_interval = flip_start - last_flip_us;
+				flip_sum += flip_interval;
+				flip_count++;
+
+				// Log every 60 flips (~1 second)
+				if (flip_count == 60) {
+					uint64_t avg_interval = flip_sum / 60;
+					float actual_hz = 1000000.0f / (float)avg_interval;
+					float expected_hz = core.fps;
+					float mismatch_pct = ((actual_hz - expected_hz) / expected_hz) * 100.0f;
+					LOG_info(
+					    "Display: %.2f Hz (expected %.2f Hz, mismatch %.2f%%), vsync wait ~%lluus",
+					    actual_hz, expected_hz, mismatch_pct,
+					    (unsigned long long)(flip_end - flip_start));
+					flip_sum = 0;
+					flip_count = 0;
+				}
+			}
+			last_flip_us = flip_start;
+
+			frame_ready_for_flip = 0;
+		}
+
 		limitFF();
 		trackFPS();
 		updateAutoCPU();

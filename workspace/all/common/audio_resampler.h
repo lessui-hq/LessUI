@@ -24,11 +24,11 @@
  * Paper recommends d = 0.002 to 0.005 for desktop systems, but handheld devices
  * have larger timing variances (cheap display panels, oscillator tolerances).
  *
- * We use 2% to handle badly calibrated devices, trading minor pitch shift for
- * stable latency. The alternative would be larger buffers (>200ms) with no pitch
- * change, but that increases input lag significantly.
+ * We use 1% which provides headroom for oscillator tolerances while keeping
+ * pitch deviation inaudible. Vsync happens AFTER core.run(), so the core runs
+ * at its natural rate and rate control compensates for hardware timing variance.
  */
-#define SND_RATE_CONTROL_D 0.02f
+#define SND_RATE_CONTROL_D 0.01f
 
 /**
  * Fixed-point format: 16.16 (16 bits integer, 16 bits fraction)

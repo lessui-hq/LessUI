@@ -1781,7 +1781,7 @@ static float SND_getBufferFillLevel(void) {
  *
  * Where:
  *   - fill = current buffer level (0.0 to 1.0)
- *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 2.0%)
+ *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 1%)
  *
  * This creates smooth, continuous feedback that naturally converges to 50% fill:
  *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer
@@ -1927,7 +1927,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_video_frames = 8; // Buffer 8 video frames of audio (~133ms at 60fps)
+	snd.buffer_video_frames = 6; // Buffer 6 video frames of audio (~100ms at 60fps)
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 

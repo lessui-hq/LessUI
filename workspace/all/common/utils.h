@@ -391,4 +391,31 @@ uint32_t average16(uint32_t c1, uint32_t c2);
  */
 uint32_t average32(uint32_t c1, uint32_t c2);
 
+/**
+ * Sorts an array of uint64_t values in ascending order (in-place).
+ *
+ * Uses insertion sort for small arrays (<=16 elements) and shell sort
+ * for larger arrays. Optimized for the typical use case of 30-60 element
+ * arrays used in frame timing analysis.
+ *
+ * @param arr Array to sort
+ * @param count Number of elements in array
+ */
+void sortUint64(uint64_t* arr, int count);
+
+/**
+ * Calculates a percentile value from an array of uint64_t values.
+ *
+ * Copies the array to avoid modifying the original, sorts it, and
+ * returns the value at the specified percentile position.
+ *
+ * @param arr Array of values (not modified)
+ * @param count Number of elements in array (max 64)
+ * @param percentile Percentile to calculate (0.0 to 1.0, e.g., 0.90 for 90th)
+ * @return Value at the specified percentile, or 0 if count is 0 or invalid
+ *
+ * @note For frame timing: use 0.90 to get 90th percentile (ignores outliers)
+ */
+uint64_t percentileUint64(const uint64_t* arr, int count, float percentile);
+
 #endif

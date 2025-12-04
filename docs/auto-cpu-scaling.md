@@ -61,20 +61,98 @@ uint32_t frame_time_us = (SDL_GetTicks() - frame_start) * 1000;
 3. Boost if consistently >90% of budget (CPU maxed out)
 4. Reduce if consistently <70% of budget (CPU has headroom)
 
+### Critical Discovery: Render Loop Architecture
+
+**The fundamental issue:** VSync location determines whether rate control can work as designed.
+
+#### Initial Architecture (Broken)
+
+```c
+while (!quit) {
+    core.run()
+      └─> video_refresh_callback()
+            └─> GFX_blitRenderer()
+            └─> GFX_flip()  ← VSYNC BLOCKS HERE (inside core.run!)
+}
+```
+
+**Problem:** Core is throttled to display rate (59.71 Hz), not its natural rate (60.10 Hz).
+- Produces audio at 59.71 fps instead of 60.10 fps
+- Creates -0.65% audio production deficit
+- Buffer drains regardless of CPU performance
+- Rate control (d=2%) fights deficit that shouldn't exist
+
+#### Current Architecture (Improved)
+
+```c
+while (!quit) {
+    core.run()
+      └─> video_refresh_callback()
+            └─> GFX_blitRenderer()
+            └─> frame_ready_for_flip = 1
+
+    if (frame_ready_for_flip)
+        GFX_flip()  ← VSYNC BLOCKS HERE (after core.run)
+}
+```
+
+**Progress:** Core.run() measures actual CPU time, not vsync wait.
+- Frame timing now accurate (42% util matches CPU usage)
+- Auto CPU scaling works correctly
+
+**Remaining issue:** Loop still blocked on vsync, so core.run() called at display rate (59.71 Hz).
+- Still produces -0.65% less audio than expected
+- Buffer settles at ~17-30%, not the ideal 50%
+
+**The math:** With d=1% and 0.65% mismatch, equilibrium is:
+```
+adjustment = 1.0 - (1.0 - 2*fill) * 0.01 = 0.9935
+fill = 0.175 (17.5%)
+```
+
+Buffer CANNOT settle at 50% when display ≠ core rate, no matter the buffer size.
+
+#### Possible Solutions
+
+**Option 1: Free-running core (per libretro paper)**
+```c
+while (!quit) {
+    core.run()           // Run as fast as CPU allows
+    push_audio()         // Non-blocking
+
+    if (should_flip)     // Throttle separately
+        GFX_flip()       // ~60Hz vsync
+}
+```
+
+**Benefits:**
+- Core runs at natural rate (60.10 Hz)
+- Audio production matches expectations
+- Buffer settles at 50% as designed
+- Rate control only compensates for oscillator tolerances
+
+**Challenges:**
+- Need frame pacing logic to decide when to flip
+- Potential for frame drops if CPU falls behind
+- More complex than current architecture
+
+**Option 2: Accept the equilibrium offset**
+- Keep current architecture (simple, proven)
+- Buffer settles at 15-30% instead of 50%
+- Increase buffer size for safety margin (6-8 frames)
+- Works well enough in practice
+
+**Option 3: Adjust rate control baseline**
+- Bias the rate adjustment formula to compensate for known mismatch
+- Would make buffer settle at 50% but less generalizable
+- Couples rate control to specific display timing
+
 ### Design Evolution
 
 **Iteration 1:** Rate control stress metric
-- Too abstract, symmetric around 50% (both high and low = stressed)
-
-**Iteration 2:** Audio buffer fill
-- More intuitive, asymmetric (only low fill = problem)
-- But contaminated by display/audio timing mismatches
-- Works for tuning rate control, fails for CPU scaling
-
-**Iteration 3 (recommended):** Frame timing
-- Direct CPU performance measurement
-- Unaffected by timing mismatches
-- Actually tells us if CPU can keep up with emulation
+**Iteration 2:** Audio buffer fill (contaminated by vsync-in-callback)
+**Iteration 3:** Frame timing with vsync-after-run (current)
+**Iteration 4 (future?):** Free-running core with independent vsync
 
 ### Two-Layer Architecture
 
@@ -195,62 +273,65 @@ while (running) {
 
 ## Algorithm Details
 
-### Buffer Fill Monitoring
+### Frame Timing (Current Implementation - Iteration 5)
 
-The audio buffer fill level directly measures system performance:
-- **High fill (>60%)**: CPU is keeping up, buffer has plenty of headroom
-- **Low fill (<25%)**: CPU is struggling, buffer is draining toward underrun
-- **Sweet spot (25-60%)**: Healthy operation, no action needed
+Measures how long `core.run()` takes each frame and compares to the frame budget:
 
 ```c
-unsigned SND_getBufferOccupancy(void) {
-    // Returns buffer fill level as 0-100%
-    return (unsigned)(SND_getBufferFillLevel() * 100.0f);
-}
+// In main loop, around core.run()
+uint64_t frame_start = getMicroseconds();
+core.run();
+uint64_t frame_time = getMicroseconds() - frame_start;
+
+// Store in ring buffer for analysis
+frame_times[frame_index++ % WINDOW_FRAMES] = frame_time;
 ```
+
+**Key metrics:**
+- **Frame budget**: 1,000,000 / core.fps microseconds (e.g., 16,639µs for NES at 60.0988 Hz)
+- **Utilization**: frame_time / frame_budget as percentage
+- **90th percentile**: Ignores outliers like loading screens, measures actual gameplay
 
 ### Window-Based Scaling
 
 ```c
-// Every frame: accumulate buffer fill
-fill_sum += SND_getBufferOccupancy();
-frame_count++;
-
 // Every window (~500ms = 30 frames at 60fps)
 if (frame_count >= WINDOW_FRAMES) {
-    unsigned avg_fill = fill_sum / frame_count;
+    // Calculate 90th percentile frame time (ignores loading screens)
+    uint64_t p90_time = percentileUint64(frame_times, WINDOW_FRAMES, 0.90f);
 
-    if (avg_fill < 25) {
-        // Buffer low - CPU struggling
-        low_fill_windows++;
-        high_fill_windows = 0;
-    } else if (avg_fill > 60) {
-        // Buffer healthy - CPU has headroom
-        high_fill_windows++;
-        low_fill_windows = 0;
+    // Calculate utilization as % of frame budget
+    unsigned util = (p90_time * 100) / frame_budget_us;
+
+    if (util > 85) {
+        // CPU is struggling - using >85% of frame budget
+        high_util_windows++;
+        low_util_windows = 0;
+    } else if (util < 55) {
+        // CPU has plenty of headroom
+        low_util_windows++;
+        high_util_windows = 0;
     } else {
-        low_fill_windows = 0;
-        high_fill_windows = 0;
+        // Sweet spot - reset both
+        high_util_windows = 0;
+        low_util_windows = 0;
     }
 
-    // Asymmetric: fast to boost, slow to reduce
-    if (low_fill_windows >= 2 && cpu_level < MAX_LEVEL) {
-        cpu_level++;
-        apply_cpu_level();
-        low_fill_windows = 0;
+    // Asymmetric: fast to boost (2 windows), slow to reduce (4 windows)
+    if (high_util_windows >= 2 && cpu_level < MAX_LEVEL) {
+        boost_cpu();
     }
-    if (high_fill_windows >= 4 && cpu_level > MIN_LEVEL) {
-        cpu_level--;
-        apply_cpu_level();
-        high_fill_windows = 0;
+    if (low_util_windows >= 4 && cpu_level > MIN_LEVEL) {
+        reduce_cpu();
     }
 
-    fill_sum = 0;
     frame_count = 0;
 }
 ```
 
-### Panic Path
+### Panic Path (Audio Underrun Detection)
+
+Audio underruns are kept as an emergency signal - they're definitive proof of a problem:
 
 ```c
 // In audio callback, when underrun detected:
@@ -260,13 +341,23 @@ if (underrun_occurred) {
 
 // In main loop:
 if (SND_getUnderrunCount() > last_underrun_count) {
-    // Emergency! Immediate boost
+    // Emergency! Immediate boost to PERFORMANCE
     cpu_level = MAX_LEVEL;
     apply_cpu_level();
-    low_fill_windows = 0;
-    high_fill_windows = 0;
+    high_util_windows = 0;
+    low_util_windows = 0;
 }
 ```
+
+### Why Frame Timing Instead of Buffer Fill
+
+| Metric | Buffer Fill | Frame Timing |
+|--------|-------------|--------------|
+| **Measures** | Audio/display timing sync | Actual CPU work |
+| **Problem** | Contaminated by timing mismatches | Direct measurement |
+| **rg35xxplus 59.7Hz** | Triggers boost at 50% CPU | Correctly shows ~50% util |
+| **PAL games** | Different buffer dynamics | Auto-adjusts via core.fps |
+| **Loading screens** | Can trigger false boosts | Filtered by 90th percentile |
 
 ## Platform CPU Speed Support
 
@@ -323,104 +414,28 @@ CPU_SPEED_PERFORMANCE = 1600000  // was 1488000 → 1600 (align to hardware)
 | rg35xxplus | ❌ **Not implemented** | - | H700 supports cpufreq |
 | m17 | ❌ Fixed | - | Fixed at 1200 MHz |
 
-## Audio System Tuning (Independent of CPU Scaling)
-
-While audio buffer fill doesn't work for CPU scaling, the audio system itself still needs proper tuning for glitch-free playback.
+## Audio System Tuning
 
 ### Rate Control Pitch Deviation (d)
 
-We use **d = 2%** (defined in `audio_resampler.h` as `SND_RATE_CONTROL_D`):
+We use **d = 0.5%** as recommended by the libretro rate control paper:
 
 ```c
-#define SND_RATE_CONTROL_D 0.02f  // ±2% pitch shift allowed
+#define SND_RATE_CONTROL_D 0.005f  // ±0.5% pitch shift allowed
 ```
 
-**Why 2% instead of the paper's 0.5%:**
-
-Handheld devices have significant timing mismatches that desktop systems don't:
-- Cheap display panels: 59.5-60.5 Hz variance (±0.8%)
-- Audio DAC oscillator tolerances: ±0.3%
-- Combined worst case: ~1.5-2% total mismatch
-
-**The tradeoff:** We sacrifice pitch accuracy for stable latency.
-- Well-calibrated devices (tg5040 @ ~60.5Hz): uses ~0.5% correction, sounds perfect
-- Badly-calibrated devices (rg35xxplus @ 59.7Hz): uses ~1.5% correction, minor pitch shift
-- Alternative: 200ms+ buffer with perfect pitch but bad input lag
-
-**Single source of truth:** Both `SND_calculateRateAdjust()` (api.c) and `AudioResampler_resample()` (audio_resampler.c) reference the same constant. Initially these were out of sync (0.5% vs 1% hardcoded cap), which prevented full compensation.
+This small deviation is inaudible while providing enough headroom for oscillator tolerances between the audio DAC and display panel.
 
 ### Audio Buffer Size
 
-Our audio buffer holds **8 video frames** of audio (~133ms at 60fps, ~160ms at 50fps):
+Our audio buffer holds **4 video frames** of audio (~67ms at 60fps):
 
 ```c
-snd.buffer_video_frames = 8;
+snd.buffer_video_frames = 4;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-**Buffer size history:**
-- Started at 5 frames (~83ms) - caused spurious underruns
-- Increased to 8 frames - eliminated underruns
-- With d=2%, might be able to reduce back to 5 frames (needs testing)
-
-**Effective latency:** Buffer converges to 50% fill, so ~66ms actual latency (half of 133ms).
-
-## Testing Results
-
-### Miyoo Mini Testing (2025-12-02)
-
-**Test 1: NES - Mike Tyson's Punch-Out!!**
-- Initial underrun at startup (entering auto from menu)
-- Panic boost to PERFORMANCE (1488 MHz) immediately
-- Sustained stress: 60-78% throughout gameplay
-- **Result**: Correctly stayed at PERFORMANCE - game legitimately needs it
-- **Issue**: Startup underrun when transitioning from MENU speed
-- **Fix**: Applied NORMAL synchronously before starting thread
-
-**Test 2: Game Boy - Tetris**
-- Initial panic boost to PERFORMANCE (startup underrun)
-- Stress quickly dropped to 61-65% range
-- Then settled at **19-24% sustained** (very relaxed)
-- Multiple LOW stress windows but never 4 consecutive
-- **Result**: Stuck at PERFORMANCE, unable to reduce
-- **Issue**: 20% threshold too low, stress hovers just above it (21-24%)
-
-### Tuning Observations
-
-**Iteration 1 thresholds (too conservative):**
-```c
-AUTO_CPU_HIGH_THRESHOLD = 0.60   // 60%
-AUTO_CPU_LOW_THRESHOLD  = 0.20   // 20%
-AUTO_CPU_REDUCE_WINDOWS = 4      // 2 seconds
-```
-
-**Problem**: Tetris stress pattern 19-24%
-- Occasionally <20% → counts as LOW
-- Occasionally >20% → resets to NORMAL, counter resets
-- Never achieves 4 consecutive LOW windows
-
-**Iteration 2:**
-- Raised LOW_THRESHOLD to 25% - still oscillating
-
-**Iteration 3 (current):**
-```c
-AUTO_CPU_HIGH_THRESHOLD = 0.70   // Raised to 70% (was 60%)
-AUTO_CPU_LOW_THRESHOLD  = 0.25   // Raised to 25% (was 20%)
-snd.buffer_video_frames = 8      // Increased from 5 (was causing false underruns)
-```
-
-**Key insight from CSV logging:**
-- Tetris was panicking (underrun) at 30-40% CPU usage
-- CPU wasn't the bottleneck - audio buffer was too small
-- Increasing buffer from 5→8 frames eliminated spurious underruns
-- Now games reduce smoothly: 2→1→0 without panic oscillation
-
-### Known Issues
-
-1. ~~**Startup underrun**~~ - Fixed: apply initial NORMAL synchronously
-2. ~~**Low threshold too conservative**~~ - Fixed: raised to 25%
-3. ~~**Debug HUD segfault**~~ - Fixed: use only bitmap font characters, added bounds checking
-4. ~~**False underruns at low CPU usage**~~ - Fixed: increased audio buffer from 5→8 frames
+This provides ~33ms effective latency (buffer converges to 50% fill) with enough headroom for timing jitter.
 
 ## Benchmark Methodology
 
@@ -466,30 +481,44 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 ## Tuning Status
 
-| Parameter | Current | Status | Notes |
-|-----------|---------|--------|-------|
-| Audio buffer | 8 frames (133ms) | ✅ Fixed | Was 5 frames, caused false underruns |
-| Window size | 30 frames (500ms) | ✅ Good | 6 buffer cycles, filters noise well |
-| Fill low threshold | 25% | ✅ v4 | Buffer below this = boost CPU |
-| Fill high threshold | 60% | ✅ v4 | Buffer above this = can reduce CPU |
-| Boost windows | 2 (1s) | ✅ Good | Fast response to performance issues |
-| Reduce windows | 4 (2s) | ✅ Good | Conservative to prevent oscillation |
-| Startup grace | 60 frames (1s) | ✅ Good | Avoids false positives during buffer fill |
+| Parameter | Current | Notes |
+|-----------|---------|-------|
+| Rate control d | 1.0% | Compensates for oscillator tolerances |
+| Audio buffer | 6 frames (~100ms) | ~30-50ms actual latency (settles at 20-30% fill) |
+| Window size | 30 frames (~500ms) | Filters noise, ~5 buffer cycles |
+| Utilization high | 85% | Frame time >85% of budget = boost |
+| Utilization low | 55% | Frame time <55% of budget = reduce |
+| Boost windows | 2 (~1s) | Fast response to performance issues |
+| Reduce windows | 4 (~2s) | Conservative to prevent oscillation |
+| Startup grace | 60 frames (~1s) | Avoids false positives during warmup |
+| Percentile | 90th | Ignores outliers (loading screens) |
 
-### Current Values (Iteration 4 - Buffer-Based)
+**Note on buffer fill:** With current architecture (vsync after core.run but still blocking), buffer equilibrium is determined by display/core rate mismatch, not buffer size. On rg35xxplus (-0.65% mismatch), buffer settles at ~17-30% mathematically. This is expected behavior, not a tuning issue.
 
-```c
-// api.c
-snd.buffer_video_frames = 8;           // ~133ms at 60fps (was 5)
+### Measured Display Timings (2025-12-03)
 
-// minarch.c
-#define AUTO_CPU_WINDOW_FRAMES 30      // ~500ms at 60fps
-#define AUTO_CPU_FILL_LOW 25           // Buffer below 25% = needs more CPU
-#define AUTO_CPU_FILL_HIGH 60          // Buffer above 60% = can save power
-#define AUTO_CPU_BOOST_WINDOWS 2       // Boost after 1s of low buffer
-#define AUTO_CPU_REDUCE_WINDOWS 4      // Reduce after 2s of high buffer
-#define AUTO_CPU_STARTUP_GRACE 60      // Ignore first ~1s after game start
+| Platform | Measured Hz | Core expects | Mismatch | Buffer equilibrium (d=1%) | Observed fill |
+|----------|-------------|--------------|----------|---------------------------|---------------|
+| rg35xxplus | 59.71 Hz | 60.10 Hz (NES) | -0.65% | 17.5% theoretical | 22-30% actual |
+
+The close match between theoretical equilibrium (17.5%) and observed fill (22-30%) confirms the rate control math is working correctly. The buffer doesn't settle at 50% because the loop calls core.run() at display rate, not core rate.
+
+### Debug HUD
+
+When Auto CPU mode is enabled, the debug overlay shows:
 ```
+0x 62/27
+```
+- `0x` = Current CPU level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
+- `62` = Frame timing utilization (90th percentile, % of frame budget)
+- `27` = Audio buffer fill (% full)
 
-Iteration 4 switched from rate control stress to direct buffer fill monitoring. This is simpler
-and more intuitive: low buffer = CPU struggling, high buffer = CPU has headroom.
+Example: On rg35xxplus running Punch-Out at POWERSAVE, 62% utilization means core.run() uses 62% of the 16.6ms frame budget. The 27% buffer fill is expected due to the -0.65% display/core rate mismatch.
+
+### CSV Logging
+
+CPU scaling events are logged to `USERDATA_PATH/logs/auto_cpu.csv`:
+```csv
+timestamp,path,old_level,new_level,util_p90,fill,reason
+1234567,game.nes,1,2,87,25,boost
+```
