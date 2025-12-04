@@ -243,7 +243,6 @@ static struct GFX_Context {
 	SDL_Surface* assets;
 
 	int mode;
-	int vsync;
 } gfx;
 
 static SDL_Rect asset_rects[ASSET_COUNT];
@@ -476,7 +475,6 @@ SDL_Surface* GFX_init(int mode) {
 	PLAT_initLid();
 
 	gfx.screen = PLAT_initVideo();
-	gfx.vsync = VSYNC_STRICT;
 	gfx.mode = mode;
 
 	// Initialize DP scaling system
@@ -749,30 +747,6 @@ void GFX_setMode(int mode) {
 }
 
 /**
- * Gets the current vsync setting.
- *
- * @return VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-int GFX_getVsync(void) {
-	return gfx.vsync;
-}
-
-/**
- * Sets the vsync behavior for frame synchronization.
- *
- * Vsync modes:
- * - VSYNC_OFF: No frame limiting (uses SDL_Delay fallback)
- * - VSYNC_LENIENT: Skip vsync if frame took too long (default)
- * - VSYNC_STRICT: Always vsync, even if it causes slowdown
- *
- * @param vsync Vsync mode (VSYNC_OFF, VSYNC_LENIENT, VSYNC_STRICT)
- */
-void GFX_setVsync(int vsync) {
-	PLAT_setVsync(vsync);
-	gfx.vsync = vsync;
-}
-
-/**
  * Detects if HDMI connection state has changed.
  *
  * Tracks whether HDMI was connected/disconnected since last check.
@@ -808,44 +782,26 @@ void GFX_startFrame(void) {
 }
 
 /**
- * Presents the rendered frame to the display.
- *
- * Decides whether to use vsync based on the current vsync mode
- * and frame timing. With VSYNC_LENIENT, skips vsync if the frame
- * took longer than FRAME_BUDGET to avoid slowdown.
+ * Presents the rendered frame to the display with vsync.
  *
  * @param screen SDL surface to flip to the display
- *
- * @note Call GFX_startFrame() before rendering for proper timing
  */
 void GFX_flip(SDL_Surface* screen) {
-	int should_vsync = (gfx.vsync != VSYNC_OFF && (gfx.vsync == VSYNC_STRICT || frame_start == 0 ||
-	                                               SDL_GetTicks() - frame_start < FRAME_BUDGET));
-	PLAT_flip(screen, should_vsync);
+	PLAT_flip(screen, 1);
 }
 
 /**
  * Synchronizes to maintain 60fps when not flipping this frame.
  *
  * Call this if you skip rendering a frame but still want to maintain
- * consistent timing. Waits for the remainder of the frame budget using
- * vsync or SDL_Delay depending on settings.
+ * consistent timing. Waits for the remainder of the frame budget.
  *
  * This helps SuperFX games run smoother by maintaining frame timing
  * even when frames are dropped.
  */
 void GFX_sync(void) {
 	uint32_t frame_duration = SDL_GetTicks() - frame_start;
-	if (gfx.vsync != VSYNC_OFF) {
-		// this limiting condition helps SuperFX chip games
-		if (gfx.vsync == VSYNC_STRICT || frame_start == 0 ||
-		    frame_duration < FRAME_BUDGET) { // only wait if we're under frame budget
-			PLAT_vsync(FRAME_BUDGET - frame_duration);
-		}
-	} else {
-		if (frame_duration < FRAME_BUDGET)
-			SDL_Delay(FRAME_BUDGET - frame_duration);
-	}
+	PLAT_vsync(FRAME_BUDGET - frame_duration);
 }
 
 /**

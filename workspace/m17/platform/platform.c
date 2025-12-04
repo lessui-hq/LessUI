@@ -352,13 +352,6 @@ void PLAT_clearAll(void) {
 	clearVideo();
 }
 
-/**
- * Sets VSync mode (not implemented).
- *
- * @param vsync VSync enable flag (ignored)
- */
-void PLAT_setVsync(int vsync) {}
-
 // Scaling multiplier for crisp mode (nearest-neighbor upscaling)
 static int hard_scale = 4;
 

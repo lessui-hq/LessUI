@@ -490,29 +490,6 @@ void GFX_sync(void);
 void GFX_quit(void);
 
 /**
- * VSync modes for frame pacing.
- */
-enum {
-	VSYNC_OFF = 0, // No frame pacing
-	VSYNC_LENIENT, // Default, allows slight timing variance
-	VSYNC_STRICT, // Strict 60fps timing
-};
-
-/**
- * Gets current VSync mode.
- *
- * @return VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-int GFX_getVsync(void);
-
-/**
- * Sets VSync mode.
- *
- * @param vsync VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-void GFX_setVsync(int vsync);
-
-/**
  * Truncates text to fit within maximum width, adding ellipsis if needed.
  *
  * @param font Font to use for measuring
@@ -1227,13 +1204,6 @@ void PLAT_clearVideo(SDL_Surface* screen);
  * Platform-specific clearing of all video buffers.
  */
 void PLAT_clearAll(void);
-
-/**
- * Platform-specific VSync configuration.
- *
- * @param vsync VSync mode
- */
-void PLAT_setVsync(int vsync);
 
 /**
  * Platform-specific video mode change.

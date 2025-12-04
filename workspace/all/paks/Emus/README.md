@@ -122,7 +122,7 @@ Config_readOptionsString(config.user_cfg);      // Overwrites both (highest prio
 Settings prefixed with `-` in config files are **locked** and won't appear in the in-game menu:
 
 ```cfg
--minarch_prevent_tearing = Lenient    # Locked (user can't change in menu)
+-minarch_screen_sharpness = Crisp     # Locked (user can't change in menu)
 minarch_cpu_speed = Powersave         # Unlocked (user can change in menu)
 ```
 

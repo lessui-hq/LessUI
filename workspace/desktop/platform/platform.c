@@ -239,8 +239,6 @@ void PLAT_clearAll(void) {
 	SDL_RenderClear(vid.renderer);
 }
 
-void PLAT_setVsync(int vsync) {}
-
 /**
  * Resizes video buffer and texture to new dimensions.
  *

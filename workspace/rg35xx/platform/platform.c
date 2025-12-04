@@ -399,8 +399,6 @@ void PLAT_clearAll(void) {
 	vid.cleared = 1;
 }
 
-void PLAT_setVsync(int vsync) {}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	vid.width = w;
 	vid.height = h;

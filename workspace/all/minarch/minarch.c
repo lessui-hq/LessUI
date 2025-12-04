@@ -71,17 +71,6 @@ static int quit = 0; // Set to 1 to exit main loop
 static int show_menu = 0; // Set to 1 to display in-game menu
 static int simple_mode = 0; // Simplified interface mode (fewer options)
 
-// Threading
-static int thread_video = 0; // Enable threaded video rendering
-static int was_threaded = 0; // Previous threading state (for fast-forward toggle)
-static int should_run_core = 1; // Signal to core thread: run or pause
-static pthread_t core_pt; // Core thread handle
-static pthread_mutex_t core_mx; // Mutex for core thread synchronization
-static pthread_cond_t core_rq; // Condition variable for frame signaling
-static SDL_Surface* backbuffer = NULL; // Double-buffer for threaded rendering
-
-// Forward declaration
-static void* coreThread(void* arg);
 
 // Video geometry state for dynamic updates
 static struct {
@@ -118,7 +107,6 @@ enum {
 static int screen_scaling = SCALE_ASPECT; // Default to aspect-ratio preserving
 static int screen_sharpness = SHARPNESS_SOFT; // Bilinear filtering by default
 static int screen_effect = EFFECT_NONE; // No scanlines or grid effects
-static int prevent_tearing = 1; // Enable vsync (lenient mode)
 
 /**
  * Core Pixel Format
@@ -980,7 +968,6 @@ static char* onoff_labels[] = {"Off", "On", NULL};
 static char* scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
 static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", NULL};
 static char* sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
-static char* tearing_labels[] = {"Off", "Lenient", "Strict", NULL};
 static char* max_ff_labels[] = {
     "None", "2x", "3x", "4x", "5x", "6x", "7x", "8x", NULL,
 };
@@ -991,9 +978,7 @@ enum {
 	FE_OPT_SCALING,
 	FE_OPT_EFFECT,
 	FE_OPT_SHARPNESS,
-	FE_OPT_TEARING,
 	FE_OPT_OVERCLOCK,
-	FE_OPT_THREAD,
 	FE_OPT_DEBUG,
 	FE_OPT_MAXFF,
 	FE_OPT_COUNT,
@@ -1356,22 +1341,6 @@ static struct Config {
                                 .values = sharpness_labels,
                                 .labels = sharpness_labels,
                             },
-                        [FE_OPT_TEARING] =
-                            {
-                                .key = "minarch_prevent_tearing",
-                                .name = "Prevent Tearing",
-                                .desc =
-                                    "Wait for vsync before drawing the next frame.\nLenient only "
-                                    "waits when within frame budget.\nStrict always waits.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = VSYNC_LENIENT,
-                                .value = VSYNC_LENIENT,
-                                .count = 3,
-                                .lock = 0,
-                                .values = tearing_labels,
-                                .labels = tearing_labels,
-                            },
                         [FE_OPT_OVERCLOCK] =
                             {
                                 .key = "minarch_cpu_speed",
@@ -1387,21 +1356,6 @@ static struct Config {
                                 .lock = 0,
                                 .values = overclock_labels,
                                 .labels = overclock_labels,
-                            },
-                        [FE_OPT_THREAD] =
-                            {
-                                .key = "minarch_thread_video",
-                                .name = "Prioritize Audio",
-                                .desc = "Can eliminate crackle but\nmay cause dropped "
-                                        "frames.\nOnly turn on if necessary.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 2,
-                                .lock = 0,
-                                .values = onoff_labels,
-                                .labels = onoff_labels,
                             },
                         [FE_OPT_DEBUG] =
                             {
@@ -1433,19 +1387,17 @@ static struct Config {
                                 .values = max_ff_labels,
                                 .labels = max_ff_labels,
                             },
-                        [FE_OPT_COUNT] =
-                            {
-                                .key = NULL,
-                                .name = NULL,
-                                .desc = NULL,
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 0,
-                                .lock = 0,
-                                .values = NULL,
-                                .labels = NULL}},
+                        [FE_OPT_COUNT] = {.key = NULL,
+                                          .name = NULL,
+                                          .desc = NULL,
+                                          .full = NULL,
+                                          .var = NULL,
+                                          .default_value = 0,
+                                          .value = 0,
+                                          .count = 0,
+                                          .lock = 0,
+                                          .values = NULL,
+                                          .labels = NULL}},
          .enabled_count = 0,
          .enabled_options = NULL},
     .core =
@@ -1581,28 +1533,22 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		// Apply change if needed (this may block with system() call)
 		if (target != current) {
 			int cpu_speed;
-			const char* level_name;
-
 			switch (target) {
 			case 0:
 				cpu_speed = CPU_SPEED_POWERSAVE;
-				level_name = "POWERSAVE";
 				break;
 			case 1:
 				cpu_speed = CPU_SPEED_NORMAL;
-				level_name = "NORMAL";
 				break;
 			case 2:
 				cpu_speed = CPU_SPEED_PERFORMANCE;
-				level_name = "PERFORMANCE";
 				break;
 			default:
 				cpu_speed = CPU_SPEED_NORMAL;
-				level_name = "NORMAL (fallback)";
 				break;
 			}
 
-			LOG_info("Auto CPU thread: applying %s (level %d)\n", level_name, target);
+			LOG_info("Auto CPU: applying level %d", target);
 			PWR_setCPUSpeed(cpu_speed);
 
 			// Log to CSV for analysis
@@ -1857,7 +1803,6 @@ static void updateAutoCPU(void) {
 	}
 }
 
-static int toggle_thread = 0;
 static void Config_syncFrontend(char* key, int value) {
 	int i = -1;
 	if (exactMatch(key, config.frontend.options[FE_OPT_SCALING].key)) {
@@ -1885,13 +1830,6 @@ static void Config_syncFrontend(char* key, int value) {
 
 		renderer.dst_p = 0;
 		i = FE_OPT_SHARPNESS;
-	} else if (exactMatch(key, config.frontend.options[FE_OPT_TEARING].key)) {
-		prevent_tearing = value;
-		i = FE_OPT_TEARING;
-	} else if (exactMatch(key, config.frontend.options[FE_OPT_THREAD].key)) {
-		int old_value = thread_video || was_threaded;
-		toggle_thread = old_value != value;
-		i = FE_OPT_THREAD;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_OVERCLOCK].key)) {
 		overclock = value;
 		i = FE_OPT_OVERCLOCK;
@@ -2616,18 +2554,8 @@ static void Menu_loadState(void);
  * @param enable 1 to enable fast-forward, 0 to disable
  * @return The enable value (passthrough)
  *
- * @note Threading incompatible with FF due to frame pacing requirements
  */
 static int setFastForward(int enable) {
-	if (!fast_forward && enable && thread_video) {
-		// LOG_info("entered fast forward with threaded core...");
-		was_threaded = 1;
-		toggle_thread = 1;
-	} else if (fast_forward && !enable && !thread_video && was_threaded) {
-		// LOG_info("exited fast forward with previously threaded core...");
-		was_threaded = 0;
-		toggle_thread = 1;
-	}
 	fast_forward = enable;
 	return enable;
 }
@@ -2662,20 +2590,6 @@ static void input_poll_callback(void) {
 	}
 	if (PAD_isPressed(BTN_MENU) && (PAD_isPressed(BTN_PLUS) || PAD_isPressed(BTN_MINUS))) {
 		ignore_menu = 1;
-	}
-
-	if (PAD_justPressed(BTN_POWER)) {
-		if (thread_video) {
-			// LOG_info("pressed power with threaded core...");
-			was_threaded = 1;
-			toggle_thread = 1;
-		}
-	} else if (PAD_justReleased(BTN_POWER)) {
-		if (!thread_video && was_threaded) {
-			// LOG_info("released power with previously threaded core before power off...");
-			was_threaded = 0;
-			toggle_thread = 1;
-		}
 	}
 
 	static int toggled_ff_on =
@@ -2746,12 +2660,6 @@ static void input_poll_callback(void) {
 
 	if (!ignore_menu && PAD_justReleased(BTN_MENU)) {
 		show_menu = 1;
-
-		if (thread_video) {
-			pthread_mutex_lock(&core_mx);
-			should_run_core = 0;
-			pthread_mutex_unlock(&core_mx);
-		}
 	}
 
 	// TODO: figure out how to ignore button when MENU+button is handled first
@@ -3299,15 +3207,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 			return false;
 		}
 
-		// Determine current throttle mode
+		// Determine current throttle mode (vsync always on, rate control handles sync)
 		if (fast_forward) {
 			state->mode = RETRO_THROTTLE_FAST_FORWARD;
 			state->rate = (float)(max_ff_speed + 1); // max_ff_speed+1: 0→1x, 1→2x, 2→3x, 3→4x
-		} else if (prevent_tearing) {
-			state->mode = RETRO_THROTTLE_VSYNC;
-			state->rate = 1.0f;
 		} else {
-			state->mode = RETRO_THROTTLE_UNBLOCKED;
+			state->mode = RETRO_THROTTLE_VSYNC;
 			state->rate = 1.0f;
 		}
 
@@ -4482,18 +4387,14 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
 	GFX_blitRenderer(&renderer);
-
-	if (!thread_video)
-		GFX_flip(screen);
+	GFX_flip(screen);
 	last_flip_time = SDL_GetTicks();
 }
 
 /**
- * Main video refresh callback from libretro core.
+ * Video refresh callback from libretro core.
  *
- * Receives rendered frame from core and handles it based on threading mode:
- * - Non-threaded: Calls video_refresh_callback_main directly
- * - Threaded: Copies/converts frame to backbuffer and signals main thread
+ * Receives rendered frame from core and passes it to the main rendering function.
  *
  * @param data Pointer to pixel data (format depends on pixel_format setting)
  * @param width Frame width in pixels
@@ -4501,68 +4402,13 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @param pitch Bytes per scanline
  *
  * @note This is a libretro callback, invoked by core after rendering a frame
- * @note Threading mode copies frame to prevent race conditions
- * @note When using non-RGB565 format, performs pixel conversion here
  */
 static void video_refresh_callback(const void* data, unsigned width, unsigned height,
                                    size_t pitch) {
 	if (!data)
 		return;
 
-	if (thread_video) {
-		pthread_mutex_lock(&core_mx);
-
-		// Determine backbuffer pitch:
-		// - Non-RGB565: Output is tightly packed after conversion (width * 2 bytes/line)
-		// - RGB565: Preserve core's pitch (may have padding)
-		size_t backbuffer_pitch = NEEDS_CONVERSION ? (width * FIXED_BPP) : pitch;
-
-		// Reallocate backbuffer if dimensions changed
-		if (backbuffer && (backbuffer->w != (int)width || backbuffer->h != (int)height ||
-		                   backbuffer->pitch != (int)backbuffer_pitch)) {
-			free(backbuffer->pixels);
-			SDL_FreeSurface(backbuffer);
-			backbuffer = NULL;
-		}
-
-		if (!backbuffer) {
-			size_t buffer_size = height * backbuffer_pitch;
-			uint16_t* pixels = malloc(buffer_size);
-			if (!pixels) {
-				LOG_error("Failed to allocate threaded backbuffer: %ux%u (%zu bytes)", width,
-				          height, buffer_size);
-				pthread_mutex_unlock(&core_mx);
-				return;
-			}
-			LOG_debug("Allocated threaded backbuffer: %ux%u (%zu bytes)", width, height,
-			          buffer_size);
-			backbuffer = SDL_CreateRGBSurfaceFrom(pixels, width, height, FIXED_DEPTH,
-			                                      backbuffer_pitch, RGBA_MASK_565);
-		}
-
-		// Copy or convert data to backbuffer
-		if (NEEDS_CONVERSION) {
-			// Ensure conversion buffer is allocated
-			if (!convert_buffer)
-				convert_buffer_alloc(width, height);
-
-			// Convert to RGB565
-			pixel_convert(data, width, height, pitch);
-			if (!convert_buffer) {
-				LOG_error("Failed to allocate conversion buffer: %ux%u", width, height);
-				pthread_mutex_unlock(&core_mx);
-				return;
-			}
-			memcpy(backbuffer->pixels, convert_buffer, height * backbuffer_pitch);
-		} else {
-			// Core provided RGB565, direct copy with original pitch
-			memcpy(backbuffer->pixels, data, height * backbuffer_pitch);
-		}
-
-		pthread_cond_signal(&core_rq);
-		pthread_mutex_unlock(&core_mx);
-	} else
-		video_refresh_callback_main(data, width, height, pitch);
+	video_refresh_callback_main(data, width, height, pitch);
 }
 
 ///////////////////////////////////////
@@ -6286,7 +6132,6 @@ static void Menu_loop(void) {
 	if (!HAS_POWER_BUTTON)
 		PWR_enableSleep();
 	PWR_setCPUSpeed(CPU_SPEED_MENU); // set Hz directly
-	GFX_setVsync(VSYNC_STRICT);
 	GFX_setEffect(EFFECT_NONE);
 
 	int rumble_strength = VIB_getStrength();
@@ -6594,17 +6439,10 @@ static void Menu_loop(void) {
 		if (rumble_strength)
 			VIB_setStrength(rumble_strength);
 
-		GFX_setVsync(prevent_tearing);
 		if (!HAS_POWER_BUTTON)
 			PWR_disableSleep();
-
-		if (thread_video) {
-			pthread_mutex_lock(&core_mx);
-			should_run_core = 1;
-			pthread_mutex_unlock(&core_mx);
-		}
 	} else if (exists(NOUI_PATH))
-		PWR_powerOff(); // TODO: won't work with threaded core, only check this once per launch
+		PWR_powerOff();
 
 	SDL_FreeSurface(menu.bitmap);
 	menu.bitmap = NULL;
@@ -6716,70 +6554,6 @@ static void limitFF(void) {
 }
 
 ///////////////////////////////////////
-// Threading
-///////////////////////////////////////
-
-/**
- * Core emulation thread (threaded video mode).
- *
- * Runs the core in a separate thread, allowing video rendering to happen
- * independently. The core thread runs frames and signals the main thread
- * when a new frame is ready.
- *
- * @param arg Unused thread argument
- * @return NULL on thread exit
- *
- * @note Only used when thread_video is enabled
- * @note Controlled by should_run_core flag (allows pause)
- */
-static void* coreThread(void* arg) {
-	// Force initial vsync for better frame pacing
-	GFX_clearAll();
-	GFX_flip(screen);
-
-	while (!quit) {
-		int run = 0;
-		pthread_mutex_lock(&core_mx);
-		run = should_run_core;
-		pthread_mutex_unlock(&core_mx);
-
-		if (run) {
-			// Call frame time callback if registered (per libretro spec)
-			// Passes delta time since last frame, or reference value during fast-forward
-			if (video_state.frame_time_cb) {
-				retro_usec_t now = getMicroseconds();
-				retro_usec_t delta;
-				if (fast_forward) {
-					// During fast-forward, use the reference frame time
-					delta = video_state.frame_time_ref;
-				} else if (video_state.frame_time_last == 0) {
-					// First frame - use reference as initial delta
-					delta = video_state.frame_time_ref;
-				} else {
-					// Normal playback - calculate actual delta
-					delta = now - video_state.frame_time_last;
-				}
-				video_state.frame_time_last = now;
-				video_state.frame_time_cb(delta);
-			}
-
-			// Report audio buffer status to core for frameskip decisions.
-			// See non-threaded path for explanation of rate control interaction.
-			if (core.audio_buffer_status) {
-				unsigned occupancy = SND_getBufferOccupancy();
-				core.audio_buffer_status(true, occupancy, occupancy < 25);
-			}
-
-			core.run();
-			limitFF();
-			trackFPS();
-			updateAutoCPU();
-		}
-	}
-	pthread_exit(NULL);
-}
-
-///////////////////////////////////////
 // Main Entry Point
 ///////////////////////////////////////
 
@@ -6797,11 +6571,8 @@ static void* coreThread(void* arg) {
  * 6. Resume from auto-save slot
  * 7. Enter main loop
  *
- * Main loop:
- * - Non-threaded: Runs core.run() directly, flips screen
- * - Threaded: Waits for core thread signal, flips screen
- * - Handles menu display
- * - Handles threading mode changes
+ * Main loop runs core.run() each frame with vsync. Dynamic rate control
+ * adjusts audio resampling to maintain sync without blocking.
  *
  * Shutdown sequence:
  * 1. Auto-save current state to slot 9
@@ -6860,7 +6631,6 @@ int main(int argc, char* argv[]) {
 	Config_init();
 	Config_readOptions(); // cores with boot logo option (eg. gb) need to load options early
 	setOverclock(overclock);
-	GFX_setVsync(prevent_tearing);
 
 	Core_init();
 
@@ -6881,12 +6651,6 @@ int main(int argc, char* argv[]) {
 	Menu_init();
 	State_resume();
 	Menu_initState(); // make ready for state shortcuts
-
-	if (thread_video) {
-		core_mx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-		core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-		pthread_create(&core_pt, NULL, &coreThread, NULL);
-	}
 
 	PWR_warn(1);
 	PWR_disableAutosleep();
@@ -6921,67 +6685,24 @@ int main(int argc, char* argv[]) {
 			video_state.frame_time_cb(delta);
 		}
 
-		if (!thread_video) {
-			// Report audio buffer status to core for frameskip decisions.
-			// This works alongside our dynamic rate control (±2% in api.c):
-			// - Rate control: subtle adjustment to prevent drift (targets 50% fill)
-			// - Frameskip: aggressive response when CPU can't keep up (<25% fill)
-			// Both mechanisms are complementary - rate control handles timing drift,
-			// frameskip handles sustained performance issues.
-			if (core.audio_buffer_status) {
-				unsigned occupancy = SND_getBufferOccupancy();
-				core.audio_buffer_status(true, occupancy, occupancy < 25);
-			}
-
-			core.run();
-			limitFF();
-			trackFPS();
-			updateAutoCPU();
+		// Report audio buffer status to core for frameskip decisions.
+		// This works alongside our dynamic rate control (±2% in api.c):
+		// - Rate control: subtle adjustment to prevent drift (targets 50% fill)
+		// - Frameskip: aggressive response when CPU can't keep up (<25% fill)
+		// Both mechanisms are complementary - rate control handles timing drift,
+		// frameskip handles sustained performance issues.
+		if (core.audio_buffer_status) {
+			unsigned occupancy = SND_getBufferOccupancy();
+			core.audio_buffer_status(true, occupancy, occupancy < 25);
 		}
 
-		if (thread_video && !quit) {
-			pthread_mutex_lock(&core_mx);
-			pthread_cond_wait(&core_rq, &core_mx);
-
-			if (backbuffer) {
-				video_refresh_callback_main(backbuffer->pixels, backbuffer->w, backbuffer->h,
-				                            backbuffer->pitch);
-				GFX_flip(screen);
-			}
-			core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-			pthread_mutex_unlock(&core_mx);
-		}
+		core.run();
+		limitFF();
+		trackFPS();
+		updateAutoCPU();
 
 		if (show_menu)
 			Menu_loop();
-
-		if (toggle_thread) {
-			toggle_thread = 0;
-			if (was_threaded && !thread_video) {
-				// LOG_info("was fast forwarding while previously threaded (%i) so re-enabling threading %i", thread_video, !thread_video);
-				// revert to pre-fast_forward state before toggling
-				was_threaded = 0;
-				thread_video = !thread_video;
-			}
-			// LOG_info("toggling thread from %i to %i", thread_video, !thread_video);
-			thread_video = !thread_video;
-			if (thread_video) {
-				// enable
-				core_mx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-				core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-				pthread_create(&core_pt, NULL, &coreThread, NULL);
-			} else {
-				// disable
-				pthread_cancel(core_pt);
-				pthread_join(core_pt, NULL);
-
-				// force a vsync immediately before loop
-				// for better frame pacing?
-				GFX_clearAll();
-				GFX_flip(screen);
-			}
-		}
-		// LOG_info("frame duration: %ims", SDL_GetTicks()-frame_start);
 
 		hdmimon();
 	}

@@ -425,6 +425,9 @@ SDL_Surface* PLAT_initVideo(void) {
 	PLAT_detectVariant(&platform_variant);
 
 	putenv("SDL_HIDE_BATTERY=1");
+	// Enable strict vsync for proper frame pacing (rate control handles audio sync)
+	putenv("GFX_FLIPWAIT=1");
+	putenv("GFX_BLOCKING=1");
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_ShowCursor(0);
 
@@ -484,20 +487,6 @@ void PLAT_clearVideo(SDL_Surface* screen) {
 void PLAT_clearAll(void) {
 	PLAT_clearVideo(vid.screen);
 	vid.cleared = 1;
-}
-
-void PLAT_setVsync(int vsync) {
-	if (vsync == VSYNC_OFF) {
-		putenv("GFX_FLIPWAIT=0");
-		putenv("GFX_BLOCKING=0");
-	} else if (vsync == VSYNC_LENIENT) {
-		putenv("GFX_FLIPWAIT=0");
-		putenv("GFX_BLOCKING=1");
-	} else if (vsync == VSYNC_STRICT) {
-		putenv("GFX_FLIPWAIT=1");
-		putenv("GFX_BLOCKING=1");
-	}
-	SDL_GetVideoInfo();
 }
 
 SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
