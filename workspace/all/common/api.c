@@ -1631,9 +1631,7 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// Maximum pitch deviation for dynamic rate control (0.5%)
-// Paper recommends d = 0.002 to 0.005 for inaudible adjustment
-#define SND_RATE_CONTROL_D 0.005f
+// SND_RATE_CONTROL_D is now defined in audio_resampler.h
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1783,7 +1781,7 @@ static float SND_getBufferFillLevel(void) {
  *
  * Where:
  *   - fill = current buffer level (0.0 to 1.0)
- *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 0.5%)
+ *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 2.0%)
  *
  * This creates smooth, continuous feedback that naturally converges to 50% fill:
  *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer

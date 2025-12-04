@@ -1,6 +1,6 @@
 # Auto CPU Scaling
 
-Dynamic CPU frequency scaling for libretro emulation based on audio rate control stress.
+Dynamic CPU frequency scaling for libretro emulation based on frame timing.
 
 **GitHub Issue**: [#44 - Add Auto CPU Scaling Option](https://github.com/nchapman/LessUI/issues/44)
 
@@ -10,22 +10,71 @@ Add an "Auto" CPU speed option that dynamically scales between existing power le
 
 ## Design Approach
 
-### Why Audio Rate Control Stress?
+### ⚠️ Audio Buffer Fill - Why It Doesn't Work for CPU Scaling
 
-We already implement [Hans-Kristian Arntzen's Dynamic Rate Control](https://docs.libretro.com/guides/ratecontrol.pdf) for audio/video sync. The rate control adjustment factor directly measures system stress:
+**Initial hypothesis:** Audio buffer fill directly measures CPU performance.
+- Low buffer = CPU struggling
+- High buffer = CPU has headroom
+
+**Reality discovered through testing:**
+
+Audio buffer fill is contaminated by **timing mismatches** between display refresh rate and audio sample rate, which have nothing to do with CPU performance.
+
+| Device | Display | Buffer Fill | CPU Usage | Issue |
+|--------|---------|-------------|-----------|-------|
+| tg5040 | ~60.5 Hz (fast) | 84% | 71% | Overfilling (good timing) |
+| rg35xxplus | ~59.7 Hz (slow) | 23-40% | 44-52% | Draining (bad timing) |
+
+On rg35xxplus, low buffer fill triggered max CPU even though CPU was only 50% loaded. The system was fighting **display timing**, not CPU load.
+
+**Why this happens:**
+- NES outputs 60.0988 Hz
+- rg35xxplus display runs at 59.711 Hz (-0.65% mismatch)
+- Rate control compensates with pitch shift (up to ±2%)
+- If mismatch exceeds rate control range, buffer drifts away from 50%
+- Buffer fill now reflects timing quality, not CPU performance
+
+**Conclusion:** Audio buffer fill is useful for tuning the rate control system itself, but cannot be used to detect CPU-bound conditions.
+
+### Recommended Approach: Frame Timing
+
+Measure how long `core.run()` takes each frame:
 
 ```c
-adjustment = 1 + (1 - 2*fill) * d   // d = 0.005 (max ±0.5%)
+uint32_t frame_start = SDL_GetTicks();
+core.run();
+uint32_t frame_time_us = (SDL_GetTicks() - frame_start) * 1000;
+
+// At 60fps: target = 16666 us
+// If frame_time consistently > 15000 us (90% of budget), CPU is struggling
 ```
 
-| Buffer Fill | Adjustment | Stress | Meaning |
-|-------------|------------|--------|---------|
-| 50% | 1.000 | 0% | Equilibrium |
-| 25% | 1.0025 | 50% | Working harder |
-| 10% | 1.004 | 80% | Struggling |
-| 0% | 1.005 | 100% | Maxed out |
+**Why this works:**
+- ✓ **Direct measurement** - measures actual emulation workload
+- ✓ **Independent of audio** - not affected by timing mismatches
+- ✓ **Independent of buffer size** - measures CPU capability, not I/O
+- ✓ **Already available** - no new infrastructure needed
 
-**Key insight**: If rate control is consistently near its ±0.5% limit, it can't compensate anymore - that's when CPU scaling should intervene.
+**Algorithm:**
+1. Window-average frame time over 30 frames (~500ms)
+2. Compare to target frame budget (16.67ms at 60fps)
+3. Boost if consistently >90% of budget (CPU maxed out)
+4. Reduce if consistently <70% of budget (CPU has headroom)
+
+### Design Evolution
+
+**Iteration 1:** Rate control stress metric
+- Too abstract, symmetric around 50% (both high and low = stressed)
+
+**Iteration 2:** Audio buffer fill
+- More intuitive, asymmetric (only low fill = problem)
+- But contaminated by display/audio timing mismatches
+- Works for tuning rate control, fails for CPU scaling
+
+**Iteration 3 (recommended):** Frame timing
+- Direct CPU performance measurement
+- Unaffected by timing mismatches
+- Actually tells us if CPU can keep up with emulation
 
 ### Two-Layer Architecture
 
@@ -43,11 +92,6 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - Already calculated every frame
 - Directly tied to user-perceived quality
 - Uses dedicated thread only for applying changes (not monitoring)
-
-**vs. Raw buffer occupancy**:
-- Buffer-size independent
-- Works regardless of buffer_video_frames setting
-- Normalized 0-1 metric
 
 **vs. Inline CPU frequency changes**:
 - Background thread prevents main loop blocking
@@ -87,12 +131,12 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - [x] Updated option count from 3 to 4
 - [x] Updated description to mention Auto mode
 - [x] Persists via existing config system (`minarch_cpu_speed`)
-- [x] **Debug HUD**: Shows "XxYY%" stacked above FPS line when auto mode active
-  - X = current level (0/1/2 = POWERSAVE/NORMAL/PERFORMANCE)
-  - YY% = window-averaged stress (0-100%)
+- [x] **Debug HUD**: Shows "LxFF%" stacked above FPS line when auto mode active
+  - L = current level (0/1/2 = POWERSAVE/NORMAL/PERFORMANCE)
+  - FF% = window-averaged buffer fill (0-100%)
   - Uses only bitmap font characters (0-9, x, %)
 - [x] **CSV Logging**: Logs every CPU change to `USERDATA_PATH/logs/auto_cpu.csv`
-  - Columns: timestamp, path, old_level, new_level, stress, cpu_usage, reason
+  - Columns: timestamp, path, old_level, new_level, fill, cpu_usage, reason
   - Reason: "boost", "reduce", or "panic"
   - Enables data-driven tuning decisions
 
@@ -106,8 +150,8 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 Auto CPU scaling uses a **two-thread design** to keep the main emulation loop responsive:
 
 ### Main Thread (Emulation)
-- Monitors rate control stress every frame
-- Accumulates stress over windows (~500ms)
+- Monitors audio buffer fill every frame
+- Accumulates fill % over windows (~500ms)
 - Decides when CPU level should change
 - **Sets target level** (non-blocking, mutex-protected)
 - Never blocks on expensive CPU frequency changes
@@ -151,55 +195,57 @@ while (running) {
 
 ## Algorithm Details
 
-### Stress Calculation
+### Buffer Fill Monitoring
+
+The audio buffer fill level directly measures system performance:
+- **High fill (>60%)**: CPU is keeping up, buffer has plenty of headroom
+- **Low fill (<25%)**: CPU is struggling, buffer is draining toward underrun
+- **Sweet spot (25-60%)**: Healthy operation, no action needed
 
 ```c
-float SND_getRateControlStress(void) {
-    // Last rate adjustment from SND_calculateRateAdjust()
-    float adjust = last_rate_adjust;
-
-    // Normalize: 1.0 = equilibrium, 1.005 = max boost needed
-    // stress = 0.0 (happy) to 1.0 (maxed out)
-    float stress = (adjust - 1.0f) / d;
-    return fmaxf(0.0f, fminf(1.0f, stress));
+unsigned SND_getBufferOccupancy(void) {
+    // Returns buffer fill level as 0-100%
+    return (unsigned)(SND_getBufferFillLevel() * 100.0f);
 }
 ```
 
 ### Window-Based Scaling
 
 ```c
-// Every frame: accumulate stress
-stress_sum += SND_getRateControlStress();
+// Every frame: accumulate buffer fill
+fill_sum += SND_getBufferOccupancy();
 frame_count++;
 
 // Every window (~500ms = 30 frames at 60fps)
 if (frame_count >= WINDOW_FRAMES) {
-    float avg_stress = stress_sum / frame_count;
+    unsigned avg_fill = fill_sum / frame_count;
 
-    if (avg_stress > 0.7f) {
-        high_stress_windows++;
-        low_stress_windows = 0;
-    } else if (avg_stress < 0.25f) {
-        low_stress_windows++;
-        high_stress_windows = 0;
+    if (avg_fill < 25) {
+        // Buffer low - CPU struggling
+        low_fill_windows++;
+        high_fill_windows = 0;
+    } else if (avg_fill > 60) {
+        // Buffer healthy - CPU has headroom
+        high_fill_windows++;
+        low_fill_windows = 0;
     } else {
-        high_stress_windows = 0;
-        low_stress_windows = 0;
+        low_fill_windows = 0;
+        high_fill_windows = 0;
     }
 
     // Asymmetric: fast to boost, slow to reduce
-    if (high_stress_windows >= 2 && cpu_level < MAX_LEVEL) {
+    if (low_fill_windows >= 2 && cpu_level < MAX_LEVEL) {
         cpu_level++;
         apply_cpu_level();
-        high_stress_windows = 0;
+        low_fill_windows = 0;
     }
-    if (low_stress_windows >= 4 && cpu_level > MIN_LEVEL) {
+    if (high_fill_windows >= 4 && cpu_level > MIN_LEVEL) {
         cpu_level--;
         apply_cpu_level();
-        low_stress_windows = 0;
+        high_fill_windows = 0;
     }
 
-    stress_sum = 0;
+    fill_sum = 0;
     frame_count = 0;
 }
 ```
@@ -217,8 +263,8 @@ if (SND_getUnderrunCount() > last_underrun_count) {
     // Emergency! Immediate boost
     cpu_level = MAX_LEVEL;
     apply_cpu_level();
-    high_stress_windows = 0;
-    low_stress_windows = 0;
+    low_fill_windows = 0;
+    high_fill_windows = 0;
 }
 ```
 
@@ -277,7 +323,33 @@ CPU_SPEED_PERFORMANCE = 1600000  // was 1488000 → 1600 (align to hardware)
 | rg35xxplus | ❌ **Not implemented** | - | H700 supports cpufreq |
 | m17 | ❌ Fixed | - | Fixed at 1200 MHz |
 
-## Audio Buffer Context
+## Audio System Tuning (Independent of CPU Scaling)
+
+While audio buffer fill doesn't work for CPU scaling, the audio system itself still needs proper tuning for glitch-free playback.
+
+### Rate Control Pitch Deviation (d)
+
+We use **d = 2%** (defined in `audio_resampler.h` as `SND_RATE_CONTROL_D`):
+
+```c
+#define SND_RATE_CONTROL_D 0.02f  // ±2% pitch shift allowed
+```
+
+**Why 2% instead of the paper's 0.5%:**
+
+Handheld devices have significant timing mismatches that desktop systems don't:
+- Cheap display panels: 59.5-60.5 Hz variance (±0.8%)
+- Audio DAC oscillator tolerances: ±0.3%
+- Combined worst case: ~1.5-2% total mismatch
+
+**The tradeoff:** We sacrifice pitch accuracy for stable latency.
+- Well-calibrated devices (tg5040 @ ~60.5Hz): uses ~0.5% correction, sounds perfect
+- Badly-calibrated devices (rg35xxplus @ 59.7Hz): uses ~1.5% correction, minor pitch shift
+- Alternative: 200ms+ buffer with perfect pitch but bad input lag
+
+**Single source of truth:** Both `SND_calculateRateAdjust()` (api.c) and `AudioResampler_resample()` (audio_resampler.c) reference the same constant. Initially these were out of sync (0.5% vs 1% hardcoded cap), which prevented full compensation.
+
+### Audio Buffer Size
 
 Our audio buffer holds **8 video frames** of audio (~133ms at 60fps, ~160ms at 50fps):
 
@@ -287,9 +359,11 @@ snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
 **Buffer size history:**
-- Started at 5 frames (~83ms) - caused spurious underruns at low CPU usage
-- CSV logging revealed underruns happening at 30-40% CPU usage (not CPU-bound)
-- Increased to 8 frames - eliminated false underruns, stable scaling
+- Started at 5 frames (~83ms) - caused spurious underruns
+- Increased to 8 frames - eliminated underruns
+- With d=2%, might be able to reduce back to 5 frames (needs testing)
+
+**Effective latency:** Buffer converges to 50% fill, so ~66ms actual latency (half of 133ms).
 
 ## Testing Results
 
@@ -396,13 +470,13 @@ The discovered frequency steps and performance data come from a custom CPU bench
 |-----------|---------|--------|-------|
 | Audio buffer | 8 frames (133ms) | ✅ Fixed | Was 5 frames, caused false underruns |
 | Window size | 30 frames (500ms) | ✅ Good | 6 buffer cycles, filters noise well |
-| High threshold | 70% | ✅ Adjusted | Was 60%, raised for more headroom |
-| Low threshold | 25% | ✅ Adjusted | Was 20%, raised to catch 19-24% stress games |
+| Fill low threshold | 25% | ✅ v4 | Buffer below this = boost CPU |
+| Fill high threshold | 60% | ✅ v4 | Buffer above this = can reduce CPU |
 | Boost windows | 2 (1s) | ✅ Good | Fast response to performance issues |
 | Reduce windows | 4 (2s) | ✅ Good | Conservative to prevent oscillation |
 | Startup grace | 60 frames (1s) | ✅ Good | Avoids false positives during buffer fill |
 
-### Current Values (Iteration 3)
+### Current Values (Iteration 4 - Buffer-Based)
 
 ```c
 // api.c
@@ -410,11 +484,12 @@ snd.buffer_video_frames = 8;           // ~133ms at 60fps (was 5)
 
 // minarch.c
 #define AUTO_CPU_WINDOW_FRAMES 30      // ~500ms at 60fps
-#define AUTO_CPU_HIGH_THRESHOLD 0.7f   // Stress above 70% = needs more CPU
-#define AUTO_CPU_LOW_THRESHOLD 0.25f   // Stress below 25% = can save power
-#define AUTO_CPU_BOOST_WINDOWS 2       // Boost after 1s of high stress
-#define AUTO_CPU_REDUCE_WINDOWS 4      // Reduce after 2s of low stress
+#define AUTO_CPU_FILL_LOW 25           // Buffer below 25% = needs more CPU
+#define AUTO_CPU_FILL_HIGH 60          // Buffer above 60% = can save power
+#define AUTO_CPU_BOOST_WINDOWS 2       // Boost after 1s of low buffer
+#define AUTO_CPU_REDUCE_WINDOWS 4      // Reduce after 2s of high buffer
 #define AUTO_CPU_STARTUP_GRACE 60      // Ignore first ~1s after game start
 ```
 
-Tetris now reduces smoothly to POWERSAVE without oscillation. CSV logging confirmed the fix.
+Iteration 4 switched from rate control stress to direct buffer fill monitoring. This is simpler
+and more intuitive: low buffer = CPU struggling, high buffer = CPU has headroom.

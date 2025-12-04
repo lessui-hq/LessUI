@@ -139,18 +139,18 @@ static int fast_forward = 0; // Currently fast-forwarding
 static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
 
 // Auto CPU Scaling State (when overclock == 3)
-// Monitors audio rate control stress to dynamically adjust CPU speed
+// Monitors audio buffer fill level to dynamically adjust CPU speed
 static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
 static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
-static float auto_cpu_stress_sum = 0.0f; // Accumulated stress for current window
+static unsigned auto_cpu_fill_sum = 0; // Accumulated fill % for current window
 static int auto_cpu_frame_count = 0; // Frames in current window
-static int auto_cpu_high_windows = 0; // Consecutive windows with high stress
-static int auto_cpu_low_windows = 0; // Consecutive windows with low stress
+static int auto_cpu_low_fill_windows = 0; // Consecutive windows with low fill (needs boost)
+static int auto_cpu_high_fill_windows = 0; // Consecutive windows with high fill (can reduce)
 static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
 static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
 
 // Pending log info (set by main thread, consumed by CPU thread)
-static float auto_cpu_pending_stress = 0.0f;
+static unsigned auto_cpu_pending_fill = 0;
 static float auto_cpu_pending_cpu_usage = 0.0f;
 static const char* auto_cpu_pending_reason = NULL;
 
@@ -163,15 +163,15 @@ static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
 
 // Forward declaration for CSV logging (called from thread)
-static void auto_cpu_logChange(int old_level, int new_level, float stress, float cpu_usage,
+static void auto_cpu_logChange(int old_level, int new_level, unsigned fill, float cpu_usage,
                                const char* reason);
 
 // Auto CPU Scaling Tuning Constants
 #define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define AUTO_CPU_HIGH_THRESHOLD 0.7f // Stress above this = needs more CPU
-#define AUTO_CPU_LOW_THRESHOLD 0.25f // Stress below this = can save power
-#define AUTO_CPU_BOOST_WINDOWS 2 // Consecutive high windows before boosting
-#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive low windows before reducing (2s)
+#define AUTO_CPU_FILL_LOW 25 // Buffer below this % = needs more CPU
+#define AUTO_CPU_FILL_HIGH 60 // Buffer above this % = can save power
+#define AUTO_CPU_BOOST_WINDOWS 2 // Consecutive low-fill windows before boosting
+#define AUTO_CPU_REDUCE_WINDOWS 4 // Consecutive high-fill windows before reducing (2s)
 #define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
 
 // Input Settings
@@ -1525,7 +1525,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		pthread_mutex_lock(&auto_cpu_mutex);
 		int target = auto_cpu_target_level;
 		int current = auto_cpu_current_level;
-		float pending_stress = auto_cpu_pending_stress;
+		unsigned pending_fill = auto_cpu_pending_fill;
 		float pending_cpu_usage = auto_cpu_pending_cpu_usage;
 		const char* pending_reason = auto_cpu_pending_reason;
 		pthread_mutex_unlock(&auto_cpu_mutex);
@@ -1553,8 +1553,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 
 			// Log to CSV for analysis
 			if (pending_reason) {
-				auto_cpu_logChange(current, target, pending_stress, pending_cpu_usage,
-				                   pending_reason);
+				auto_cpu_logChange(current, target, pending_fill, pending_cpu_usage, pending_reason);
 			}
 
 			// Update current state
@@ -1613,11 +1612,12 @@ static void auto_cpu_stopThread(void) {
  * Returns immediately without blocking the main loop.
  *
  * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
+ * @param fill Current buffer fill percentage (0-100)
  */
-static void auto_cpu_setTargetLevel(int level, float stress, float cpu_usage, const char* reason) {
+static void auto_cpu_setTargetLevel(int level, unsigned fill, float cpu_usage, const char* reason) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	auto_cpu_target_level = level;
-	auto_cpu_pending_stress = stress;
+	auto_cpu_pending_fill = fill;
 	auto_cpu_pending_cpu_usage = cpu_usage;
 	auto_cpu_pending_reason = reason;
 	pthread_mutex_unlock(&auto_cpu_mutex);
@@ -1627,7 +1627,7 @@ static void auto_cpu_setTargetLevel(int level, float stress, float cpu_usage, co
  * Log CPU scaling event to CSV for analysis.
  * Called from background thread after applying change.
  */
-static void auto_cpu_logChange(int old_level, int new_level, float stress, float cpu_usage,
+static void auto_cpu_logChange(int old_level, int new_level, unsigned fill, float cpu_usage,
                                const char* reason) {
 	char csv_path[MAX_PATH];
 	sprintf(csv_path, "%s/logs", USERDATA_PATH);
@@ -1640,19 +1640,19 @@ static void auto_cpu_logChange(int old_level, int new_level, float stress, float
 		return;
 
 	if (needs_header) {
-		fprintf(f, "timestamp,path,old_level,new_level,stress,cpu_usage,reason\n");
+		fprintf(f, "timestamp,path,old_level,new_level,fill,cpu_usage,reason\n");
 	}
 
-	fprintf(f, "%u,%s,%d,%d,%.1f,%.1f,%s\n", SDL_GetTicks(), game.path, old_level, new_level,
-	        stress * 100.0f, cpu_usage, reason);
+	fprintf(f, "%u,%s,%d,%d,%u,%.1f,%s\n", SDL_GetTicks(), game.path, old_level, new_level, fill,
+	        cpu_usage, reason);
 	fclose(f);
 }
 
 static void resetAutoCPUState(void) {
-	auto_cpu_stress_sum = 0.0f;
+	auto_cpu_fill_sum = 0;
 	auto_cpu_frame_count = 0;
-	auto_cpu_high_windows = 0;
-	auto_cpu_low_windows = 0;
+	auto_cpu_low_fill_windows = 0;
+	auto_cpu_high_fill_windows = 0;
 	auto_cpu_last_underrun = SND_getUnderrunCount();
 	auto_cpu_startup_frames = 0;
 
@@ -1663,10 +1663,9 @@ static void resetAutoCPUState(void) {
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
 	LOG_info("Auto CPU: enabled, starting at NORMAL (level 1)\n");
-	LOG_debug(
-	    "Auto CPU: thresholds high=%.2f low=%.2f, windows boost=%d reduce=%d, grace=%d frames\n",
-	    AUTO_CPU_HIGH_THRESHOLD, AUTO_CPU_LOW_THRESHOLD, AUTO_CPU_BOOST_WINDOWS,
-	    AUTO_CPU_REDUCE_WINDOWS, AUTO_CPU_STARTUP_GRACE);
+	LOG_debug("Auto CPU: fill thresholds low=%d%% high=%d%%, windows boost=%d reduce=%d, grace=%d\n",
+	          AUTO_CPU_FILL_LOW, AUTO_CPU_FILL_HIGH, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
+	          AUTO_CPU_STARTUP_GRACE);
 }
 
 static void setOverclock(int i) {
@@ -1700,16 +1699,16 @@ static void setOverclock(int i) {
 }
 
 /**
- * Updates auto CPU scaling based on audio rate control stress.
+ * Updates auto CPU scaling based on audio buffer fill level.
  *
  * Called every frame from the main emulation loop when overclock == 3 (Auto).
  * Uses a window-based algorithm with hysteresis to avoid oscillation:
  *
- * 1. Accumulate stress over a window (~500ms)
- * 2. At end of window, check average stress
- * 3. Count consecutive high/low stress windows
- * 4. Boost CPU after 2 consecutive high windows (~1s)
- * 5. Reduce CPU after 4 consecutive low windows (~2s)
+ * 1. Accumulate buffer fill % over a window (~500ms)
+ * 2. At end of window, check average fill
+ * 3. Count consecutive low/high fill windows
+ * 4. Boost CPU after 2 consecutive low-fill windows (~1s)
+ * 5. Reduce CPU after 4 consecutive high-fill windows (~2s)
  *
  * Also handles emergency escalation on actual audio underruns.
  */
@@ -1736,9 +1735,9 @@ static void updateAutoCPU(void) {
 	unsigned underruns = SND_getUnderrunCount();
 	if (underruns > auto_cpu_last_underrun && current_target < 2) {
 		// Underrun detected - request immediate boost to PERFORMANCE
-		auto_cpu_setTargetLevel(2, 1.0f, (float)use_double, "panic");
-		auto_cpu_high_windows = 0;
-		auto_cpu_low_windows = 0;
+		auto_cpu_setTargetLevel(2, 0, (float)use_double, "panic");
+		auto_cpu_low_fill_windows = 0;
+		auto_cpu_high_fill_windows = 0;
 		SND_resetUnderrunCount();
 		auto_cpu_last_underrun = 0;
 		LOG_info("Auto CPU: PANIC - underrun detected, requesting PERFORMANCE\n");
@@ -1749,56 +1748,58 @@ static void updateAutoCPU(void) {
 		auto_cpu_last_underrun = underruns;
 	}
 
-	// Accumulate stress for current window
-	float stress = SND_getRateControlStress();
-	auto_cpu_stress_sum += stress;
+	// Accumulate buffer fill for current window
+	unsigned fill = SND_getBufferOccupancy();
+	auto_cpu_fill_sum += fill;
 	auto_cpu_frame_count++;
 
 	// Check if window is complete
 	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
-		float avg_stress = auto_cpu_stress_sum / (float)auto_cpu_frame_count;
+		unsigned avg_fill = auto_cpu_fill_sum / auto_cpu_frame_count;
 
-		LOG_debug("Auto CPU: window complete, avg_stress=%.3f target=%d high_win=%d low_win=%d\n",
-		          avg_stress, current_target, auto_cpu_high_windows, auto_cpu_low_windows);
+		LOG_debug("Auto CPU: window complete, avg_fill=%u%% target=%d low_win=%d high_win=%d\n",
+		          avg_fill, current_target, auto_cpu_low_fill_windows, auto_cpu_high_fill_windows);
 
-		// Categorize window stress level
-		if (avg_stress > AUTO_CPU_HIGH_THRESHOLD) {
-			auto_cpu_high_windows++;
-			auto_cpu_low_windows = 0;
-			LOG_debug("Auto CPU: HIGH stress window (%.3f > %.2f), high_count=%d\n", avg_stress,
-			          AUTO_CPU_HIGH_THRESHOLD, auto_cpu_high_windows);
-		} else if (avg_stress < AUTO_CPU_LOW_THRESHOLD) {
-			auto_cpu_low_windows++;
-			auto_cpu_high_windows = 0;
-			LOG_debug("Auto CPU: LOW stress window (%.3f < %.2f), low_count=%d\n", avg_stress,
-			          AUTO_CPU_LOW_THRESHOLD, auto_cpu_low_windows);
+		// Categorize window by buffer fill level
+		if (avg_fill < AUTO_CPU_FILL_LOW) {
+			// Buffer is low - CPU struggling to keep up
+			auto_cpu_low_fill_windows++;
+			auto_cpu_high_fill_windows = 0;
+			LOG_debug("Auto CPU: LOW fill window (%u%% < %d%%), low_count=%d\n", avg_fill,
+			          AUTO_CPU_FILL_LOW, auto_cpu_low_fill_windows);
+		} else if (avg_fill > AUTO_CPU_FILL_HIGH) {
+			// Buffer is healthy - CPU has headroom
+			auto_cpu_high_fill_windows++;
+			auto_cpu_low_fill_windows = 0;
+			LOG_debug("Auto CPU: HIGH fill window (%u%% > %d%%), high_count=%d\n", avg_fill,
+			          AUTO_CPU_FILL_HIGH, auto_cpu_high_fill_windows);
 		} else {
 			// In the sweet spot - reset both counters
-			auto_cpu_high_windows = 0;
-			auto_cpu_low_windows = 0;
-			LOG_debug("Auto CPU: NORMAL stress window (%.3f in sweet spot)\n", avg_stress);
+			auto_cpu_low_fill_windows = 0;
+			auto_cpu_high_fill_windows = 0;
+			LOG_debug("Auto CPU: NORMAL fill window (%u%% in sweet spot)\n", avg_fill);
 		}
 
-		// Boost CPU if sustained high stress
-		if (auto_cpu_high_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
+		// Boost CPU if sustained low buffer fill
+		if (auto_cpu_low_fill_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
 			int new_level = current_target + 1;
-			auto_cpu_setTargetLevel(new_level, avg_stress, (float)use_double, "boost");
-			auto_cpu_high_windows = 0;
-			LOG_info("Auto CPU: BOOST requested, level %d (stress=%.3f, %d windows)\n", new_level,
-			         avg_stress, AUTO_CPU_BOOST_WINDOWS);
+			auto_cpu_setTargetLevel(new_level, avg_fill, (float)use_double, "boost");
+			auto_cpu_low_fill_windows = 0;
+			LOG_info("Auto CPU: BOOST requested, level %d (fill=%u%%, %d windows)\n", new_level,
+			         avg_fill, AUTO_CPU_BOOST_WINDOWS);
 		}
 
-		// Reduce CPU if sustained low stress
-		if (auto_cpu_low_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
+		// Reduce CPU if sustained high buffer fill
+		if (auto_cpu_high_fill_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
 			int new_level = current_target - 1;
-			auto_cpu_setTargetLevel(new_level, avg_stress, (float)use_double, "reduce");
-			auto_cpu_low_windows = 0;
-			LOG_info("Auto CPU: REDUCE requested, level %d (stress=%.3f, %d windows)\n", new_level,
-			         avg_stress, AUTO_CPU_REDUCE_WINDOWS);
+			auto_cpu_setTargetLevel(new_level, avg_fill, (float)use_double, "reduce");
+			auto_cpu_high_fill_windows = 0;
+			LOG_info("Auto CPU: REDUCE requested, level %d (fill=%u%%, %d windows)\n", new_level,
+			         avg_fill, AUTO_CPU_REDUCE_WINDOWS);
 		}
 
 		// Reset window
-		auto_cpu_stress_sum = 0.0f;
+		auto_cpu_fill_sum = 0;
 		auto_cpu_frame_count = 0;
 	}
 }
@@ -3835,8 +3836,6 @@ static void pixel_convert(const void* data, unsigned width, unsigned height, siz
 		return;
 	}
 
-	LOG_debug("Converting %ux%u from format %d to RGB565", width, height, pixel_format);
-
 	switch (pixel_format) {
 	case RETRO_PIXEL_FORMAT_XRGB8888:
 #ifdef HAS_NEON
@@ -4266,8 +4265,6 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	if (NEEDS_CONVERSION) {
 		// Core uses non-native format, we'll convert to RGB565 (2 bytes/pixel)
 		rgb565_pitch = width * FIXED_BPP;
-		LOG_debug("Format %d->RGB565: %ux%u, pitch %zu->%zu bytes", pixel_format, width, height,
-		          pitch, rgb565_pitch);
 	} else {
 		// Core provided RGB565 directly, use as-is
 		rgb565_pitch = pitch;
@@ -4368,13 +4365,14 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		               debug_height);
 
 		// Auto CPU info stacked above FPS line when enabled
+		// Shows "Lxff%" where L=level (0/1/2), ff=buffer fill %
 		if (overclock == 3) {
 			pthread_mutex_lock(&auto_cpu_mutex);
 			int current = auto_cpu_current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
-			float avg_stress =
-			    (auto_cpu_frame_count > 0) ? (auto_cpu_stress_sum / auto_cpu_frame_count) : 0.0f;
-			sprintf(debug_text, "%dx%.0f%%", current, avg_stress * 100.0f);
+			unsigned avg_fill =
+			    (auto_cpu_frame_count > 0) ? (auto_cpu_fill_sum / auto_cpu_frame_count) : 0;
+			sprintf(debug_text, "%dx%u%%", current, avg_fill);
 			blitBitmapText(debug_text, x, -y - 10, (uint16_t*)renderer.src, pitch_in_pixels,
 			               debug_width, debug_height);
 		}

@@ -16,6 +16,21 @@
 #include "api_types.h" // SND_Frame
 
 /**
+ * Maximum pitch deviation for dynamic rate control.
+ *
+ * Controls how much the resampler can adjust pitch to compensate for timing
+ * mismatches between display refresh rate and audio sample rate.
+ *
+ * Paper recommends d = 0.002 to 0.005 for desktop systems, but handheld devices
+ * have larger timing variances (cheap display panels, oscillator tolerances).
+ *
+ * We use 2% to handle badly calibrated devices, trading minor pitch shift for
+ * stable latency. The alternative would be larger buffers (>200ms) with no pitch
+ * change, but that increases input lag significantly.
+ */
+#define SND_RATE_CONTROL_D 0.02f
+
+/**
  * Fixed-point format: 16.16 (16 bits integer, 16 bits fraction)
  * This gives us sub-sample precision for smooth interpolation.
  */
@@ -98,7 +113,7 @@ void AudioResampler_reset(AudioResampler* resampler);
  * @param frames Input audio frames to process
  * @param frame_count Number of input frames
  * @param ratio_adjust Dynamic rate adjustment (1.0 = normal, <1.0 = slower, >1.0 = faster)
- *                     Use this for buffer-level-based rate control. Clamped to ±1%.
+ *                     Use this for buffer-level-based rate control. Clamped to ±SND_RATE_CONTROL_D.
  * @return ResampleResult with frames_written and frames_consumed
  */
 ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffer* buffer,
