@@ -821,16 +821,6 @@ size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count);
 unsigned SND_getBufferOccupancy(void);
 
 /**
- * Gets the current rate control stress level for auto CPU scaling.
- *
- * Measures how hard dynamic rate control is working to maintain audio sync.
- * High sustained stress indicates CPU can't keep up with emulation.
- *
- * @return Stress level 0.0 (relaxed) to 1.0 (maxed out)
- */
-float SND_getRateControlStress(void);
-
-/**
  * Gets count of audio buffer underruns (emergency signal for CPU scaling).
  *
  * @return Number of underruns since init or last reset

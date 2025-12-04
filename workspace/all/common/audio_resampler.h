@@ -16,19 +16,18 @@
 #include "api_types.h" // SND_Frame
 
 /**
- * Maximum pitch deviation for dynamic rate control.
+ * Maximum pitch deviation allowed by the resampler (safety clamp).
  *
- * Controls how much the resampler can adjust pitch to compensate for timing
- * mismatches between display refresh rate and audio sample rate.
+ * This limits how much the resampler will adjust pitch, acting as a safety
+ * valve to prevent extreme pitch shifts from bugs or misconfiguration.
  *
- * Paper recommends d = 0.002 to 0.005 for desktop systems, but handheld devices
- * have larger timing variances (cheap display panels, oscillator tolerances).
+ * Set high enough to accommodate display/core timing mismatches on handheld
+ * devices (cheap LCD panels can be off by several percent) plus headroom
+ * for rate control adjustments.
  *
- * We use 1% which provides headroom for oscillator tolerances while keeping
- * pitch deviation inaudible. Vsync happens AFTER core.run(), so the core runs
- * at its natural rate and rate control compensates for hardware timing variance.
+ * 5% allows for ~4% display mismatch + ~1% rate control.
  */
-#define SND_RATE_CONTROL_D 0.01f
+#define SND_RESAMPLER_MAX_DEVIATION 0.05f
 
 /**
  * Fixed-point format: 16.16 (16 bits integer, 16 bits fraction)
@@ -113,7 +112,7 @@ void AudioResampler_reset(AudioResampler* resampler);
  * @param frames Input audio frames to process
  * @param frame_count Number of input frames
  * @param ratio_adjust Dynamic rate adjustment (1.0 = normal, <1.0 = slower, >1.0 = faster)
- *                     Use this for buffer-level-based rate control. Clamped to ±SND_RATE_CONTROL_D.
+ *                     Use this for buffer-level-based rate control. Clamped to ±SND_RESAMPLER_MAX_DEVIATION.
  * @return ResampleResult with frames_written and frames_consumed
  */
 ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffer* buffer,

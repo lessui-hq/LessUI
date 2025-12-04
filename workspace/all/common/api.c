@@ -1631,7 +1631,11 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// SND_RATE_CONTROL_D is now defined in audio_resampler.h
+// Rate control sensitivity (d parameter from Arntzen's paper).
+// Controls how aggressively pitch is adjusted based on buffer fill level.
+// Paper recommends 0.002-0.005 (0.2-0.5%) for desktop systems.
+// We use 0.5% which balances responsiveness with pitch stability.
+#define SND_RATE_CONTROL_D 0.005f
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1652,8 +1656,7 @@ static struct SND_Context {
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
 
-	// Rate control stress tracking (for auto CPU scaling)
-	float last_rate_adjust; // Last calculated rate adjustment (1.0 ± d)
+	// Underrun tracking (for auto CPU scaling)
 	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
 } snd = {0};
 
@@ -1781,7 +1784,7 @@ static float SND_getBufferFillLevel(void) {
  *
  * Where:
  *   - fill = current buffer level (0.0 to 1.0)
- *   - d = maximum allowed pitch deviation (SND_RATE_CONTROL_D = 1%)
+ *   - d = rate control sensitivity (SND_RATE_CONTROL_D = 0.5%)
  *
  * This creates smooth, continuous feedback that naturally converges to 50% fill:
  *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer
@@ -1792,7 +1795,6 @@ static float SND_getBufferFillLevel(void) {
  * providing maximum headroom for timing jitter in both directions.
  *
  * @return Rate adjustment factor (1.0 ± d)
- * @note Also stores result in snd.last_rate_adjust for stress monitoring
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
@@ -1801,12 +1803,7 @@ static float SND_calculateRateAdjust(void) {
 	// When fill=0: adjustment = 1 - d  (smaller steps, more outputs, fills buffer)
 	// When fill=0.5: adjustment = 1.0  (no change)
 	// When fill=1: adjustment = 1 + d  (larger steps, fewer outputs, drains buffer)
-	float adjust = 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
-
-	// Store for stress monitoring (used by auto CPU scaling)
-	snd.last_rate_adjust = adjust;
-
-	return adjust;
+	return 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
 }
 
 /**
@@ -1955,45 +1952,6 @@ unsigned SND_getBufferOccupancy(void) {
 	float fill = SND_getBufferFillLevel();
 	SDL_UnlockAudio();
 	return (unsigned)(fill * 100.0f);
-}
-
-/**
- * Gets the current rate control stress level.
- *
- * Measures how hard the dynamic rate control is working to maintain sync.
- * Based on the last rate adjustment factor from SND_calculateRateAdjust().
- *
- * Stress interpretation:
- *   - 0.0: Equilibrium, buffer at 50%, no adjustment needed
- *   - 0.5: Moderate stress, rate control working at half capacity
- *   - 1.0: Maximum stress, rate control at limit (±0.5% pitch)
- *
- * For auto CPU scaling:
- *   - High sustained stress (>0.6) suggests CPU can't keep up
- *   - Low sustained stress (<0.2) suggests CPU has headroom to spare
- *
- * @return Stress level 0.0-1.0 (clamped)
- * @note Returns 0.0 if audio not initialized or no samples processed yet
- */
-float SND_getRateControlStress(void) {
-	if (!snd.initialized || snd.last_rate_adjust == 0.0f)
-		return 0.0f;
-
-	// Stress = how far from equilibrium (1.0) we are, normalized by max deviation
-	// last_rate_adjust ranges from (1-d) to (1+d), i.e., 0.995 to 1.005
-	// When adjust < 1.0: buffer is low, we're trying to fill it (positive stress)
-	// When adjust > 1.0: buffer is high, we're trying to drain it (negative stress)
-	// We care about absolute stress in either direction
-	float deviation = snd.last_rate_adjust - 1.0f;
-	float stress = fabsf(deviation) / SND_RATE_CONTROL_D;
-
-	// Clamp to 0.0-1.0 range
-	if (stress < 0.0f)
-		stress = 0.0f;
-	if (stress > 1.0f)
-		stress = 1.0f;
-
-	return stress;
 }
 
 /**
