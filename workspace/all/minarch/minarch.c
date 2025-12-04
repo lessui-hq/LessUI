@@ -1542,22 +1542,27 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		// Apply change if needed (this may block with system() call)
 		if (target != current) {
 			int cpu_speed;
+			const char* level_name;
 			switch (target) {
 			case 0:
 				cpu_speed = CPU_SPEED_POWERSAVE;
+				level_name = "POWERSAVE";
 				break;
 			case 1:
 				cpu_speed = CPU_SPEED_NORMAL;
+				level_name = "NORMAL";
 				break;
 			case 2:
 				cpu_speed = CPU_SPEED_PERFORMANCE;
+				level_name = "PERFORMANCE";
 				break;
 			default:
 				cpu_speed = CPU_SPEED_NORMAL;
+				level_name = "NORMAL";
 				break;
 			}
 
-			LOG_info("Auto CPU: applying level %d", target);
+			LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
 			PWR_setCPUSpeed(cpu_speed);
 
 			// Log to CSV for analysis
@@ -1774,7 +1779,7 @@ static void updateAutoCPU(void) {
 		auto_cpu_low_util_windows = 0;
 		SND_resetUnderrunCount();
 		auto_cpu_last_underrun = 0;
-		LOG_info("Auto CPU: PANIC - underrun detected, requesting PERFORMANCE\n");
+		LOG_warn("Auto CPU: PANIC - underrun detected, boosting to PERFORMANCE\n");
 		return;
 	}
 	// Update underrun tracking (even if at max level)
@@ -1807,28 +1812,30 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
-		LOG_debug("Auto CPU: window p90=%lluus budget=%lluus util=%u%% fill=%u%% target=%d\n",
-		          (unsigned long long)p90_time, (unsigned long long)auto_cpu_frame_budget_us, util,
-		          fill, current_target);
-
 		// Categorize window by utilization
 		if (util > AUTO_CPU_UTIL_HIGH) {
 			// CPU is struggling - near or over frame budget
 			auto_cpu_high_util_windows++;
 			auto_cpu_low_util_windows = 0;
-			LOG_debug("Auto CPU: HIGH util window (%u%% > %d%%), high_count=%d\n", util,
-			          AUTO_CPU_UTIL_HIGH, auto_cpu_high_util_windows);
 		} else if (util < AUTO_CPU_UTIL_LOW) {
 			// CPU has plenty of headroom
 			auto_cpu_low_util_windows++;
 			auto_cpu_high_util_windows = 0;
-			LOG_debug("Auto CPU: LOW util window (%u%% < %d%%), low_count=%d\n", util,
-			          AUTO_CPU_UTIL_LOW, auto_cpu_low_util_windows);
 		} else {
 			// In the sweet spot - reset both counters
 			auto_cpu_high_util_windows = 0;
 			auto_cpu_low_util_windows = 0;
-			LOG_debug("Auto CPU: NORMAL util window (%u%% in sweet spot)\n", util);
+		}
+
+		// Sampled debug logging (every 4th window = ~2 seconds)
+		static int debug_window_count = 0;
+		if (++debug_window_count >= 4) {
+			debug_window_count = 0;
+			LOG_debug(
+			    "Auto CPU: p90=%lluus/%lluus (%u%%) cpu=%d%% fill=%u%% level=%d (high=%d low=%d)\n",
+			    (unsigned long long)p90_time, (unsigned long long)auto_cpu_frame_budget_us, util,
+			    (int)use_double, fill, current_target, auto_cpu_high_util_windows,
+			    auto_cpu_low_util_windows);
 		}
 
 		// Boost CPU if sustained high utilization
@@ -4435,10 +4442,15 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 					util = 200;
 			}
 
-			// Get current buffer fill for reference
-			unsigned fill = SND_getBufferOccupancy();
+			// Get buffer fill (sampled every 15 frames for readability)
+			static unsigned fill_display = 0;
+			static int fill_sample_count = 0;
+			if (++fill_sample_count >= 15) {
+				fill_sample_count = 0;
+				fill_display = SND_getBufferOccupancy();
+			}
 
-			sprintf(debug_text, "%dx %u/%u", current, util, fill);
+			sprintf(debug_text, "%dx %u%%/%u%%", current, util, fill_display);
 			blitBitmapText(debug_text, x, -y - 10, (uint16_t*)renderer.src, pitch_in_pixels,
 			               debug_width, debug_height);
 		}
@@ -6567,6 +6579,7 @@ finish:
 static void trackFPS(void) {
 	cpu_ticks += 1;
 	static int last_use_ticks = 0;
+	static unsigned last_underrun_count = 0;
 	uint32_t now = SDL_GetTicks();
 	if (now - sec_start >= 1000) {
 		double last_time = (double)(now - sec_start) / 1000;
@@ -6581,72 +6594,84 @@ static void trackFPS(void) {
 		cpu_ticks = 0;
 		fps_ticks = 0;
 
-		// LOG_info("fps: %f cpu: %f", fps_double, cpu_double);
+		// Check for audio underruns (sampled once per second)
+		// Only warn if not in auto CPU mode (auto mode handles this via PANIC path)
+		if (overclock != 3) {
+			unsigned underruns = SND_getUnderrunCount();
+			if (underruns > last_underrun_count) {
+				LOG_warn("Audio: %u underrun(s) in last second\n",
+				         underruns - last_underrun_count);
+				last_underrun_count = underruns;
+			}
+		}
 	}
 }
 
 /**
- * Measures display refresh rate and applies audio rate correction when stable.
+ * Measures display refresh rate via vsync timing with stability detection.
  *
- * Tracks vsync intervals and logs display timing every second. Once we have 3
- * consecutive stable readings (within 0.5 Hz), applies the measured rate to
- * audio rate correction to prevent buffer drift.
+ * Tracks vsync intervals in a sliding window and waits for stable readings
+ * before applying the measurement. This filters out startup noise and
+ * irregular frame timing during initialization.
  *
- * @param flip_start_us Timestamp before GFX_flip (vsync boundary)
- * @param flip_end_us Timestamp after GFX_flip (vsync + overhead)
- * @param expected_hz Core frame rate (for comparison)
+ * Stability criteria: 10 consecutive readings with spread < 0.5 Hz
+ *
+ * Called every frame from main loop until measurement is applied.
  */
-static void measureDisplayRate(uint64_t flip_start_us, uint64_t flip_end_us, float expected_hz) {
-	static uint64_t last_flip_us = 0;
-	static uint64_t flip_sum = 0;
-	static int flip_count = 0;
-	static int display_rate_set = 0;
-	static float last_readings[3] = {0};
-	static int reading_index = 0;
+static void measureDisplayRate(void) {
+	static uint64_t last_flip = 0;
+	static float interval_buffer[10]; // Last 10 vsync intervals (Hz)
+	static int buffer_index = 0;
+	static int samples = 0;
+	static int measurement_applied = 0;
 
-	// Measure interval between vsyncs
-	if (last_flip_us > 0) {
-		uint64_t flip_interval = flip_start_us - last_flip_us;
-		flip_sum += flip_interval;
-		flip_count++;
+	if (measurement_applied)
+		return;
 
-		// Log every 60 flips (~1 second)
-		if (flip_count == 60) {
-			uint64_t avg_interval = flip_sum / 60;
-			float actual_hz = 1000000.0f / (float)avg_interval;
-			float mismatch_pct = ((actual_hz - expected_hz) / expected_hz) * 100.0f;
-			LOG_info(
-			    "Display: %.2f Hz (expected %.2f Hz, mismatch %.2f%%), vsync wait ~%lluus",
-			    actual_hz, expected_hz, mismatch_pct,
-			    (unsigned long long)(flip_end_us - flip_start_us));
+	uint64_t now = getMicroseconds();
 
-			// Track last 3 readings to detect stability
-			last_readings[reading_index] = actual_hz;
-			reading_index = (reading_index + 1) % 3;
+	if (last_flip > 0) {
+		// Calculate this interval in Hz
+		uint64_t interval_us = now - last_flip;
+		float hz = 1000000.0f / (float)interval_us;
 
-			// Check if we have 3 consistent readings (within 0.5 Hz)
-			if (!display_rate_set && last_readings[0] > 0 && last_readings[1] > 0 && last_readings[2] > 0) {
-				float min_hz = last_readings[0];
-				float max_hz = last_readings[0];
-				for (int i = 1; i < 3; i++) {
-					if (last_readings[i] < min_hz) min_hz = last_readings[i];
-					if (last_readings[i] > max_hz) max_hz = last_readings[i];
-				}
+		// Store in ring buffer
+		interval_buffer[buffer_index % 10] = hz;
+		buffer_index++;
+		if (samples < 10)
+			samples++;
 
-				float spread = max_hz - min_hz;
-				if (spread < 0.5f) {
-					// Stable - use average
-					float avg_hz = (last_readings[0] + last_readings[1] + last_readings[2]) / 3.0f;
-					SND_setDisplayRate(avg_hz);
-					display_rate_set = 1;
-				}
+		// Once we have 10 samples, check stability
+		if (samples == 10) {
+			// Find min/max
+			float min_hz = interval_buffer[0];
+			float max_hz = interval_buffer[0];
+			for (int i = 1; i < 10; i++) {
+				if (interval_buffer[i] < min_hz)
+					min_hz = interval_buffer[i];
+				if (interval_buffer[i] > max_hz)
+					max_hz = interval_buffer[i];
 			}
 
-			flip_sum = 0;
-			flip_count = 0;
+			float spread = max_hz - min_hz;
+
+			// Stable if spread < 0.5 Hz
+			if (spread < 0.5f) {
+				// Average the stable readings
+				float sum = 0;
+				for (int i = 0; i < 10; i++)
+					sum += interval_buffer[i];
+				float avg_hz = sum / 10.0f;
+
+				SND_setDisplayRate(avg_hz);
+				measurement_applied = 1;
+				LOG_info("Display: %.2f Hz measured via vsync (stable after %d frames, spread=%.2f Hz)\n",
+				         avg_hz, buffer_index, spread);
+			}
 		}
 	}
-	last_flip_us = flip_start_us;
+
+	last_flip = now;
 }
 
 /**
@@ -6848,16 +6873,11 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Flip to display - vsync happens HERE, after core.run() completes
-		// This decouples emulation timing from display timing, allowing:
-		// 1. Accurate frame time measurement (emulation only, no vsync wait)
-		// 2. Proper rate control (audio production matches core rate, not display rate)
+		// This decouples emulation timing from display timing, allowing
+		// accurate frame time measurement (emulation only, no vsync wait)
 		if (frame_ready_for_flip) {
-			uint64_t flip_start = getMicroseconds();
 			GFX_flip(screen);
-			uint64_t flip_end = getMicroseconds();
-
-			measureDisplayRate(flip_start, flip_end, core.fps);
-
+			measureDisplayRate();
 			frame_ready_for_flip = 0;
 		}
 

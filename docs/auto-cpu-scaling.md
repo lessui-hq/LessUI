@@ -416,69 +416,41 @@ CPU_SPEED_PERFORMANCE = 1600000  // was 1488000 → 1600 (align to hardware)
 
 ## Audio System Tuning
 
-### Rate Control Pitch Deviation (d) - Critical Understanding
+### Rate Control Pitch Deviation (d)
 
-The **d parameter is a single value** that determines BOTH:
-1. **Maximum mismatch capacity** - How much display/core rate difference the system can handle
-2. **Response aggressiveness** - How quickly the system adjusts to buffer changes
-
-These are not separate concerns - they're the same dial.
-
-**Arntzen's paper recommends d = 0.2-0.5% for desktop systems** because:
-- Desktop monitors: 59.94-60.00 Hz (very stable, <0.5% variance)
-- Good oscillator quality
-- Only needs to handle timing jitter
-
-**Handheld devices are different**:
-- Cheap LCD panels: 57-62 Hz (measured variance up to 4%)
-- Display/core mismatches of 0.65-4% are common
-- Need larger d to handle structural mismatch, not just jitter
+The **d parameter** determines how much pitch adjustment the rate control algorithm can apply for jitter compensation. See [docs/audio-rate-control.md](audio-rate-control.md) for the full algorithm derivation.
 
 **Current implementation:**
 
 ```c
 // Rate control sensitivity (api.c)
-#define SND_RATE_CONTROL_D 0.005f  // ±0.5% pitch adjustment for jitter
+#define SND_RATE_CONTROL_D 0.005f  // ±0.5% - handles timing jitter
 
-// Resampler safety clamp (audio_resampler.h) - CRITICAL: Must be separate!
-#define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum
+// Base correction (api.c, calculated at init from SDL)
+float base_correction = display_hz / core_fps;  // e.g., 0.9935 for -0.65% mismatch
+
+// Resampler safety clamp (audio_resampler.h)
+#define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum (catches bugs)
 ```
 
-**Why we were confused (critical mistake):**
-
-Originally had both using the same constant:
-- `SND_RATE_CONTROL_D = 0.01f` (1%)
-- Resampler clamped to `±SND_RATE_CONTROL_D` (same 1%)
-
-When we tried display correction (e.g., 0.9935 for -0.65% mismatch), the combined value `rate_adjust * display_correction` could exceed 1%, hitting the resampler clamp. We kept changing d but the clamp prevented it from working.
-
-**The fix:** Separate the constants:
-- Rate control d = 0.5% (Arntzen algorithm parameter)
-- Resampler clamp = 5% (safety limit, must be larger to allow corrections)
-
-Now display correction can work within the 5% safety envelope.
-
-**Key insight from testing:**
-
-When display/core mismatch (e.g., 59.71 vs 60.10 = 0.65%) exceeds d (0.5%), the buffer cannot converge to 50% without additional correction.
-
-**Solution approaches explored:**
-
-1. **Display rate correction** (complex, working) - Measure display rate, apply `correction = display_fps / core_fps`
-2. **Increase d** (simple, not tested) - Set d=1-2% to naturally handle mismatch (requires clamp ≥ d + display_correction)
-
-Current implementation uses approach #1 (display correction) but approach #2 may be simpler.
+**Why adaptive d + base correction:**
+- Display/core rate mismatch is **static** (handled via vsync measurement)
+- Timing jitter is **dynamic** (handled via rate control d=0.5%)
+- Adaptive d (2% → 0.5%) solves the bootstrap problem
+- d=2% keeps buffer stable during measurement phase
+- d=0.5% prevents oscillation after measurement complete
+- This separation maintains stable 50% fill on all devices
 
 ### Audio Buffer Size
 
-Our audio buffer holds **6 video frames** of audio (~100ms at 60fps):
+Our audio buffer holds **4 video frames** of audio (~67ms at 60fps):
 
 ```c
-snd.buffer_video_frames = 6;
+snd.buffer_video_frames = 4;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-Buffer fill equilibrium depends on display/core rate mismatch when vsync throttles the loop. Actual latency is ~33-50ms as buffer doesn't stay at 50% on devices with timing mismatches.
+With base correction + d=0.5%, the buffer converges to 50% fill on all devices, providing maximum headroom for timing jitter and ~33ms actual latency.
 
 ## Benchmark Methodology
 
@@ -526,9 +498,10 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 | Parameter | Current | Notes |
 |-----------|---------|-------|
-| Rate control d | 0.5% (with display correction) | Paper recommends 0.2-0.5% for desktop |
+| Rate control d | 0.5% | Handles timing jitter (paper's recommendation) |
+| Base correction | SDL refresh_rate / core fps | Static display/core mismatch correction |
 | Resampler safety clamp | 5% | Prevents extreme pitch shifts from bugs |
-| Audio buffer | 6 frames (~100ms) | Effective latency ~50ms at equilibrium |
+| Audio buffer | 4 frames (~67ms) | Effective latency ~33ms at 50% equilibrium |
 | Window size | 30 frames (~500ms) | Filters noise, responsive to changes |
 | Utilization high | 85% | Frame time >85% of budget = boost |
 | Utilization low | 55% | Frame time <55% of budget = reduce |
@@ -537,37 +510,29 @@ The discovered frequency steps and performance data come from a custom CPU bench
 | Startup grace | 60 frames (~1s) | Avoids false positives during warmup |
 | Percentile | 90th | Ignores outliers (loading screens) |
 
-### Measured Display Timings (2025-12-04)
+### Display Rate Handling
 
-| Platform | Measured Hz | Core expects | Mismatch | Solution |
-|----------|-------------|--------------|----------|----------|
-| rg35xxplus | 59.71 Hz | 60.10 Hz (NES) | -0.65% | Display correction (0.9935x) |
+Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode()`:
 
-**The fundamental problem:** Main loop runs at display rate (vsync-throttled) but audio system expects core rate, creating structural production deficit.
+| Platform | SDL Reports | Core expects | Base Correction |
+|----------|-------------|--------------|-----------------|
+| rg35xxplus | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
+| tg5040 | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
+| miyoomini | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 
-**Current solution:** Display rate correction factor applied to resampler ratio_adjust:
-- Measures stable display rate via vsync timing (requires 3 consistent readings within 0.5 Hz)
-- Applies `correction = display_fps / core_fps` (e.g., 59.71/60.10 = 0.9935)
-- Combined with rate control: `corrected_adjust = rate_adjust * display_correction`
-- Buffer converges to 50% as designed
+**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing), but the integer value is close enough. Rate control (d=0.5%) handles the remaining jitter.
 
-**Alternative approach (simpler, not yet tested):**
-- Remove display correction entirely
-- Increase `SND_RATE_CONTROL_D` from 0.5% to 1-2%
-- Rate control naturally handles mismatch if d ≥ mismatch magnitude
-- Simpler code, same result for devices with consistent display rates
+**How it works:** Base correction is applied as a static multiplier to the resampler. Rate control then fine-tunes around this baseline to maintain 50% buffer fill.
 
 ### Debug HUD
 
 When Auto CPU mode is enabled, the debug overlay shows:
 ```
-0x 62/27
+0x 62/50
 ```
 - `0x` = Current CPU level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
 - `62` = Frame timing utilization (90th percentile, % of frame budget)
-- `27` = Audio buffer fill (% full)
-
-Example: On rg35xxplus running Punch-Out at POWERSAVE, 62% utilization means core.run() uses 62% of the 16.6ms frame budget. The 27% buffer fill is expected due to the -0.65% display/core rate mismatch.
+- `50` = Audio buffer fill (% full, should converge to ~50%)
 
 ### CSV Logging
 

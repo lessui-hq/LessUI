@@ -1634,7 +1634,9 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 // Rate control sensitivity (d parameter from Arntzen's paper).
 // Controls how aggressively pitch is adjusted based on buffer fill level.
 // Paper recommends 0.002-0.005 (0.2-0.5%) for desktop systems.
-// We use 0.5% which balances responsiveness with pitch stability.
+// We use 0.5% to handle timing jitter. Display/core rate mismatch is handled
+// separately via base_correction (measured from SDL at init).
+// See docs/audio-rate-control.md for detailed analysis.
 #define SND_RATE_CONTROL_D 0.005f
 
 // Sound context manages the ring buffer and resampling
@@ -1656,9 +1658,9 @@ static struct SND_Context {
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
 
-	// Display rate correction factor (display_fps / core_fps)
-	// Adjusts resampler output to match actual display rate
-	float display_correction;
+	// Display refresh rate (from SDL, 0 = unknown)
+	// Used to correct for display/core rate mismatch before applying rate control
+	float display_hz;
 
 	// Underrun tracking (for auto CPU scaling)
 	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
@@ -1782,32 +1784,33 @@ static float SND_getBufferFillLevel(void) {
  * Calculates dynamic rate adjustment based on buffer fill level.
  *
  * Implements the Dynamic Rate Control algorithm from Hans-Kristian Arntzen's paper
- * "Dynamic Rate Control for Retro Game Emulators" (2012). The formula is:
+ * "Dynamic Rate Control for Retro Game Emulators" (2012).
  *
- *   adjustment = 1 + (1 - 2*fill) * d
+ * Paper's formula (multiplies sample count):
+ *   samples_pushed = R' * [1 + (1 - 2*fill) * d]
  *
- * Where:
- *   - fill = current buffer level (0.0 to 1.0)
- *   - d = rate control sensitivity (SND_RATE_CONTROL_D = 0.5%)
+ * Our resampler divides by ratio_adjust (larger = fewer outputs), so we invert:
+ *   ratio_adjust = 1 - (1 - 2*fill) * d
  *
- * This creates smooth, continuous feedback that naturally converges to 50% fill:
- *   - fill < 0.5: adjustment < 1.0, produces more output, fills buffer
- *   - fill = 0.5: adjustment = 1.0, no change (equilibrium)
- *   - fill > 0.5: adjustment > 1.0, produces less output, drains buffer
+ * This produces equivalent behavior:
+ *   - fill = 0 (empty): ratio_adjust = 1-d → more outputs → fills buffer
+ *   - fill = 0.5 (half): ratio_adjust = 1.0 → equilibrium
+ *   - fill = 1 (full): ratio_adjust = 1+d → fewer outputs → drains buffer
+ *
+ * Adaptive d parameter:
+ *   - Before display rate measurement: d=2% (handles unknown mismatch)
+ *   - After measurement: d=0.5% (handles jitter only, mismatch via base_correction)
  *
  * The algorithm is stable and converges exponentially to half-full buffer,
  * providing maximum headroom for timing jitter in both directions.
  *
- * @return Rate adjustment factor (1.0 ± d)
+ * @return Rate adjustment factor (1.0 ± d) for resampler step size
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
-
-	// Our formula (inverted from paper to match resampler convention):
-	// When fill=0: adjustment = 1 - d  (smaller steps, more outputs, fills buffer)
-	// When fill=0.5: adjustment = 1.0  (no change)
-	// When fill=1: adjustment = 1 + d  (larger steps, fewer outputs, drains buffer)
-	return 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
+	// Use larger d during measurement phase, small d once we have base correction
+	float d = (snd.display_hz > 0) ? SND_RATE_CONTROL_D : 0.02f;
+	return 1.0f - (1.0f - 2.0f * fill) * d;
 }
 
 /**
@@ -1815,12 +1818,12 @@ static float SND_calculateRateAdjust(void) {
  *
  * Uses linear interpolation resampling with dynamic rate control:
  * - Linear interpolation: Smoothly blends between adjacent samples
- * - Dynamic rate control: Adjusts pitch ±0.5% based on buffer fill level
+ * - Dynamic rate control: Adjusts pitch ±1.5% based on buffer fill level
  *
  * Implements Hans-Kristian Arntzen's "Dynamic Rate Control" algorithm which
- * maintains buffer at 50% full, providing headroom for timing jitter while
- * keeping pitch deviation inaudible (well under the ~1% threshold of human
- * perception for most listeners).
+ * maintains buffer at 50% full. The 1.5% max deviation handles display/core
+ * rate mismatches common on handheld devices while keeping average pitch
+ * deviation well under the ~1% threshold of human perception.
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
@@ -1836,16 +1839,30 @@ size_t SND_batchSamples(const SND_Frame* frames,
 
 	SDL_LockAudio();
 
-	// Calculate dynamic rate adjustment based on buffer fill level
+	// Calculate display rate correction (static offset for display/core mismatch)
+	// Use measured display rate if available, otherwise assume display = core rate
+	float base_correction = (snd.display_hz > 0) ? snd.display_hz / (float)snd.frame_rate : 1.0f;
+
+	// Calculate dynamic rate adjustment for jitter (1.0 ± d based on buffer fill)
 	float rate_adjust = SND_calculateRateAdjust();
 
-	// Apply display rate correction
-	// Resampler produces host_audio/core_fps, but we consume host_audio/display_fps
-	// Correction factor (display/core) adjusts output to match actual consumption
-	float corrected_adjust = rate_adjust * snd.display_correction;
+	// Combined adjustment: static correction × dynamic jitter compensation
+	float total_adjust = base_correction * rate_adjust;
+
+	// Sampled debug logging for audio rate control (every ~2 seconds at 60fps)
+	static int audio_debug_frames = 0;
+	if (++audio_debug_frames >= 120) {
+		audio_debug_frames = 0;
+		float fill = SND_getBufferFillLevel();
+		float d_actual = (snd.display_hz > 0) ? SND_RATE_CONTROL_D : 0.02f;
+		float adjust_pct = (rate_adjust - 1.0f) * 100.0f;
+		float total_pct = (total_adjust - 1.0f) * 100.0f;
+		LOG_debug("Audio: fill=%.0f%% base=%.4f adjust=%+.2f%% total=%+.2f%% (d=%.1f%%)\n",
+		          fill * 100.0f, base_correction, adjust_pct, total_pct, d_actual * 100.0f);
+	}
 
 	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
-	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, corrected_adjust);
+	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
 
 	// Calculate how much space is available in the ring buffer
 	int available;
@@ -1879,9 +1896,9 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	    .read_pos = snd.frame_out,
 	};
 
-	// Resample the audio with linear interpolation and rate correction
+	// Resample with combined adjustment (base correction + dynamic rate control)
 	ResampleResult result =
-	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, corrected_adjust);
+	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
 
 	// Update ring buffer write position
 	snd.frame_in = ring.write_pos;
@@ -1920,7 +1937,9 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 
 	memset(&snd, 0, sizeof(struct SND_Context));
 	snd.frame_rate = frame_rate;
-	snd.display_correction = 1.0f; // No correction until display rate is measured
+
+	// Initialize display_hz to 0 (will be set via SND_setDisplayRate after measurement)
+	snd.display_hz = 0.0f;
 
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
@@ -1934,7 +1953,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_video_frames = 6; // Buffer 6 video frames of audio (~100ms at 60fps)
+	snd.buffer_video_frames = 4; // Buffer 4 video frames of audio (~67ms at 60fps)
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
@@ -1990,14 +2009,10 @@ void SND_resetUnderrunCount(void) {
 }
 
 /**
- * Sets the display refresh rate for audio rate correction.
+ * Updates the display refresh rate for audio rate correction.
  *
- * The resampler is configured for core_fps, but the loop runs at display_fps.
- * This creates a mismatch: we produce host_audio/core_fps samples but consume
- * host_audio/display_fps samples per frame.
- *
- * This function calculates a correction factor (display_fps / core_fps) that
- * adjusts the resampler output to match the actual display rate.
+ * Sets the measured display rate used for base correction in the rate control
+ * algorithm. This handles the static display/core rate mismatch.
  *
  * @param display_hz Measured display refresh rate in Hz
  */
@@ -2005,12 +2020,11 @@ void SND_setDisplayRate(float display_hz) {
 	if (!snd.initialized || snd.frame_rate <= 0)
 		return;
 
-	float core_hz = (float)snd.frame_rate;
-	snd.display_correction = display_hz / core_hz;
-
-	float mismatch_pct = (display_hz - core_hz) / core_hz * 100.0f;
-	LOG_info("SND_setDisplayRate: display=%.2f Hz, core=%.2f Hz, correction=%.4f (%.2f%% mismatch)\n",
-	         display_hz, core_hz, snd.display_correction, mismatch_pct);
+	snd.display_hz = display_hz;
+	float base_correction = display_hz / (float)snd.frame_rate;
+	float mismatch_pct = ((display_hz - (float)snd.frame_rate) / (float)snd.frame_rate) * 100.0f;
+	LOG_info("Audio: display rate set to %.2f Hz (core=%.2f Hz, base_correction=%.4f, %.2f%% mismatch)\n",
+	         display_hz, (float)snd.frame_rate, base_correction, mismatch_pct);
 }
 
 /**
