@@ -738,8 +738,39 @@ void PLAT_powerOff(void) {
 	exit(0);
 }
 
+#define CPU_GOVERNOR_PATH "/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed"
+
+/**
+ * Sets CPU frequency based on performance mode.
+ *
+ * Available frequencies (H616 SoC):
+ * 480, 720, 936, 1008, 1104, 1200, 1320, 1416, 1512 MHz
+ *
+ * Frequencies:
+ * - MENU: 720MHz (low - saves power in menus)
+ * - POWERSAVE: 1008MHz (~2x baseline)
+ * - NORMAL: 1320MHz (~2.75x baseline)
+ * - PERFORMANCE: 1512MHz (maximum)
+ *
+ * @param speed CPU_SPEED_* constant
+ */
 void PLAT_setCPUSpeed(int speed) {
-	// Not implemented
+	int freq = 0;
+	switch (speed) {
+	case CPU_SPEED_MENU:
+		freq = 720000;
+		break;
+	case CPU_SPEED_POWERSAVE:
+		freq = 1008000;
+		break;
+	case CPU_SPEED_NORMAL:
+		freq = 1320000;
+		break;
+	case CPU_SPEED_PERFORMANCE:
+		freq = 1512000;
+		break;
+	}
+	putInt(CPU_GOVERNOR_PATH, freq);
 }
 
 #define RUMBLE_PATH "/sys/class/power_supply/axp2202-battery/moto"

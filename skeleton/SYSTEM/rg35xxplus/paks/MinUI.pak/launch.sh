@@ -21,7 +21,7 @@ export LD_LIBRARY_PATH=$SYSTEM_PATH/lib:$LD_LIBRARY_PATH
 #######################################
 
 systemctl disable ondemand
-echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 echo 0 > /sys/class/power_supply/axp2202-battery/work_led
 
 RGXX_MODEL=`strings /mnt/vendor/bin/dmenu.bin | grep ^RG`
