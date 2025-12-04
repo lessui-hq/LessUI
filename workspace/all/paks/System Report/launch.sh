@@ -3,6 +3,7 @@
 # System Report - Entry point
 #
 # Generates a comprehensive system report for platform development.
+# Includes hardware discovery and CPU performance benchmarking.
 # Report is saved to SDCARD_PATH/system_report_<platform>_<timestamp>.md
 #
 
@@ -52,10 +53,10 @@ cleanup() {
 run_report() {
     cd "$SDCARD_PATH" || return 1
 
-    show_message "Generating System Report...\n\nThis may take a minute." 3
+    show_message "Generating System Report...\n\nIncluding CPU benchmarking\nThis may take a minute." 3
 
-    # Run the device report script
-    "$PAK_DIR/bin/device-report" > "$REPORT_FILE" 2>&1
+    # Run the report generator
+    "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1
 
     # Verify report was created and show result
     if [ -s "$REPORT_FILE" ]; then

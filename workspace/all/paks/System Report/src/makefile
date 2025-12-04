@@ -1,4 +1,4 @@
-# Benchmark pak - CPU frequency workload
+# System Report pak - CPU benchmark binary
 #
 # Minimal standalone build - no SDL or common infrastructure needed
 

@@ -1,8 +1,8 @@
 {
   "name": "System Report",
   "type": "tool",
-  "description": "Generates detailed system report for platform development and CPU scaling tuning",
-  "version": "1.0.0",
+  "description": "Comprehensive system report with hardware discovery and CPU performance benchmarking",
+  "version": "2.0.0",
 
   "platforms": [
     "miyoomini",
@@ -17,6 +17,11 @@
     "my282",
     "magicmini"
   ],
+
+  "build": {
+    "type": "native",
+    "binary": "benchmark.elf"
+  },
 
   "launch": "launch.sh"
 }

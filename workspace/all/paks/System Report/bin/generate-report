@@ -4,10 +4,15 @@
 #
 # Generates a detailed report for platform development including:
 # - CPU frequency scaling capabilities (governors, frequencies, write test)
+# - CPU performance benchmarking at all available frequencies
 # - Binary architecture support (32-bit vs 64-bit ELF)
 # - System information (kernel, memory, storage)
 # - Hardware paths and capabilities
 #
+
+# Get pak directory (parent of bin/)
+SCRIPT_DIR="$(dirname "$0")"
+PAK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ###############################################################################
 # Logging helpers - Markdown formatted output
@@ -330,6 +335,128 @@ fn_cpu_scaling() {
         echo "| scaling_governor | \`$GOV_PATH\` |"
     else
         echo "| scaling_setspeed | *not found* |"
+    fi
+}
+
+###############################################################################
+# CPU Performance Benchmark
+###############################################################################
+
+fn_cpu_benchmark() {
+    log_h1 "CPU PERFORMANCE BENCHMARK"
+
+    # Check if we can run benchmarks (need userspace governor and available freqs)
+    if [ -z "$FREQ_PATH" ] || [ -z "$GOV_PATH" ]; then
+        log_warn "Cannot run benchmark - CPU frequency control not available"
+        return
+    fi
+
+    # Check for userspace governor availability
+    AVAIL_GOVS=""
+    for path in "$POLICY0_PATH/scaling_available_governors" "$CPU0_PATH/scaling_available_governors"; do
+        if [ -f "$path" ]; then
+            AVAIL_GOVS=$(cat "$path" 2>/dev/null)
+            break
+        fi
+    done
+
+    if ! echo "$AVAIL_GOVS" | grep -qw "userspace" 2>/dev/null; then
+        log_warn "Cannot run benchmark - userspace governor not available"
+        return
+    fi
+
+    # Get available frequencies
+    AVAIL_FREQS=""
+    for path in "$POLICY0_PATH/scaling_available_frequencies" "$CPU0_PATH/scaling_available_frequencies"; do
+        if [ -f "$path" ]; then
+            AVAIL_FREQS=$(cat "$path" 2>/dev/null)
+            break
+        fi
+    done
+
+    if [ -z "$AVAIL_FREQS" ]; then
+        log_warn "Cannot run benchmark - no available frequencies found"
+        return
+    fi
+
+    # Check for benchmark binary
+    BENCHMARK_BIN="$PAK_DIR/bin/benchmark.elf"
+    if [ ! -x "$BENCHMARK_BIN" ]; then
+        log_warn "Cannot run benchmark - benchmark.elf not found"
+        return
+    fi
+
+    log_info "Running 1-second benchmark at each frequency..."
+    echo ""
+
+    # Save current state
+    ORIG_GOV=$(cat "$GOV_PATH" 2>/dev/null)
+    ORIG_FREQ=""
+    for path in "$POLICY0_PATH/scaling_cur_freq" "$CPU0_PATH/scaling_cur_freq" \
+                "$POLICY0_PATH/cpuinfo_cur_freq" "$CPU0_PATH/cpuinfo_cur_freq"; do
+        if [ -f "$path" ]; then
+            ORIG_FREQ=$(cat "$path" 2>/dev/null)
+            [ -n "$ORIG_FREQ" ] && break
+        fi
+    done
+
+    # Switch to userspace governor
+    echo "userspace" > "$GOV_PATH" 2>/dev/null
+    sleep 0.5
+
+    # Test benchmark binary before running
+    log_info "Benchmark binary: $BENCHMARK_BIN"
+    if ! BENCH_TEST=$("$BENCHMARK_BIN" 100 0 2>&1); then
+        log_warn "Benchmark binary failed to run: $BENCH_TEST"
+        return
+    fi
+    log_info "Benchmark test run: $BENCH_TEST"
+
+    # Run benchmark at each frequency
+    echo ""
+    echo "| Frequency (kHz) | Iterations | Performance Index |"
+    echo "|-----------------|------------|-------------------|"
+
+    FIRST_ITERATIONS=""
+    for freq in $AVAIL_FREQS; do
+        # Set frequency
+        echo "$freq" > "$FREQ_PATH" 2>/dev/null
+        sleep 0.2
+
+        # Run 1 second benchmark (no warmup)
+        RESULT=$("$BENCHMARK_BIN" 1000 0 2>&1)
+        ITERATIONS=$(echo "$RESULT" | cut -d' ' -f1)
+
+        # Handle empty result
+        if [ -z "$ITERATIONS" ] || [ "$ITERATIONS" = "0" ]; then
+            echo "| $freq | *failed* | - |"
+            continue
+        fi
+
+        # Calculate performance index (relative to first frequency)
+        if [ -z "$FIRST_ITERATIONS" ]; then
+            FIRST_ITERATIONS=$ITERATIONS
+            PERF_INDEX="1.00x"
+        else
+            # Use awk for floating point division
+            PERF_INDEX=$(echo "$ITERATIONS $FIRST_ITERATIONS" | awk '{printf "%.2fx", $1/$2}')
+        fi
+
+        # Format iterations with commas for readability
+        ITER_FMT=$(echo "$ITERATIONS" | awk '{printf "%\047d", $1}')
+
+        echo "| $freq | $ITER_FMT | $PERF_INDEX |"
+    done
+
+    echo ""
+    log_info "Benchmark complete"
+
+    # Restore original state
+    if [ -n "$ORIG_GOV" ]; then
+        echo "$ORIG_GOV" > "$GOV_PATH" 2>/dev/null
+    fi
+    if [ -n "$ORIG_FREQ" ]; then
+        echo "$ORIG_FREQ" > "$FREQ_PATH" 2>/dev/null
     fi
 }
 
@@ -1598,6 +1725,7 @@ main() {
     # Core hardware detection (most important for platform bring-up)
     fn_device_tree
     fn_cpu_scaling
+    fn_cpu_benchmark
     fn_gpu
     fn_display
     fn_audio
