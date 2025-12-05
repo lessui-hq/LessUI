@@ -5,30 +5,51 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Keyboard layouts (5 rows, up to 14 columns)
-static const char* layout_lower[5][14] = {
-	{"`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", NULL},
-	{"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", "\\", NULL},
-	{"a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", NULL},
-	{"z", "x", "c", "v", "b", "n", "m", ",", ".", "/", NULL},
-	{"ABC", " ", "OK", NULL}
+// Keyboard layouts (5 rows, 13 columns max)
+// Using \0 for empty cells to mark row end
+#define LAYOUT_ROWS 5
+#define LAYOUT_COLS 13
+
+static const char* layout_lower[LAYOUT_ROWS][LAYOUT_COLS] = {
+	{"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", NULL},
+	{"q", "w", "e", "r", "t", "y", "u", "i", "o", "p", NULL},
+	{"a", "s", "d", "f", "g", "h", "j", "k", "l", NULL},
+	{"z", "x", "c", "v", "b", "n", "m", NULL},
+	{"ABC", "SPACE", "OK", NULL}
 };
 
-static const char* layout_upper[5][14] = {
-	{"~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", NULL},
-	{"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|", NULL},
-	{"A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\"", NULL},
-	{"Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", NULL},
-	{"abc", " ", "OK", NULL}
+static const char* layout_upper[LAYOUT_ROWS][LAYOUT_COLS] = {
+	{"!", "@", "#", "$", "%", "^", "&", "*", "(", ")", NULL},
+	{"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", NULL},
+	{"A", "S", "D", "F", "G", "H", "J", "K", "L", NULL},
+	{"Z", "X", "C", "V", "B", "N", "M", NULL},
+	{"#+=", "SPACE", "OK", NULL}
 };
 
-// Current layout pointer
-static const char* (*current_layout)[14] = layout_lower;
+static const char* layout_symbol[LAYOUT_ROWS][LAYOUT_COLS] = {
+	{"~", "`", "-", "_", "=", "+", "[", "]", "{", "}", NULL},
+	{"\\", "|", ";", ":", "'", "\"", ",", ".", "<", ">", NULL},
+	{"/", "?", "!", "@", "#", "$", "%", "^", "&", NULL},
+	{"*", "(", ")", "-", "_", "=", "+", NULL},
+	{"abc", "SPACE", "OK", NULL}
+};
+
+// Current layout (0=lower, 1=upper, 2=symbol)
+static int current_layout_idx = 0;
+
+static const char* (*get_layout(void))[LAYOUT_COLS] {
+	switch (current_layout_idx) {
+		case 1: return layout_upper;
+		case 2: return layout_symbol;
+		default: return layout_lower;
+	}
+}
 
 // Count valid keys in row
 static int row_length(int row) {
+	const char* (*layout)[LAYOUT_COLS] = get_layout();
 	int len = 0;
-	for (int i = 0; i < 14 && current_layout[row][i]; i++) {
+	for (int i = 0; i < LAYOUT_COLS && layout[row][i]; i++) {
 		len++;
 	}
 	return len;
@@ -47,18 +68,24 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 	// Cursor position
 	int cursor_row = 1;
 	int cursor_col = 0;
-	current_layout = layout_lower;
+	current_layout_idx = 0;
 
 	int redraw = 1;
 	int show_setting = 0;
 
 	PWR_disableAutosleep();
 
-	// Key dimensions
-	int key_w = DP(24);
-	int key_h = DP(28);
-	int key_spacing = DP(4);
-	int kb_start_y = screen->h - (5 * key_h + 4 * key_spacing) - DP(32);
+	// Layout constants
+	int margin = DP(8);
+	int spacing = DP(3);
+	int key_size = (screen->w - (2 * margin) - (9 * spacing)) / 10;  // 10 keys in widest row
+	int kb_height = (5 * key_size) + (4 * spacing);
+	int kb_start_y = screen->h - kb_height - DP(40);  // Room for button hints
+
+	// Colors
+	Uint32 color_key_bg = SDL_MapRGB(screen->format, TRIAD_DARK_GRAY);
+	Uint32 color_key_selected = SDL_MapRGB(screen->format, TRIAD_WHITE);
+	Uint32 color_input_bg = SDL_MapRGB(screen->format, 0x1a, 0x1a, 0x1a);
 
 	while (1) {
 		GFX_startFrame();
@@ -67,21 +94,26 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 		// Input handling
 		PAD_poll();
 
+		const char* (*layout)[LAYOUT_COLS] = get_layout();
+
 		// Confirm (A button)
 		if (PAD_justPressed(BTN_A)) {
-			const char* key = current_layout[cursor_row][cursor_col];
+			const char* key = layout[cursor_row][cursor_col];
 			if (key) {
-				// Special keys
 				if (strcmp(key, "OK") == 0) {
 					result.exit_code = EXIT_SUCCESS_CODE;
 					result.text = strdup(text);
 					return result;
-				} else if (strcmp(key, "ABC") == 0 || strcmp(key, "abc") == 0) {
-					// Toggle case
-					current_layout = (current_layout == layout_lower) ? layout_upper : layout_lower;
+				} else if (strcmp(key, "ABC") == 0) {
+					current_layout_idx = 1;  // uppercase
 					redraw = 1;
-				} else if (strcmp(key, " ") == 0) {
-					// Space
+				} else if (strcmp(key, "abc") == 0) {
+					current_layout_idx = 0;  // lowercase
+					redraw = 1;
+				} else if (strcmp(key, "#+=") == 0) {
+					current_layout_idx = 2;  // symbols
+					redraw = 1;
+				} else if (strcmp(key, "SPACE") == 0) {
 					if (strlen(text) < sizeof(text) - 2) {
 						strcat(text, " ");
 						redraw = 1;
@@ -118,40 +150,37 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			return result;
 		}
 
-		// Navigation
+		// Navigation with wrapping
 		if (PAD_justPressed(BTN_UP) || PAD_justRepeated(BTN_UP)) {
-			if (cursor_row > 0) {
-				cursor_row--;
-				// Adjust column for new row length
-				int new_len = row_length(cursor_row);
-				if (cursor_col >= new_len) cursor_col = new_len - 1;
-				redraw = 1;
-			}
+			cursor_row--;
+			if (cursor_row < 0) cursor_row = LAYOUT_ROWS - 1;
+			int new_len = row_length(cursor_row);
+			if (cursor_col >= new_len) cursor_col = new_len - 1;
+			redraw = 1;
 		}
 		if (PAD_justPressed(BTN_DOWN) || PAD_justRepeated(BTN_DOWN)) {
-			if (cursor_row < 4) {
-				cursor_row++;
-				int new_len = row_length(cursor_row);
-				if (cursor_col >= new_len) cursor_col = new_len - 1;
-				redraw = 1;
-			}
+			cursor_row++;
+			if (cursor_row >= LAYOUT_ROWS) cursor_row = 0;
+			int new_len = row_length(cursor_row);
+			if (cursor_col >= new_len) cursor_col = new_len - 1;
+			redraw = 1;
 		}
 		if (PAD_justPressed(BTN_LEFT) || PAD_justRepeated(BTN_LEFT)) {
-			if (cursor_col > 0) {
-				cursor_col--;
-				redraw = 1;
-			}
+			cursor_col--;
+			if (cursor_col < 0) cursor_col = row_length(cursor_row) - 1;
+			redraw = 1;
 		}
 		if (PAD_justPressed(BTN_RIGHT) || PAD_justRepeated(BTN_RIGHT)) {
-			if (cursor_col < row_length(cursor_row) - 1) {
-				cursor_col++;
-				redraw = 1;
-			}
+			cursor_col++;
+			if (cursor_col >= row_length(cursor_row)) cursor_col = 0;
+			redraw = 1;
 		}
 
-		// Toggle layout with Select
+		// Cycle layouts with Select
 		if (PAD_justPressed(BTN_SELECT)) {
-			current_layout = (current_layout == layout_lower) ? layout_upper : layout_lower;
+			current_layout_idx = (current_layout_idx + 1) % 3;
+			int new_len = row_length(cursor_row);
+			if (cursor_col >= new_len) cursor_col = new_len - 1;
 			redraw = 1;
 		}
 
@@ -159,28 +188,30 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			GFX_clear(screen);
 
 			// Title
+			int title_h = 0;
 			if (opts && opts->title && g_font_small) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(g_font_small, opts->title, COLOR_WHITE);
 				if (title_text) {
-					SDL_Rect pos = {DP(16), DP(8), title_text->w, title_text->h};
+					SDL_Rect pos = {(screen->w - title_text->w) / 2, DP(8), title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
+					title_h = title_text->h + DP(8);
 					SDL_FreeSurface(title_text);
 				}
 			}
 
-			// Text input area (pill background)
-			int input_y = DP(40);
+			// Text input area
+			int input_y = DP(8) + title_h;
 			int input_h = DP(32);
-			SDL_Rect input_bg = {DP(16), input_y, screen->w - DP(32), input_h};
-			GFX_blitPill(ASSET_BLACK_PILL, screen, &input_bg);
+			SDL_Rect input_bg = {margin, input_y, screen->w - (2 * margin), input_h};
+			SDL_FillRect(screen, &input_bg, color_input_bg);
 
-			// Current text
+			// Current text with cursor
 			if (g_font_large) {
 				char display_text[1024];
-				snprintf(display_text, sizeof(display_text), "%s_", text);  // Add cursor
+				snprintf(display_text, sizeof(display_text), "%s_", text);
 				SDL_Surface* text_surf = TTF_RenderUTF8_Blended(g_font_large, display_text, COLOR_WHITE);
 				if (text_surf) {
-					int text_x = DP(24);
+					int text_x = margin + DP(8);
 					int text_y = input_y + (input_h - text_surf->h) / 2;
 					SDL_Rect pos = {text_x, text_y, text_surf->w, text_surf->h};
 					SDL_BlitSurface(text_surf, NULL, screen, &pos);
@@ -188,42 +219,54 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 				}
 			}
 
-			// Keyboard
-			for (int row = 0; row < 5; row++) {
+			// Draw keyboard
+			for (int row = 0; row < LAYOUT_ROWS; row++) {
 				int row_len = row_length(row);
-				int total_width = row_len * key_w + (row_len - 1) * key_spacing;
-				int start_x = (screen->w - total_width) / 2;
-				int y = kb_start_y + row * (key_h + key_spacing);
+				if (row_len == 0) continue;
+
+				// Calculate row width and starting position
+				int row_width;
+				int start_x;
+
+				if (row == LAYOUT_ROWS - 1) {
+					// Bottom row: special keys span full width
+					row_width = screen->w - (2 * margin);
+					start_x = margin;
+				} else {
+					// Regular rows: uniform key sizes, centered
+					row_width = (row_len * key_size) + ((row_len - 1) * spacing);
+					start_x = (screen->w - row_width) / 2;
+				}
+
+				int y = kb_start_y + row * (key_size + spacing);
 
 				for (int col = 0; col < row_len; col++) {
-					const char* key = current_layout[row][col];
+					const char* key = layout[row][col];
 					if (!key) break;
 
-					int x = start_x + col * (key_w + key_spacing);
+					int x, kw;
 
-					// Key width (special keys are wider)
-					int kw = key_w;
-					if (strcmp(key, " ") == 0) kw = key_w * 4;
-					else if (strcmp(key, "ABC") == 0 || strcmp(key, "abc") == 0 || strcmp(key, "OK") == 0) {
-						kw = key_w * 2;
-					}
-
-					// Background
-					SDL_Rect key_rect = {x, y, kw, key_h};
-					if (row == cursor_row && col == cursor_col) {
-						GFX_blitPill(ASSET_WHITE_PILL, screen, &key_rect);
+					if (row == LAYOUT_ROWS - 1) {
+						// Bottom row: divide evenly
+						kw = (row_width - ((row_len - 1) * spacing)) / row_len;
+						x = start_x + col * (kw + spacing);
 					} else {
-						GFX_blitPill(ASSET_DARK_GRAY_PILL, screen, &key_rect);
+						// Regular rows
+						kw = key_size;
+						x = start_x + col * (key_size + spacing);
 					}
 
-					// Key label
-					SDL_Color color = (row == cursor_row && col == cursor_col) ? COLOR_BLACK : COLOR_WHITE;
-					const char* label = (strcmp(key, " ") == 0) ? "SPACE" : key;
+					// Draw key background
+					SDL_Rect key_rect = {x, y, kw, key_size};
+					bool selected = (row == cursor_row && col == cursor_col);
+					SDL_FillRect(screen, &key_rect, selected ? color_key_selected : color_key_bg);
 
-					SDL_Surface* key_text = TTF_RenderUTF8_Blended(g_font_large, label, color);
+					// Draw key label
+					SDL_Color text_color = selected ? COLOR_BLACK : COLOR_WHITE;
+					SDL_Surface* key_text = TTF_RenderUTF8_Blended(g_font_large, key, text_color);
 					if (key_text) {
 						int tx = x + (kw - key_text->w) / 2;
-						int ty = y + (key_h - key_text->h) / 2;
+						int ty = y + (key_size - key_text->h) / 2;
 						SDL_Rect tpos = {tx, ty, key_text->w, key_text->h};
 						SDL_BlitSurface(key_text, NULL, screen, &tpos);
 						SDL_FreeSurface(key_text);
