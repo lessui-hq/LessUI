@@ -56,6 +56,7 @@
 #include "defines.h"
 #include "libretro.h"
 #include "minui_file_utils.h"
+#include "rate_meter.h" // For RATE_METER_AUDIO_INTERVAL
 #include "scaler.h"
 #include "utils.h"
 
@@ -71,17 +72,6 @@ static int quit = 0; // Set to 1 to exit main loop
 static int show_menu = 0; // Set to 1 to display in-game menu
 static int simple_mode = 0; // Simplified interface mode (fewer options)
 
-// Threading
-static int thread_video = 0; // Enable threaded video rendering
-static int was_threaded = 0; // Previous threading state (for fast-forward toggle)
-static int should_run_core = 1; // Signal to core thread: run or pause
-static pthread_t core_pt; // Core thread handle
-static pthread_mutex_t core_mx; // Mutex for core thread synchronization
-static pthread_cond_t core_rq; // Condition variable for frame signaling
-static SDL_Surface* backbuffer = NULL; // Double-buffer for threaded rendering
-
-// Forward declaration
-static void* coreThread(void* arg);
 
 // Video geometry state for dynamic updates
 static struct {
@@ -118,7 +108,6 @@ enum {
 static int screen_scaling = SCALE_ASPECT; // Default to aspect-ratio preserving
 static int screen_sharpness = SHARPNESS_SOFT; // Bilinear filtering by default
 static int screen_effect = EFFECT_NONE; // No scanlines or grid effects
-static int prevent_tearing = 1; // Enable vsync (lenient mode)
 
 /**
  * Core Pixel Format
@@ -148,7 +137,61 @@ static enum retro_pixel_format pixel_format =
 static int show_debug = 0; // Display FPS/CPU usage overlay
 static int max_ff_speed = 3; // Fast-forward speed (0=2x, 3=4x)
 static int fast_forward = 0; // Currently fast-forwarding
-static int overclock = 1; // CPU speed (0=underclock, 1=normal, 2=overclock)
+static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
+
+// Auto CPU Scaling State (when overclock == 3)
+// Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
+// This directly measures CPU performance, unlike audio buffer fill which is
+// contaminated by display/audio timing mismatches.
+//
+// Granular frequency scaling: Instead of 3 fixed levels, we use all available
+// CPU frequencies detected from the system. Performance scales linearly with
+// frequency, allowing smooth transitions and better power efficiency.
+
+// Detected frequency array (populated at startup from PLAT_getAvailableCPUFrequencies)
+static int
+    auto_cpu_frequencies[CPU_MAX_FREQUENCIES]; // Available frequencies in kHz (sorted low→high)
+static int auto_cpu_freq_count = 0; // Number of frequencies detected
+static int auto_cpu_target_index = 0; // Target frequency index (main thread)
+static int auto_cpu_current_index = 0; // Actually applied frequency index (CPU thread)
+
+// Preset indices for manual modes (POWERSAVE/NORMAL/PERFORMANCE)
+// Set during frequency detection to map presets to nearest available frequencies
+static int auto_cpu_preset_indices[3] = {0, 0, 0}; // [POWERSAVE, NORMAL, PERFORMANCE]
+
+// Legacy level tracking (for fallback when no frequencies detected)
+static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
+static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
+static int auto_cpu_use_granular = 0; // 1 if granular mode available, 0 for 3-level fallback
+
+// Monitoring state
+static int auto_cpu_frame_count = 0; // Frames in current window
+static int auto_cpu_high_util_windows =
+    0; // Consecutive windows with high utilization (needs boost)
+static int auto_cpu_low_util_windows = 0; // Consecutive windows with low utilization (can reduce)
+static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
+static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
+static int auto_cpu_panic_cooldown = 0; // Windows to wait after panic before reducing
+
+// Frame timing data for percentile calculation
+static uint64_t auto_cpu_frame_times[64]; // Ring buffer of frame execution times (microseconds)
+static int auto_cpu_frame_time_index = 0; // Current position in ring buffer
+static uint64_t auto_cpu_frame_budget_us = 16667; // Target frame time (updated from core.fps)
+static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
+
+// Background thread for applying CPU changes without blocking main loop
+static pthread_t auto_cpu_thread;
+static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int auto_cpu_thread_running = 0;
+
+// Auto CPU Scaling Tuning Constants
+// Frame timing thresholds (based on 90th percentile utilization)
+#define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
+#define AUTO_CPU_UTIL_HIGH 85 // Utilization above 85% = needs boost (15% headroom for jitter)
+#define AUTO_CPU_UTIL_LOW 55 // Utilization below 55% = can reduce (conservative)
+#define AUTO_CPU_BOOST_WINDOWS 2 // Boost after ~1s of high utilization
+#define AUTO_CPU_REDUCE_WINDOWS 4 // Reduce after ~2s of low utilization (conservative)
+#define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
 
 // Input Settings
 static int has_custom_controllers = 0; // Custom controller mappings defined
@@ -944,7 +987,6 @@ static char* onoff_labels[] = {"Off", "On", NULL};
 static char* scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
 static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", NULL};
 static char* sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
-static char* tearing_labels[] = {"Off", "Lenient", "Strict", NULL};
 static char* max_ff_labels[] = {
     "None", "2x", "3x", "4x", "5x", "6x", "7x", "8x", NULL,
 };
@@ -955,9 +997,7 @@ enum {
 	FE_OPT_SCALING,
 	FE_OPT_EFFECT,
 	FE_OPT_SHARPNESS,
-	FE_OPT_TEARING,
 	FE_OPT_OVERCLOCK,
-	FE_OPT_THREAD,
 	FE_OPT_DEBUG,
 	FE_OPT_MAXFF,
 	FE_OPT_COUNT,
@@ -1219,10 +1259,7 @@ static char* button_labels[] = {
     "MENU+L2", "MENU+R2", "MENU+L3", "MENU+R3",    NULL,
 };
 static char* overclock_labels[] = {
-    "Powersave",
-    "Normal",
-    "Performance",
-    NULL,
+    "Powersave", "Normal", "Performance", "Auto", NULL,
 };
 
 // TODO: this should be provided by the core
@@ -1323,51 +1360,21 @@ static struct Config {
                                 .values = sharpness_labels,
                                 .labels = sharpness_labels,
                             },
-                        [FE_OPT_TEARING] =
-                            {
-                                .key = "minarch_prevent_tearing",
-                                .name = "Prevent Tearing",
-                                .desc =
-                                    "Wait for vsync before drawing the next frame.\nLenient only "
-                                    "waits when within frame budget.\nStrict always waits.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = VSYNC_LENIENT,
-                                .value = VSYNC_LENIENT,
-                                .count = 3,
-                                .lock = 0,
-                                .values = tearing_labels,
-                                .labels = tearing_labels,
-                            },
                         [FE_OPT_OVERCLOCK] =
                             {
                                 .key = "minarch_cpu_speed",
                                 .name = "CPU Speed",
-                                .desc = "Over- or underclock the CPU to prioritize\npure "
-                                        "performance or power savings.",
+                                .desc = "Over- or underclock the CPU to prioritize\n"
+                                        "performance or power savings.\n"
+                                        "Auto adjusts based on emulation demand.",
                                 .full = NULL,
                                 .var = NULL,
-                                .default_value = 1,
-                                .value = 1,
-                                .count = 3,
+                                .default_value = 3, // Auto
+                                .value = 3, // Auto
+                                .count = 4,
                                 .lock = 0,
                                 .values = overclock_labels,
                                 .labels = overclock_labels,
-                            },
-                        [FE_OPT_THREAD] =
-                            {
-                                .key = "minarch_thread_video",
-                                .name = "Prioritize Audio",
-                                .desc = "Can eliminate crackle but\nmay cause dropped "
-                                        "frames.\nOnly turn on if necessary.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 2,
-                                .lock = 0,
-                                .values = onoff_labels,
-                                .labels = onoff_labels,
                             },
                         [FE_OPT_DEBUG] =
                             {
@@ -1399,19 +1406,17 @@ static struct Config {
                                 .values = max_ff_labels,
                                 .labels = max_ff_labels,
                             },
-                        [FE_OPT_COUNT] =
-                            {
-                                .key = NULL,
-                                .name = NULL,
-                                .desc = NULL,
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 0,
-                                .lock = 0,
-                                .values = NULL,
-                                .labels = NULL}},
+                        [FE_OPT_COUNT] = {.key = NULL,
+                                          .name = NULL,
+                                          .desc = NULL,
+                                          .full = NULL,
+                                          .var = NULL,
+                                          .default_value = 0,
+                                          .value = 0,
+                                          .count = 0,
+                                          .lock = 0,
+                                          .values = NULL,
+                                          .labels = NULL}},
          .enabled_count = 0,
          .enabled_options = NULL},
     .core =
@@ -1520,7 +1525,308 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
 	return 1;
 }
 
+///////////////////////////////////////
+// Auto CPU Scaling
+///////////////////////////////////////
+// Dynamically adjusts CPU frequency based on frame timing.
+// See docs/auto-cpu-scaling.md for design details.
+//
+// Components:
+// - Background thread: Applies CPU changes without blocking main loop
+// - updateAutoCPU(): Per-frame monitoring called from main loop
+// - measureDisplayRate(): Vsync timing (in Performance Tracking section)
+
+/**
+ * Background thread that applies CPU frequency changes.
+ *
+ * Supports two modes:
+ * - Granular: Uses detected frequency array and PLAT_setCPUFrequency()
+ * - Fallback: Uses 3 levels (POWERSAVE/NORMAL/PERFORMANCE) via PWR_setCPUSpeed()
+ *
+ * This keeps expensive system() calls (overclock.elf) off the main emulation loop,
+ * preventing frame drops and audio glitches during CPU scaling.
+ *
+ * Thread safety: Uses auto_cpu_mutex to protect shared state.
+ */
+static void* auto_cpu_scaling_thread(void* arg) {
+	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n", auto_cpu_use_granular,
+	          auto_cpu_freq_count);
+
+	while (auto_cpu_thread_running) {
+		if (auto_cpu_use_granular) {
+			// Granular frequency mode
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int target_idx = auto_cpu_target_index;
+			int current_idx = auto_cpu_current_index;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target_idx != current_idx && target_idx >= 0 && target_idx < auto_cpu_freq_count) {
+				int freq_khz = auto_cpu_frequencies[target_idx];
+				LOG_info("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
+				         auto_cpu_freq_count - 1);
+
+				if (PLAT_setCPUFrequency(freq_khz) == 0) {
+					pthread_mutex_lock(&auto_cpu_mutex);
+					auto_cpu_current_index = target_idx;
+					pthread_mutex_unlock(&auto_cpu_mutex);
+				} else {
+					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
+				}
+			}
+		} else {
+			// Fallback to 3-level mode
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int target = auto_cpu_target_level;
+			int current = auto_cpu_current_level;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target != current) {
+				int cpu_speed;
+				const char* level_name;
+				switch (target) {
+				case 0:
+					cpu_speed = CPU_SPEED_POWERSAVE;
+					level_name = "POWERSAVE";
+					break;
+				case 1:
+					cpu_speed = CPU_SPEED_NORMAL;
+					level_name = "NORMAL";
+					break;
+				case 2:
+					cpu_speed = CPU_SPEED_PERFORMANCE;
+					level_name = "PERFORMANCE";
+					break;
+				default:
+					cpu_speed = CPU_SPEED_NORMAL;
+					level_name = "NORMAL";
+					break;
+				}
+
+				LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
+				(void)level_name; // Used in LOG_info which may be compiled out
+				PWR_setCPUSpeed(cpu_speed);
+
+				pthread_mutex_lock(&auto_cpu_mutex);
+				auto_cpu_current_level = target;
+				pthread_mutex_unlock(&auto_cpu_mutex);
+			}
+		}
+
+		// Check every 50ms (responsive but not wasteful)
+		usleep(50000);
+	}
+
+	LOG_debug("Auto CPU thread: stopped\n");
+	return NULL;
+}
+
+/**
+ * Starts the auto CPU scaling background thread.
+ *
+ * Call when entering Auto mode (overclock == 3).
+ * Thread will run until auto_cpu_stopThread() is called.
+ */
+static void auto_cpu_startThread(void) {
+	if (auto_cpu_thread_running)
+		return;
+
+	auto_cpu_thread_running = 1;
+	if (pthread_create(&auto_cpu_thread, NULL, auto_cpu_scaling_thread, NULL) != 0) {
+		LOG_error("Failed to create auto CPU scaling thread\n");
+		auto_cpu_thread_running = 0;
+	} else {
+		LOG_debug("Auto CPU: thread started\n");
+	}
+}
+
+/**
+ * Stops the auto CPU scaling background thread.
+ *
+ * Call when exiting Auto mode or when game ends.
+ * Waits for thread to finish before returning.
+ */
+static void auto_cpu_stopThread(void) {
+	if (!auto_cpu_thread_running)
+		return;
+
+	auto_cpu_thread_running = 0;
+	pthread_join(auto_cpu_thread, NULL);
+	LOG_debug("Auto CPU: thread stopped\n");
+}
+
+/**
+ * Requests a CPU level change (non-blocking, fallback mode).
+ *
+ * Sets the target level which the background thread will apply.
+ * Returns immediately without blocking the main loop.
+ *
+ * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
+ */
+static void auto_cpu_setTargetLevel(int level) {
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_target_level = level;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+/**
+ * Requests a CPU frequency index change (non-blocking, granular mode).
+ *
+ * @param index Target index into auto_cpu_frequencies array
+ */
+static void auto_cpu_setTargetIndex(int index) {
+	if (index < 0)
+		index = 0;
+	if (index >= auto_cpu_freq_count)
+		index = auto_cpu_freq_count - 1;
+
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_target_index = index;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+/**
+ * Gets the current frequency index (thread-safe).
+ */
+static int auto_cpu_getCurrentIndex(void) {
+	pthread_mutex_lock(&auto_cpu_mutex);
+	int idx = auto_cpu_current_index;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+	return idx;
+}
+
+/**
+ * Gets the current frequency in kHz.
+ */
+static int auto_cpu_getCurrentFrequency(void) {
+	int idx = auto_cpu_getCurrentIndex();
+	if (idx >= 0 && idx < auto_cpu_freq_count) {
+		return auto_cpu_frequencies[idx];
+	}
+	return 0;
+}
+
+/**
+ * Finds the index of the nearest frequency to the target.
+ */
+static int auto_cpu_findNearestIndex(int target_khz) {
+	if (auto_cpu_freq_count <= 0)
+		return 0;
+
+	int best_idx = 0;
+	int best_diff = abs(auto_cpu_frequencies[0] - target_khz);
+
+	for (int i = 1; i < auto_cpu_freq_count; i++) {
+		int diff = abs(auto_cpu_frequencies[i] - target_khz);
+		if (diff < best_diff) {
+			best_diff = diff;
+			best_idx = i;
+		}
+	}
+	return best_idx;
+}
+
+/**
+ * Detects available CPU frequencies and initializes granular scaling.
+ *
+ * Called once during auto mode initialization. Populates the frequency array
+ * and calculates preset indices for POWERSAVE/NORMAL/PERFORMANCE.
+ *
+ * Strategy for preset mapping (matches manual preset percentages):
+ * - POWERSAVE: 55% of max frequency
+ * - NORMAL: 80% of max frequency
+ * - PERFORMANCE: 100% (max frequency)
+ */
+static void auto_cpu_detectFrequencies(void) {
+	auto_cpu_freq_count =
+	    PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+
+	if (auto_cpu_freq_count >= 2) {
+		auto_cpu_use_granular = 1;
+
+		// Calculate preset indices based on frequency percentages of max
+		int max_freq = auto_cpu_frequencies[auto_cpu_freq_count - 1];
+
+		// POWERSAVE: 55% of max
+		int ps_target = max_freq * 55 / 100;
+		auto_cpu_preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
+
+		// NORMAL: 80% of max
+		int normal_target = max_freq * 80 / 100;
+		auto_cpu_preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
+
+		// PERFORMANCE: max frequency
+		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
+
+		LOG_info("Auto CPU: detected %d frequencies (%d - %d kHz)\n", auto_cpu_freq_count,
+		         auto_cpu_frequencies[0], max_freq);
+		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
+		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
+		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
+		         auto_cpu_preset_indices[2], auto_cpu_frequencies[auto_cpu_preset_indices[2]]);
+
+		// Log all frequencies for debugging
+		LOG_debug("Auto CPU: frequency table:\n");
+		for (int i = 0; i < auto_cpu_freq_count; i++) {
+			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_frequencies[i]);
+		}
+	} else {
+		auto_cpu_use_granular = 0;
+		LOG_info("Auto CPU: frequency detection failed (%d found), using 3-level fallback\n",
+		         auto_cpu_freq_count);
+	}
+}
+
+static void resetAutoCPUState(void) {
+	auto_cpu_frame_count = 0;
+	auto_cpu_high_util_windows = 0;
+	auto_cpu_low_util_windows = 0;
+	auto_cpu_last_underrun = SND_getUnderrunCount();
+	auto_cpu_startup_frames = 0;
+	auto_cpu_frame_time_index = 0;
+	auto_cpu_panic_cooldown = 0;
+
+	// Calculate frame budget from core's declared FPS
+	if (core.fps > 0) {
+		auto_cpu_frame_budget_us = (uint64_t)(1000000.0 / core.fps);
+	} else {
+		auto_cpu_frame_budget_us = 16667; // Default to 60fps
+	}
+
+	// Clear frame time buffer
+	memset(auto_cpu_frame_times, 0, sizeof(auto_cpu_frame_times));
+
+	// Detect available frequencies (only once, on first auto mode entry)
+	static int frequencies_detected = 0;
+	if (!frequencies_detected) {
+		auto_cpu_detectFrequencies();
+		frequencies_detected = 1;
+	}
+
+	// Reset to NORMAL preset (thread-safe)
+	pthread_mutex_lock(&auto_cpu_mutex);
+	if (auto_cpu_use_granular) {
+		auto_cpu_target_index = auto_cpu_preset_indices[1]; // NORMAL
+		auto_cpu_current_index = auto_cpu_preset_indices[1];
+	} else {
+		auto_cpu_target_level = 1; // NORMAL
+		auto_cpu_current_level = 1;
+	}
+	pthread_mutex_unlock(&auto_cpu_mutex);
+
+	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
+	         (unsigned long long)auto_cpu_frame_budget_us, core.fps, auto_cpu_use_granular);
+	LOG_debug(
+	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
+	    AUTO_CPU_UTIL_HIGH, AUTO_CPU_UTIL_LOW, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
+	    AUTO_CPU_STARTUP_GRACE);
+}
+
 static void setOverclock(int i) {
+	// Stop auto thread if leaving auto mode
+	if (overclock == 3 && i != 3) {
+		auto_cpu_stopThread();
+	}
+
 	overclock = i;
 	switch (i) {
 	case 0:
@@ -1532,9 +1838,273 @@ static void setOverclock(int i) {
 	case 2:
 		PWR_setCPUSpeed(CPU_SPEED_PERFORMANCE);
 		break;
+	case 3: // Auto
+		resetAutoCPUState();
+		// Apply initial frequency immediately (synchronous) to avoid startup underrun
+		// Background thread will then maintain this or adjust as needed
+		if (auto_cpu_use_granular) {
+			int start_idx = auto_cpu_preset_indices[1]; // NORMAL preset
+			int start_freq = auto_cpu_frequencies[start_idx];
+			PLAT_setCPUFrequency(start_freq);
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_current_index = start_idx; // Mark as applied
+			pthread_mutex_unlock(&auto_cpu_mutex);
+		} else {
+			PWR_setCPUSpeed(CPU_SPEED_NORMAL);
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_current_level = 1; // Mark as applied
+			pthread_mutex_unlock(&auto_cpu_mutex);
+		}
+		auto_cpu_startThread();
+		break;
 	}
 }
-static int toggle_thread = 0;
+
+// Display rate tracking - shared between Performance Tracking and Auto CPU Scaling
+// Set by measureDisplayRate(), used by updateAutoCPU() for diagnostics
+static float current_vsync_hz = 0;
+
+/**
+ * Updates auto CPU scaling based on frame timing (core.run() execution time).
+ *
+ * Called every frame from the main emulation loop when overclock == 3 (Auto).
+ * Uses the 90th percentile of frame execution times to determine CPU utilization,
+ * which directly measures emulation performance independent of audio/display timing.
+ *
+ * Granular Mode Algorithm:
+ * - Performance scales linearly with frequency
+ * - Step through frequency indices one at a time for smooth transitions
+ * - Use predicted utilization to find optimal frequency
+ *
+ * Fallback Mode Algorithm (3 levels):
+ * - Same as before: count consecutive high/low util windows
+ * - Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
+ *
+ * Both modes handle emergency escalation on actual audio underruns (panic path).
+ */
+static void updateAutoCPU(void) {
+	// Skip if not in auto mode or during special states
+	if (overclock != 3 || fast_forward || show_menu)
+		return;
+
+	// Startup grace period - don't scale during initial warmup
+	if (auto_cpu_startup_frames < AUTO_CPU_STARTUP_GRACE) {
+		auto_cpu_startup_frames++;
+		if (auto_cpu_startup_frames == AUTO_CPU_STARTUP_GRACE) {
+			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
+		}
+		return;
+	}
+
+	// Get current state (thread-safe read)
+	pthread_mutex_lock(&auto_cpu_mutex);
+	int current_idx = auto_cpu_target_index;
+	int current_level = auto_cpu_target_level;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+
+	// Emergency: check for actual underruns (panic path)
+	unsigned underruns = SND_getUnderrunCount();
+	int max_idx = auto_cpu_freq_count - 1;
+	int at_max = auto_cpu_use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+
+	if (underruns > auto_cpu_last_underrun && !at_max) {
+		// Underrun detected - request immediate boost to max
+		if (auto_cpu_use_granular) {
+			auto_cpu_setTargetIndex(max_idx);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to %d kHz\n",
+			         auto_cpu_frequencies[max_idx]);
+		} else {
+			auto_cpu_setTargetLevel(2);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to PERFORMANCE\n");
+		}
+		auto_cpu_high_util_windows = 0;
+		auto_cpu_low_util_windows = 0;
+		// Set cooldown: wait 8 windows (~4 seconds) before allowing reduction
+		// This prevents rapid oscillation after a panic (especially on platforms
+		// with few frequency steps like miyoomini)
+		auto_cpu_panic_cooldown = 8;
+		SND_resetUnderrunCount();
+		auto_cpu_last_underrun = 0;
+		return;
+	}
+	// Update underrun tracking (even if at max level)
+	if (underruns > auto_cpu_last_underrun) {
+		auto_cpu_last_underrun = underruns;
+	}
+
+	// Count frames in current window
+	auto_cpu_frame_count++;
+
+	// Check if window is complete
+	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
+		// Calculate 90th percentile frame time (ignores outliers like loading screens)
+		int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
+		                  ? auto_cpu_frame_time_index
+		                  : AUTO_CPU_WINDOW_FRAMES;
+		if (samples < 5) {
+			// Not enough samples yet - reset and wait
+			auto_cpu_frame_count = 0;
+			return;
+		}
+
+		uint64_t p90_time = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
+
+		// Calculate utilization as percentage of frame budget
+		unsigned util = 0;
+		if (auto_cpu_frame_budget_us > 0) {
+			util = (unsigned)((p90_time * 100) / auto_cpu_frame_budget_us);
+			if (util > 200)
+				util = 200; // Cap at 200% for sanity
+		}
+
+		if (auto_cpu_use_granular) {
+			// Granular mode: use linear performance scaling to find optimal frequency
+			// Performance scales linearly with frequency, so:
+			// new_util = current_util * (current_freq / new_freq)
+
+			int current_freq = auto_cpu_frequencies[current_idx];
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_panic_cooldown > 0) {
+				auto_cpu_panic_cooldown--;
+			}
+
+			if (util > AUTO_CPU_UTIL_HIGH) {
+				// Need more performance - step up
+				auto_cpu_high_util_windows++;
+				auto_cpu_low_util_windows = 0;
+
+				if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_idx < max_idx) {
+					// Find next frequency that would bring util under 75% (target sweet spot)
+					// Using: new_util = util * (current_freq / new_freq)
+					// So: new_freq = current_freq * util / target_util
+					int target_util = 70; // Target 70% after boost
+					int needed_freq = current_freq * (int)util / target_util;
+					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+
+					// Ensure we actually go higher
+					if (new_idx <= current_idx)
+						new_idx = current_idx + 1;
+					if (new_idx > max_idx)
+						new_idx = max_idx;
+
+					auto_cpu_setTargetIndex(new_idx);
+					auto_cpu_high_util_windows = 0;
+					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
+					         auto_cpu_frequencies[new_idx], util, target_util);
+				}
+			} else if (util < AUTO_CPU_UTIL_LOW) {
+				// Can reduce power - step down
+				auto_cpu_low_util_windows++;
+				auto_cpu_high_util_windows = 0;
+
+				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				int reduce_ok = (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS) &&
+				                (auto_cpu_panic_cooldown == 0) && (current_idx > 0);
+
+				if (reduce_ok) {
+					// Find frequency that would bring util up to ~70% (target sweet spot)
+					// new_util = util * (current_freq / new_freq)
+					// new_freq = current_freq * util / target_util
+					int target_util = 70; // Target 70% after reduction
+					int needed_freq = current_freq * (int)util / target_util;
+					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+
+					// Ensure we actually go lower
+					if (new_idx >= current_idx)
+						new_idx = current_idx - 1;
+					if (new_idx < 0)
+						new_idx = 0;
+
+					// CONSERVATIVE STEP LIMIT: Never step down more than 2 indices at once
+					// This prevents jumping from max to min on platforms with few frequencies
+					// (e.g., miyoomini 1600→400 MHz caused immediate underruns)
+					int max_step = 2;
+					if (current_idx - new_idx > max_step) {
+						new_idx = current_idx - max_step;
+					}
+
+					// Safety check: predict new utilization, keep comfortable headroom (≤75%)
+					// Using 75% instead of 85% gives buffer for jitter and measurement error
+					int new_freq = auto_cpu_frequencies[new_idx];
+					int predicted_util = util * current_freq / new_freq;
+					int safe_util = 75; // Conservative threshold for reduction decisions
+
+					if (predicted_util > safe_util) {
+						// Would be too close to edge - step down by only 1 instead
+						new_idx = current_idx - 1;
+						new_freq = auto_cpu_frequencies[new_idx];
+						predicted_util = util * current_freq / new_freq;
+					}
+
+					if (new_idx >= 0 && predicted_util <= AUTO_CPU_UTIL_HIGH) {
+						auto_cpu_setTargetIndex(new_idx);
+						auto_cpu_low_util_windows = 0;
+						LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
+						         current_freq, new_freq, util, predicted_util);
+					}
+				}
+			} else {
+				// In sweet spot - reset counters
+				auto_cpu_high_util_windows = 0;
+				auto_cpu_low_util_windows = 0;
+			}
+
+			// Sampled debug logging (every 4th window = ~2 seconds)
+			static int debug_window_count = 0;
+			if (++debug_window_count >= 4) {
+				debug_window_count = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% util=%u%% freq=%dkHz idx=%d/%d vsync=%.1fHz\n",
+				          snap.fill_pct, util, current_freq, current_idx, max_idx,
+				          current_vsync_hz);
+				(void)snap; // Used in LOG_debug which may be compiled out
+			}
+		} else {
+			// Fallback mode: 3-level scaling (original algorithm)
+			if (util > AUTO_CPU_UTIL_HIGH) {
+				auto_cpu_high_util_windows++;
+				auto_cpu_low_util_windows = 0;
+			} else if (util < AUTO_CPU_UTIL_LOW) {
+				auto_cpu_low_util_windows++;
+				auto_cpu_high_util_windows = 0;
+			} else {
+				auto_cpu_high_util_windows = 0;
+				auto_cpu_low_util_windows = 0;
+			}
+
+			// Sampled debug logging
+			static int debug_window_count_fallback = 0;
+			if (++debug_window_count_fallback >= 4) {
+				debug_window_count_fallback = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
+				          snap.fill_pct, util, current_level, current_vsync_hz, snap.total_adjust);
+				(void)snap; // Used in LOG_debug which may be compiled out
+			}
+
+			// Boost if sustained high utilization
+			if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_level < 2) {
+				int new_level = current_level + 1;
+				auto_cpu_setTargetLevel(new_level);
+				auto_cpu_high_util_windows = 0;
+				LOG_info("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
+			}
+
+			// Reduce if sustained low utilization
+			if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_level > 0) {
+				int new_level = current_level - 1;
+				auto_cpu_setTargetLevel(new_level);
+				auto_cpu_low_util_windows = 0;
+				LOG_info("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+			}
+		}
+
+		// Reset window counter (frame times stay in ring buffer)
+		auto_cpu_frame_count = 0;
+	}
+}
+
 static void Config_syncFrontend(char* key, int value) {
 	int i = -1;
 	if (exactMatch(key, config.frontend.options[FE_OPT_SCALING].key)) {
@@ -1562,13 +2132,6 @@ static void Config_syncFrontend(char* key, int value) {
 
 		renderer.dst_p = 0;
 		i = FE_OPT_SHARPNESS;
-	} else if (exactMatch(key, config.frontend.options[FE_OPT_TEARING].key)) {
-		prevent_tearing = value;
-		i = FE_OPT_TEARING;
-	} else if (exactMatch(key, config.frontend.options[FE_OPT_THREAD].key)) {
-		int old_value = thread_video || was_threaded;
-		toggle_thread = old_value != value;
-		i = FE_OPT_THREAD;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_OVERCLOCK].key)) {
 		overclock = value;
 		i = FE_OPT_OVERCLOCK;
@@ -2293,18 +2856,8 @@ static void Menu_loadState(void);
  * @param enable 1 to enable fast-forward, 0 to disable
  * @return The enable value (passthrough)
  *
- * @note Threading incompatible with FF due to frame pacing requirements
  */
 static int setFastForward(int enable) {
-	if (!fast_forward && enable && thread_video) {
-		// LOG_info("entered fast forward with threaded core...");
-		was_threaded = 1;
-		toggle_thread = 1;
-	} else if (fast_forward && !enable && !thread_video && was_threaded) {
-		// LOG_info("exited fast forward with previously threaded core...");
-		was_threaded = 0;
-		toggle_thread = 1;
-	}
 	fast_forward = enable;
 	return enable;
 }
@@ -2339,20 +2892,6 @@ static void input_poll_callback(void) {
 	}
 	if (PAD_isPressed(BTN_MENU) && (PAD_isPressed(BTN_PLUS) || PAD_isPressed(BTN_MINUS))) {
 		ignore_menu = 1;
-	}
-
-	if (PAD_justPressed(BTN_POWER)) {
-		if (thread_video) {
-			// LOG_info("pressed power with threaded core...");
-			was_threaded = 1;
-			toggle_thread = 1;
-		}
-	} else if (PAD_justReleased(BTN_POWER)) {
-		if (!thread_video && was_threaded) {
-			// LOG_info("released power with previously threaded core before power off...");
-			was_threaded = 0;
-			toggle_thread = 1;
-		}
 	}
 
 	static int toggled_ff_on =
@@ -2423,12 +2962,6 @@ static void input_poll_callback(void) {
 
 	if (!ignore_menu && PAD_justReleased(BTN_MENU)) {
 		show_menu = 1;
-
-		if (thread_video) {
-			pthread_mutex_lock(&core_mx);
-			should_run_core = 0;
-			pthread_mutex_unlock(&core_mx);
-		}
 	}
 
 	// TODO: figure out how to ignore button when MENU+button is handled first
@@ -2976,15 +3509,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 			return false;
 		}
 
-		// Determine current throttle mode
+		// Determine current throttle mode (vsync always on, rate control handles sync)
 		if (fast_forward) {
 			state->mode = RETRO_THROTTLE_FAST_FORWARD;
 			state->rate = (float)(max_ff_speed + 1); // max_ff_speed+1: 0→1x, 1→2x, 2→3x, 3→4x
-		} else if (prevent_tearing) {
-			state->mode = RETRO_THROTTLE_VSYNC;
-			state->rate = 1.0f;
 		} else {
-			state->mode = RETRO_THROTTLE_UNBLOCKED;
+			state->mode = RETRO_THROTTLE_VSYNC;
 			state->rate = 1.0f;
 		}
 
@@ -3294,6 +3824,87 @@ static const char* bitmap_font[] = {
             "     "
             "     "
             "     ",
+    ['L'] = "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "11111",
+    ['b'] = "1    "
+            "1    "
+            "1    "
+            "1111 "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1111 ",
+    ['u'] = "     "
+            "     "
+            "     "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1  11"
+            " 11 1",
+    ['r'] = "     "
+            "     "
+            "     "
+            "1 11 "
+            "11  1"
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    [':'] = "     "
+            "     "
+            " 11  "
+            " 11  "
+            "     "
+            "     "
+            " 11  "
+            " 11  "
+            "     ",
+    ['!'] = "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "     "
+            "  1  "
+            "  1  ",
+    ['F'] = "11111"
+            "1    "
+            "1    "
+            "1    "
+            "1111 "
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    ['P'] = "1111 "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1111 "
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    ['S'] = " 111 "
+            "1   1"
+            "1    "
+            "1    "
+            " 111 "
+            "    1"
+            "    1"
+            "1   1"
+            " 111 ",
 };
 static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int stride, int width,
                            int height) {
@@ -3310,10 +3921,12 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 	if (oy < 0)
 		oy = height - h + oy;
 
+	// Bounds check - need 1px margin for outline
+	if (ox < 1 || oy < 1 || ox + w + 1 > width || oy + h + 1 > height)
+		return;
+
 	data += oy * stride + ox;
-	uint16_t* row =
-	    data -
-	    stride; // TODO: this will crash and burn if ox,oy==0,0 but is fine as used currently :sweat_smile:
+	uint16_t* row = data - stride;
 	memset(row - 1, 0, (w + 2) * 2);
 	for (int y = 0; y < CHAR_HEIGHT; y++) {
 		row = data + y * stride;
@@ -3337,14 +3950,15 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 // Video Processing
 ///////////////////////////////////////
 
-// Performance counters for debug overlay
+// Performance counters for debug overlay and monitoring
 static int cpu_ticks = 0;
 static int fps_ticks = 0;
 static int use_ticks = 0;
 static double fps_double = 0;
 static double cpu_double = 0;
-static double use_double = 0;
+static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
+// Note: current_vsync_hz is declared earlier (used by updateAutoCPU, set by measureDisplayRate)
 
 #ifdef USES_SWSCALER
 static int fit = 1; // Use software scaler (fit to screen)
@@ -3604,8 +4218,6 @@ static void pixel_convert(const void* data, unsigned width, unsigned height, siz
 		          pixel_format, min_pitch);
 		return;
 	}
-
-	LOG_debug("Converting %ux%u from format %d to RGB565", width, height, pixel_format);
 
 	switch (pixel_format) {
 	case RETRO_PIXEL_FORMAT_XRGB8888:
@@ -3995,6 +4607,11 @@ static void selectScaler(int src_w, int src_h, int src_p) {
 	screen = GFX_resize(dst_w, dst_h, dst_p);
 	// }
 }
+// Flag to indicate a frame was rendered and is ready for flip
+// Set by video_refresh_callback, cleared after flip in main loop
+static int frame_ready_for_flip = 0;
+static uint32_t last_blit_time = 0; // For FF frame skip (blit cost savings)
+
 static void video_refresh_callback_main(const void* data, unsigned width, unsigned height,
                                         size_t pitch) {
 	// return;
@@ -4004,13 +4621,10 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// static int tmp_frameskip = 0;
 	// if ((tmp_frameskip++)%2) return;
 
-	static uint32_t last_flip_time = 0;
-
-	// 10 seems to be the sweet spot that allows 2x in NES and SNES and 8x in GB at 60fps
-	// 14 will let GB hit 10x but NES and SNES will drop to 1.5x at 30fps (not sure why)
-	// but 10 hurts PS...
-	// TODO: 10 was based on rg35xx, probably different results on other supported platforms
-	if (fast_forward && SDL_GetTicks() - last_flip_time < 10)
+	// During fast-forward, skip blitting if less than 10ms since last blit
+	// This saves CPU/GPU cost from the blit operation itself
+	// (The actual frame pacing is handled by limitFF() in main loop)
+	if (fast_forward && SDL_GetTicks() - last_blit_time < 10)
 		return;
 
 	// FFVII menus
@@ -4036,8 +4650,6 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	if (NEEDS_CONVERSION) {
 		// Core uses non-native format, we'll convert to RGB565 (2 bytes/pixel)
 		rgb565_pitch = width * FIXED_BPP;
-		LOG_debug("Format %d->RGB565: %ux%u, pitch %zu->%zu bytes", pixel_format, width, height,
-		          pitch, rgb565_pitch);
 	} else {
 		// Core provided RGB565 directly, use as-is
 		rgb565_pitch = pitch;
@@ -4124,19 +4736,60 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 			pitch_in_pixels = rgb565_pitch / sizeof(uint16_t);
 		}
 
-		sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
+		// Get buffer fill (sampled every 15 frames for readability)
+		static unsigned fill_display = 0;
+		static int sample_count = 0;
+		if (++sample_count >= 15) {
+			sample_count = 0;
+			fill_display = SND_getBufferOccupancy();
+		}
+
+		// Top-left: FPS and system CPU %
+		sprintf(debug_text, "%.0f FPS %i%%", fps_double, (int)use_double);
 		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
-		sprintf(debug_text, "%i,%i %ix%i", renderer.dst_x, renderer.dst_y, renderer.src_w * scale,
-		        renderer.src_h * scale);
+		// Top-right: Source resolution and scale factor
+		sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
 		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
-		sprintf(debug_text, "%.01f/%.01f %i%%", fps_double, cpu_double, (int)use_double);
+		// Bottom-left: CPU info + buffer fill (always), plus utilization when auto
+		if (overclock == 3) {
+			// Auto CPU mode: show frequency/level, utilization, and buffer fill
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int current_idx = auto_cpu_current_index;
+			int level = auto_cpu_current_level;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			// Calculate current utilization from most recent frame times
+			unsigned util = 0;
+			int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
+			                  ? auto_cpu_frame_time_index
+			                  : AUTO_CPU_WINDOW_FRAMES;
+			if (samples >= 5 && auto_cpu_frame_budget_us > 0) {
+				uint64_t p90 = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
+				util = (unsigned)((p90 * 100) / auto_cpu_frame_budget_us);
+				if (util > 200)
+					util = 200;
+			}
+
+			if (auto_cpu_use_granular && current_idx >= 0 && current_idx < auto_cpu_freq_count) {
+				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
+				int freq_mhz = auto_cpu_frequencies[current_idx] / 1000;
+				sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
+			} else {
+				// Fallback mode: show level
+				sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+			}
+		} else {
+			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
+			sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
+		}
 		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
+		// Bottom-right: Output resolution
 		sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
 		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
@@ -4145,18 +4798,15 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
 	GFX_blitRenderer(&renderer);
-
-	if (!thread_video)
-		GFX_flip(screen);
-	last_flip_time = SDL_GetTicks();
+	last_blit_time = SDL_GetTicks();
+	frame_ready_for_flip = 1; // Signal main loop to flip
+	// NOTE: GFX_flip moved to main loop - see "Decouple vsync from core.run()" change
 }
 
 /**
- * Main video refresh callback from libretro core.
+ * Video refresh callback from libretro core.
  *
- * Receives rendered frame from core and handles it based on threading mode:
- * - Non-threaded: Calls video_refresh_callback_main directly
- * - Threaded: Copies/converts frame to backbuffer and signals main thread
+ * Receives rendered frame from core and passes it to the main rendering function.
  *
  * @param data Pointer to pixel data (format depends on pixel_format setting)
  * @param width Frame width in pixels
@@ -4164,68 +4814,13 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @param pitch Bytes per scanline
  *
  * @note This is a libretro callback, invoked by core after rendering a frame
- * @note Threading mode copies frame to prevent race conditions
- * @note When using non-RGB565 format, performs pixel conversion here
  */
 static void video_refresh_callback(const void* data, unsigned width, unsigned height,
                                    size_t pitch) {
 	if (!data)
 		return;
 
-	if (thread_video) {
-		pthread_mutex_lock(&core_mx);
-
-		// Determine backbuffer pitch:
-		// - Non-RGB565: Output is tightly packed after conversion (width * 2 bytes/line)
-		// - RGB565: Preserve core's pitch (may have padding)
-		size_t backbuffer_pitch = NEEDS_CONVERSION ? (width * FIXED_BPP) : pitch;
-
-		// Reallocate backbuffer if dimensions changed
-		if (backbuffer && (backbuffer->w != (int)width || backbuffer->h != (int)height ||
-		                   backbuffer->pitch != (int)backbuffer_pitch)) {
-			free(backbuffer->pixels);
-			SDL_FreeSurface(backbuffer);
-			backbuffer = NULL;
-		}
-
-		if (!backbuffer) {
-			size_t buffer_size = height * backbuffer_pitch;
-			uint16_t* pixels = malloc(buffer_size);
-			if (!pixels) {
-				LOG_error("Failed to allocate threaded backbuffer: %ux%u (%zu bytes)", width,
-				          height, buffer_size);
-				pthread_mutex_unlock(&core_mx);
-				return;
-			}
-			LOG_debug("Allocated threaded backbuffer: %ux%u (%zu bytes)", width, height,
-			          buffer_size);
-			backbuffer = SDL_CreateRGBSurfaceFrom(pixels, width, height, FIXED_DEPTH,
-			                                      backbuffer_pitch, RGBA_MASK_565);
-		}
-
-		// Copy or convert data to backbuffer
-		if (NEEDS_CONVERSION) {
-			// Ensure conversion buffer is allocated
-			if (!convert_buffer)
-				convert_buffer_alloc(width, height);
-
-			// Convert to RGB565
-			pixel_convert(data, width, height, pitch);
-			if (!convert_buffer) {
-				LOG_error("Failed to allocate conversion buffer: %ux%u", width, height);
-				pthread_mutex_unlock(&core_mx);
-				return;
-			}
-			memcpy(backbuffer->pixels, convert_buffer, height * backbuffer_pitch);
-		} else {
-			// Core provided RGB565, direct copy with original pitch
-			memcpy(backbuffer->pixels, data, height * backbuffer_pitch);
-		}
-
-		pthread_cond_signal(&core_rq);
-		pthread_mutex_unlock(&core_mx);
-	} else
-		video_refresh_callback_main(data, width, height, pitch);
+	video_refresh_callback_main(data, width, height, pitch);
 }
 
 ///////////////////////////////////////
@@ -4445,6 +5040,9 @@ void Core_quit(void) {
 	}
 }
 void Core_close(void) {
+	// Stop auto CPU scaling thread if running
+	auto_cpu_stopThread();
+
 	// Free pixel format conversion buffer
 	convert_buffer_free();
 
@@ -4579,7 +5177,7 @@ void Menu_beforeSleep(void) {
 	RTC_write();
 	State_autosave();
 	putFile(AUTO_RESUME_PATH, game.path + strlen(SDCARD_PATH));
-	PWR_setCPUSpeed(CPU_SPEED_MENU);
+	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 }
 void Menu_afterSleep(void) {
 	// LOG_info("beforeSleep");
@@ -5945,8 +6543,7 @@ static void Menu_loop(void) {
 	PWR_warn(0);
 	if (!HAS_POWER_BUTTON)
 		PWR_enableSleep();
-	PWR_setCPUSpeed(CPU_SPEED_MENU); // set Hz directly
-	GFX_setVsync(VSYNC_STRICT);
+	PWR_setCPUSpeed(CPU_SPEED_IDLE); // set Hz directly
 	GFX_setEffect(EFFECT_NONE);
 
 	int rumble_strength = VIB_getStrength();
@@ -6249,22 +6846,20 @@ static void Menu_loop(void) {
 		GFX_setEffect(screen_effect);
 		GFX_clear(screen);
 		video_refresh_callback(renderer.src, renderer.true_w, renderer.true_h, renderer.src_p);
+		// Flip immediately since we're outside main loop (restoring game after menu)
+		if (frame_ready_for_flip) {
+			GFX_flip(screen);
+			frame_ready_for_flip = 0;
+		}
 
 		setOverclock(overclock); // restore overclock value
 		if (rumble_strength)
 			VIB_setStrength(rumble_strength);
 
-		GFX_setVsync(prevent_tearing);
 		if (!HAS_POWER_BUTTON)
 			PWR_disableSleep();
-
-		if (thread_video) {
-			pthread_mutex_lock(&core_mx);
-			should_run_core = 1;
-			pthread_mutex_unlock(&core_mx);
-		}
 	} else if (exists(NOUI_PATH))
-		PWR_powerOff(); // TODO: won't work with threaded core, only check this once per launch
+		PWR_powerOff();
 
 	SDL_FreeSurface(menu.bitmap);
 	menu.bitmap = NULL;
@@ -6275,6 +6870,19 @@ static void Menu_loop(void) {
 ///////////////////////////////////////
 // Performance Tracking
 ///////////////////////////////////////
+// Runtime monitoring for debug HUD and audio/video synchronization.
+//
+// Functions:
+// - getUsage(): System CPU% from /proc/self/stat
+// - trackFPS(): FPS and CPU counters for debug HUD (once per second)
+// - measureDisplayRate(): Vsync timing for audio rate control (per frame)
+// - measureAudioRate(): Audio consumption rate for rate control (2s windows)
+// - limitFF(): Fast-forward speed limiter
+//
+// These feed data to:
+// - Debug HUD (top-left corner): FPS, CPU%
+// - Audio rate control (api.c): Display/audio rate meters
+// - Auto CPU scaling: current_vsync_hz for diagnostics
 
 /**
  * Gets CPU usage percentage from /proc/self/stat.
@@ -6319,6 +6927,7 @@ finish:
 static void trackFPS(void) {
 	cpu_ticks += 1;
 	static int last_use_ticks = 0;
+	static unsigned last_underrun_count = 0;
 	uint32_t now = SDL_GetTicks();
 	if (now - sec_start >= 1000) {
 		double last_time = (double)(now - sec_start) / 1000;
@@ -6333,7 +6942,77 @@ static void trackFPS(void) {
 		cpu_ticks = 0;
 		fps_ticks = 0;
 
-		// LOG_info("fps: %f cpu: %f", fps_double, cpu_double);
+		// Check for audio underruns (sampled once per second)
+		// Only warn if not in auto CPU mode (auto mode handles this via PANIC path)
+		if (overclock != 3) {
+			unsigned underruns = SND_getUnderrunCount();
+			if (underruns > last_underrun_count) {
+				LOG_warn("Audio: %u underrun(s) in last second\n", underruns - last_underrun_count);
+				last_underrun_count = underruns;
+			}
+		}
+	}
+}
+
+/**
+ * Measures display refresh rate via vsync timing.
+ *
+ * Called every frame from main loop. Measures the interval between vsync
+ * events, converts to Hz, and passes to the rate meter in api.c.
+ * The meter handles windowing, median calculation, and stability detection.
+ */
+static void measureDisplayRate(void) {
+	static uint64_t last_flip = 0;
+
+	uint64_t now = getMicroseconds();
+
+	if (last_flip > 0) {
+		// Calculate this interval in Hz
+		uint64_t interval_us = now - last_flip;
+		if (interval_us > 0) {
+			float hz = 1000000.0f / (float)interval_us;
+			SND_addDisplaySample(hz);
+
+			// Update current measurement for diagnostic logging
+			current_vsync_hz = hz;
+		}
+	}
+
+	last_flip = now;
+}
+
+/**
+ * Measures audio consumption rate by tracking SDL callback requests.
+ *
+ * Called every frame. Measures samples consumed over longer windows
+ * (configured by RATE_METER_AUDIO_INTERVAL) to average out SDL callback
+ * burst patterns. The meter handles windowing and stability detection.
+ */
+static void measureAudioRate(void) {
+	static uint64_t last_time = 0;
+	static uint64_t last_requested = 0;
+
+	SND_Snapshot snap = SND_getSnapshot();
+	uint64_t now = snap.timestamp_us;
+
+	if (last_time > 0 && snap.samples_requested > last_requested) {
+		float dt = (now - last_time) / 1000000.0f;
+
+		// Measure over longer windows to average out callback bursts
+		// Short windows (100ms) see 40-53kHz swings; 2s windows see stable ~48kHz
+		if (dt >= RATE_METER_AUDIO_INTERVAL) {
+			uint64_t requested_delta = snap.samples_requested - last_requested;
+			float hz = requested_delta / dt;
+			SND_addAudioSample(hz);
+
+			// Reset tracking for next window
+			last_time = now;
+			last_requested = snap.samples_requested;
+		}
+	} else {
+		// Initialize tracking
+		last_time = now;
+		last_requested = snap.samples_requested;
 	}
 }
 
@@ -6376,69 +7055,6 @@ static void limitFF(void) {
 }
 
 ///////////////////////////////////////
-// Threading
-///////////////////////////////////////
-
-/**
- * Core emulation thread (threaded video mode).
- *
- * Runs the core in a separate thread, allowing video rendering to happen
- * independently. The core thread runs frames and signals the main thread
- * when a new frame is ready.
- *
- * @param arg Unused thread argument
- * @return NULL on thread exit
- *
- * @note Only used when thread_video is enabled
- * @note Controlled by should_run_core flag (allows pause)
- */
-static void* coreThread(void* arg) {
-	// Force initial vsync for better frame pacing
-	GFX_clearAll();
-	GFX_flip(screen);
-
-	while (!quit) {
-		int run = 0;
-		pthread_mutex_lock(&core_mx);
-		run = should_run_core;
-		pthread_mutex_unlock(&core_mx);
-
-		if (run) {
-			// Call frame time callback if registered (per libretro spec)
-			// Passes delta time since last frame, or reference value during fast-forward
-			if (video_state.frame_time_cb) {
-				retro_usec_t now = getMicroseconds();
-				retro_usec_t delta;
-				if (fast_forward) {
-					// During fast-forward, use the reference frame time
-					delta = video_state.frame_time_ref;
-				} else if (video_state.frame_time_last == 0) {
-					// First frame - use reference as initial delta
-					delta = video_state.frame_time_ref;
-				} else {
-					// Normal playback - calculate actual delta
-					delta = now - video_state.frame_time_last;
-				}
-				video_state.frame_time_last = now;
-				video_state.frame_time_cb(delta);
-			}
-
-			// Report audio buffer status to core for frameskip decisions.
-			// See non-threaded path for explanation of rate control interaction.
-			if (core.audio_buffer_status) {
-				unsigned occupancy = SND_getBufferOccupancy();
-				core.audio_buffer_status(true, occupancy, occupancy < 25);
-			}
-
-			core.run();
-			limitFF();
-			trackFPS();
-		}
-	}
-	pthread_exit(NULL);
-}
-
-///////////////////////////////////////
 // Main Entry Point
 ///////////////////////////////////////
 
@@ -6456,11 +7072,8 @@ static void* coreThread(void* arg) {
  * 6. Resume from auto-save slot
  * 7. Enter main loop
  *
- * Main loop:
- * - Non-threaded: Runs core.run() directly, flips screen
- * - Threaded: Waits for core thread signal, flips screen
- * - Handles menu display
- * - Handles threading mode changes
+ * Main loop runs core.run() each frame with vsync. Dynamic rate control
+ * adjusts audio resampling to maintain sync without blocking.
  *
  * Shutdown sequence:
  * 1. Auto-save current state to slot 9
@@ -6519,7 +7132,6 @@ int main(int argc, char* argv[]) {
 	Config_init();
 	Config_readOptions(); // cores with boot logo option (eg. gb) need to load options early
 	setOverclock(overclock);
-	GFX_setVsync(prevent_tearing);
 
 	Core_init();
 
@@ -6540,12 +7152,6 @@ int main(int argc, char* argv[]) {
 	Menu_init();
 	State_resume();
 	Menu_initState(); // make ready for state shortcuts
-
-	if (thread_video) {
-		core_mx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-		core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-		pthread_create(&core_pt, NULL, &coreThread, NULL);
-	}
 
 	PWR_warn(1);
 	PWR_disableAutosleep();
@@ -6580,66 +7186,50 @@ int main(int argc, char* argv[]) {
 			video_state.frame_time_cb(delta);
 		}
 
-		if (!thread_video) {
-			// Report audio buffer status to core for frameskip decisions.
-			// This works alongside our dynamic rate control (±2% in api.c):
-			// - Rate control: subtle adjustment to prevent drift (targets 50% fill)
-			// - Frameskip: aggressive response when CPU can't keep up (<25% fill)
-			// Both mechanisms are complementary - rate control handles timing drift,
-			// frameskip handles sustained performance issues.
-			if (core.audio_buffer_status) {
-				unsigned occupancy = SND_getBufferOccupancy();
-				core.audio_buffer_status(true, occupancy, occupancy < 25);
-			}
-
-			core.run();
-			limitFF();
-			trackFPS();
+		// Report audio buffer status to core for frameskip decisions.
+		// This works alongside our dynamic rate control (±2% in api.c):
+		// - Rate control: subtle adjustment to prevent drift (targets 50% fill)
+		// - Frameskip: aggressive response when CPU can't keep up (<25% fill)
+		// Both mechanisms are complementary - rate control handles timing drift,
+		// frameskip handles sustained performance issues.
+		if (core.audio_buffer_status) {
+			unsigned occupancy = SND_getBufferOccupancy();
+			core.audio_buffer_status(true, occupancy, occupancy < 25);
 		}
 
-		if (thread_video && !quit) {
-			pthread_mutex_lock(&core_mx);
-			pthread_cond_wait(&core_rq, &core_mx);
-
-			if (backbuffer) {
-				video_refresh_callback_main(backbuffer->pixels, backbuffer->w, backbuffer->h,
-				                            backbuffer->pitch);
-				GFX_flip(screen);
-			}
-			core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-			pthread_mutex_unlock(&core_mx);
+		// Measure frame execution time for auto CPU scaling
+		// Only measure when in auto mode and not fast-forwarding
+		uint64_t frame_start = 0;
+		if (overclock == 3 && !fast_forward && !show_menu) {
+			frame_start = getMicroseconds();
 		}
+
+		core.run();
+
+		// Store frame time for auto CPU scaling analysis
+		// Now this measures actual emulation time, not vsync wait
+		if (frame_start > 0) {
+			uint64_t frame_time = getMicroseconds() - frame_start;
+			auto_cpu_frame_times[auto_cpu_frame_time_index % AUTO_CPU_WINDOW_FRAMES] = frame_time;
+			auto_cpu_frame_time_index++;
+		}
+
+		// Flip to display - vsync happens HERE, after core.run() completes
+		// This decouples emulation timing from display timing, allowing
+		// accurate frame time measurement (emulation only, no vsync wait)
+		if (frame_ready_for_flip) {
+			GFX_flip(screen);
+			measureDisplayRate();
+			measureAudioRate();
+			frame_ready_for_flip = 0;
+		}
+
+		limitFF();
+		trackFPS();
+		updateAutoCPU();
 
 		if (show_menu)
 			Menu_loop();
-
-		if (toggle_thread) {
-			toggle_thread = 0;
-			if (was_threaded && !thread_video) {
-				// LOG_info("was fast forwarding while previously threaded (%i) so re-enabling threading %i", thread_video, !thread_video);
-				// revert to pre-fast_forward state before toggling
-				was_threaded = 0;
-				thread_video = !thread_video;
-			}
-			// LOG_info("toggling thread from %i to %i", thread_video, !thread_video);
-			thread_video = !thread_video;
-			if (thread_video) {
-				// enable
-				core_mx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-				core_rq = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-				pthread_create(&core_pt, NULL, &coreThread, NULL);
-			} else {
-				// disable
-				pthread_cancel(core_pt);
-				pthread_join(core_pt, NULL);
-
-				// force a vsync immediately before loop
-				// for better frame pacing?
-				GFX_clearAll();
-				GFX_flip(screen);
-			}
-		}
-		// LOG_info("frame duration: %ims", SDL_GetTicks()-frame_start);
 
 		hdmimon();
 	}

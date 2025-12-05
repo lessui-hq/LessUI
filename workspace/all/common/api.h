@@ -490,29 +490,6 @@ void GFX_sync(void);
 void GFX_quit(void);
 
 /**
- * VSync modes for frame pacing.
- */
-enum {
-	VSYNC_OFF = 0, // No frame pacing
-	VSYNC_LENIENT, // Default, allows slight timing variance
-	VSYNC_STRICT, // Strict 60fps timing
-};
-
-/**
- * Gets current VSync mode.
- *
- * @return VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-int GFX_getVsync(void);
-
-/**
- * Sets VSync mode.
- *
- * @param vsync VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-void GFX_setVsync(int vsync);
-
-/**
  * Truncates text to fit within maximum width, adding ellipsis if needed.
  *
  * @param font Font to use for measuring
@@ -844,9 +821,108 @@ size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count);
 unsigned SND_getBufferOccupancy(void);
 
 /**
+ * Gets count of audio buffer underruns (emergency signal for CPU scaling).
+ *
+ * @return Number of underruns since init or last reset
+ */
+unsigned SND_getUnderrunCount(void);
+
+/**
+ * Resets the underrun counter after handling the emergency.
+ */
+void SND_resetUnderrunCount(void);
+
+/**
+ * Adds a display rate sample for continuous measurement.
+ * Called every frame with vsync interval converted to Hz.
+ *
+ * @param hz Display refresh rate in Hz for this frame
+ */
+void SND_addDisplaySample(float hz);
+
+/**
+ * Adds an audio rate sample for continuous measurement.
+ * Called periodically with measured consumption rate.
+ *
+ * @param hz Audio consumption rate in Hz
+ */
+void SND_addAudioSample(float hz);
+
+/**
+ * Gets the current display rate swing (max - min).
+ * Used for dynamic buffer sizing.
+ *
+ * @return Swing in Hz, or 0 if insufficient samples
+ */
+float SND_getDisplaySwing(void);
+
+/**
+ * Gets the current audio rate swing (max - min).
+ * Used for dynamic buffer sizing.
+ *
+ * @return Swing in Hz, or 0 if insufficient samples
+ */
+float SND_getAudioSwing(void);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
+
+/**
+ * Audio diagnostic snapshot - captures all relevant state atomically.
+ * Used for debugging rate control and buffer fill issues.
+ */
+typedef struct {
+	// Timestamp for delta calculations
+	uint64_t timestamp_us; // Microseconds since epoch (for calculating actual rates)
+
+	// Buffer state
+	unsigned fill_pct; // Buffer fill level (0-100%)
+	int frame_in; // Write position
+	int frame_out; // Read position
+	int frame_count; // Buffer capacity
+
+	// Sample flow (for verifying resampler behavior)
+	uint64_t samples_in; // Total input samples fed to resampler
+	uint64_t samples_written; // Total output samples written (from resampler)
+	uint64_t samples_consumed; // Total samples consumed by audio callback
+	uint64_t samples_requested; // Total samples requested by SDL callback
+
+	// Rate control parameters
+	float display_hz; // Measured display rate (0 if not measured)
+	float audio_hz; // Measured audio consumption rate (0 if not measured)
+	float frame_rate; // Core frame rate (e.g., 60.0988)
+	float base_correction; // Static display/core correction
+	float audio_correction; // Static audio clock drift correction
+	float rate_adjust; // Dynamic rate control adjustment
+	float total_adjust; // Combined adjustment (base * audio * rate)
+
+	// Resampler state
+	int sample_rate_in; // Input sample rate (from core)
+	int sample_rate_out; // Output sample rate (to soundcard)
+
+	// Resampler diagnostics (for debugging ratio issues)
+	uint32_t resampler_frac_step; // Base step (fixed-point 16.16)
+	uint32_t resampler_adjusted_step; // Last adjusted step used
+	float resampler_ratio_adjust; // Last ratio_adjust passed to resampler
+	uint32_t resampler_frac_pos; // Current fractional position (0 to FRAC_ONE-1)
+
+	// Cumulative tracking (for window-averaged comparisons)
+	double cumulative_total_adjust; // Sum of total_adjust values applied
+	uint64_t total_adjust_count; // Number of total_adjust applications
+
+	// Error tracking
+	unsigned underrun_count; // Total underruns
+} SND_Snapshot;
+
+/**
+ * Captures an atomic snapshot of all audio state for diagnostics.
+ * Thread-safe: locks audio while reading.
+ *
+ * @return Snapshot of current audio state
+ */
+SND_Snapshot SND_getSnapshot(void);
 
 ///////////////////////////////
 // Lid sensor (LID) API
@@ -1142,12 +1218,18 @@ int PWR_getBattery(void);
 
 /**
  * CPU speed presets for power management.
+ *
+ * 4-level system based on % of max frequency:
+ * - IDLE: 20% (launcher, tools, settings)
+ * - POWERSAVE: 55% (light gaming - GB, NES)
+ * - NORMAL: 80% (most gaming - SNES, GBA)
+ * - PERFORMANCE: 100% (demanding - PS1, N64)
  */
 enum {
-	CPU_SPEED_MENU, // Low speed for menu navigation
-	CPU_SPEED_POWERSAVE, // Reduced speed for battery saving
-	CPU_SPEED_NORMAL, // Default speed
-	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games
+	CPU_SPEED_IDLE, // Minimum speed for non-gaming tasks (20% of max)
+	CPU_SPEED_POWERSAVE, // Light gaming (55% of max)
+	CPU_SPEED_NORMAL, // Most gaming (80% of max)
+	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games (100%)
 };
 
 /**
@@ -1205,13 +1287,6 @@ void PLAT_clearVideo(SDL_Surface* screen);
  * Platform-specific clearing of all video buffers.
  */
 void PLAT_clearAll(void);
-
-/**
- * Platform-specific VSync configuration.
- *
- * @param vsync VSync mode
- */
-void PLAT_setVsync(int vsync);
 
 /**
  * Platform-specific video mode change.
@@ -1343,11 +1418,67 @@ void PLAT_enableBacklight(int enable);
 void PLAT_powerOff(void);
 
 /**
- * Platform-specific CPU speed control.
+ * Platform-specific CPU speed control (preset-based).
  *
  * @param speed CPU_SPEED_* enum value
  */
 void PLAT_setCPUSpeed(int speed);
+
+/**
+ * Maximum number of CPU frequencies supported.
+ * Most platforms have 6-12 discrete frequency steps.
+ */
+#define CPU_MAX_FREQUENCIES 32
+
+/**
+ * Gets available CPU frequencies from the system.
+ *
+ * Reads frequencies from sysfs (scaling_available_frequencies) and returns
+ * them sorted from lowest to highest. Used by auto CPU scaling to enable
+ * granular frequency control instead of just 3 fixed levels.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ *
+ * @note If this returns 0, caller should fall back to preset-based scaling.
+ * @note Frequencies are sorted ascending (lowest first).
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count);
+
+/**
+ * Sets CPU frequency directly (in kHz).
+ *
+ * Used by auto CPU scaling for granular frequency control. Falls back to
+ * PLAT_setCPUSpeed() if direct frequency control is not available.
+ *
+ * @param freq_khz Target frequency in kHz (e.g., 1200000 for 1.2GHz)
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz);
+
+/**
+ * Default implementation for reading CPU frequencies from sysfs.
+ *
+ * Reads from /sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies
+ * or cpu0/cpufreq path. Platforms can call this or provide their own implementation.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ */
+int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count);
+
+/**
+ * Default implementation for setting CPU frequency via sysfs.
+ *
+ * Writes to scaling_setspeed after ensuring userspace governor is active.
+ * Platforms can call this or provide their own implementation.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUFrequency_sysfs(int freq_khz);
 
 /**
  * Platform-specific rumble/vibration control.

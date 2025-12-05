@@ -296,10 +296,6 @@ void PLAT_clearAll(void) {
 	SDL2_clearAll(&vid_ctx);
 }
 
-void PLAT_setVsync(int vsync) {
-	// Vsync is always enabled via SDL_RENDERER_PRESENTVSYNC flag
-}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
@@ -437,7 +433,7 @@ void PLAT_powerOff(void) {
  * - NORMAL: 1.416GHz (balanced for most games)
  * - PERFORMANCE: 2.016GHz (maximum, GPU/DMC also set to performance)
  *
- * @param speed CPU_SPEED_MENU, CPU_SPEED_POWERSAVE, CPU_SPEED_NORMAL,
+ * @param speed CPU_SPEED_IDLE, CPU_SPEED_POWERSAVE, CPU_SPEED_NORMAL,
  *              or CPU_SPEED_PERFORMANCE
  *
  * @note PERFORMANCE mode may not be stable on all chips (depends on binning)
@@ -445,18 +441,18 @@ void PLAT_powerOff(void) {
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 800000;
+	case CPU_SPEED_IDLE:
+		freq = 408000; // 20% of max (360 → 408 MHz)
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 816000;
+		freq = 1008000; // 55% of max (990 → 1008 MHz)
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1416000;
+		freq = 1416000; // 80% of max (1440 → 1416 MHz)
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 2016000;
-		break; // not viable on lower binned chips
+		freq = 1800000; // 100% (1800 MHz)
+		break;
 	}
 
 	// Performance mode: maximize GPU and memory controller
@@ -468,6 +464,27 @@ void PLAT_setCPUSpeed(int speed) {
 		putFile(DMC_PATH, "dmc_ondemand");
 	}
 	putInt(CPU_PATH, freq);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 /**

@@ -222,10 +222,6 @@ void PLAT_clearAll(void) {
 	SDL2_clearAll(&vid_ctx);
 }
 
-void PLAT_setVsync(int vsync) {
-	// Vsync handled by SDL_RENDERER_PRESENTVSYNC
-}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
@@ -738,8 +734,60 @@ void PLAT_powerOff(void) {
 	exit(0);
 }
 
+#define CPU_GOVERNOR_PATH "/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed"
+
+/**
+ * Sets CPU frequency based on performance mode.
+ *
+ * Available frequencies (H616 SoC):
+ * 480, 720, 936, 1008, 1104, 1200, 1320, 1416, 1512 MHz
+ *
+ * Frequencies:
+ * - MENU: 720MHz (low - saves power in menus)
+ * - POWERSAVE: 1008MHz (~2x baseline)
+ * - NORMAL: 1320MHz (~2.75x baseline)
+ * - PERFORMANCE: 1512MHz (maximum)
+ *
+ * @param speed CPU_SPEED_* constant
+ */
 void PLAT_setCPUSpeed(int speed) {
-	// Not implemented
+	int freq = 0;
+	switch (speed) {
+	case CPU_SPEED_IDLE:
+		freq = 480000; // 20% of max (480 MHz)
+		break;
+	case CPU_SPEED_POWERSAVE:
+		freq = 936000; // 55% of max (936 MHz)
+		break;
+	case CPU_SPEED_NORMAL:
+		freq = 1200000; // 80% of max (1200 MHz)
+		break;
+	case CPU_SPEED_PERFORMANCE:
+		freq = 1512000; // 100% (1512 MHz)
+		break;
+	}
+	putInt(CPU_GOVERNOR_PATH, freq);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 #define RUMBLE_PATH "/sys/class/power_supply/axp2202-battery/moto"

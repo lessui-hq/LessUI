@@ -189,7 +189,7 @@ system:
 				set -e; \
 			fi; \
 			for elf in "$$pak_dir/build/$(PLATFORM)/"*.elf; do \
-				[ -f "$$elf" ] && rsync -a "$$elf" "$$output_dir/" || true; \
+				[ -f "$$elf" ] && mkdir -p "$$output_dir/bin" && rsync -a "$$elf" "$$output_dir/bin/" || true; \
 			done; \
 		fi; \
 	done; true

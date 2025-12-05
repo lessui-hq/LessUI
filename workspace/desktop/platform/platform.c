@@ -239,8 +239,6 @@ void PLAT_clearAll(void) {
 	SDL_RenderClear(vid.renderer);
 }
 
-void PLAT_setVsync(int vsync) {}
-
 /**
  * Resizes video buffer and texture to new dimensions.
  *
@@ -464,6 +462,23 @@ void PLAT_powerOff(void) {
  */
 void PLAT_setCPUSpeed(int speed) {
 	// No CPU speed control on macOS
+}
+
+/**
+ * Stub CPU frequency detection (no-op on macOS).
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	(void)frequencies;
+	(void)max_count;
+	return 0; // Not available on desktop
+}
+
+/**
+ * Stub CPU frequency setting (no-op on macOS).
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	(void)freq_khz;
+	return -1; // Not supported on desktop
 }
 
 /**

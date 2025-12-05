@@ -100,10 +100,6 @@ void PLAT_clearAll(void) {
 	SDL2_clearAll(&vid_ctx);
 }
 
-void PLAT_setVsync(int vsync) {
-	// Vsync always enabled via renderer flags
-}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
@@ -259,20 +255,41 @@ void PLAT_powerOff(void) {
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 800000;
+	case CPU_SPEED_IDLE:
+		freq = 408000; // 20% of max (408 MHz)
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 816000;
+		freq = 1008000; // 55% of max (1008 MHz)
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1416000;
+		freq = 1416000; // 80% of max (1416 MHz)
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1800000;
+		freq = 1800000; // 100% (1800 MHz)
 		break;
 	}
 	putInt(GOVERNOR_PATH, freq);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 #define RUMBLE_PATH "/sys/class/gpio/gpio227/value"

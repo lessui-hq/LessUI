@@ -233,10 +233,6 @@ void PLAT_clearAll(void) {
 	SDL2_clearAll(&vid_ctx);
 }
 
-void PLAT_setVsync(int vsync) {
-	// Vsync handled by SDL_RENDERER_PRESENTVSYNC in SDL2 backend
-}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
@@ -368,26 +364,26 @@ void PLAT_powerOff(void) {
  *
  * Command format: overclock.elf userspace <cores> <freq> 384 1080 0
  *
- * @param speed CPU_SPEED_MENU/POWERSAVE/NORMAL/PERFORMANCE
+ * @param speed CPU_SPEED_IDLE/POWERSAVE/NORMAL/PERFORMANCE
  */
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	int cpu = 1;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 576;
+	case CPU_SPEED_IDLE:
+		freq = 300; // 20% of max (302 → 300 MHz)
 		cpu = 1;
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1056;
+		freq = 832; // 55% of max (832 MHz)
 		cpu = 1;
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1344;
+		freq = 1210; // 80% of max (1210 MHz)
 		cpu = 2;
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1512;
+		freq = 1512; // 100% (1512 MHz)
 		cpu = 2;
 		break;
 	}
@@ -396,6 +392,36 @@ void PLAT_setCPUSpeed(int speed) {
 	// Set CPU governor to userspace mode with specified cores and frequency
 	sprintf(cmd, "overclock.elf userspace %d %d 384 1080 0", cpu, freq);
 	system(cmd);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * my282 may expose frequencies via sysfs even though we use overclock.elf for setting.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via overclock.elf.
+ *
+ * my282 overclock.elf uses MHz (not kHz) and controls core count.
+ * For granular scaling, we use 2 cores as that's what NORMAL/PERF modes use.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	int freq_mhz = freq_khz / 1000;
+	char cmd[128];
+	sprintf(cmd, "overclock.elf userspace 2 %d 384 1080 0", freq_mhz);
+	int ret = system(cmd);
+	return (ret == 0) ? 0 : -1;
 }
 
 #define RUMBLE_PATH "/sys/devices/virtual/timed_output/vibrator/enable"

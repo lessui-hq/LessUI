@@ -250,6 +250,13 @@ void parseNoIntroName(const char* filename, NoIntroName* parsed) {
 		classifyTag(tag, parsed);
 	}
 
+	// Trim trailing whitespace
+	size_t len = strlen(work);
+	while (len > 0 && isspace((unsigned char)work[len - 1])) {
+		len--;
+	}
+	work[len] = '\0';
+
 	// What's left is the title
 	strcpy(parsed->title, work);
 

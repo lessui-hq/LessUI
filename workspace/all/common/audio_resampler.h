@@ -16,6 +16,20 @@
 #include "api_types.h" // SND_Frame
 
 /**
+ * Maximum pitch deviation allowed by the resampler (safety clamp).
+ *
+ * This limits how much the resampler will adjust pitch, acting as a safety
+ * valve to prevent extreme pitch shifts from bugs or misconfiguration.
+ *
+ * Set high enough to accommodate display/core timing mismatches on handheld
+ * devices (cheap LCD panels can be off by several percent) plus headroom
+ * for rate control adjustments.
+ *
+ * 5% allows for ~4% display mismatch + ~1% rate control.
+ */
+#define SND_RESAMPLER_MAX_DEVIATION 0.05f
+
+/**
  * Fixed-point format: 16.16 (16 bits integer, 16 bits fraction)
  * This gives us sub-sample precision for smooth interpolation.
  */
@@ -47,6 +61,10 @@ typedef struct AudioResampler {
 	// Previous frame for interpolation
 	SND_Frame prev_frame;
 	int has_prev; // 1 if prev_frame is valid
+
+	// Diagnostics - track what the resampler is actually doing
+	uint32_t diag_last_adjusted_step; // Last adjusted_step used
+	float diag_last_ratio_adjust; // Last ratio_adjust passed in
 } AudioResampler;
 
 /**
@@ -98,7 +116,7 @@ void AudioResampler_reset(AudioResampler* resampler);
  * @param frames Input audio frames to process
  * @param frame_count Number of input frames
  * @param ratio_adjust Dynamic rate adjustment (1.0 = normal, <1.0 = slower, >1.0 = faster)
- *                     Use this for buffer-level-based rate control. Clamped to ±1%.
+ *                     Use this for buffer-level-based rate control. Clamped to ±SND_RESAMPLER_MAX_DEVIATION.
  * @return ResampleResult with frames_written and frames_consumed
  */
 ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffer* buffer,

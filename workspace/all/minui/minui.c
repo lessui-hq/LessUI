@@ -2368,8 +2368,7 @@ int main(int argc, char* argv[]) {
 	Menu_init();
 
 	// Reduce CPU speed for menu browsing (saves power and heat)
-	PWR_setCPUSpeed(CPU_SPEED_MENU);
-	GFX_setVsync(VSYNC_STRICT);
+	PWR_setCPUSpeed(CPU_SPEED_POWERSAVE);
 
 	PAD_reset();
 	int dirty = 1; // Set to 1 when screen needs redraw

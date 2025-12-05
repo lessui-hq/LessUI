@@ -167,10 +167,6 @@ void PLAT_clearAll(void) {
 	SDL2_clearAll(&vid_ctx);
 }
 
-void PLAT_setVsync(int vsync) {
-	// Vsync handled by SDL_RENDERER_PRESENTVSYNC in SDL2 backend
-}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
@@ -329,7 +325,7 @@ void PLAT_powerOff(void) {
  * Sets CPU clock speed based on performance level.
  *
  * Speed mappings:
- * - CPU_SPEED_MENU:        800 MHz (64-bit needs more headroom)
+ * - CPU_SPEED_IDLE:        800 MHz (64-bit needs more headroom)
  * - CPU_SPEED_POWERSAVE:  1104 MHz (battery-friendly gaming)
  * - CPU_SPEED_NORMAL:     1608 MHz (default gaming)
  * - CPU_SPEED_PERFORMANCE: 1992 MHz (demanding games)
@@ -339,20 +335,41 @@ void PLAT_powerOff(void) {
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 800000;
+	case CPU_SPEED_IDLE:
+		freq = 408000; // 20% of max (408 MHz)
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1104000;
+		freq = 1104000; // 55% of max (1104 MHz)
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1608000;
+		freq = 1608000; // 80% of max (1608 MHz)
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1992000;
+		freq = 1992000; // 100% (1992 MHz)
 		break;
 	}
 	putInt(GOVERNOR_PATH, freq);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 ///////////////////////////////

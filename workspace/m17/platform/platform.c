@@ -352,13 +352,6 @@ void PLAT_clearAll(void) {
 	clearVideo();
 }
 
-/**
- * Sets VSync mode (not implemented).
- *
- * @param vsync VSync enable flag (ignored)
- */
-void PLAT_setVsync(int vsync) {}
-
 // Scaling multiplier for crisp mode (nearest-neighbor upscaling)
 static int hard_scale = 4;
 
@@ -606,6 +599,32 @@ void PLAT_powerOff(void) {
  */
 void PLAT_setCPUSpeed(int speed) {
 	// M17 can go any speed you like as long as that speed is 1200000
+}
+
+/**
+ * Gets available CPU frequencies (not available on M17).
+ *
+ * M17 has fixed 1200 MHz clock speed, no dynamic scaling.
+ *
+ * @param frequencies Output array (unused)
+ * @param max_count Maximum count (unused)
+ * @return 0 (detection not available)
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	(void)frequencies;
+	(void)max_count;
+	return 0; // Fixed frequency platform
+}
+
+/**
+ * Sets CPU frequency directly (not supported on M17).
+ *
+ * @param freq_khz Target frequency (ignored)
+ * @return -1 (not supported)
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	(void)freq_khz;
+	return -1; // Not supported
 }
 
 /**

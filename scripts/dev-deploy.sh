@@ -69,8 +69,9 @@ echo "Deploying to $SD_CARD..."
 #   --no-o: don't preserve owner (FAT doesn't support)
 #   --no-g: don't preserve group (FAT doesn't support)
 #   --modify-window=1: allow 1 second timestamp difference (FAT has 2s granularity)
+#   --force: delete non-empty directories (needed for --delete to work on dirs)
 #   --exclude: skip macOS metadata files
-RSYNC_OPTS="-rtv --no-p --no-o --no-g --modify-window=1 --exclude=.DS_Store --exclude=._*"
+RSYNC_OPTS="-rtv --no-p --no-o --no-g --modify-window=1 --force --exclude=.DS_Store --exclude=._*"
 
 # Sync .system directory
 if [ -n "$PLATFORM_FILTER" ]; then
@@ -96,6 +97,22 @@ if [ "$SYNC_UPDATE" = true ]; then
     rsync $RSYNC_OPTS --delete "$PAYLOAD_DIR/.tmp_update/" "$SD_CARD/.tmp_update/"
 else
     echo "  Skipping .tmp_update (--no-update specified)"
+fi
+
+# Sync Tools directory (tool paks like Benchmark, Clock, etc.)
+TOOLS_BASE="$PROJECT_ROOT/build/BASE/Tools"
+if [ -d "$TOOLS_BASE" ]; then
+    if [ -n "$PLATFORM_FILTER" ]; then
+        # Only sync specific platform's tools
+        if [ -d "$TOOLS_BASE/$PLATFORM_FILTER" ]; then
+            echo "  Syncing Tools/$PLATFORM_FILTER/..."
+            rsync $RSYNC_OPTS --delete "$TOOLS_BASE/$PLATFORM_FILTER/" "$SD_CARD/Tools/$PLATFORM_FILTER/"
+        fi
+    else
+        # Sync all platforms' tools
+        echo "  Syncing Tools/..."
+        rsync $RSYNC_OPTS --delete "$TOOLS_BASE/" "$SD_CARD/Tools/"
+    fi
 fi
 
 # Eject the SD card

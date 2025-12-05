@@ -71,17 +71,18 @@ ResampleResult AudioResampler_resample(AudioResampler* resampler, AudioRingBuffe
 	// ratio_adjust < 1.0 = smaller steps = consume input slower = more outputs
 	uint32_t adjusted_step = (uint32_t)(resampler->frac_step * ratio_adjust);
 
-	// Clamp to bounds matching the dynamic rate control algorithm's d parameter.
-	// The rate controller uses d = 0.005 (0.5%), so clamp to ±0.5% of base step.
-	// This prevents any code path from causing larger pitch shifts than intended.
-	// Using slightly wider bounds (1%) to allow for floating point rounding.
-	const float max_deviation = 0.01f;
-	uint32_t min_step = (uint32_t)(resampler->frac_step * (1.0f - max_deviation));
-	uint32_t max_step = (uint32_t)(resampler->frac_step * (1.0f + max_deviation));
+	// Clamp to safety bounds to prevent extreme pitch shifts from bugs.
+	// This is independent of the rate control d parameter.
+	uint32_t min_step = (uint32_t)(resampler->frac_step * (1.0f - SND_RESAMPLER_MAX_DEVIATION));
+	uint32_t max_step = (uint32_t)(resampler->frac_step * (1.0f + SND_RESAMPLER_MAX_DEVIATION));
 	if (adjusted_step < min_step)
 		adjusted_step = min_step;
 	if (adjusted_step > max_step)
 		adjusted_step = max_step;
+
+	// Store diagnostics
+	resampler->diag_last_adjusted_step = adjusted_step;
+	resampler->diag_last_ratio_adjust = ratio_adjust;
 
 	int input_idx = 0;
 	uint32_t frac_pos = resampler->frac_pos;

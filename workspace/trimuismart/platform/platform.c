@@ -317,8 +317,6 @@ void PLAT_clearAll(void) {
 	PLAT_clearVideo(vid.buffer);
 }
 
-void PLAT_setVsync(int vsync) {}
-
 SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	SDL_FreeSurface(vid.screen);
 	vid.width = w;
@@ -585,23 +583,44 @@ void PLAT_powerOff(void) {
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 504000;
+	case CPU_SPEED_IDLE:
+		freq = 408000; // 20% of max (307 → 408 MHz)
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1104000;
+		freq = 816000; // 55% of max (845 → 816 MHz)
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1344000;
+		freq = 1200000; // 80% of max (1229 → 1200 MHz)
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1536000;
+		freq = 1536000; // 100% (1536 MHz)
 		break;
 	}
 
 	char cmd[256];
 	sprintf(cmd, "echo %i > %s", freq, GOVERNOR_PATH);
 	system(cmd);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 ///////////////////////////////

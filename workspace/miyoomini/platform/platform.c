@@ -425,6 +425,9 @@ SDL_Surface* PLAT_initVideo(void) {
 	PLAT_detectVariant(&platform_variant);
 
 	putenv("SDL_HIDE_BATTERY=1");
+	// Enable strict vsync for proper frame pacing (rate control handles audio sync)
+	putenv("GFX_FLIPWAIT=1");
+	putenv("GFX_BLOCKING=1");
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
 	SDL_ShowCursor(0);
 
@@ -484,20 +487,6 @@ void PLAT_clearVideo(SDL_Surface* screen) {
 void PLAT_clearAll(void) {
 	PLAT_clearVideo(vid.screen);
 	vid.cleared = 1;
-}
-
-void PLAT_setVsync(int vsync) {
-	if (vsync == VSYNC_OFF) {
-		putenv("GFX_FLIPWAIT=0");
-		putenv("GFX_BLOCKING=0");
-	} else if (vsync == VSYNC_LENIENT) {
-		putenv("GFX_FLIPWAIT=0");
-		putenv("GFX_BLOCKING=1");
-	} else if (vsync == VSYNC_STRICT) {
-		putenv("GFX_FLIPWAIT=1");
-		putenv("GFX_BLOCKING=1");
-	}
-	SDL_GetVideoInfo();
 }
 
 SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
@@ -838,24 +827,59 @@ void PLAT_powerOff(void) {
 
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
+	const char* level_name = "UNKNOWN";
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 504000;
+	case CPU_SPEED_IDLE:
+		freq = 400000; // 20% of max (400 MHz)
+		level_name = "IDLE";
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1104000;
+		freq = 800000; // 55% of max (800 MHz)
+		level_name = "POWERSAVE";
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1296000;
+		freq = 1100000; // 80% of max (1100 MHz)
+		level_name = "NORMAL";
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1488000;
+		freq = 1600000; // 100% (1600 MHz)
+		level_name = "PERFORMANCE";
 		break;
 	}
 
+	LOG_info("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
 	char cmd[32];
 	sprintf(cmd, "overclock.elf %d\n", freq);
-	system(cmd);
+	int ret = system(cmd);
+	if (ret != 0) {
+		LOG_warn("overclock.elf returned %d for freq %d\n", ret, freq);
+	}
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * miyoomini exposes frequencies via sysfs even though we use overclock.elf for setting.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via overclock.elf.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	char cmd[32];
+	sprintf(cmd, "overclock.elf %d\n", freq_khz);
+	int ret = system(cmd);
+	return (ret == 0) ? 0 : -1;
 }
 
 ///////////////////////////////
