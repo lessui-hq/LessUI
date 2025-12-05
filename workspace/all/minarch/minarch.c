@@ -137,7 +137,7 @@ static enum retro_pixel_format pixel_format =
 static int show_debug = 0; // Display FPS/CPU usage overlay
 static int max_ff_speed = 3; // Fast-forward speed (0=2x, 3=4x)
 static int fast_forward = 0; // Currently fast-forwarding
-static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
+static int overclock = 3; // CPU speed (0=powersave, 1=normal, 2=performance, 3=auto)
 
 // Auto CPU Scaling State (when overclock == 3)
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
