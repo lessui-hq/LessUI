@@ -856,6 +856,32 @@ void PLAT_setCPUSpeed(int speed) {
 	}
 }
 
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * miyoomini exposes frequencies via sysfs even though we use overclock.elf for setting.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via overclock.elf.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	char cmd[32];
+	sprintf(cmd, "overclock.elf %d\n", freq_khz);
+	int ret = system(cmd);
+	return (ret == 0) ? 0 : -1;
+}
+
 ///////////////////////////////
 // Rumble/Vibration
 ///////////////////////////////

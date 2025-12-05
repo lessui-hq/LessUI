@@ -1412,11 +1412,67 @@ void PLAT_enableBacklight(int enable);
 void PLAT_powerOff(void);
 
 /**
- * Platform-specific CPU speed control.
+ * Platform-specific CPU speed control (preset-based).
  *
  * @param speed CPU_SPEED_* enum value
  */
 void PLAT_setCPUSpeed(int speed);
+
+/**
+ * Maximum number of CPU frequencies supported.
+ * Most platforms have 6-12 discrete frequency steps.
+ */
+#define CPU_MAX_FREQUENCIES 32
+
+/**
+ * Gets available CPU frequencies from the system.
+ *
+ * Reads frequencies from sysfs (scaling_available_frequencies) and returns
+ * them sorted from lowest to highest. Used by auto CPU scaling to enable
+ * granular frequency control instead of just 3 fixed levels.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ *
+ * @note If this returns 0, caller should fall back to preset-based scaling.
+ * @note Frequencies are sorted ascending (lowest first).
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count);
+
+/**
+ * Sets CPU frequency directly (in kHz).
+ *
+ * Used by auto CPU scaling for granular frequency control. Falls back to
+ * PLAT_setCPUSpeed() if direct frequency control is not available.
+ *
+ * @param freq_khz Target frequency in kHz (e.g., 1200000 for 1.2GHz)
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz);
+
+/**
+ * Default implementation for reading CPU frequencies from sysfs.
+ *
+ * Reads from /sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies
+ * or cpu0/cpufreq path. Platforms can call this or provide their own implementation.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ */
+int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count);
+
+/**
+ * Default implementation for setting CPU frequency via sysfs.
+ *
+ * Writes to scaling_setspeed after ensuring userspace governor is active.
+ * Platforms can call this or provide their own implementation.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUFrequency_sysfs(int freq_khz);
 
 /**
  * Platform-specific rumble/vibration control.

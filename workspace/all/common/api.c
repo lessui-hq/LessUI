@@ -3130,6 +3130,139 @@ int PWR_getBattery(void) { // 10-100 in 10-20% fragments
 }
 
 ///////////////////////////////
+// CPU Frequency Control - Common sysfs implementation
+///////////////////////////////
+
+// Common sysfs paths for CPU frequency control
+#define CPUFREQ_POLICY0_PATH "/sys/devices/system/cpu/cpufreq/policy0"
+#define CPUFREQ_CPU0_PATH "/sys/devices/system/cpu/cpu0/cpufreq"
+
+/**
+ * Comparison function for sorting integers in ascending order.
+ */
+static int compare_int_asc(const void* a, const void* b) {
+	return (*(const int*)a) - (*(const int*)b);
+}
+
+/**
+ * Default implementation for reading available CPU frequencies from sysfs.
+ *
+ * Reads from scaling_available_frequencies and returns sorted list.
+ * Tries policy0 path first, then cpu0/cpufreq fallback.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ */
+int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count) {
+	if (!frequencies || max_count <= 0) {
+		return 0;
+	}
+
+	// Try both common sysfs paths
+	const char* paths[] = {CPUFREQ_POLICY0_PATH "/scaling_available_frequencies",
+	                       CPUFREQ_CPU0_PATH "/scaling_available_frequencies", NULL};
+
+	char buffer[512];
+	int count = 0;
+
+	for (int i = 0; paths[i] != NULL; i++) {
+		FILE* fp = fopen(paths[i], "r");
+		if (!fp) {
+			continue;
+		}
+
+		if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+			// Parse space-separated frequency values
+			char* token = strtok(buffer, " \t\n");
+			while (token != NULL && count < max_count) {
+				int freq = atoi(token);
+				if (freq > 0) {
+					frequencies[count++] = freq;
+				}
+				token = strtok(NULL, " \t\n");
+			}
+		}
+		fclose(fp);
+
+		if (count > 0) {
+			break; // Found frequencies, don't try other paths
+		}
+	}
+
+	// Sort frequencies ascending (lowest to highest)
+	if (count > 1) {
+		qsort(frequencies, count, sizeof(int), compare_int_asc);
+	}
+
+	LOG_info("PWR_getAvailableCPUFrequencies_sysfs: found %d frequencies\n", count);
+	if (count > 0) {
+		LOG_info("  Range: %d - %d kHz\n", frequencies[0], frequencies[count - 1]);
+	}
+
+	return count;
+}
+
+/**
+ * Default implementation for setting CPU frequency via sysfs.
+ *
+ * Ensures userspace governor is set, then writes to scaling_setspeed.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUFrequency_sysfs(int freq_khz) {
+	// Try both common sysfs paths
+	const char* setspeed_paths[] = {CPUFREQ_POLICY0_PATH "/scaling_setspeed",
+	                                CPUFREQ_CPU0_PATH "/scaling_setspeed", NULL};
+
+	const char* governor_paths[] = {CPUFREQ_POLICY0_PATH "/scaling_governor",
+	                                CPUFREQ_CPU0_PATH "/scaling_governor", NULL};
+
+	// First, ensure userspace governor is set
+	for (int i = 0; governor_paths[i] != NULL; i++) {
+		FILE* fp = fopen(governor_paths[i], "r");
+		if (fp) {
+			char governor[32] = {0};
+			if (fgets(governor, sizeof(governor), fp)) {
+				// Remove newline
+				char* nl = strchr(governor, '\n');
+				if (nl)
+					*nl = '\0';
+
+				// If not already userspace, set it
+				if (strcmp(governor, "userspace") != 0) {
+					fclose(fp);
+					fp = fopen(governor_paths[i], "w");
+					if (fp) {
+						fprintf(fp, "userspace\n");
+						fclose(fp);
+						fp = NULL;
+						usleep(10000); // 10ms delay for governor switch
+					}
+				}
+			}
+			if (fp)
+				fclose(fp);
+			break;
+		}
+	}
+
+	// Now set the frequency
+	for (int i = 0; setspeed_paths[i] != NULL; i++) {
+		FILE* fp = fopen(setspeed_paths[i], "w");
+		if (fp) {
+			fprintf(fp, "%d\n", freq_khz);
+			fclose(fp);
+			return 0;
+		}
+	}
+
+	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz\n", freq_khz);
+	return -1;
+}
+
+///////////////////////////////
 // Platform utility functions
 ///////////////////////////////
 

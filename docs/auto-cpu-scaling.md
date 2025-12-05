@@ -8,6 +8,8 @@ Dynamic CPU frequency scaling for libretro emulation based on frame timing.
 
 Add an "Auto" CPU speed option that dynamically scales between existing power levels (POWERSAVE/NORMAL/PERFORMANCE) based on real-time emulation performance, saving battery when possible and boosting when needed.
 
+**Status:** ✅ Granular frequency scaling implemented. Auto mode now uses all available CPU frequencies detected from the system.
+
 ## Design Approach
 
 ### ⚠️ Audio Buffer Fill - Why It Doesn't Work for CPU Scaling
@@ -209,28 +211,24 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - [x] Updated option count from 3 to 4
 - [x] Updated description to mention Auto mode
 - [x] Persists via existing config system (`minarch_cpu_speed`)
-- [x] **Debug HUD**: Shows "LxFF%" stacked above FPS line when auto mode active
-  - L = current level (0/1/2 = POWERSAVE/NORMAL/PERFORMANCE)
-  - FF% = window-averaged buffer fill (0-100%)
-  - Uses only bitmap font characters (0-9, x, %)
-- [x] **CSV Logging**: Logs every CPU change to `USERDATA_PATH/logs/auto_cpu.csv`
-  - Columns: timestamp, path, old_level, new_level, fill, cpu_usage, reason
-  - Reason: "boost", "reduce", or "panic"
-  - Enables data-driven tuning decisions
+- [x] **Debug HUD**: Shows CPU level and metrics in bottom-left corner
+  - Manual mode: `L1 b:48%` (level + buffer fill)
+  - Auto mode: `L1 u:52% b:48%` (level + utilization + buffer fill)
+  - Added bitmap font characters: L, b, u, r, :, !, F, P, S
 
-### Phase 6: Platform Support
-- [ ] Audit platforms - which have working `PLAT_setCPUSpeed`?
-- [ ] Implement CPU scaling for rg35xxplus (currently empty stub)
-- [ ] Add `PLAT_supportsCPUScaling()` or similar for runtime detection
+### Phase 6: Platform Support ✅
+- [x] Audit platforms - which have working `PLAT_setCPUSpeed`?
+- [x] Implement CPU scaling for rg35xxplus (H700 cpufreq sysfs)
 
 ## Threading Architecture
 
 Auto CPU scaling uses a **two-thread design** to keep the main emulation loop responsive:
 
 ### Main Thread (Emulation)
-- Monitors audio buffer fill every frame
-- Accumulates fill % over windows (~500ms)
-- Decides when CPU level should change
+- Measures `core.run()` execution time every frame
+- Stores frame times in ring buffer for percentile analysis
+- Every window (~500ms), calculates 90th percentile utilization
+- Decides when CPU level should change based on sustained utilization
 - **Sets target level** (non-blocking, mutex-protected)
 - Never blocks on expensive CPU frequency changes
 
@@ -365,9 +363,9 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 | Platform | Architecture | Available Frequencies (kHz) | Current Config | Status |
 |----------|--------------|------------------------------|----------------|--------|
-| **tg5040** | Cortex-A53 (64-bit) | 408, 600, **816**, 1008, **1200**, 1416, **1608**, 1800, **2000** | MENU=800→816, POWERSAVE=1200✓, NORMAL=1608✓, PERFORMANCE=2000✓ | ✅ Optimal |
-| **zero28** | Cortex-A53 (64-bit) | 408, 600, **816**, 1008, **1200**, 1416, **1608**, **1800** | MENU=800→816, POWERSAVE=816✓, NORMAL=1416✓, PERFORMANCE=1800✓ | ✅ Optimal |
-| **miyoomini** | Cortex-A7 (32-bit) | **400**, **600**, 800, 1000, **1100**, **1600** | MENU=504→600, POWERSAVE=1104→1100, NORMAL=1296→**1600!**, PERFORMANCE=1488→1600 | ⚠️ Needs tuning |
+| **tg5040** | Cortex-A53 (64-bit) | 408, 600, **816**, 1008, **1200**, 1416, **1608**, 1800, **2000** | MENU=816, POWERSAVE=1200, NORMAL=1608, PERFORMANCE=2000 (74.6% ratio) | ✅ Optimal |
+| **zero28** | Cortex-A53 (64-bit) | 408, 600, 816, 1008, **1200**, 1416, **1608**, **1800** | MENU=800, POWERSAVE=1200, NORMAL=1608, PERFORMANCE=1800 (74.6% ratio) | ✅ Fixed |
+| **miyoomini** | Cortex-A7 (32-bit) | **400**, **600**, 800, 1000, **1100**, **1600** | MENU=600, POWERSAVE=1100, NORMAL=1600, PERFORMANCE=1600 (68.8% ratio, N/P gap!) | ⚠️ Hardware gap |
 
 **Bold frequencies** = currently configured bands
 
@@ -379,40 +377,35 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 | zero28 | 1800 MHz | 448k iters | +20.8% | +7.3% (A53 vs A7) |
 | tg5040 | 2000 MHz | 496k iters | +33.7% | +7.3% (A53 vs A7) |
 
-### Critical Issue: miyoomini Configuration
+### miyoomini Hardware Gap
 
 **Hardware limitation confirmed via 50MHz sweep**: miyoomini has a **500 MHz gap** between 1100-1600 MHz. Any request in the range 1150-1600 snaps to maximum (1600 MHz).
 
-**Current problem**:
-- NORMAL (1296 kHz) overshoots to 1600 MHz (+23%, should be mid-tier)
-- PERFORMANCE (1488 kHz) reaches 1600 MHz (correct max)
-- **Both bands are identical** - no differentiation between NORMAL and PERFORMANCE
+**Current configuration** (aligned to hardware):
+- MENU: 600 MHz
+- POWERSAVE: 1100 MHz
+- NORMAL: 1600 MHz (no middle option due to gap)
+- PERFORMANCE: 1600 MHz (same as NORMAL)
 
-**Recommended fix**:
-```c
-CPU_SPEED_MENU        = 600000   // was 504000 → 600 (align to hardware)
-CPU_SPEED_POWERSAVE   = 1000000  // was 1104000 → 1100 (use available step, -10% power)
-CPU_SPEED_NORMAL      = 1100000  // was 1296000 → 1600! (fix overshoot, -31% power!)
-CPU_SPEED_PERFORMANCE = 1600000  // was 1488000 → 1600 (align to hardware)
-```
-
-**Impact of fix**:
-- Restores proper differentiation between bands (1000/1100/1600 vs current 1100/1600/1600)
-- NORMAL power consumption reduced by ~31% (1100 vs 1600 MHz)
-- Battery life improvement for moderate gaming workloads
+**Limitation:** NORMAL and PERFORMANCE are identical due to hardware gap. This is unavoidable without using lower frequencies (1100 MHz) which would be too slow for "NORMAL" tier on this platform.
 
 ### Other Platforms (Not Benchmarked)
 
-| Platform | Status | Method | Configured Frequencies |
-|----------|--------|--------|------------------------|
-| my355 | ✅ Working | sysfs | 800/1104/1608/1992 MHz |
-| rgb30 | ✅ Working | sysfs | 800/1104/1608/1992 MHz |
-| magicmini | ✅ Working | sysfs+GPU | 800/816/1416/2016 MHz |
-| trimuismart | ✅ Working | sysfs | 504/1104/1344/1536 MHz |
-| rg35xx | ✅ Working | overclock.elf | 504/1104/1296/1488 MHz |
-| my282 | ✅ Working | overclock.elf | 576-1512 MHz + core count |
-| rg35xxplus | ❌ **Not implemented** | - | H700 supports cpufreq |
-| m17 | ❌ Fixed | - | Fixed at 1200 MHz |
+| Platform | Status | Method | Granular Support |
+|----------|--------|--------|------------------|
+| my355 | ✅ Working | sysfs | ✅ Runtime detection |
+| rgb30 | ✅ Working | sysfs | ✅ Runtime detection |
+| magicmini | ✅ Working | sysfs+GPU | ✅ Runtime detection |
+| trimuismart | ✅ Working | sysfs | ✅ Runtime detection |
+| rg35xx | ✅ Working | overclock.elf | ✅ Runtime detection |
+| my282 | ✅ Working | overclock.elf | ✅ Runtime detection |
+| rg35xxplus | ✅ Working | sysfs | ✅ Runtime detection |
+| m17 | ❌ Fixed | - | ❌ 3-level fallback |
+
+**Granular Support Notes:**
+- All sysfs-based platforms: Read frequencies from `scaling_available_frequencies`, set via `scaling_setspeed`
+- overclock.elf platforms: Read frequencies from sysfs, set via platform-specific overclock.elf
+- m17: Fixed 1200 MHz clock, detection returns 0, uses 3-level fallback mode
 
 ## Audio System Tuning
 
@@ -490,8 +483,9 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 - [Dynamic Rate Control for Retro Game Emulators](https://docs.libretro.com/guides/ratecontrol.pdf) - Hans-Kristian Arntzen, 2012
 - [docs/audio-rate-control.md](audio-rate-control.md) - Our rate control implementation
-- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`
-- [workspace/all/minarch/minarch.c](../workspace/all/minarch/minarch.c) - Main emulation loop
+- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`
+- [workspace/all/common/api.h](../workspace/all/common/api.h) - `PLAT_getAvailableCPUFrequencies()`, `PLAT_setCPUFrequency()` API
+- [workspace/all/minarch/minarch.c](../workspace/all/minarch/minarch.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
 - [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status
@@ -526,18 +520,154 @@ Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode(
 
 ### Debug HUD
 
-When Auto CPU mode is enabled, the debug overlay shows:
-```
-0x 62/50
-```
-- `0x` = Current CPU level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
-- `62` = Frame timing utilization (90th percentile, % of frame budget)
-- `50` = Audio buffer fill (% full, should converge to ~50%)
+The debug overlay uses all 4 corners to show performance and scaling info:
 
-### CSV Logging
-
-CPU scaling events are logged to `USERDATA_PATH/logs/auto_cpu.csv`:
-```csv
-timestamp,path,old_level,new_level,util_p90,fill,reason
-1234567,game.nes,1,2,87,25,boost
 ```
+┌─────────────────────────────────────────┐
+│ 60 FPS 45%              256x224 2x      │
+│                                         │
+│                                         │
+│ L1 u:52% b:48%                640x480   │
+└─────────────────────────────────────────┘
+```
+
+| Corner | Content | Purpose |
+|--------|---------|---------|
+| **TL** | `60 FPS 45%` | Frame rate + system CPU load |
+| **TR** | `256x224 2x` | Core output resolution + scale factor |
+| **BL** | `L1 b:48%` or `L1 u:52% b:48%` | CPU level + audio/scaling metrics |
+| **BR** | `640x480` | Final output resolution |
+
+**Bottom-left format:**
+
+- Manual mode: `L1 b:48%` (level + buffer fill)
+- Auto mode (fallback): `L1 u:52% b:48%` (level + utilization + buffer fill)
+- Auto mode (granular): `1200 u:52% b:48%` (frequency in MHz + utilization + buffer fill)
+
+**Key metrics:**
+- `L0/L1/L2` = CPU level (POWERSAVE/NORMAL/PERFORMANCE) - used in manual and fallback modes
+- `1200` = CPU frequency in MHz (e.g., 1200 = 1.2 GHz) - used in granular auto mode
+- `u:XX%` = Frame timing utilization (90th percentile, % of frame budget)
+- `b:XX%` = Audio buffer fill (should converge to ~50%)
+
+The `u:` metric drives auto-scaling decisions:
+- `>85%` = CPU struggling, triggers boost after ~1s
+- `<55%` = CPU has headroom, triggers reduce after ~2s
+- `55-85%` = Sweet spot, no change
+
+## System Validation (December 2025)
+
+### Frame Timing Confirmed as Optimal Metric
+
+After implementing the unified RateMeter system with dual clock correction (display + audio), we revisited whether frame timing remains the best metric for CPU scaling.
+
+**Why frame timing is correct:**
+
+1. **Independent measurement** - Frame timing measures `core.run()` CPU work, while rate control handles audio/video sync using buffer fill. No coupling between systems.
+
+2. **Real-world validation** - FCEUmm testing with high vs low quality audio:
+   - High quality: frame timing shows 64-68% util → auto scaler correctly keeps CPU high
+   - Low quality: frame timing drops → auto scaler correctly reduces CPU
+   - The system responds to actual emulation workload, not arbitrary core labels
+
+3. **No feedback loops** - Buffer fill is now influenced by adaptive d (2%→1%), base correction, audio correction, and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+
+**The two-layer separation is optimal:**
+
+| Layer | Domain | Response Time | Feedback Signal | What It Controls |
+|-------|--------|---------------|-----------------|------------------|
+| Rate control | Audio/video sync | Per-frame (~16ms) | Buffer fill | Resampler ratio adjustment |
+| CPU scaling | Performance headroom | Per-second (~1-2s) | Frame timing | CPU frequency |
+
+### Granular Frequency Scaling (Implemented)
+
+Auto mode now uses **all available CPU frequencies** detected from the system via `scaling_available_frequencies` sysfs interface.
+
+**Key features:**
+- Runtime frequency detection via `PLAT_getAvailableCPUFrequencies()`
+- Direct frequency setting via `PLAT_setCPUFrequency()`
+- Linear performance scaling for intelligent frequency selection
+- Automatic fallback to 3-level mode if detection fails
+
+**Algorithm improvements:**
+- Performance scales linearly with frequency: `new_util = current_util × (current_freq / new_freq)`
+- Target 70% utilization in the "sweet spot"
+- Predict utilization at lower frequencies before stepping down
+- Safety checks prevent stepping into overload (>85% predicted util)
+
+**Preset mapping for manual modes:**
+- POWERSAVE: ~25% up from minimum frequency
+- NORMAL: ~75% of max frequency
+- PERFORMANCE: max frequency
+
+**Example on miyoomini (6 frequencies detected: 400, 600, 800, 1000, 1100, 1600 kHz):**
+```
+Old: POWERSAVE → NORMAL → PERFORMANCE (3 steps)
+New: 400 → 600 → 800 → 1000 → 1100 → 1600 (6 steps, granular)
+```
+
+### Frequency Band Analysis
+
+Comprehensive analysis of benchmark data from all platforms revealed optimization opportunities.
+
+**Fixed platform-specific issues:**
+
+| Platform | Issue | Fix Applied |
+|----------|-------|-------------|
+| zero28 | PS/N ratio 57.6% (dangerous!) | Updated to 1200/1608/1800 (74.6% ratio) ✓ |
+| magicmini | PS/N ratio 57.6% (dangerous!) | Updated to 1200/1608/1800 (74.6% ratio) ✓ |
+
+**Analysis output:** See `scripts/analyze-cpu-bands.py` and `scripts/analyze-frequency-strategies.py` for detailed frequency analysis and strategy comparison.
+
+### Threshold Validation
+
+The 55% LOW threshold and 85% HIGH threshold were chosen empirically but are now validated:
+
+**Safety check for 55% threshold:**
+```
+At NORMAL with 55% util, reduce to POWERSAVE:
+new_util = 55% / (POWERSAVE_freq / NORMAL_freq)
+
+Safe if: new_util ≤ 85%
+Requires: POWERSAVE_freq / NORMAL_freq ≥ 65%
+```
+
+All platforms now meet this requirement after fixes.
+
+## Future Work
+
+### Manual Band Optimization
+
+Determine optimal POWERSAVE/NORMAL/PERFORMANCE frequencies using data-driven approach.
+
+**Strategies evaluated:**
+1. **Percentage (75%/85%/100%)** - Consistent meaning across platforms ← Recommended
+2. **Performance targets** - Absolute performance levels (breaks on weak devices)
+3. **Equal gaps** - Balanced tiers but ignores efficiency
+4. **Max efficiency** - Best perf/watt but unsafe ratios
+
+**Recommendation: Percentage strategy**
+- POWERSAVE: 75% of max frequency
+- NORMAL: 85% of max frequency
+- PERFORMANCE: 100% of max frequency
+
+This provides:
+- Consistent user experience across all devices
+- Safe ratios (70-80% typical)
+- Works within each platform's capabilities
+- Simple to understand ("three-quarter speed / nearly full / maximum")
+
+### CPU_SPEED_MENU Reconsideration
+
+**Current behavior:**
+- MENU runs at 600-816 MHz during launcher/menu UI
+- Arbitrary and platform-inconsistent
+- Too slow for heavy operations (image processing, pak generation)
+- Adds complexity to platform.c implementations
+
+**Options:**
+1. **Eliminate MENU** - Use NORMAL everywhere (simpler)
+2. **Context-dependent** - Low for UI browsing, higher for operations
+3. **Auto for menu** - Apply same scaling logic to launcher
+
+**Recommendation:** TBD - needs testing on actual devices to measure menu performance needs

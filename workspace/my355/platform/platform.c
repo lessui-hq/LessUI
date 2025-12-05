@@ -351,6 +351,27 @@ void PLAT_setCPUSpeed(int speed) {
 	putInt(GOVERNOR_PATH, freq);
 }
 
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
+}
+
 ///////////////////////////////
 // Rumble
 ///////////////////////////////

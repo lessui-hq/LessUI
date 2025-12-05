@@ -445,14 +445,14 @@ void PLAT_setCPUSpeed(int speed) {
 		freq = 800000;
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 816000;
+		freq = 1200000;
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1416000;
+		freq = 1608000;
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 2016000;
-		break; // not viable on lower binned chips
+		freq = 1800000;
+		break;
 	}
 
 	// Performance mode: maximize GPU and memory controller
@@ -464,6 +464,27 @@ void PLAT_setCPUSpeed(int speed) {
 		putFile(DMC_PATH, "dmc_ondemand");
 	}
 	putInt(CPU_PATH, freq);
+}
+
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via sysfs.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	return PWR_setCPUFrequency_sysfs(freq_khz);
 }
 
 /**

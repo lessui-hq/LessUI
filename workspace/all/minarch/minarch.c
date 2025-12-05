@@ -143,14 +143,35 @@ static int overclock = 1; // CPU speed (0=powersave, 1=normal, 2=performance, 3=
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
 // This directly measures CPU performance, unlike audio buffer fill which is
 // contaminated by display/audio timing mismatches.
+//
+// Granular frequency scaling: Instead of 3 fixed levels, we use all available
+// CPU frequencies detected from the system. Performance scales linearly with
+// frequency, allowing smooth transitions and better power efficiency.
+
+// Detected frequency array (populated at startup from PLAT_getAvailableCPUFrequencies)
+static int
+    auto_cpu_frequencies[CPU_MAX_FREQUENCIES]; // Available frequencies in kHz (sorted low→high)
+static int auto_cpu_freq_count = 0; // Number of frequencies detected
+static int auto_cpu_target_index = 0; // Target frequency index (main thread)
+static int auto_cpu_current_index = 0; // Actually applied frequency index (CPU thread)
+
+// Preset indices for manual modes (POWERSAVE/NORMAL/PERFORMANCE)
+// Set during frequency detection to map presets to nearest available frequencies
+static int auto_cpu_preset_indices[3] = {0, 0, 0}; // [POWERSAVE, NORMAL, PERFORMANCE]
+
+// Legacy level tracking (for fallback when no frequencies detected)
 static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
 static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
+static int auto_cpu_use_granular = 0; // 1 if granular mode available, 0 for 3-level fallback
+
+// Monitoring state
 static int auto_cpu_frame_count = 0; // Frames in current window
 static int auto_cpu_high_util_windows =
     0; // Consecutive windows with high utilization (needs boost)
 static int auto_cpu_low_util_windows = 0; // Consecutive windows with low utilization (can reduce)
 static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
 static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
+static int auto_cpu_panic_cooldown = 0; // Windows to wait after panic before reducing
 
 // Frame timing data for percentile calculation
 static uint64_t auto_cpu_frame_times[64]; // Ring buffer of frame execution times (microseconds)
@@ -158,22 +179,10 @@ static int auto_cpu_frame_time_index = 0; // Current position in ring buffer
 static uint64_t auto_cpu_frame_budget_us = 16667; // Target frame time (updated from core.fps)
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
-// Pending log info (set by main thread, consumed by CPU thread)
-static unsigned auto_cpu_pending_util = 0; // Utilization % for logging
-static unsigned auto_cpu_pending_fill = 0; // Buffer fill % for logging (kept for diagnostics)
-static const char* auto_cpu_pending_reason = NULL;
-
-// CPU usage for logging (defined here for access from auto CPU code)
-static double use_double = 0;
-
 // Background thread for applying CPU changes without blocking main loop
 static pthread_t auto_cpu_thread;
 static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
-
-// Forward declaration for CSV logging (called from thread)
-static void auto_cpu_logChange(int old_level, int new_level, unsigned util, unsigned fill,
-                               const char* reason);
 
 // Auto CPU Scaling Tuning Constants
 // Frame timing thresholds (based on 90th percentile utilization)
@@ -1516,11 +1525,23 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
 	return 1;
 }
 
+///////////////////////////////////////
+// Auto CPU Scaling
+///////////////////////////////////////
+// Dynamically adjusts CPU frequency based on frame timing.
+// See docs/auto-cpu-scaling.md for design details.
+//
+// Components:
+// - Background thread: Applies CPU changes without blocking main loop
+// - updateAutoCPU(): Per-frame monitoring called from main loop
+// - measureDisplayRate(): Vsync timing (in Performance Tracking section)
+
 /**
  * Background thread that applies CPU frequency changes.
  *
- * Runs in the background and watches auto_cpu_target_level.
- * When target differs from current, calls PWR_setCPUSpeed() to apply the change.
+ * Supports two modes:
+ * - Granular: Uses detected frequency array and PLAT_setCPUFrequency()
+ * - Fallback: Uses 3 levels (POWERSAVE/NORMAL/PERFORMANCE) via PWR_setCPUSpeed()
  *
  * This keeps expensive system() calls (overclock.elf) off the main emulation loop,
  * preventing frame drops and audio glitches during CPU scaling.
@@ -1528,54 +1549,66 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
  * Thread safety: Uses auto_cpu_mutex to protect shared state.
  */
 static void* auto_cpu_scaling_thread(void* arg) {
-	LOG_debug("Auto CPU thread: started\n");
+	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n", auto_cpu_use_granular,
+	          auto_cpu_freq_count);
 
 	while (auto_cpu_thread_running) {
-		// Read current state (thread-safe)
-		pthread_mutex_lock(&auto_cpu_mutex);
-		int target = auto_cpu_target_level;
-		int current = auto_cpu_current_level;
-		unsigned pending_util = auto_cpu_pending_util;
-		unsigned pending_fill = auto_cpu_pending_fill;
-		const char* pending_reason = auto_cpu_pending_reason;
-		pthread_mutex_unlock(&auto_cpu_mutex);
-
-		// Apply change if needed (this may block with system() call)
-		if (target != current) {
-			int cpu_speed;
-			const char* level_name;
-			switch (target) {
-			case 0:
-				cpu_speed = CPU_SPEED_POWERSAVE;
-				level_name = "POWERSAVE";
-				break;
-			case 1:
-				cpu_speed = CPU_SPEED_NORMAL;
-				level_name = "NORMAL";
-				break;
-			case 2:
-				cpu_speed = CPU_SPEED_PERFORMANCE;
-				level_name = "PERFORMANCE";
-				break;
-			default:
-				cpu_speed = CPU_SPEED_NORMAL;
-				level_name = "NORMAL";
-				break;
-			}
-
-			LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
-			PWR_setCPUSpeed(cpu_speed);
-
-			// Log to CSV for analysis
-			if (pending_reason) {
-				auto_cpu_logChange(current, target, pending_util, pending_fill, pending_reason);
-			}
-
-			// Update current state
+		if (auto_cpu_use_granular) {
+			// Granular frequency mode
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_current_level = target;
-			auto_cpu_pending_reason = NULL; // Clear pending log
+			int target_idx = auto_cpu_target_index;
+			int current_idx = auto_cpu_current_index;
 			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target_idx != current_idx && target_idx >= 0 && target_idx < auto_cpu_freq_count) {
+				int freq_khz = auto_cpu_frequencies[target_idx];
+				LOG_info("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
+				         auto_cpu_freq_count - 1);
+
+				if (PLAT_setCPUFrequency(freq_khz) == 0) {
+					pthread_mutex_lock(&auto_cpu_mutex);
+					auto_cpu_current_index = target_idx;
+					pthread_mutex_unlock(&auto_cpu_mutex);
+				} else {
+					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
+				}
+			}
+		} else {
+			// Fallback to 3-level mode
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int target = auto_cpu_target_level;
+			int current = auto_cpu_current_level;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target != current) {
+				int cpu_speed;
+				const char* level_name;
+				switch (target) {
+				case 0:
+					cpu_speed = CPU_SPEED_POWERSAVE;
+					level_name = "POWERSAVE";
+					break;
+				case 1:
+					cpu_speed = CPU_SPEED_NORMAL;
+					level_name = "NORMAL";
+					break;
+				case 2:
+					cpu_speed = CPU_SPEED_PERFORMANCE;
+					level_name = "PERFORMANCE";
+					break;
+				default:
+					cpu_speed = CPU_SPEED_NORMAL;
+					level_name = "NORMAL";
+					break;
+				}
+
+				LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
+				PWR_setCPUSpeed(cpu_speed);
+
+				pthread_mutex_lock(&auto_cpu_mutex);
+				auto_cpu_current_level = target;
+				pthread_mutex_unlock(&auto_cpu_mutex);
+			}
 		}
 
 		// Check every 50ms (responsive but not wasteful)
@@ -1621,54 +1654,127 @@ static void auto_cpu_stopThread(void) {
 }
 
 /**
- * Requests a CPU level change (non-blocking).
+ * Requests a CPU level change (non-blocking, fallback mode).
  *
  * Sets the target level which the background thread will apply.
  * Returns immediately without blocking the main loop.
  *
  * @param level Target level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
- * @param util Current utilization percentage (0-100, from frame timing)
- * @param fill Current buffer fill percentage (0-100, for diagnostics)
- * @param reason Reason string for CSV logging ("boost", "reduce", "panic")
  */
-static void auto_cpu_setTargetLevel(int level, unsigned util, unsigned fill, const char* reason) {
+static void auto_cpu_setTargetLevel(int level) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	auto_cpu_target_level = level;
-	auto_cpu_pending_util = util;
-	auto_cpu_pending_fill = fill;
-	auto_cpu_pending_reason = reason;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
 
 /**
- * Log CPU scaling event to CSV for analysis.
- * Called from background thread after applying change.
+ * Requests a CPU frequency index change (non-blocking, granular mode).
  *
- * @param old_level Previous CPU level (0-2)
- * @param new_level New CPU level (0-2)
- * @param util Frame timing utilization percentage (90th percentile)
- * @param fill Audio buffer fill percentage (for diagnostics)
- * @param reason Trigger reason ("boost", "reduce", "panic")
+ * @param index Target index into auto_cpu_frequencies array
  */
-static void auto_cpu_logChange(int old_level, int new_level, unsigned util, unsigned fill,
-                               const char* reason) {
-	char csv_path[MAX_PATH];
-	sprintf(csv_path, "%s/logs", USERDATA_PATH);
-	mkdir(csv_path, 0755);
-	strcat(csv_path, "/auto_cpu.csv");
+static void auto_cpu_setTargetIndex(int index) {
+	if (index < 0)
+		index = 0;
+	if (index >= auto_cpu_freq_count)
+		index = auto_cpu_freq_count - 1;
 
-	int needs_header = (access(csv_path, F_OK) != 0);
-	FILE* f = fopen(csv_path, "a");
-	if (!f)
-		return;
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_target_index = index;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
 
-	if (needs_header) {
-		fprintf(f, "timestamp,path,old_level,new_level,util_p90,fill,reason\n");
+/**
+ * Gets the current frequency index (thread-safe).
+ */
+static int auto_cpu_getCurrentIndex(void) {
+	pthread_mutex_lock(&auto_cpu_mutex);
+	int idx = auto_cpu_current_index;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+	return idx;
+}
+
+/**
+ * Gets the current frequency in kHz.
+ */
+static int auto_cpu_getCurrentFrequency(void) {
+	int idx = auto_cpu_getCurrentIndex();
+	if (idx >= 0 && idx < auto_cpu_freq_count) {
+		return auto_cpu_frequencies[idx];
 	}
+	return 0;
+}
 
-	fprintf(f, "%u,%s,%d,%d,%u,%u,%s\n", SDL_GetTicks(), game.path, old_level, new_level, util,
-	        fill, reason);
-	fclose(f);
+/**
+ * Finds the index of the nearest frequency to the target.
+ */
+static int auto_cpu_findNearestIndex(int target_khz) {
+	if (auto_cpu_freq_count <= 0)
+		return 0;
+
+	int best_idx = 0;
+	int best_diff = abs(auto_cpu_frequencies[0] - target_khz);
+
+	for (int i = 1; i < auto_cpu_freq_count; i++) {
+		int diff = abs(auto_cpu_frequencies[i] - target_khz);
+		if (diff < best_diff) {
+			best_diff = diff;
+			best_idx = i;
+		}
+	}
+	return best_idx;
+}
+
+/**
+ * Detects available CPU frequencies and initializes granular scaling.
+ *
+ * Called once during auto mode initialization. Populates the frequency array
+ * and calculates preset indices for POWERSAVE/NORMAL/PERFORMANCE.
+ *
+ * Strategy for preset mapping:
+ * - POWERSAVE: ~25% from min (index 1 or 2 if available, else min)
+ * - NORMAL: ~75% of max frequency
+ * - PERFORMANCE: max frequency (last index)
+ */
+static void auto_cpu_detectFrequencies(void) {
+	auto_cpu_freq_count =
+	    PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+
+	if (auto_cpu_freq_count >= 2) {
+		auto_cpu_use_granular = 1;
+
+		// Calculate preset indices based on frequency percentages
+		int min_freq = auto_cpu_frequencies[0];
+		int max_freq = auto_cpu_frequencies[auto_cpu_freq_count - 1];
+		int range = max_freq - min_freq;
+
+		// POWERSAVE: ~25% up from minimum (gives some headroom above min)
+		int ps_target = min_freq + (range * 25 / 100);
+		auto_cpu_preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
+
+		// NORMAL: ~75% of max
+		int normal_target = min_freq + (range * 75 / 100);
+		auto_cpu_preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
+
+		// PERFORMANCE: max frequency
+		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
+
+		LOG_info("Auto CPU: detected %d frequencies (%d - %d kHz)\n", auto_cpu_freq_count, min_freq,
+		         max_freq);
+		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
+		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
+		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
+		         auto_cpu_preset_indices[2], auto_cpu_frequencies[auto_cpu_preset_indices[2]]);
+
+		// Log all frequencies for debugging
+		LOG_debug("Auto CPU: frequency table:\n");
+		for (int i = 0; i < auto_cpu_freq_count; i++) {
+			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_frequencies[i]);
+		}
+	} else {
+		auto_cpu_use_granular = 0;
+		LOG_info("Auto CPU: frequency detection failed (%d found), using 3-level fallback\n",
+		         auto_cpu_freq_count);
+	}
 }
 
 static void resetAutoCPUState(void) {
@@ -1678,6 +1784,7 @@ static void resetAutoCPUState(void) {
 	auto_cpu_last_underrun = SND_getUnderrunCount();
 	auto_cpu_startup_frames = 0;
 	auto_cpu_frame_time_index = 0;
+	auto_cpu_panic_cooldown = 0;
 
 	// Calculate frame budget from core's declared FPS
 	if (core.fps > 0) {
@@ -1689,14 +1796,26 @@ static void resetAutoCPUState(void) {
 	// Clear frame time buffer
 	memset(auto_cpu_frame_times, 0, sizeof(auto_cpu_frame_times));
 
-	// Reset levels (thread-safe)
+	// Detect available frequencies (only once, on first auto mode entry)
+	static int frequencies_detected = 0;
+	if (!frequencies_detected) {
+		auto_cpu_detectFrequencies();
+		frequencies_detected = 1;
+	}
+
+	// Reset to NORMAL preset (thread-safe)
 	pthread_mutex_lock(&auto_cpu_mutex);
-	auto_cpu_target_level = 1; // Start at NORMAL
-	auto_cpu_current_level = 1;
+	if (auto_cpu_use_granular) {
+		auto_cpu_target_index = auto_cpu_preset_indices[1]; // NORMAL
+		auto_cpu_current_index = auto_cpu_preset_indices[1];
+	} else {
+		auto_cpu_target_level = 1; // NORMAL
+		auto_cpu_current_level = 1;
+	}
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
-	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps)\n",
-	         (unsigned long long)auto_cpu_frame_budget_us, core.fps);
+	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
+	         (unsigned long long)auto_cpu_frame_budget_us, core.fps, auto_cpu_use_granular);
 	LOG_debug(
 	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
 	    AUTO_CPU_UTIL_HIGH, AUTO_CPU_UTIL_LOW, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
@@ -1722,19 +1841,29 @@ static void setOverclock(int i) {
 		break;
 	case 3: // Auto
 		resetAutoCPUState();
-		// Apply NORMAL immediately (synchronous) to avoid startup underrun
+		// Apply initial frequency immediately (synchronous) to avoid startup underrun
 		// Background thread will then maintain this or adjust as needed
-		PWR_setCPUSpeed(CPU_SPEED_NORMAL);
-		pthread_mutex_lock(&auto_cpu_mutex);
-		auto_cpu_current_level = 1; // Mark as applied
-		pthread_mutex_unlock(&auto_cpu_mutex);
+		if (auto_cpu_use_granular) {
+			int start_idx = auto_cpu_preset_indices[1]; // NORMAL preset
+			int start_freq = auto_cpu_frequencies[start_idx];
+			PLAT_setCPUFrequency(start_freq);
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_current_index = start_idx; // Mark as applied
+			pthread_mutex_unlock(&auto_cpu_mutex);
+		} else {
+			PWR_setCPUSpeed(CPU_SPEED_NORMAL);
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_current_level = 1; // Mark as applied
+			pthread_mutex_unlock(&auto_cpu_mutex);
+		}
 		auto_cpu_startThread();
 		break;
 	}
 }
 
-// Ongoing display rate tracking (for diagnostics) - updated by measureDisplayRate()
-static float current_vsync_hz = 0; // Most recent vsync rate measurement
+// Display rate tracking - shared between Performance Tracking and Auto CPU Scaling
+// Set by measureDisplayRate(), used by updateAutoCPU() for diagnostics
+static float current_vsync_hz = 0;
 
 /**
  * Updates auto CPU scaling based on frame timing (core.run() execution time).
@@ -1743,14 +1872,16 @@ static float current_vsync_hz = 0; // Most recent vsync rate measurement
  * Uses the 90th percentile of frame execution times to determine CPU utilization,
  * which directly measures emulation performance independent of audio/display timing.
  *
- * Algorithm:
- * 1. Store frame execution time (measured around core.run())
- * 2. Every window (~500ms), calculate 90th percentile frame time
- * 3. Compare to frame budget (1M/fps microseconds) for utilization %
- * 4. Count consecutive high/low utilization windows
- * 5. Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
+ * Granular Mode Algorithm:
+ * - Performance scales linearly with frequency
+ * - Step through frequency indices one at a time for smooth transitions
+ * - Use predicted utilization to find optimal frequency
  *
- * Also handles emergency escalation on actual audio underruns (panic path).
+ * Fallback Mode Algorithm (3 levels):
+ * - Same as before: count consecutive high/low util windows
+ * - Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
+ *
+ * Both modes handle emergency escalation on actual audio underruns (panic path).
  */
 static void updateAutoCPU(void) {
 	// Skip if not in auto mode or during special states
@@ -1766,24 +1897,35 @@ static void updateAutoCPU(void) {
 		return;
 	}
 
-	// Get current target level (thread-safe read)
+	// Get current state (thread-safe read)
 	pthread_mutex_lock(&auto_cpu_mutex);
-	int current_target = auto_cpu_target_level;
+	int current_idx = auto_cpu_target_index;
+	int current_level = auto_cpu_target_level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
-	// Get current buffer fill for diagnostics (kept for logging and HUD)
-	unsigned fill = SND_getBufferOccupancy();
-
-	// Emergency: check for actual underruns (panic path - keep this!)
+	// Emergency: check for actual underruns (panic path)
 	unsigned underruns = SND_getUnderrunCount();
-	if (underruns > auto_cpu_last_underrun && current_target < 2) {
-		// Underrun detected - request immediate boost to PERFORMANCE
-		auto_cpu_setTargetLevel(2, 100, fill, "panic");
+	int max_idx = auto_cpu_freq_count - 1;
+	int at_max = auto_cpu_use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+
+	if (underruns > auto_cpu_last_underrun && !at_max) {
+		// Underrun detected - request immediate boost to max
+		if (auto_cpu_use_granular) {
+			auto_cpu_setTargetIndex(max_idx);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to %d kHz\n",
+			         auto_cpu_frequencies[max_idx]);
+		} else {
+			auto_cpu_setTargetLevel(2);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to PERFORMANCE\n");
+		}
 		auto_cpu_high_util_windows = 0;
 		auto_cpu_low_util_windows = 0;
+		// Set cooldown: wait 8 windows (~4 seconds) before allowing reduction
+		// This prevents rapid oscillation after a panic (especially on platforms
+		// with few frequency steps like miyoomini)
+		auto_cpu_panic_cooldown = 8;
 		SND_resetUnderrunCount();
 		auto_cpu_last_underrun = 0;
-		LOG_warn("Auto CPU: PANIC - underrun detected, boosting to PERFORMANCE\n");
 		return;
 	}
 	// Update underrun tracking (even if at max level)
@@ -1816,47 +1958,145 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
-		// Categorize window by utilization
-		if (util > AUTO_CPU_UTIL_HIGH) {
-			// CPU is struggling - near or over frame budget
-			auto_cpu_high_util_windows++;
-			auto_cpu_low_util_windows = 0;
-		} else if (util < AUTO_CPU_UTIL_LOW) {
-			// CPU has plenty of headroom
-			auto_cpu_low_util_windows++;
-			auto_cpu_high_util_windows = 0;
+		if (auto_cpu_use_granular) {
+			// Granular mode: use linear performance scaling to find optimal frequency
+			// Performance scales linearly with frequency, so:
+			// new_util = current_util * (current_freq / new_freq)
+
+			int current_freq = auto_cpu_frequencies[current_idx];
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_panic_cooldown > 0) {
+				auto_cpu_panic_cooldown--;
+			}
+
+			if (util > AUTO_CPU_UTIL_HIGH) {
+				// Need more performance - step up
+				auto_cpu_high_util_windows++;
+				auto_cpu_low_util_windows = 0;
+
+				if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_idx < max_idx) {
+					// Find next frequency that would bring util under 75% (target sweet spot)
+					// Using: new_util = util * (current_freq / new_freq)
+					// So: new_freq = current_freq * util / target_util
+					int target_util = 70; // Target 70% after boost
+					int needed_freq = current_freq * (int)util / target_util;
+					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+
+					// Ensure we actually go higher
+					if (new_idx <= current_idx)
+						new_idx = current_idx + 1;
+					if (new_idx > max_idx)
+						new_idx = max_idx;
+
+					auto_cpu_setTargetIndex(new_idx);
+					auto_cpu_high_util_windows = 0;
+					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
+					         auto_cpu_frequencies[new_idx], util, target_util);
+				}
+			} else if (util < AUTO_CPU_UTIL_LOW) {
+				// Can reduce power - step down
+				auto_cpu_low_util_windows++;
+				auto_cpu_high_util_windows = 0;
+
+				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				int reduce_ok = (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS) &&
+				                (auto_cpu_panic_cooldown == 0) && (current_idx > 0);
+
+				if (reduce_ok) {
+					// Find frequency that would bring util up to ~70% (target sweet spot)
+					// new_util = util * (current_freq / new_freq)
+					// new_freq = current_freq * util / target_util
+					int target_util = 70; // Target 70% after reduction
+					int needed_freq = current_freq * (int)util / target_util;
+					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+
+					// Ensure we actually go lower
+					if (new_idx >= current_idx)
+						new_idx = current_idx - 1;
+					if (new_idx < 0)
+						new_idx = 0;
+
+					// CONSERVATIVE STEP LIMIT: Never step down more than 2 indices at once
+					// This prevents jumping from max to min on platforms with few frequencies
+					// (e.g., miyoomini 1600→400 MHz caused immediate underruns)
+					int max_step = 2;
+					if (current_idx - new_idx > max_step) {
+						new_idx = current_idx - max_step;
+					}
+
+					// Safety check: predict new utilization, keep comfortable headroom (≤75%)
+					// Using 75% instead of 85% gives buffer for jitter and measurement error
+					int new_freq = auto_cpu_frequencies[new_idx];
+					int predicted_util = util * current_freq / new_freq;
+					int safe_util = 75; // Conservative threshold for reduction decisions
+
+					if (predicted_util > safe_util) {
+						// Would be too close to edge - step down by only 1 instead
+						new_idx = current_idx - 1;
+						new_freq = auto_cpu_frequencies[new_idx];
+						predicted_util = util * current_freq / new_freq;
+					}
+
+					if (new_idx >= 0 && predicted_util <= AUTO_CPU_UTIL_HIGH) {
+						auto_cpu_setTargetIndex(new_idx);
+						auto_cpu_low_util_windows = 0;
+						LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
+						         current_freq, new_freq, util, predicted_util);
+					}
+				}
+			} else {
+				// In sweet spot - reset counters
+				auto_cpu_high_util_windows = 0;
+				auto_cpu_low_util_windows = 0;
+			}
+
+			// Sampled debug logging (every 4th window = ~2 seconds)
+			static int debug_window_count = 0;
+			if (++debug_window_count >= 4) {
+				debug_window_count = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% util=%u%% freq=%dkHz idx=%d/%d vsync=%.1fHz\n",
+				          snap.fill_pct, util, current_freq, current_idx, max_idx,
+				          current_vsync_hz);
+			}
 		} else {
-			// In the sweet spot - reset both counters
-			auto_cpu_high_util_windows = 0;
-			auto_cpu_low_util_windows = 0;
-		}
+			// Fallback mode: 3-level scaling (original algorithm)
+			if (util > AUTO_CPU_UTIL_HIGH) {
+				auto_cpu_high_util_windows++;
+				auto_cpu_low_util_windows = 0;
+			} else if (util < AUTO_CPU_UTIL_LOW) {
+				auto_cpu_low_util_windows++;
+				auto_cpu_high_util_windows = 0;
+			} else {
+				auto_cpu_high_util_windows = 0;
+				auto_cpu_low_util_windows = 0;
+			}
 
-		// Sampled debug logging (every 4th window = ~2 seconds)
-		static int debug_window_count = 0;
-		if (++debug_window_count >= 4) {
-			debug_window_count = 0;
-			SND_Snapshot snap = SND_getSnapshot();
+			// Sampled debug logging
+			static int debug_window_count_fallback = 0;
+			if (++debug_window_count_fallback >= 4) {
+				debug_window_count_fallback = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
+				          snap.fill_pct, util, current_level, current_vsync_hz, snap.total_adjust);
+			}
 
-			LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
-			          snap.fill_pct, util, current_target, current_vsync_hz, snap.total_adjust);
-		}
+			// Boost if sustained high utilization
+			if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_level < 2) {
+				int new_level = current_level + 1;
+				auto_cpu_setTargetLevel(new_level);
+				auto_cpu_high_util_windows = 0;
+				LOG_info("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
+			}
 
-		// Boost CPU if sustained high utilization
-		if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_target < 2) {
-			int new_level = current_target + 1;
-			auto_cpu_setTargetLevel(new_level, util, fill, "boost");
-			auto_cpu_high_util_windows = 0;
-			LOG_info("Auto CPU: BOOST requested, level %d (util=%u%%, %d windows)\n", new_level,
-			         util, AUTO_CPU_BOOST_WINDOWS);
-		}
-
-		// Reduce CPU if sustained low utilization
-		if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_target > 0) {
-			int new_level = current_target - 1;
-			auto_cpu_setTargetLevel(new_level, util, fill, "reduce");
-			auto_cpu_low_util_windows = 0;
-			LOG_info("Auto CPU: REDUCE requested, level %d (util=%u%%, %d windows)\n", new_level,
-			         util, AUTO_CPU_REDUCE_WINDOWS);
+			// Reduce if sustained low utilization
+			if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_level > 0) {
+				int new_level = current_level - 1;
+				auto_cpu_setTargetLevel(new_level);
+				auto_cpu_low_util_windows = 0;
+				LOG_info("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+			}
 		}
 
 		// Reset window counter (frame times stay in ring buffer)
@@ -3709,14 +3949,15 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 // Video Processing
 ///////////////////////////////////////
 
-// Performance counters for debug overlay
+// Performance counters for debug overlay and monitoring
 static int cpu_ticks = 0;
 static int fps_ticks = 0;
 static int use_ticks = 0;
 static double fps_double = 0;
 static double cpu_double = 0;
-// use_double declared earlier for auto CPU logging access
+static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
+// Note: current_vsync_hz is declared earlier (used by updateAutoCPU, set by measureDisplayRate)
 
 #ifdef USES_SWSCALER
 static int fit = 1; // Use software scaler (fit to screen)
@@ -4512,10 +4753,11 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
-		// Bottom-left: CPU level + buffer fill (always), plus utilization when auto
+		// Bottom-left: CPU info + buffer fill (always), plus utilization when auto
 		if (overclock == 3) {
-			// Auto CPU mode: show level, utilization, and buffer fill
+			// Auto CPU mode: show frequency/level, utilization, and buffer fill
 			pthread_mutex_lock(&auto_cpu_mutex);
+			int current_idx = auto_cpu_current_index;
 			int level = auto_cpu_current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
@@ -4531,7 +4773,14 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 					util = 200;
 			}
 
-			sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+			if (auto_cpu_use_granular && current_idx >= 0 && current_idx < auto_cpu_freq_count) {
+				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
+				int freq_mhz = auto_cpu_frequencies[current_idx] / 1000;
+				sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
+			} else {
+				// Fallback mode: show level
+				sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+			}
 		} else {
 			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
 			sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
@@ -6620,6 +6869,19 @@ static void Menu_loop(void) {
 ///////////////////////////////////////
 // Performance Tracking
 ///////////////////////////////////////
+// Runtime monitoring for debug HUD and audio/video synchronization.
+//
+// Functions:
+// - getUsage(): System CPU% from /proc/self/stat
+// - trackFPS(): FPS and CPU counters for debug HUD (once per second)
+// - measureDisplayRate(): Vsync timing for audio rate control (per frame)
+// - measureAudioRate(): Audio consumption rate for rate control (2s windows)
+// - limitFF(): Fast-forward speed limiter
+//
+// These feed data to:
+// - Debug HUD (top-left corner): FPS, CPU%
+// - Audio rate control (api.c): Display/audio rate meters
+// - Auto CPU scaling: current_vsync_hz for diagnostics
 
 /**
  * Gets CPU usage percentage from /proc/self/stat.

@@ -749,6 +749,32 @@ void PLAT_setCPUSpeed(int speed) {
 	system(cmd);
 }
 
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * rg35xx may expose frequencies via sysfs even though we use overclock.elf for setting.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via overclock.elf.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	char cmd[32];
+	sprintf(cmd, "overclock.elf %d\n", freq_khz);
+	int ret = system(cmd);
+	return (ret == 0) ? 0 : -1;
+}
+
 #define RUMBLE_PATH "/sys/class/power_supply/battery/moto"
 void PLAT_setRumble(int strength) {
 	int val = MAX(0, MIN((100 * strength) >> 16, 100));

@@ -602,6 +602,32 @@ void PLAT_setCPUSpeed(int speed) {
 }
 
 /**
+ * Gets available CPU frequencies (not available on M17).
+ *
+ * M17 has fixed 1200 MHz clock speed, no dynamic scaling.
+ *
+ * @param frequencies Output array (unused)
+ * @param max_count Maximum count (unused)
+ * @return 0 (detection not available)
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	(void)frequencies;
+	(void)max_count;
+	return 0; // Fixed frequency platform
+}
+
+/**
+ * Sets CPU frequency directly (not supported on M17).
+ *
+ * @param freq_khz Target frequency (ignored)
+ * @return -1 (not supported)
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	(void)freq_khz;
+	return -1; // Not supported
+}
+
+/**
  * Sets rumble/vibration strength (not supported).
  *
  * @param strength Rumble strength (ignored)

@@ -394,6 +394,36 @@ void PLAT_setCPUSpeed(int speed) {
 	system(cmd);
 }
 
+/**
+ * Gets available CPU frequencies from sysfs.
+ *
+ * my282 may expose frequencies via sysfs even though we use overclock.elf for setting.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
+	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+}
+
+/**
+ * Sets CPU frequency directly via overclock.elf.
+ *
+ * my282 overclock.elf uses MHz (not kHz) and controls core count.
+ * For granular scaling, we use 2 cores as that's what NORMAL/PERF modes use.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz) {
+	int freq_mhz = freq_khz / 1000;
+	char cmd[128];
+	sprintf(cmd, "overclock.elf userspace 2 %d 384 1080 0", freq_mhz);
+	int ret = system(cmd);
+	return (ret == 0) ? 0 : -1;
+}
+
 #define RUMBLE_PATH "/sys/devices/virtual/timed_output/vibrator/enable"
 
 /**
