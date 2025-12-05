@@ -44,6 +44,7 @@
 #include "defines.h"
 #include "gfx_text.h"
 #include "pad.h"
+// NOLINTNEXTLINE(bugprone-suspicious-include) - Intentionally bundled to avoid makefile changes
 #include "rate_meter.c"
 #include "utils.h"
 
@@ -2168,6 +2169,9 @@ void SND_addDisplaySample(float hz) {
 		LOG_info("Display: meter stable at %.2f Hz (swing=%.2f Hz, core=%.2f Hz, correction=%.4f, "
 		         "%.2f%% mismatch)\n",
 		         median, swing, (float)snd.frame_rate, base_correction, mismatch_pct);
+		(void)swing;
+		(void)base_correction;
+		(void)mismatch_pct; // Used in LOG_info
 
 		// Adjust buffer size based on measured swing
 		SND_updateBufferForSwing();
@@ -2200,6 +2204,9 @@ void SND_addAudioSample(float hz) {
 		LOG_info("Audio: meter stable at %.2f Hz (swing=%.2f Hz, nominal=%d Hz, correction=%.4f, "
 		         "%+.2f%% drift)\n",
 		         median, swing, snd.sample_rate_out, audio_correction, drift_pct);
+		(void)swing;
+		(void)audio_correction;
+		(void)drift_pct; // Used in LOG_info
 	}
 }
 

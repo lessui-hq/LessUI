@@ -1603,6 +1603,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				}
 
 				LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
+				(void)level_name; // Used in LOG_info which may be compiled out
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);
@@ -2057,6 +2058,7 @@ static void updateAutoCPU(void) {
 				LOG_debug("Auto CPU: fill=%u%% util=%u%% freq=%dkHz idx=%d/%d vsync=%.1fHz\n",
 				          snap.fill_pct, util, current_freq, current_idx, max_idx,
 				          current_vsync_hz);
+				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
@@ -2078,6 +2080,7 @@ static void updateAutoCPU(void) {
 				SND_Snapshot snap = SND_getSnapshot();
 				LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
 				          snap.fill_pct, util, current_level, current_vsync_hz, snap.total_adjust);
+				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 
 			// Boost if sustained high utilization

@@ -39,7 +39,7 @@ void RateMeter_addSample(RateMeter* meter, float hz) {
 		return;
 
 	// Sort copy to find median and min/max
-	float sorted[RATE_METER_MAX_WINDOW];
+	float sorted[RATE_METER_MAX_WINDOW] = {0};
 	for (int i = 0; i < meter->count; i++)
 		sorted[i] = meter->buffer[i];
 
