@@ -2355,7 +2355,7 @@ void init()
     // set the cpu speed to the menu speed
     // this is done here to ensure we downclock
     // the menu (no need to draw power unnecessarily)
-    PWR_setCPUSpeed(CPU_SPEED_MENU);
+    PWR_setCPUSpeed(CPU_SPEED_IDLE);
 
     // initialize:
     // - the screen, allowing us to draw to it

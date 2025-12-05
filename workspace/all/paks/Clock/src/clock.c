@@ -49,7 +49,7 @@ enum {
  * @return EXIT_SUCCESS on normal exit
  */
 int main(int argc, char* argv[]) {
-	PWR_setCPUSpeed(CPU_SPEED_MENU);
+	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
 	PAD_init();

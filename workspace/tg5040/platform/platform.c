@@ -364,17 +364,17 @@ void PLAT_powerOff(void) {
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 800000;
+	case CPU_SPEED_IDLE:
+		freq = 408000; // 20% of max (408 MHz)
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1200000;
+		freq = 1008000; // 55% of max (1008 MHz)
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1608000;
+		freq = 1608000; // 80% of max (1608 MHz)
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 2000000;
+		freq = 2000000; // 100% (2000 MHz)
 		break;
 	}
 	putInt(GOVERNOR_PATH, freq);

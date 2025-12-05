@@ -364,26 +364,26 @@ void PLAT_powerOff(void) {
  *
  * Command format: overclock.elf userspace <cores> <freq> 384 1080 0
  *
- * @param speed CPU_SPEED_MENU/POWERSAVE/NORMAL/PERFORMANCE
+ * @param speed CPU_SPEED_IDLE/POWERSAVE/NORMAL/PERFORMANCE
  */
 void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	int cpu = 1;
 	switch (speed) {
-	case CPU_SPEED_MENU:
-		freq = 576;
+	case CPU_SPEED_IDLE:
+		freq = 300; // 20% of max (302 → 300 MHz)
 		cpu = 1;
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 1056;
+		freq = 832; // 55% of max (832 MHz)
 		cpu = 1;
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1344;
+		freq = 1210; // 80% of max (1210 MHz)
 		cpu = 2;
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1512;
+		freq = 1512; // 100% (1512 MHz)
 		cpu = 2;
 		break;
 	}

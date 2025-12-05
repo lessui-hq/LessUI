@@ -1218,12 +1218,18 @@ int PWR_getBattery(void);
 
 /**
  * CPU speed presets for power management.
+ *
+ * 4-level system based on % of max frequency:
+ * - IDLE: 20% (launcher, tools, settings)
+ * - POWERSAVE: 55% (light gaming - GB, NES)
+ * - NORMAL: 80% (most gaming - SNES, GBA)
+ * - PERFORMANCE: 100% (demanding - PS1, N64)
  */
 enum {
-	CPU_SPEED_MENU, // Low speed for menu navigation
-	CPU_SPEED_POWERSAVE, // Reduced speed for battery saving
-	CPU_SPEED_NORMAL, // Default speed
-	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games
+	CPU_SPEED_IDLE, // Minimum speed for non-gaming tasks (20% of max)
+	CPU_SPEED_POWERSAVE, // Light gaming (55% of max)
+	CPU_SPEED_NORMAL, // Most gaming (80% of max)
+	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games (100%)
 };
 
 /**

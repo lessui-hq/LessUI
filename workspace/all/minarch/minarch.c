@@ -1369,8 +1369,8 @@ static struct Config {
                                         "Auto adjusts based on emulation demand.",
                                 .full = NULL,
                                 .var = NULL,
-                                .default_value = 1,
-                                .value = 1,
+                                .default_value = 3, // Auto
+                                .value = 3, // Auto
                                 .count = 4,
                                 .lock = 0,
                                 .values = overclock_labels,
@@ -1730,10 +1730,10 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * Called once during auto mode initialization. Populates the frequency array
  * and calculates preset indices for POWERSAVE/NORMAL/PERFORMANCE.
  *
- * Strategy for preset mapping:
- * - POWERSAVE: ~25% from min (index 1 or 2 if available, else min)
- * - NORMAL: ~75% of max frequency
- * - PERFORMANCE: max frequency (last index)
+ * Strategy for preset mapping (matches manual preset percentages):
+ * - POWERSAVE: 55% of max frequency
+ * - NORMAL: 80% of max frequency
+ * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
 	auto_cpu_freq_count =
@@ -1742,24 +1742,22 @@ static void auto_cpu_detectFrequencies(void) {
 	if (auto_cpu_freq_count >= 2) {
 		auto_cpu_use_granular = 1;
 
-		// Calculate preset indices based on frequency percentages
-		int min_freq = auto_cpu_frequencies[0];
+		// Calculate preset indices based on frequency percentages of max
 		int max_freq = auto_cpu_frequencies[auto_cpu_freq_count - 1];
-		int range = max_freq - min_freq;
 
-		// POWERSAVE: ~25% up from minimum (gives some headroom above min)
-		int ps_target = min_freq + (range * 25 / 100);
+		// POWERSAVE: 55% of max
+		int ps_target = max_freq * 55 / 100;
 		auto_cpu_preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
 
-		// NORMAL: ~75% of max
-		int normal_target = min_freq + (range * 75 / 100);
+		// NORMAL: 80% of max
+		int normal_target = max_freq * 80 / 100;
 		auto_cpu_preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
 
 		// PERFORMANCE: max frequency
 		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
 
-		LOG_info("Auto CPU: detected %d frequencies (%d - %d kHz)\n", auto_cpu_freq_count, min_freq,
-		         max_freq);
+		LOG_info("Auto CPU: detected %d frequencies (%d - %d kHz)\n", auto_cpu_freq_count,
+		         auto_cpu_frequencies[0], max_freq);
 		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
 		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
 		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
@@ -5176,7 +5174,7 @@ void Menu_beforeSleep(void) {
 	RTC_write();
 	State_autosave();
 	putFile(AUTO_RESUME_PATH, game.path + strlen(SDCARD_PATH));
-	PWR_setCPUSpeed(CPU_SPEED_MENU);
+	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 }
 void Menu_afterSleep(void) {
 	// LOG_info("beforeSleep");
@@ -6542,7 +6540,7 @@ static void Menu_loop(void) {
 	PWR_warn(0);
 	if (!HAS_POWER_BUTTON)
 		PWR_enableSleep();
-	PWR_setCPUSpeed(CPU_SPEED_MENU); // set Hz directly
+	PWR_setCPUSpeed(CPU_SPEED_IDLE); // set Hz directly
 	GFX_setEffect(EFFECT_NONE);
 
 	int rumble_strength = VIB_getStrength();

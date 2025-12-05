@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Analyze CPU benchmark data to find optimal frequency bands for auto scaling.
+"""Analyze CPU benchmark data to find optimal frequency bands.
 
 This script analyzes actual benchmark data from system reports to determine
-optimal CPU frequency configurations for each platform. The goal is to ensure
-auto CPU scaling works reliably without oscillation.
+optimal CPU frequency configurations for each platform.
 
 Data sources:
 - Benchmark data extracted from system reports on SD card
 - Current configurations from workspace/*/platform/platform.c
 
-Key constraints:
-- POWERSAVE/NORMAL ratio must be >65% (safe for 55% util threshold)
-- Should maximize efficiency (performance per watt)
-- Should provide meaningful performance tiers
+The recommended 4-level system uses percentage of max frequency:
+- IDLE: 20% (launcher, tools, settings)
+- POWERSAVE: 55% (light gaming - GB, NES)
+- NORMAL: 80% (most gaming - SNES, GBA)
+- PERFORMANCE: 100% (demanding - PS1, N64)
+
+Note: Safety ratios between levels are NOT required because:
+- Auto CPU scaling uses granular frequencies with conservative step limits
+- Manual presets are fixed user choices with no automatic transitions
 """
 
 import sys
@@ -59,6 +63,16 @@ BENCHMARKS = {
         1000: 166200,
         1100: 182700,
         1600: 232600,
+    },
+    "my355": {
+        408: 67400,
+        600: 99300,
+        816: 134800,
+        1104: 194000,
+        1416: 238400,
+        1608: 277000,
+        1800: 301100,
+        1992: 315700,
     },
 }
 
@@ -157,9 +171,9 @@ def analyze_platform(name, freqs):
 
     # Find optimal bands using several strategies
     print(
-        f"\n{'Strategy':<30} {'POWERSAVE':<12} {'NORMAL':<12} {'PERFORMANCE':<12} {'PS/N Ratio':<12} {'Safe @55%?'}"
+        f"\n{'Strategy':<30} {'IDLE':<10} {'POWERSAVE':<12} {'NORMAL':<12} {'PERFORMANCE':<12}"
     )
-    print("-" * 100)
+    print("-" * 80)
 
     strategies = []
 
@@ -232,6 +246,28 @@ def analyze_platform(name, freqs):
                     ("Safe scaling (70-90%)", ps_freq, n_freq, p_freq, ratio, safe)
                 )
 
+    # Strategy 5: 4-level system (IDLE/POWERSAVE/NORMAL/PERFORMANCE)
+    # Uses percentage of MAX frequency (not range)
+    # IDLE: 20% of max (for launcher/tools, no audio concerns)
+    # POWERSAVE: 55% of max (light gaming)
+    # NORMAL: 80% of max (most gaming)
+    # PERFORMANCE: 100% (max)
+    if len(freq_list) >= 3:
+        idle_target = max_freq * 0.20
+        ps_target = max_freq * 0.55
+        n_target = max_freq * 0.80
+        p_freq = max_freq
+
+        idle_freq = min(freq_list, key=lambda f: abs(f - idle_target))
+        ps_freq = min(freq_list, key=lambda f: abs(f - ps_target))
+        n_freq = min(freq_list, key=lambda f: abs(f - n_target))
+
+        ratio = ps_freq / n_freq
+        safe = "✓" if 55 / ratio <= 85 else "✗"
+        strategies.append(
+            ("4-level (20/55/80/100)", ps_freq, n_freq, p_freq, ratio, safe, idle_freq)
+        )
+
     # Strategy 5: Current config
     if name in CURRENT_CONFIGS:
         cfg = CURRENT_CONFIGS[name]
@@ -248,39 +284,27 @@ def analyze_platform(name, freqs):
             )
         )
 
-    for strategy, ps, n, p, ratio, safe in strategies:
-        print(
-            f"{strategy:<30} {ps:<12} {n:<12} {p:<12} {ratio:>11.1%} {safe:>10}"
-        )
-
-    # Show what happens at 55% util for each strategy
-    print(f"\nProjected utilization after NORMAL→POWERSAVE reduction at 55%:")
-    print(
-        f"{'Strategy':<30} {'POWERSAVE util':<20} {'Margin to 85%':<15} {'Status':<10}"
-    )
-    print("-" * 75)
-    for strategy, ps, n, p, ratio, safe in strategies:
-        if ratio > 0:
-            new_util = 55 / ratio
-            margin = 85 - new_util
-            status = "SAFE" if margin > 0 else "DANGER"
-            print(
-                f"{strategy:<30} {new_util:>6.1f}%             {margin:>14.1f}%  {status:<10}"
-            )
+    for strat in strategies:
+        if len(strat) >= 7:  # 4-level strategy with IDLE
+            strategy, ps, n, p, idle = strat[0], strat[1], strat[2], strat[3], strat[6]
+            print(f"{strategy:<30} {idle:<10} {ps:<12} {n:<12} {p:<12}")
+        else:  # 3-level strategy without IDLE
+            strategy, ps, n, p = strat[0], strat[1], strat[2], strat[3]
+            print(f"{strategy:<30} {'-':<10} {ps:<12} {n:<12} {p:<12}")
 
     return strategies
 
 
 # Main analysis
 def main():
-    print("CPU FREQUENCY BAND OPTIMIZATION ANALYSIS")
+    print("CPU FREQUENCY BAND ANALYSIS")
     print("=" * 80)
     print("\nBased on actual benchmark data from system reports")
-    print("Goal: Find optimal frequency bands for auto CPU scaling")
-    print("\nConstraints:")
-    print("- POWERSAVE/NORMAL ratio must be >65% (safe for 55% threshold)")
-    print("- Should maximize efficiency (performance per watt)")
-    print("- Should provide meaningful performance tiers")
+    print("\nRecommended 4-level system (% of max frequency):")
+    print("- IDLE: 20% (launcher, tools)")
+    print("- POWERSAVE: 55% (light gaming)")
+    print("- NORMAL: 80% (most gaming)")
+    print("- PERFORMANCE: 100% (demanding games)")
 
     all_results = {}
     for platform, freqs in sorted(BENCHMARKS.items()):
@@ -288,65 +312,25 @@ def main():
         if result:
             all_results[platform] = result
 
-    # Summary recommendations
+    # Summary: Show recommended 4-level configs for all platforms
     print(f"\n{'='*80}")
-    print("SUMMARY: RECOMMENDED CONFIGURATIONS")
+    print("RECOMMENDED 4-LEVEL CONFIGURATIONS (20/55/80/100% of max)")
     print(f"{'='*80}")
     print(
-        f"\n{'Platform':<15} {'Strategy':<25} {'POWERSAVE':<12} {'NORMAL':<12} {'PERFORMANCE':<12} {'Status':<10}"
+        f"\n{'Platform':<15} {'IDLE':<10} {'POWERSAVE':<12} {'NORMAL':<12} {'PERFORMANCE':<12}"
     )
-    print("-" * 95)
+    print("-" * 65)
 
     for platform, strategies in sorted(all_results.items()):
-        # Find best strategy: prefer "Safe scaling", fallback to current if safe
-        safe_strat = next(
-            (s for s in strategies if s[0] == "Safe scaling (70-90%)"), None
-        )
-        current_strat = next(
-            (s for s in strategies if s[0] == "CURRENT CONFIG"), None
+        # Find the 4-level strategy
+        four_level = next(
+            (s for s in strategies if s[0] == "4-level (20/55/80/100)"), None
         )
 
-        if safe_strat:
-            best = safe_strat
-            status = "✓ UPDATE" if best != current_strat else "✓ OK"
-        elif current_strat and current_strat[5] == "✓":
-            best = current_strat
-            status = "✓ OK"
-        else:
-            best = strategies[0]
-            status = "⚠ REVIEW"
-
-        strategy, ps, n, p, ratio, safe = best
-        print(
-            f"{platform:<15} {strategy:<25} {ps:<12} {n:<12} {p:<12} {status:<10}"
-        )
-
-    print(f"\n{'='*80}")
-    print("PLATFORMS NEEDING UPDATES")
-    print(f"{'='*80}")
-
-    needs_update = []
-    for platform, strategies in sorted(all_results.items()):
-        safe_strat = next(
-            (s for s in strategies if s[0] == "Safe scaling (70-90%)"), None
-        )
-        current_strat = next(
-            (s for s in strategies if s[0] == "CURRENT CONFIG"), None
-        )
-
-        if safe_strat and current_strat and safe_strat != current_strat:
-            needs_update.append((platform, current_strat, safe_strat))
-
-    if needs_update:
-        for platform, current, recommended in needs_update:
-            print(f"\n{platform}:")
-            print(f"  Current:     PS={current[1]} N={current[2]} P={current[3]}")
-            print(
-                f"  Recommended: PS={recommended[1]} N={recommended[2]} P={recommended[3]}"
-            )
-            print(f"  Reason: Improves ratio from {current[4]:.1%} to {recommended[4]:.1%}")
-    else:
-        print("\nAll platforms are already optimally configured!")
+        if four_level:
+            idle = four_level[6]
+            ps, n, p = four_level[1], four_level[2], four_level[3]
+            print(f"{platform:<15} {idle:<10} {ps:<12} {n:<12} {p:<12}")
 
 
 if __name__ == "__main__":
