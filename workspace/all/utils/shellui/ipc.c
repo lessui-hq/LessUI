@@ -29,6 +29,11 @@ void ipc_cleanup(void) {
 	rmdir(SHELLUI_DIR);
 }
 
+// Helper to set string field if not NULL
+static void json_set_string_if(JSON_Object* obj, const char* name, const char* value) {
+	if (value) json_object_set_string(obj, name, value);
+}
+
 int ipc_write_request(const Request* req) {
 	JSON_Value* root = json_value_init_object();
 	JSON_Object* obj = json_object(root);
@@ -36,67 +41,54 @@ int ipc_write_request(const Request* req) {
 	// Command type
 	const char* cmd_str = "none";
 	switch (req->command) {
-		case CMD_MESSAGE:
-			cmd_str = "message";
-			break;
-		case CMD_LIST:
-			cmd_str = "list";
-			break;
-		case CMD_KEYBOARD:
-			cmd_str = "keyboard";
-			break;
-		case CMD_SHUTDOWN:
-			cmd_str = "shutdown";
-			break;
-		default:
-			break;
+		case CMD_MESSAGE: cmd_str = "message"; break;
+		case CMD_LIST: cmd_str = "list"; break;
+		case CMD_KEYBOARD: cmd_str = "keyboard"; break;
+		case CMD_SHUTDOWN: cmd_str = "shutdown"; break;
+		default: break;
 	}
 	json_object_set_string(obj, "command", cmd_str);
+	json_set_string_if(obj, "request_id", req->request_id);
 
-	if (req->request_id) {
-		json_object_set_string(obj, "request_id", req->request_id);
-	}
+	// === Common params ===
+	json_set_string_if(obj, "background_color", req->background_color);
+	json_set_string_if(obj, "background_image", req->background_image);
+	json_set_string_if(obj, "confirm_button", req->confirm_button);
+	json_set_string_if(obj, "confirm_text", req->confirm_text);
+	json_set_string_if(obj, "cancel_button", req->cancel_button);
+	json_set_string_if(obj, "cancel_text", req->cancel_text);
+	json_set_string_if(obj, "action_button", req->action_button);
+	json_set_string_if(obj, "action_text", req->action_text);
+	json_object_set_boolean(obj, "disable_auto_sleep", req->disable_auto_sleep);
+	json_object_set_boolean(obj, "show_hardware_group", req->show_hardware_group);
 
-	// Message params
-	if (req->message) {
-		json_object_set_string(obj, "message", req->message);
-	}
+	// === Message params ===
+	json_set_string_if(obj, "message", req->message);
 	json_object_set_number(obj, "timeout", req->timeout);
-	if (req->background_color) {
-		json_object_set_string(obj, "background_color", req->background_color);
-	}
-	if (req->background_image) {
-		json_object_set_string(obj, "background_image", req->background_image);
-	}
-	if (req->confirm_text) {
-		json_object_set_string(obj, "confirm_text", req->confirm_text);
-	}
-	if (req->cancel_text) {
-		json_object_set_string(obj, "cancel_text", req->cancel_text);
-	}
 	json_object_set_boolean(obj, "show_pill", req->show_pill);
+	json_object_set_boolean(obj, "show_time_left", req->show_time_left);
+	json_set_string_if(obj, "message_alignment", req->message_alignment);
+	json_object_set_boolean(obj, "confirm_show", req->confirm_show);
+	json_object_set_boolean(obj, "cancel_show", req->cancel_show);
+	json_object_set_boolean(obj, "action_show", req->action_show);
+	json_set_string_if(obj, "inaction_button", req->inaction_button);
+	json_set_string_if(obj, "inaction_text", req->inaction_text);
+	json_object_set_boolean(obj, "inaction_show", req->inaction_show);
+	json_object_set_boolean(obj, "quit_after_last_item", req->quit_after_last_item);
 
-	// List params
-	if (req->file_path) {
-		json_object_set_string(obj, "file_path", req->file_path);
-	}
-	if (req->format) {
-		json_object_set_string(obj, "format", req->format);
-	}
-	if (req->title) {
-		json_object_set_string(obj, "title", req->title);
-	}
-	if (req->item_key) {
-		json_object_set_string(obj, "item_key", req->item_key);
-	}
-	if (req->stdin_data) {
-		json_object_set_string(obj, "stdin_data", req->stdin_data);
-	}
+	// === List params ===
+	json_set_string_if(obj, "file_path", req->file_path);
+	json_set_string_if(obj, "format", req->format);
+	json_set_string_if(obj, "title", req->title);
+	json_set_string_if(obj, "title_alignment", req->title_alignment);
+	json_set_string_if(obj, "item_key", req->item_key);
+	json_set_string_if(obj, "stdin_data", req->stdin_data);
+	json_set_string_if(obj, "write_location", req->write_location);
+	json_set_string_if(obj, "write_value", req->write_value);
+	json_set_string_if(obj, "enable_button", req->enable_button);
 
-	// Keyboard params
-	if (req->initial_value) {
-		json_object_set_string(obj, "initial_value", req->initial_value);
-	}
+	// === Keyboard params ===
+	json_set_string_if(obj, "initial_value", req->initial_value);
 
 	// Write to file
 	char* json_str = json_serialize_to_string_pretty(root);
@@ -122,9 +114,7 @@ int ipc_write_request(const Request* req) {
 
 Request* ipc_read_request(void) {
 	JSON_Value* root = json_parse_file(SHELLUI_REQUEST_FILE);
-	if (!root) {
-		return NULL;
-	}
+	if (!root) return NULL;
 
 	JSON_Object* obj = json_object(root);
 	if (!obj) {
@@ -141,56 +131,87 @@ Request* ipc_read_request(void) {
 	// Parse command
 	const char* cmd_str = json_object_get_string(obj, "command");
 	if (cmd_str) {
-		if (strcmp(cmd_str, "message") == 0) {
-			req->command = CMD_MESSAGE;
-		} else if (strcmp(cmd_str, "list") == 0) {
-			req->command = CMD_LIST;
-		} else if (strcmp(cmd_str, "keyboard") == 0) {
-			req->command = CMD_KEYBOARD;
-		} else if (strcmp(cmd_str, "shutdown") == 0) {
-			req->command = CMD_SHUTDOWN;
-		}
+		if (strcmp(cmd_str, "message") == 0) req->command = CMD_MESSAGE;
+		else if (strcmp(cmd_str, "list") == 0) req->command = CMD_LIST;
+		else if (strcmp(cmd_str, "keyboard") == 0) req->command = CMD_KEYBOARD;
+		else if (strcmp(cmd_str, "shutdown") == 0) req->command = CMD_SHUTDOWN;
 	}
 
 	req->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
 
-	// Message params
-	req->message = safe_strdup(json_object_get_string(obj, "message"));
-	req->timeout = json_get_int(obj, "timeout", -1);
+	// === Common params ===
 	req->background_color = safe_strdup(json_object_get_string(obj, "background_color"));
 	req->background_image = safe_strdup(json_object_get_string(obj, "background_image"));
+	req->confirm_button = safe_strdup(json_object_get_string(obj, "confirm_button"));
 	req->confirm_text = safe_strdup(json_object_get_string(obj, "confirm_text"));
+	req->cancel_button = safe_strdup(json_object_get_string(obj, "cancel_button"));
 	req->cancel_text = safe_strdup(json_object_get_string(obj, "cancel_text"));
-	req->show_pill = json_get_bool(obj, "show_pill", false);
+	req->action_button = safe_strdup(json_object_get_string(obj, "action_button"));
+	req->action_text = safe_strdup(json_object_get_string(obj, "action_text"));
+	req->disable_auto_sleep = json_get_bool(obj, "disable_auto_sleep", false);
+	req->show_hardware_group = json_get_bool(obj, "show_hardware_group", false);
 
-	// List params
+	// === Message params ===
+	req->message = safe_strdup(json_object_get_string(obj, "message"));
+	req->timeout = json_get_int(obj, "timeout", -1);
+	req->show_pill = json_get_bool(obj, "show_pill", false);
+	req->show_time_left = json_get_bool(obj, "show_time_left", false);
+	req->message_alignment = safe_strdup(json_object_get_string(obj, "message_alignment"));
+	req->confirm_show = json_get_bool(obj, "confirm_show", false);
+	req->cancel_show = json_get_bool(obj, "cancel_show", false);
+	req->action_show = json_get_bool(obj, "action_show", false);
+	req->inaction_button = safe_strdup(json_object_get_string(obj, "inaction_button"));
+	req->inaction_text = safe_strdup(json_object_get_string(obj, "inaction_text"));
+	req->inaction_show = json_get_bool(obj, "inaction_show", false);
+	req->quit_after_last_item = json_get_bool(obj, "quit_after_last_item", false);
+
+	// === List params ===
 	req->file_path = safe_strdup(json_object_get_string(obj, "file_path"));
 	req->format = safe_strdup(json_object_get_string(obj, "format"));
 	req->title = safe_strdup(json_object_get_string(obj, "title"));
+	req->title_alignment = safe_strdup(json_object_get_string(obj, "title_alignment"));
 	req->item_key = safe_strdup(json_object_get_string(obj, "item_key"));
 	req->stdin_data = safe_strdup(json_object_get_string(obj, "stdin_data"));
+	req->write_location = safe_strdup(json_object_get_string(obj, "write_location"));
+	req->write_value = safe_strdup(json_object_get_string(obj, "write_value"));
+	req->enable_button = safe_strdup(json_object_get_string(obj, "enable_button"));
 
-	// Keyboard params
+	// === Keyboard params ===
 	req->initial_value = safe_strdup(json_object_get_string(obj, "initial_value"));
 
 	json_value_free(root);
 	return req;
 }
 
-void ipc_free_request(Request* req) {
+void ipc_free_request_fields(Request* req) {
 	if (!req) return;
 	free(req->request_id);
-	free(req->message);
 	free(req->background_color);
 	free(req->background_image);
+	free(req->confirm_button);
 	free(req->confirm_text);
+	free(req->cancel_button);
 	free(req->cancel_text);
+	free(req->action_button);
+	free(req->action_text);
+	free(req->message);
+	free(req->message_alignment);
+	free(req->inaction_button);
+	free(req->inaction_text);
 	free(req->file_path);
 	free(req->format);
 	free(req->title);
+	free(req->title_alignment);
 	free(req->item_key);
 	free(req->stdin_data);
+	free(req->write_location);
+	free(req->write_value);
+	free(req->enable_button);
 	free(req->initial_value);
+}
+
+void ipc_free_request(Request* req) {
+	ipc_free_request_fields(req);
 	free(req);
 }
 
@@ -198,13 +219,10 @@ int ipc_write_response(const Response* resp) {
 	JSON_Value* root = json_value_init_object();
 	JSON_Object* obj = json_object(root);
 
-	if (resp->request_id) {
-		json_object_set_string(obj, "request_id", resp->request_id);
-	}
+	json_set_string_if(obj, "request_id", resp->request_id);
 	json_object_set_number(obj, "exit_code", resp->exit_code);
-	if (resp->output) {
-		json_object_set_string(obj, "output", resp->output);
-	}
+	json_set_string_if(obj, "output", resp->output);
+	json_object_set_number(obj, "selected_index", resp->selected_index);
 
 	char* json_str = json_serialize_to_string_pretty(root);
 	if (!json_str) {
@@ -229,9 +247,7 @@ int ipc_write_response(const Response* resp) {
 
 Response* ipc_read_response(void) {
 	JSON_Value* root = json_parse_file(SHELLUI_RESPONSE_FILE);
-	if (!root) {
-		return NULL;
-	}
+	if (!root) return NULL;
 
 	JSON_Object* obj = json_object(root);
 	if (!obj) {
@@ -248,6 +264,7 @@ Response* ipc_read_response(void) {
 	resp->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
 	resp->exit_code = json_get_int(obj, "exit_code", EXIT_ERROR);
 	resp->output = safe_strdup(json_object_get_string(obj, "output"));
+	resp->selected_index = json_get_int(obj, "selected_index", -1);
 
 	json_value_free(root);
 	return resp;
@@ -265,19 +282,16 @@ int ipc_wait_for_response(int timeout_ms) {
 	gettimeofday(&start, NULL);
 
 	while (1) {
-		// Check if response file exists
 		if (access(SHELLUI_RESPONSE_FILE, F_OK) == 0) {
 			return 0;
 		}
 
-		// Check timeout
 		gettimeofday(&now, NULL);
 		long elapsed = (now.tv_sec - start.tv_sec) * 1000 + (now.tv_usec - start.tv_usec) / 1000;
 		if (elapsed >= timeout_ms) {
 			return -1;
 		}
 
-		// Sleep before next poll
 		usleep(RESPONSE_POLL_INTERVAL_MS * 1000);
 	}
 }

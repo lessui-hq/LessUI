@@ -2,8 +2,7 @@
 #define SHELLUI_UI_KEYBOARD_H
 
 #include "common.h"
-#include <SDL/SDL.h>
-#include <SDL/SDL_ttf.h>
+#include "sdl.h"
 
 // Keyboard display options
 typedef struct {

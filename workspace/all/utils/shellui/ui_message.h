@@ -2,8 +2,7 @@
 #define SHELLUI_UI_MESSAGE_H
 
 #include "common.h"
-#include <SDL/SDL.h>
-#include <SDL/SDL_ttf.h>
+#include "sdl.h"
 
 // Message display options
 typedef struct {

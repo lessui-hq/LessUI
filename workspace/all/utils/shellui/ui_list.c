@@ -1,15 +1,61 @@
 #include "ui_list.h"
 #include "fonts.h"
+#include "utils.h"
 #include "api.h"
 #include "defines.h"
 #include <parson/parson.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // UI constants
 #define VISIBLE_ITEMS 8
 #define ITEM_HEIGHT_DP 28
 #define TITLE_HEIGHT_DP 32
+
+// Helper to parse features object from JSON
+static void parse_item_features(JSON_Object* features_obj, ListItemFeature* features) {
+	if (!features_obj) return;
+
+	const char* str;
+	str = json_object_get_string(features_obj, "background_color");
+	if (str) features->background_color = strdup(str);
+
+	str = json_object_get_string(features_obj, "background_image");
+	if (str) features->background_image = strdup(str);
+
+	str = json_object_get_string(features_obj, "confirm_text");
+	if (str) features->confirm_text = strdup(str);
+
+	str = json_object_get_string(features_obj, "alignment");
+	if (str) features->alignment = strdup(str);
+
+	// Boolean fields - parson returns 0 for false, 1 for true, -1 for not present
+	int val;
+	val = json_object_get_boolean(features_obj, "can_disable");
+	if (val != -1) features->can_disable = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "disabled");
+	if (val != -1) features->disabled = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "draw_arrows");
+	if (val != -1) features->draw_arrows = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "hide_action");
+	if (val != -1) features->hide_action = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "hide_cancel");
+	if (val != -1) features->hide_cancel = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "hide_confirm");
+	if (val != -1) features->hide_confirm = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "is_header");
+	if (val != -1) features->is_header = (val == 1);
+
+	val = json_object_get_boolean(features_obj, "unselectable");
+	if (val != -1) features->unselectable = (val == 1);
+}
 
 ListItem* ui_list_parse_json(const char* json, const char* item_key, int* item_count) {
 	*item_count = 0;
@@ -22,7 +68,7 @@ ListItem* ui_list_parse_json(const char* json, const char* item_key, int* item_c
 	JSON_Array* arr = NULL;
 
 	// Try to get array from item_key, or treat root as array
-	if (obj && item_key) {
+	if (obj && item_key && strlen(item_key) > 0) {
 		arr = json_object_get_array(obj, item_key);
 	}
 	if (!arr) {
@@ -47,31 +93,63 @@ ListItem* ui_list_parse_json(const char* json, const char* item_key, int* item_c
 
 	for (int i = 0; i < count; i++) {
 		JSON_Value* item_val = json_array_get_value(arr, i);
+		ListItem* item = &items[i];
+
+		// Initialize defaults
+		memset(&item->features, 0, sizeof(ListItemFeature));
 
 		// Handle string items
 		if (json_value_get_type(item_val) == JSONString) {
-			items[i].name = strdup(json_value_get_string(item_val));
-			items[i].value = NULL;
-			items[i].is_header = false;
-			items[i].disabled = false;
+			item->name = strdup(json_value_get_string(item_val));
 		}
 		// Handle object items
 		else if (json_value_get_type(item_val) == JSONObject) {
 			JSON_Object* item_obj = json_value_get_object(item_val);
+
 			const char* name = json_object_get_string(item_obj, "name");
-			if (name) {
-				items[i].name = strdup(name);
-			} else {
-				items[i].name = strdup("");
-			}
+			item->name = name ? strdup(name) : strdup("");
 
 			const char* value = json_object_get_string(item_obj, "value");
-			if (value) {
-				items[i].value = strdup(value);
+			if (value) item->value = strdup(value);
+
+			// Parse options array
+			JSON_Array* options_arr = json_object_get_array(item_obj, "options");
+			if (options_arr) {
+				int opt_count = json_array_get_count(options_arr);
+				if (opt_count > 0) {
+					item->options = calloc(opt_count, sizeof(char*));
+					item->option_count = opt_count;
+					item->has_options = true;
+
+					for (int j = 0; j < opt_count; j++) {
+						const char* opt = json_array_get_string(options_arr, j);
+						item->options[j] = opt ? strdup(opt) : strdup("");
+					}
+
+					// Parse selected index
+					JSON_Value* sel_val = json_object_get_value(item_obj, "selected");
+					if (sel_val && json_value_get_type(sel_val) == JSONNumber) {
+						item->selected = (int)json_value_get_number(sel_val);
+						if (item->selected < 0) item->selected = 0;
+						if (item->selected >= opt_count) item->selected = opt_count - 1;
+					}
+					item->initial_selected = item->selected;
+				}
 			}
 
-			items[i].is_header = json_object_get_boolean(item_obj, "is_header") != 0;
-			items[i].disabled = json_object_get_boolean(item_obj, "disabled") != 0;
+			// Parse features object
+			JSON_Object* features_obj = json_object_get_object(item_obj, "features");
+			if (features_obj) {
+				item->has_features = true;
+				parse_item_features(features_obj, &item->features);
+			}
+
+			// Also check top-level is_header and disabled for compatibility
+			int val = json_object_get_boolean(item_obj, "is_header");
+			if (val == 1) item->features.is_header = true;
+
+			val = json_object_get_boolean(item_obj, "disabled");
+			if (val == 1) item->features.disabled = true;
 		}
 	}
 
@@ -99,15 +177,13 @@ ListItem* ui_list_parse_text(const char* text, int* item_count) {
 	int i = 0;
 	while (line && i < count) {
 		// Trim leading/trailing whitespace
-		while (*line && isspace(*line)) line++;
+		while (*line && isspace((unsigned char)*line)) line++;
 		char* end = line + strlen(line) - 1;
-		while (end > line && isspace(*end)) *end-- = '\0';
+		while (end > line && isspace((unsigned char)*end)) *end-- = '\0';
 
 		if (*line) {  // Skip empty lines
 			items[i].name = strdup(line);
-			items[i].value = NULL;
-			items[i].is_header = false;
-			items[i].disabled = false;
+			memset(&items[i].features, 0, sizeof(ListItemFeature));
 			i++;
 		}
 		line = strtok(NULL, "\n");
@@ -118,16 +194,35 @@ ListItem* ui_list_parse_text(const char* text, int* item_count) {
 	return items;
 }
 
+static void free_item_features(ListItemFeature* f) {
+	free(f->background_color);
+	free(f->background_image);
+	free(f->confirm_text);
+	free(f->alignment);
+}
+
 void ui_list_free_items(ListItem* items, int count) {
 	if (!items) return;
 	for (int i = 0; i < count; i++) {
 		free(items[i].name);
 		free(items[i].value);
+		if (items[i].options) {
+			for (int j = 0; j < items[i].option_count; j++) {
+				free(items[i].options[j]);
+			}
+			free(items[i].options);
+		}
+		free_item_features(&items[i].features);
 	}
 	free(items);
 }
 
-// Find next selectable item (skipping headers and disabled)
+// Check if item is selectable
+static bool is_selectable(ListItem* item) {
+	return !item->features.is_header && !item->features.disabled && !item->features.unselectable;
+}
+
+// Find next selectable item (skipping headers, disabled, unselectable)
 static int find_next_selectable(const ListOptions* opts, int from, int direction) {
 	int i = from;
 	int attempts = 0;
@@ -136,7 +231,7 @@ static int find_next_selectable(const ListOptions* opts, int from, int direction
 		if (i < 0) i = opts->item_count - 1;
 		if (i >= opts->item_count) i = 0;
 
-		if (!opts->items[i].is_header && !opts->items[i].disabled) {
+		if (is_selectable(&opts->items[i])) {
 			return i;
 		}
 		attempts++;
@@ -144,17 +239,65 @@ static int find_next_selectable(const ListOptions* opts, int from, int direction
 	return from;  // No selectable item found
 }
 
-ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
-	ListResult result = {EXIT_ERROR, -1, NULL};
-	if (!screen || !opts || opts->item_count == 0) return result;
+// Generate state JSON for write_value="state"
+static char* generate_state_json(const ListOptions* opts, int selected) {
+	JSON_Value* root = json_value_init_object();
+	JSON_Object* obj = json_object(root);
 
+	json_object_set_number(obj, "selected", selected);
+
+	// Create items array with current state
+	JSON_Value* items_val = json_value_init_array();
+	JSON_Array* items_arr = json_array(items_val);
+
+	for (int i = 0; i < opts->item_count; i++) {
+		ListItem* item = &opts->items[i];
+		JSON_Value* item_val = json_value_init_object();
+		JSON_Object* item_obj = json_object(item_val);
+
+		json_object_set_string(item_obj, "name", item->name ? item->name : "");
+
+		if (item->has_options) {
+			json_object_set_number(item_obj, "selected", item->selected);
+
+			// Include options array
+			JSON_Value* opts_val = json_value_init_array();
+			JSON_Array* opts_arr = json_array(opts_val);
+			for (int j = 0; j < item->option_count; j++) {
+				json_array_append_string(opts_arr, item->options[j]);
+			}
+			json_object_set_value(item_obj, "options", opts_val);
+		}
+
+		json_array_append_value(items_arr, item_val);
+	}
+
+	json_object_set_value(obj, opts->title ? "settings" : "items", items_val);
+
+	char* result = json_serialize_to_string_pretty(root);
+	json_value_free(root);
+	return result;
+}
+
+ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
+	ListResult result = {EXIT_ERROR, -1, NULL, NULL};
+	if (!screen || !opts || opts->item_count == 0) return result;
 	if (!g_font_large) return result;
 
 	// Find first selectable item
 	int selected = opts->initial_index;
 	if (selected < 0 || selected >= opts->item_count) selected = 0;
-	if (opts->items[selected].is_header || opts->items[selected].disabled) {
+	if (!is_selectable(&opts->items[selected])) {
 		selected = find_next_selectable(opts, selected, 1);
+	}
+
+	// Track if any items have options (for showing left/right hints)
+	bool has_options = false;
+	for (int i = 0; i < opts->item_count; i++) {
+		if (opts->items[i].has_options) {
+			has_options = true;
+			break;
+		}
 	}
 
 	// Calculate visible range
@@ -165,7 +308,9 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 	int redraw = 1;
 	int show_setting = 0;
 
-	PWR_disableAutosleep();
+	if (!opts->disable_auto_sleep) {
+		PWR_disableAutosleep();
+	}
 
 	while (1) {
 		GFX_startFrame();
@@ -173,26 +318,41 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 
 		// Input handling
 		PAD_poll();
+		ListItem* sel_item = &opts->items[selected];
 
+		// Confirm (A button)
 		if (PAD_justPressed(BTN_A)) {
 			result.exit_code = EXIT_SUCCESS_CODE;
 			result.selected_index = selected;
-			if (opts->items[selected].value) {
-				result.selected_value = strdup(opts->items[selected].value);
+
+			// Return value based on item type
+			if (sel_item->has_options && sel_item->selected < sel_item->option_count) {
+				result.selected_value = strdup(sel_item->options[sel_item->selected]);
+			} else if (sel_item->value) {
+				result.selected_value = strdup(sel_item->value);
 			} else {
-				result.selected_value = strdup(opts->items[selected].name);
+				result.selected_value = strdup(sel_item->name);
 			}
+
+			// Generate state JSON
+			result.state_json = generate_state_json(opts, selected);
 			return result;
 		}
+
+		// Cancel (B button)
 		if (PAD_justPressed(BTN_B)) {
 			result.exit_code = EXIT_CANCEL;
+			result.selected_index = -1;
 			return result;
 		}
+
+		// Menu
 		if (PAD_justPressed(BTN_MENU)) {
 			result.exit_code = EXIT_MENU;
 			return result;
 		}
 
+		// Up/Down navigation
 		if (PAD_justPressed(BTN_UP) || PAD_justRepeated(BTN_UP)) {
 			int new_sel = find_next_selectable(opts, selected, -1);
 			if (new_sel != selected) {
@@ -204,6 +364,20 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			int new_sel = find_next_selectable(opts, selected, 1);
 			if (new_sel != selected) {
 				selected = new_sel;
+				redraw = 1;
+			}
+		}
+
+		// Left/Right for option cycling
+		if (sel_item->has_options && sel_item->option_count > 1) {
+			if (PAD_justPressed(BTN_LEFT) || PAD_justRepeated(BTN_LEFT)) {
+				sel_item->selected--;
+				if (sel_item->selected < 0) sel_item->selected = sel_item->option_count - 1;
+				redraw = 1;
+			}
+			if (PAD_justPressed(BTN_RIGHT) || PAD_justRepeated(BTN_RIGHT)) {
+				sel_item->selected++;
+				if (sel_item->selected >= sel_item->option_count) sel_item->selected = 0;
 				redraw = 1;
 			}
 		}
@@ -227,7 +401,16 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			if (opts->title && g_font_small) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(g_font_small, opts->title, COLOR_WHITE);
 				if (title_text) {
-					SDL_Rect pos = {DP(16), y, title_text->w, title_text->h};
+					int title_x = DP(16);
+					// Handle title alignment
+					if (opts->title_alignment) {
+						if (strcmp(opts->title_alignment, "center") == 0) {
+							title_x = (screen->w - title_text->w) / 2;
+						} else if (strcmp(opts->title_alignment, "right") == 0) {
+							title_x = screen->w - title_text->w - DP(16);
+						}
+					}
+					SDL_Rect pos = {title_x, y, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
 				}
@@ -240,30 +423,53 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 				ListItem* item = &opts->items[i];
 
 				// Highlight selected
-				if (i == selected) {
+				if (i == selected && is_selectable(item)) {
 					SDL_Rect pill = {DP(8), y, screen->w - DP(16), item_height};
 					GFX_blitPill(ASSET_WHITE_PILL, screen, &pill);
 				}
 
 				// Determine text color
 				SDL_Color color = COLOR_WHITE;
-				if (i == selected) {
+				if (i == selected && is_selectable(item)) {
 					color = COLOR_BLACK;
-				} else if (item->disabled) {
+				} else if (item->features.disabled || item->features.unselectable) {
 					color = COLOR_GRAY;
-				} else if (item->is_header) {
+				} else if (item->features.is_header) {
 					color = COLOR_GRAY;
 				}
 
 				// Render item name
+				int text_x = DP(16);
 				if (item->name && g_font_large) {
 					SDL_Surface* text = TTF_RenderUTF8_Blended(g_font_large, item->name, color);
 					if (text) {
-						int text_x = DP(16);
 						int text_y = y + (item_height - text->h) / 2;
 						SDL_Rect pos = {text_x, text_y, text->w, text->h};
 						SDL_BlitSurface(text, NULL, screen, &pos);
 						SDL_FreeSurface(text);
+					}
+				}
+
+				// Render option value on the right side
+				if (item->has_options && item->option_count > 0) {
+					const char* opt_str = item->options[item->selected];
+					if (opt_str && g_font_large) {
+						// Build display string with arrows if selected
+						char display[256];
+						if (i == selected && item->option_count > 1) {
+							snprintf(display, sizeof(display), "< %s >", opt_str);
+						} else {
+							snprintf(display, sizeof(display), "%s", opt_str);
+						}
+
+						SDL_Surface* opt_text = TTF_RenderUTF8_Blended(g_font_large, display, color);
+						if (opt_text) {
+							int opt_x = screen->w - opt_text->w - DP(16);
+							int opt_y = y + (item_height - opt_text->h) / 2;
+							SDL_Rect pos = {opt_x, opt_y, opt_text->w, opt_text->h};
+							SDL_BlitSurface(opt_text, NULL, screen, &pos);
+							SDL_FreeSurface(opt_text);
+						}
 					}
 				}
 
@@ -272,12 +478,10 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 
 			// Scroll indicators
 			if (first_visible > 0) {
-				// Show "more above" indicator
 				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
 					&(SDL_Rect){screen->w - DP(32), DP(opts->title ? TITLE_HEIGHT_DP + 8 : 8), 0, 0});
 			}
 			if (first_visible + visible_count < opts->item_count) {
-				// Show "more below" indicator
 				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
 					&(SDL_Rect){screen->w - DP(32), screen->h - DP(48), 0, 0});
 			}
@@ -285,8 +489,18 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			// Button hints
 			const char* confirm = opts->confirm_text ? opts->confirm_text : "SELECT";
 			const char* cancel = opts->cancel_text ? opts->cancel_text : "BACK";
-			char* hints[] = {"B", (char*)cancel, "A", (char*)confirm, NULL};
-			GFX_blitButtonGroup(hints, 1, screen, 1);
+
+			// Determine which hints to show
+			if (!sel_item->features.hide_confirm && !sel_item->features.hide_cancel) {
+				char* hints[] = {"B", (char*)cancel, "A", (char*)confirm, NULL};
+				GFX_blitButtonGroup(hints, 1, screen, 1);
+			} else if (!sel_item->features.hide_confirm) {
+				char* hints[] = {"A", (char*)confirm, NULL};
+				GFX_blitButtonGroup(hints, 0, screen, 1);
+			} else if (!sel_item->features.hide_cancel) {
+				char* hints[] = {"B", (char*)cancel, NULL};
+				GFX_blitButtonGroup(hints, 0, screen, 1);
+			}
 
 			GFX_flip(screen);
 			redraw = 0;

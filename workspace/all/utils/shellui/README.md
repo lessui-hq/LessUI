@@ -8,42 +8,64 @@ Previously, shell scripts used separate utilities (`minui-presenter`, `minui-lis
 
 shellui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shellui shutdown` after each pak completes.
 
+## Key Concept: Push-Based Updates
+
+Unlike the old utilities which required backgrounding (`&`) and manual cleanup, shellui uses a **push-based model**:
+
+- **Status messages** return immediately (fire-and-forget)
+- **Interactive dialogs** wait for user input
+- No backgrounding needed - the daemon handles screen updates
+- Each new command replaces the current screen
+
+```bash
+# Fire-and-forget: returns immediately, script continues
+shellui message "Loading..."
+
+# Interactive: waits for user response
+shellui message "Delete file?" --confirm "YES" --cancel "NO"
+```
+
 ## Commands
 
 ### message
 
-Display a message dialog.
+Display a message dialog. Returns immediately unless buttons are specified.
 
 ```bash
-shellui message "Hello World"
-shellui message "Operation complete" --timeout 3
-shellui message "Are you sure?" --confirm "YES" --cancel "NO"
-shellui message "Loading..." --background-color "#1a1a2e"
+# Status message (fire-and-forget)
+shellui message "Connecting..."
+do_connection
+shellui message "Connected!"
+
+# Confirmation dialog (waits for response)
+if shellui message "Are you sure?" --confirm "YES" --cancel "NO"; then
+    do_action
+fi
+
+# Error with acknowledgment
+shellui message "Operation failed" --confirm "OK"
 ```
 
 **Options:**
 | Option | Description |
 |--------|-------------|
-| `--timeout N` | Auto-dismiss after N seconds (-1 = wait forever) |
-| `--confirm TEXT` | Label for confirm button (A) |
-| `--cancel TEXT` | Label for cancel button (B) |
+| `--timeout N` | Auto-dismiss after N seconds |
+| `--confirm TEXT` | Label for confirm button (A) - makes command wait |
+| `--cancel TEXT` | Label for cancel button (B) - makes command wait |
 | `--background-color #RRGGBB` | Hex background color |
 | `--background-image PATH` | Background image file |
 | `--show-pill` | Draw pill background around text |
 
 ### list
 
-Display a scrollable list selector.
+Display a scrollable list selector with optional toggle support.
 
 ```bash
-# From JSON file
-shellui list --file /tmp/options.json --title "Select Option"
+# Simple list
+choice=$(shellui list --file menu.json --title "Main Menu")
 
-# From piped text (one item per line)
-echo -e "Option 1\nOption 2\nOption 3" | shellui list --format text
-
-# With custom buttons
-shellui list --file menu.json --confirm "OK" --cancel "EXIT"
+# With toggle items (use left/right to change values)
+shellui list --file settings.json --item-key settings --write-location /tmp/out --write-value state
 ```
 
 **Options:**
@@ -52,9 +74,13 @@ shellui list --file menu.json --confirm "OK" --cancel "EXIT"
 | `--file PATH` | JSON or text file with items |
 | `--format FORMAT` | Input format: `json` (default) or `text` |
 | `--title TEXT` | Dialog title |
+| `--title-alignment ALIGN` | Title alignment: `left`, `center`, `right` |
 | `--item-key KEY` | JSON array key (default: `items`) |
 | `--confirm TEXT` | Confirm button label |
 | `--cancel TEXT` | Cancel button label |
+| `--write-location PATH` | Write output to file instead of stdout |
+| `--write-value TYPE` | Output type: `selected`, `state`, `name`, `value` |
+| `--disable-auto-sleep` | Keep device awake |
 
 **JSON format:**
 ```json
@@ -63,12 +89,34 @@ shellui list --file menu.json --confirm "OK" --cancel "EXIT"
     "Simple string item",
     {"name": "Item with value", "value": "returned_value"},
     {"name": "Header", "is_header": true},
-    {"name": "Disabled", "disabled": true}
+    {"name": "Disabled", "disabled": true},
+    {
+      "name": "Toggle Option",
+      "options": ["Off", "On"],
+      "selected": 0
+    }
   ]
 }
 ```
 
-**Output:** Selected item value written to stdout.
+**Toggle items:** Items with an `options` array become toggles. Use left/right to cycle through options. The `selected` field sets the initial selection.
+
+**Per-item features:**
+```json
+{
+  "name": "Advanced Item",
+  "features": {
+    "confirm_text": "SAVE",
+    "disabled": false,
+    "is_header": false,
+    "unselectable": false,
+    "hide_confirm": false,
+    "hide_cancel": false
+  }
+}
+```
+
+**Output:** Selected item value or state JSON written to stdout (or `--write-location`).
 
 ### keyboard
 
@@ -84,13 +132,19 @@ shellui keyboard --title "WiFi SSID" --initial "MyNetwork"
 |--------|-------------|
 | `--title TEXT` | Prompt displayed above input |
 | `--initial TEXT` | Pre-fill input with this value |
+| `--write-location PATH` | Write output to file instead of stdout |
 
 **Controls:**
 - D-pad: Navigate keyboard
 - A: Select key
 - B: Backspace
 - Y: Cancel (returns initial value)
-- Select: Toggle uppercase/lowercase
+- Select: Cycle layouts (lowercase → uppercase → symbols)
+
+**Layouts:**
+- Lowercase: `a-z`, `0-9`
+- Uppercase: `A-Z`, `!@#$%^&*()`
+- Symbols: `` ~`-_=+[]{}\|;:'",.<>/? ``
 
 **Output:** Entered text written to stdout.
 
@@ -113,11 +167,36 @@ shellui shutdown
 
 ## Examples
 
-### Simple confirmation
+### Status updates during operation
+
+```bash
+shellui message "Enabling WiFi..."
+enable_wifi
+
+shellui message "Scanning for networks..."
+scan_networks
+
+shellui message "Connecting..."
+connect_to_network
+
+shellui message "Connected!"
+sleep 1
+```
+
+### Confirmation dialog
 
 ```bash
 if shellui message "Delete save file?" --confirm "DELETE" --cancel "KEEP"; then
     rm "$SAVE_FILE"
+fi
+```
+
+### Error with acknowledgment
+
+```bash
+if ! do_operation; then
+    shellui message "Operation failed" --confirm "OK"
+    exit 1
 fi
 ```
 
@@ -137,6 +216,26 @@ case "$choice" in
 esac
 ```
 
+### Settings with toggles
+
+```bash
+cat > /tmp/settings.json << 'EOF'
+{
+  "settings": [
+    {"name": "Sound", "options": ["Off", "On"], "selected": 1},
+    {"name": "Vibration", "options": ["Off", "On"], "selected": 0},
+    {"name": "Brightness", "options": ["Low", "Medium", "High"], "selected": 1}
+  ]
+}
+EOF
+
+shellui list --file /tmp/settings.json --item-key settings \
+    --write-location /tmp/result.json --write-value state
+
+# Parse result with jq
+sound=$(jq -r '.settings[0].selected' /tmp/result.json)
+```
+
 ### Text input
 
 ```bash
@@ -147,7 +246,7 @@ echo "Hello, $name!"
 ### WiFi password entry
 
 ```bash
-password=$(shellui keyboard --title "WiFi Password" --initial "")
+password=$(shellui keyboard --title "WiFi Password")
 if [ $? -eq 0 ] && [ -n "$password" ]; then
     connect_wifi "$SSID" "$password"
 fi
@@ -161,8 +260,8 @@ fi
 │  shellui (CLI)   │  ────▶  request (JSON)        │  shellui daemon  │
 │                  │                               │                  │
 │  Sends command   │  ◀────  response (JSON)       │  SDL initialized │
-│  Waits for reply │                               │  Processes UI    │
-│                  │         pid, ready            │                  │
+│  Fire-and-forget │         (if needed)           │  Processes UI    │
+│  or waits        │         pid, ready            │                  │
 └──────────────────┘                               └──────────────────┘
 ```
 
@@ -176,9 +275,10 @@ fi
 1. First `shellui` command checks for running daemon
 2. If not running, forks daemon process
 3. Daemon initializes SDL once, writes `ready` file
-4. CLI writes request, waits for response
-5. Daemon processes UI, writes response
-6. `shellui shutdown` (from launcher) stops daemon
+4. CLI writes request
+5. For interactive commands: CLI waits for response
+6. For status messages: CLI returns immediately
+7. `shellui shutdown` (from launcher) stops daemon
 
 ## Building
 
@@ -198,5 +298,7 @@ The binary is installed to `$SYSTEM_PATH/bin/shellui`.
 | SDL init | Every call | Once per session |
 | Blank screens | Yes, between calls | No |
 | Binary count | 3 separate utilities | 1 unified tool |
+| Status messages | Requires `&` and `killall` | Fire-and-forget |
+| Toggle items | Supported | Supported |
 | Cleanup | Each pak must handle | Launcher handles |
-| Output | File or stdout | stdout only |
+| Output | File or stdout | stdout (or file) |

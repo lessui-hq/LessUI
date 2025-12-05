@@ -164,33 +164,49 @@ static int run_cli(int argc, char** argv) {
 		req.command = CMD_SHUTDOWN;
 	} else if (strcmp(cmd, "--help") == 0 || strcmp(cmd, "-h") == 0) {
 		print_usage();
+		free(req.request_id);
 		return EXIT_SUCCESS_CODE;
 	} else {
 		fprintf(stderr, "Unknown command: %s\n", cmd);
 		print_usage();
+		free(req.request_id);
 		return EXIT_ERROR;
 	}
 
-	// Parse options
+	// Parse options - compatible with minui-presenter, minui-list, minui-keyboard
 	static struct option long_options[] = {
+		// Common options
 		{"timeout", required_argument, 0, 't'},
 		{"confirm", required_argument, 0, 'c'},
+		{"confirm-text", required_argument, 0, 'c'},    // alias
 		{"cancel", required_argument, 0, 'x'},
+		{"cancel-text", required_argument, 0, 'x'},     // alias
 		{"background-color", required_argument, 0, 'b'},
 		{"background-image", required_argument, 0, 'B'},
 		{"show-pill", no_argument, 0, 'p'},
+		{"disable-auto-sleep", no_argument, 0, 'U'},
+		// List options
 		{"file", required_argument, 0, 'f'},
 		{"format", required_argument, 0, 'F'},
 		{"title", required_argument, 0, 'T'},
 		{"item-key", required_argument, 0, 'k'},
+		{"write-location", required_argument, 0, 'w'},
+		{"write-value", required_argument, 0, 'W'},
+		{"action-button", required_argument, 0, 'a'},
+		{"action-text", required_argument, 0, 'A'},
+		{"enable-button", required_argument, 0, 'e'},
+		{"title-alignment", required_argument, 0, 'L'},
+		// Keyboard options
 		{"initial", required_argument, 0, 'i'},
+		{"initial-value", required_argument, 0, 'i'},   // alias
+		// Help
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
 	};
 
 	optind = 2;  // Skip program name and command
 	int opt;
-	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pf:F:T:k:i:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pUf:F:T:k:w:W:a:A:e:L:i:h", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 't':
 				req.timeout = atoi(optarg);
@@ -210,6 +226,9 @@ static int run_cli(int argc, char** argv) {
 			case 'p':
 				req.show_pill = true;
 				break;
+			case 'U':
+				req.disable_auto_sleep = true;
+				break;
 			case 'f':
 				req.file_path = strdup(optarg);
 				break;
@@ -224,11 +243,30 @@ static int run_cli(int argc, char** argv) {
 				free(req.item_key);
 				req.item_key = strdup(optarg);
 				break;
+			case 'w':
+				req.write_location = strdup(optarg);
+				break;
+			case 'W':
+				req.write_value = strdup(optarg);
+				break;
+			case 'a':
+				req.action_button = strdup(optarg);
+				break;
+			case 'A':
+				req.action_text = strdup(optarg);
+				break;
+			case 'e':
+				req.enable_button = strdup(optarg);
+				break;
+			case 'L':
+				req.title_alignment = strdup(optarg);
+				break;
 			case 'i':
 				req.initial_value = strdup(optarg);
 				break;
 			case 'h':
 				print_usage();
+				ipc_free_request_fields(&req);
 				return EXIT_SUCCESS_CODE;
 			default:
 				break;
@@ -248,14 +286,15 @@ static int run_cli(int argc, char** argv) {
 	// Validate
 	if (req.command == CMD_MESSAGE && !req.message) {
 		fprintf(stderr, "Error: message command requires text argument\n");
+		ipc_free_request_fields(&req);
 		return EXIT_ERROR;
 	}
 
 	// Send command
 	int result = send_command(&req);
 
-	// Cleanup
-	ipc_free_request(&req);
+	// Cleanup (req is stack-allocated, only free fields)
+	ipc_free_request_fields(&req);
 
 	return result;
 }
@@ -333,6 +372,24 @@ static int daemon_wait_ready(int timeout_ms) {
 	}
 }
 
+// Check if this request needs to wait for a response
+static bool request_needs_response(const Request* req) {
+	// Messages without buttons don't need a response - fire and forget
+	if (req->command == CMD_MESSAGE) {
+		bool has_buttons = (req->confirm_text && strlen(req->confirm_text) > 0) ||
+		                   (req->cancel_text && strlen(req->cancel_text) > 0);
+		return has_buttons;
+	}
+
+	// Shutdown doesn't need a response
+	if (req->command == CMD_SHUTDOWN) {
+		return false;
+	}
+
+	// List and keyboard always need responses
+	return true;
+}
+
 static int send_command(const Request* req) {
 	// Special case: shutdown when not running is a no-op
 	if (req->command == CMD_SHUTDOWN) {
@@ -349,10 +406,18 @@ static int send_command(const Request* req) {
 		}
 	}
 
+	// Clean up any stale response from previous fire-and-forget command
+	ipc_delete_response();
+
 	// Write request
 	if (ipc_write_request(req) != 0) {
 		fprintf(stderr, "Failed to write request\n");
 		return EXIT_ERROR;
+	}
+
+	// Fire-and-forget commands: don't wait for response
+	if (!request_needs_response(req)) {
+		return EXIT_SUCCESS_CODE;
 	}
 
 	// Wait for response
@@ -438,8 +503,38 @@ static void daemon_cleanup(void) {
 	screen = NULL;
 }
 
+// Render a simple status message (non-blocking, fire-and-forget)
+static void render_status_message(const char* text) {
+	if (!screen || !text || !g_font_large) return;
+
+	GFX_clear(screen);
+
+	// Process escape sequences
+	char processed[1024];
+	unescapeNewlines(processed, text, sizeof(processed));
+
+	// Simple centered message
+	SDL_Surface* msg = TTF_RenderUTF8_Blended(g_font_large, processed, COLOR_WHITE);
+	if (msg) {
+		int x = (screen->w - msg->w) / 2;
+		int y = (screen->h - msg->h) / 2;
+		SDL_Rect pos = {x, y, msg->w, msg->h};
+		SDL_BlitSurface(msg, NULL, screen, &pos);
+		SDL_FreeSurface(msg);
+	}
+
+	GFX_flip(screen);
+}
+
 // Handle message command using ui_message module
-static ExitCode handle_message(const Request* req) {
+static ExitCode handle_message(const Request* req, bool wait_for_response) {
+	// Fire-and-forget: just render and return
+	if (!wait_for_response) {
+		render_status_message(req->message);
+		return EXIT_SUCCESS_CODE;
+	}
+
+	// Interactive: full ui_message_show with event loop
 	MessageOptions opts = {
 		.text = req->message,
 		.timeout = req->timeout,
@@ -500,8 +595,17 @@ static void handle_list(const Request* req, Response* resp) {
 
 	ListOptions opts = {
 		.title = req->title,
+		.title_alignment = req->title_alignment,
 		.confirm_text = req->confirm_text,
 		.cancel_text = req->cancel_text,
+		.action_button = req->action_button,
+		.action_text = req->action_text,
+		.enable_button = req->enable_button,
+		.background_color = req->background_color,
+		.background_image = req->background_image,
+		.write_location = req->write_location,
+		.write_value = req->write_value,
+		.disable_auto_sleep = req->disable_auto_sleep,
 		.items = items,
 		.item_count = item_count,
 		.initial_index = 0,
@@ -509,7 +613,25 @@ static void handle_list(const Request* req, Response* resp) {
 
 	ListResult result = ui_list_show(screen, &opts);
 	resp->exit_code = result.exit_code;
-	resp->output = result.selected_value;  // Already allocated
+	resp->selected_index = result.selected_index;
+
+	// Handle write_value output
+	if (req->write_value && strcmp(req->write_value, "state") == 0) {
+		resp->output = result.state_json;
+		free(result.selected_value);
+	} else {
+		resp->output = result.selected_value;
+		free(result.state_json);
+	}
+
+	// Handle write_location (write to file instead of stdout)
+	if (req->write_location && strcmp(req->write_location, "-") != 0 && resp->output) {
+		FILE* f = fopen(req->write_location, "w");
+		if (f) {
+			fputs(resp->output, f);
+			fclose(f);
+		}
+	}
 
 	ui_list_free_items(items, item_count);
 }
@@ -519,9 +641,13 @@ static void process_request(const Request* req, Response* resp) {
 	resp->output = NULL;
 
 	switch (req->command) {
-		case CMD_MESSAGE:
-			resp->exit_code = handle_message(req);
+		case CMD_MESSAGE: {
+			// Check if message has buttons
+			bool has_buttons = (req->confirm_text && strlen(req->confirm_text) > 0) ||
+			                   (req->cancel_text && strlen(req->cancel_text) > 0);
+			resp->exit_code = handle_message(req, has_buttons);
 			break;
+		}
 
 		case CMD_LIST:
 			handle_list(req, resp);
@@ -535,6 +661,15 @@ static void process_request(const Request* req, Response* resp) {
 			KeyboardResult kb_result = ui_keyboard_show(screen, &kb_opts);
 			resp->exit_code = kb_result.exit_code;
 			resp->output = kb_result.text;
+
+			// Handle write_location
+			if (req->write_location && strcmp(req->write_location, "-") != 0 && resp->output) {
+				FILE* f = fopen(req->write_location, "w");
+				if (f) {
+					fputs(resp->output, f);
+					fclose(f);
+				}
+			}
 			break;
 		}
 

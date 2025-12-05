@@ -9,31 +9,54 @@ typedef struct {
 	CommandType command;
 	char* request_id;
 
-	// Message command params
-	char* message;
-	int timeout;  // -1 = forever, 0+ = seconds
+	// === Common params ===
 	char* background_color;
 	char* background_image;
-	char* confirm_text;
-	char* cancel_text;
+	char* confirm_button;      // Physical button (default: "A")
+	char* confirm_text;        // Button label
+	char* cancel_button;       // Physical button (default: "B")
+	char* cancel_text;         // Button label
+	char* action_button;       // Physical button for action
+	char* action_text;         // Action button label
+	bool disable_auto_sleep;
+	bool show_hardware_group;
+
+	// === Message command params ===
+	char* message;
+	int timeout;               // -1 = forever, 0+ = seconds
 	bool show_pill;
+	bool show_time_left;
+	char* message_alignment;   // "left", "center", "right"
+	bool confirm_show;
+	bool cancel_show;
+	bool action_show;
+	char* inaction_button;
+	char* inaction_text;
+	bool inaction_show;
+	bool quit_after_last_item;
 
-	// List command params
+	// === List command params ===
 	char* file_path;
-	char* format;  // "json" or "text"
+	char* format;              // "json" or "text"
 	char* title;
+	char* title_alignment;     // "left", "center", "right"
 	char* item_key;
-	char* stdin_data;  // for piped input
+	char* stdin_data;          // for piped input
+	char* write_location;      // file path or "-" for stdout
+	char* write_value;         // "selected", "state", "name", "value"
+	char* enable_button;       // Physical button for enable toggle
 
-	// Keyboard command params
+	// === Keyboard command params ===
 	char* initial_value;
+	// write_location is shared with list
 } Request;
 
 // Response structure sent from daemon to CLI
 typedef struct {
 	char* request_id;
 	ExitCode exit_code;
-	char* output;  // selected value or entered text
+	char* output;              // selected value, entered text, or JSON state
+	int selected_index;        // index of selected item
 } Response;
 
 // Initialize IPC (create directory, clean stale files)
@@ -49,7 +72,10 @@ int ipc_write_request(const Request* req);
 // Returns NULL if no request or parse error
 Request* ipc_read_request(void);
 
-// Free a request structure
+// Free request fields (for stack-allocated Request)
+void ipc_free_request_fields(Request* req);
+
+// Free request structure (for heap-allocated Request from ipc_read_request)
 void ipc_free_request(Request* req);
 
 // Write a response to the response file

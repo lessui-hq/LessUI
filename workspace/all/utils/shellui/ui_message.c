@@ -7,12 +7,6 @@
 #include <string.h>
 #include <sys/time.h>
 
-#ifdef USE_SDL2
-#include <SDL2/SDL_image.h>
-#else
-#include <SDL/SDL_image.h>
-#endif
-
 // For SDL1, we need a manual surface scaling function
 #ifndef USE_SDL2
 static SDL_Surface* scale_surface(SDL_Surface* surface, int width, int height) {
