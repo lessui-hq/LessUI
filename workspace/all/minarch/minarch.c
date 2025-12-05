@@ -53,11 +53,10 @@
 #include <zlib.h>
 
 #include "api.h"
-#include "audio_resampler.h" // For FRAC_ONE in diagnostics
 #include "defines.h"
-#include "rate_meter.h" // For RATE_METER_AUDIO_INTERVAL
 #include "libretro.h"
 #include "minui_file_utils.h"
+#include "rate_meter.h" // For RATE_METER_AUDIO_INTERVAL
 #include "scaler.h"
 #include "utils.h"
 
@@ -1737,9 +1736,6 @@ static void setOverclock(int i) {
 // Ongoing display rate tracking (for diagnostics) - updated by measureDisplayRate()
 static float current_vsync_hz = 0; // Most recent vsync rate measurement
 
-// Ongoing audio rate tracking (for diagnostics) - updated by measureAudioRate()
-static float current_audio_hz = 0; // Most recent audio consumption rate measurement
-
 /**
  * Updates auto CPU scaling based on frame timing (core.run() execution time).
  *
@@ -1837,93 +1833,12 @@ static void updateAutoCPU(void) {
 
 		// Sampled debug logging (every 4th window = ~2 seconds)
 		static int debug_window_count = 0;
-		static SND_Snapshot last_snap = {0};
 		if (++debug_window_count >= 4) {
 			debug_window_count = 0;
-
-			// Get unified audio snapshot
 			SND_Snapshot snap = SND_getSnapshot();
 
-			// Skip first sample (last_snap uninitialized)
-			if (last_snap.timestamp_us == 0) {
-				last_snap = snap;
-				goto skip_audio_logging;
-			}
-
-			// Calculate actual time delta (microseconds -> seconds)
-			uint64_t time_delta_us = snap.timestamp_us - last_snap.timestamp_us;
-			float time_delta_sec = time_delta_us / 1000000.0f;
-
-			// Calculate sample deltas
-			uint64_t in_delta = snap.samples_in - last_snap.samples_in;
-			uint64_t written_delta = snap.samples_written - last_snap.samples_written;
-			uint64_t consumed_delta = snap.samples_consumed - last_snap.samples_consumed;
-			uint64_t requested_delta = snap.samples_requested - last_snap.samples_requested;
-
-			// Calculate WINDOW-AVERAGED total_adjust (what was actually used during the window)
-			uint64_t adjust_count_delta = snap.total_adjust_count - last_snap.total_adjust_count;
-			double adjust_sum_delta =
-			    snap.cumulative_total_adjust - last_snap.cumulative_total_adjust;
-			float window_avg_adjust =
-			    (adjust_count_delta > 0) ? (float)(adjust_sum_delta / adjust_count_delta) : 1.0f;
-
-			// Calculate ACTUAL rates (samples per second)
-			float actual_in_rate = (time_delta_sec > 0) ? in_delta / time_delta_sec : 0;
-			float actual_out_rate = (time_delta_sec > 0) ? written_delta / time_delta_sec : 0;
-			float actual_consume_rate = (time_delta_sec > 0) ? consumed_delta / time_delta_sec : 0;
-			float actual_request_rate = (time_delta_sec > 0) ? requested_delta / time_delta_sec : 0;
-
-			// Calculate ACTUAL resampler ratio (out/in)
-			float actual_ratio = (in_delta > 0) ? (float)written_delta / in_delta : 0;
-
-			// Calculate EXPECTED resampler ratio using WINDOW-AVERAGED adjust (not instantaneous!)
-			float base_ratio = (snap.sample_rate_in > 0)
-			                       ? (float)snap.sample_rate_out / snap.sample_rate_in
-			                       : 1.0f;
-			float expected_ratio = base_ratio / window_avg_adjust;
-
-			// Calculate flow balance
-			int64_t flow_balance = (int64_t)written_delta - (int64_t)consumed_delta;
-
-			// Log line 1: Buffer state and flow
-			LOG_debug("Audio: fill=%u%% balance=%+lld dt=%.3fs\n", snap.fill_pct,
-			          (long long)flow_balance, time_delta_sec);
-
-			// Log line 2: Sample rates (actual vs expected)
-			// request=what SDL asked for, consume=what we provided, expect=nominal rate
-			LOG_debug("  rates: in=%.0f out=%.0f request=%.0f consume=%.0f (expect=%d)\n",
-			          actual_in_rate, actual_out_rate, actual_request_rate, actual_consume_rate,
-			          snap.sample_rate_out);
-
-			// Log line 3: Resampler ratio - now comparing against WINDOW-AVERAGED expected
-			float ratio_diff_pct =
-			    (expected_ratio > 0) ? (actual_ratio / expected_ratio - 1.0f) * 100.0f : 0;
-			LOG_debug("  ratio: actual=%.6f expected=%.6f diff=%+.4f%% (window_adj=%.6f)\n",
-			          actual_ratio, expected_ratio, ratio_diff_pct, window_avg_adjust);
-
-			// Log line 4: Resampler internals + frac_pos for drift detection
-			float frac_pos_pct = (float)snap.resampler_frac_pos / FRAC_ONE * 100.0f;
-			LOG_debug("  resamp: frac_pos=%u (%.1f%%) step=%u/%u (base/adj)\n",
-			          snap.resampler_frac_pos, frac_pos_pct, snap.resampler_frac_step,
-			          snap.resampler_adjusted_step);
-
-			// Log line 5: Rate control state (base × audio × rate = total)
-			LOG_debug("  rctrl: d=%.1f%% base=%.4f audio=%.4f rate=%.4f total=%.6f\n",
-			          (snap.display_hz > 0 ? 1.0f : 2.0f), snap.base_correction,
-			          snap.audio_correction, snap.rate_adjust, snap.total_adjust);
-
-			// Log line 6: Display and audio timing
-			LOG_debug("  vsync: measured=%.2fHz current=%.2fHz swing=%.2f core=%.2fHz\n",
-			          snap.display_hz, current_vsync_hz, SND_getDisplaySwing(), snap.frame_rate);
-			LOG_debug("  audio: measured=%.0fHz current=%.0fHz nominal=%dHz\n", snap.audio_hz,
-			          current_audio_hz, snap.sample_rate_out);
-
-			// Log line 7: CPU state
-			LOG_debug("  cpu: p90=%lluus/%lluus (%u%%) level=%d\n", (unsigned long long)p90_time,
-			          (unsigned long long)auto_cpu_frame_budget_us, util, current_target);
-
-			last_snap = snap;
-		skip_audio_logging:;
+			LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
+			          snap.fill_pct, util, current_target, current_vsync_hz, snap.total_adjust);
 		}
 
 		// Boost CPU if sustained high utilization
@@ -3668,6 +3583,87 @@ static const char* bitmap_font[] = {
             "     "
             "     "
             "     ",
+    ['L'] = "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "1    "
+            "11111",
+    ['b'] = "1    "
+            "1    "
+            "1    "
+            "1111 "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1111 ",
+    ['u'] = "     "
+            "     "
+            "     "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1  11"
+            " 11 1",
+    ['r'] = "     "
+            "     "
+            "     "
+            "1 11 "
+            "11  1"
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    [':'] = "     "
+            "     "
+            " 11  "
+            " 11  "
+            "     "
+            "     "
+            " 11  "
+            " 11  "
+            "     ",
+    ['!'] = "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "     "
+            "  1  "
+            "  1  ",
+    ['F'] = "11111"
+            "1    "
+            "1    "
+            "1    "
+            "1111 "
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    ['P'] = "1111 "
+            "1   1"
+            "1   1"
+            "1   1"
+            "1111 "
+            "1    "
+            "1    "
+            "1    "
+            "1    ",
+    ['S'] = " 111 "
+            "1   1"
+            "1    "
+            "1    "
+            " 111 "
+            "    1"
+            "    1"
+            "1   1"
+            " 111 ",
 };
 static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int stride, int width,
                            int height) {
@@ -4498,24 +4494,29 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 			pitch_in_pixels = rgb565_pitch / sizeof(uint16_t);
 		}
 
-		sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
+		// Get buffer fill (sampled every 15 frames for readability)
+		static unsigned fill_display = 0;
+		static int sample_count = 0;
+		if (++sample_count >= 15) {
+			sample_count = 0;
+			fill_display = SND_getBufferOccupancy();
+		}
+
+		// Top-left: FPS and system CPU %
+		sprintf(debug_text, "%.0f FPS %i%%", fps_double, (int)use_double);
 		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
-		sprintf(debug_text, "%i,%i %ix%i", renderer.dst_x, renderer.dst_y, renderer.src_w * scale,
-		        renderer.src_h * scale);
+		// Top-right: Source resolution and scale factor
+		sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
 		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
-		sprintf(debug_text, "%.01f/%.01f %i%%", fps_double, cpu_double, (int)use_double);
-		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Auto CPU info stacked above FPS line when enabled
-		// Shows "Lx uu/ff" where L=level (0/1/2), uu=utilization P90%, ff=buffer fill %
+		// Bottom-left: CPU level + buffer fill (always), plus utilization when auto
 		if (overclock == 3) {
+			// Auto CPU mode: show level, utilization, and buffer fill
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int current = auto_cpu_current_level;
+			int level = auto_cpu_current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
 			// Calculate current utilization from most recent frame times
@@ -4530,19 +4531,15 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 					util = 200;
 			}
 
-			// Get buffer fill (sampled every 15 frames for readability)
-			static unsigned fill_display = 0;
-			static int fill_sample_count = 0;
-			if (++fill_sample_count >= 15) {
-				fill_sample_count = 0;
-				fill_display = SND_getBufferOccupancy();
-			}
-
-			sprintf(debug_text, "%dx %u%%/%u%%", current, util, fill_display);
-			blitBitmapText(debug_text, x, -y - 10, (uint16_t*)renderer.src, pitch_in_pixels,
-			               debug_width, debug_height);
+			sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+		} else {
+			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
+			sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
 		}
+		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
+		               debug_height);
 
+		// Bottom-right: Output resolution
 		sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
 		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
@@ -6744,9 +6741,6 @@ static void measureAudioRate(void) {
 			uint64_t requested_delta = snap.samples_requested - last_requested;
 			float hz = requested_delta / dt;
 			SND_addAudioSample(hz);
-
-			// Update current measurement for diagnostic logging
-			current_audio_hz = hz;
 
 			// Reset tracking for next window
 			last_time = now;

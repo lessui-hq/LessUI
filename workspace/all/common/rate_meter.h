@@ -21,14 +21,14 @@
 #include <stdint.h>
 
 // Configuration constants (separate for display vs audio)
-#define RATE_METER_DISPLAY_WINDOW 30      // Samples for display rate (~0.5 sec at 60fps)
-#define RATE_METER_AUDIO_WINDOW 10        // Samples for audio rate (fewer needed with longer intervals)
+#define RATE_METER_DISPLAY_WINDOW 30 // Samples for display rate (~0.5 sec at 60fps)
+#define RATE_METER_AUDIO_WINDOW 10 // Samples for audio rate (fewer needed with longer intervals)
 #define RATE_METER_DISPLAY_STABILITY 1.0f // Hz spread threshold for stability
 #define RATE_METER_AUDIO_STABILITY 500.0f // Hz spread threshold (some SDL jitter tolerance)
 
 // Measurement intervals (how often to sample)
-#define RATE_METER_DISPLAY_INTERVAL 0.0f  // Every frame (no minimum interval)
-#define RATE_METER_AUDIO_INTERVAL 2.0f    // 2 seconds (average out callback bursts)
+#define RATE_METER_DISPLAY_INTERVAL 0.0f // Every frame (no minimum interval)
+#define RATE_METER_AUDIO_INTERVAL 2.0f // 2 seconds (average out callback bursts)
 
 // Maximum window size (for static allocation)
 #define RATE_METER_MAX_WINDOW 30
@@ -54,7 +54,7 @@ typedef struct {
 	float stability_threshold; // Max spread for stable reading
 
 	// State
-	int stable;         // Has achieved stability (spread < threshold)
+	int stable; // Has achieved stability (spread < threshold)
 	float locked_value; // Best median so far
 	float locked_spread; // Spread at time of lock (for improvement detection)
 } RateMeter;

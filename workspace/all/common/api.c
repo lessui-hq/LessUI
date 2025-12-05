@@ -1949,9 +1949,10 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	// Warn if buffer is nearly full (indicates rate control failure)
 	// The resampler will handle buffer full gracefully (partial write + save state)
 	if (available < estimated_output) {
-		LOG_warn("Audio buffer nearly full: %d available, %d needed (fill=%.0f%%) - rate control may "
-		         "be failing\n",
-		         available, estimated_output, SND_getBufferFillLevel() * 100.0f);
+		LOG_warn(
+		    "Audio buffer nearly full: %d available, %d needed (fill=%.0f%%) - rate control may "
+		    "be failing\n",
+		    available, estimated_output, SND_getBufferFillLevel() * 100.0f);
 	}
 
 	// Set up ring buffer wrapper for the resampler
