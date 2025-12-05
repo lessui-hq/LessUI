@@ -19,8 +19,6 @@ Note: Safety ratios between levels are NOT required because:
 - Manual presets are fixed user choices with no automatic transitions
 """
 
-import sys
-
 # Benchmark data from system reports (freq in kHz -> iterations)
 # Data extracted from /Volumes/LESSUI_DEV/system_report_*.md files
 BENCHMARKS = {

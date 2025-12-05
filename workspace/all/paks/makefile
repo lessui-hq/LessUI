@@ -27,9 +27,9 @@ setup:
 	@for pak_dir in */; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
-			$(MAKE) -C "$$pak" setup DESTDIR=$(DESTDIR); \
+			$(MAKE) -C "$$pak" setup "DESTDIR=$(DESTDIR)"; \
 		elif [ -f "$$pak/src/makefile" ]; then \
-			$(MAKE) -C "$$pak/src" setup DESTDIR=$(DESTDIR); \
+			$(MAKE) -C "$$pak/src" setup "DESTDIR=$(DESTDIR)"; \
 		fi; \
 	done
 
@@ -39,7 +39,7 @@ build:
 	@for pak_dir in */; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/src/makefile" ]; then \
-			$(MAKE) -C "$$pak/src" build PLATFORM=$(PLATFORM); \
+			$(MAKE) -C "$$pak/src" build "PLATFORM=$(PLATFORM)"; \
 		fi; \
 	done
 
@@ -48,9 +48,9 @@ install:
 	@for pak_dir in */; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
-			$(MAKE) -C "$$pak" install PLATFORM=$(PLATFORM) DESTDIR=$(DESTDIR); \
+			$(MAKE) -C "$$pak" install "PLATFORM=$(PLATFORM)" "DESTDIR=$(DESTDIR)"; \
 		elif [ -f "$$pak/src/makefile" ]; then \
-			$(MAKE) -C "$$pak/src" install PLATFORM=$(PLATFORM) DESTDIR=$(DESTDIR); \
+			$(MAKE) -C "$$pak/src" install "PLATFORM=$(PLATFORM)" "DESTDIR=$(DESTDIR)"; \
 		fi; \
 	done
 
