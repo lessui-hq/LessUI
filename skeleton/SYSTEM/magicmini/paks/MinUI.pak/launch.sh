@@ -67,6 +67,7 @@ while [ -f "$EXEC_PATH" ]; do
 		CMD=`cat $NEXT_PATH`
 		eval $CMD
 		rm -f $NEXT_PATH
+		shellui shutdown 2>/dev/null || true
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync
 	fi

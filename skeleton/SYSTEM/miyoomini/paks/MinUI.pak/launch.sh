@@ -142,15 +142,17 @@ while [ -f "$EXEC_PATH" ]; do
 		CMD=`cat $NEXT_PATH`
 		eval $CMD
 		rm -f $NEXT_PATH
+		shellui shutdown 2>/dev/null || true
 		if [ -f "/tmp/using-swap" ]; then
 			swapoff $USERDATA_PATH/swapfile
 			rm -f "/tmp/using-swap"
 		fi
-		
+
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		overclock.elf $CPU_SPEED_PERF
 		sync
 	fi
 done
 
+shellui shutdown 2>/dev/null || true
 shutdown # just in case

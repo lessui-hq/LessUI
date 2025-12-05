@@ -137,10 +137,12 @@ while [ -f $EXEC_PATH ]; do
 		CMD=`cat $NEXT_PATH`
 		eval $CMD
 		rm -f $NEXT_PATH
+		shellui shutdown 2>/dev/null || true
 		[ -f $EXEC_PATH ] && echo $CPU_SPEED_PERF > $CPU_PATH
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync
 	fi
 done
 
+shellui shutdown 2>/dev/null || true
 exec shutdown

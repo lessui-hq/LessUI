@@ -89,9 +89,11 @@ while [ -f "$EXEC_PATH" ]; do
 		. $HDMI_EXPORT_PATH
 		. $NEXT_PATH
 		rm -f $NEXT_PATH
+		shellui shutdown 2>/dev/null || true
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync
 	fi
 done
 
+shellui shutdown 2>/dev/null || true
 shutdown
