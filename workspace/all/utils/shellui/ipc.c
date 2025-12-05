@@ -1,4 +1,5 @@
 #include "ipc.h"
+#include "utils.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,34 +7,6 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-// Helper to duplicate string (or return NULL)
-static char* safe_strdup(const char* s) {
-	return s ? strdup(s) : NULL;
-}
-
-// Get JSON string or NULL
-static const char* json_get_string(JSON_Object* obj, const char* name) {
-	return json_object_get_string(obj, name);
-}
-
-// Get JSON int with default
-static int json_get_int(JSON_Object* obj, const char* name, int def) {
-	JSON_Value* val = json_object_get_value(obj, name);
-	if (val && json_value_get_type(val) == JSONNumber) {
-		return (int)json_object_get_number(obj, name);
-	}
-	return def;
-}
-
-// Get JSON bool with default
-static bool json_get_bool(JSON_Object* obj, const char* name, bool def) {
-	JSON_Value* val = json_object_get_value(obj, name);
-	if (val && json_value_get_type(val) == JSONBoolean) {
-		return json_object_get_boolean(obj, name) != 0;
-	}
-	return def;
-}
 
 int ipc_init(void) {
 	// Create directory if needed
@@ -166,7 +139,7 @@ Request* ipc_read_request(void) {
 	}
 
 	// Parse command
-	const char* cmd_str = json_get_string(obj, "command");
+	const char* cmd_str = json_object_get_string(obj, "command");
 	if (cmd_str) {
 		if (strcmp(cmd_str, "message") == 0) {
 			req->command = CMD_MESSAGE;
@@ -179,26 +152,26 @@ Request* ipc_read_request(void) {
 		}
 	}
 
-	req->request_id = safe_strdup(json_get_string(obj, "request_id"));
+	req->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
 
 	// Message params
-	req->message = safe_strdup(json_get_string(obj, "message"));
+	req->message = safe_strdup(json_object_get_string(obj, "message"));
 	req->timeout = json_get_int(obj, "timeout", -1);
-	req->background_color = safe_strdup(json_get_string(obj, "background_color"));
-	req->background_image = safe_strdup(json_get_string(obj, "background_image"));
-	req->confirm_text = safe_strdup(json_get_string(obj, "confirm_text"));
-	req->cancel_text = safe_strdup(json_get_string(obj, "cancel_text"));
+	req->background_color = safe_strdup(json_object_get_string(obj, "background_color"));
+	req->background_image = safe_strdup(json_object_get_string(obj, "background_image"));
+	req->confirm_text = safe_strdup(json_object_get_string(obj, "confirm_text"));
+	req->cancel_text = safe_strdup(json_object_get_string(obj, "cancel_text"));
 	req->show_pill = json_get_bool(obj, "show_pill", false);
 
 	// List params
-	req->file_path = safe_strdup(json_get_string(obj, "file_path"));
-	req->format = safe_strdup(json_get_string(obj, "format"));
-	req->title = safe_strdup(json_get_string(obj, "title"));
-	req->item_key = safe_strdup(json_get_string(obj, "item_key"));
-	req->stdin_data = safe_strdup(json_get_string(obj, "stdin_data"));
+	req->file_path = safe_strdup(json_object_get_string(obj, "file_path"));
+	req->format = safe_strdup(json_object_get_string(obj, "format"));
+	req->title = safe_strdup(json_object_get_string(obj, "title"));
+	req->item_key = safe_strdup(json_object_get_string(obj, "item_key"));
+	req->stdin_data = safe_strdup(json_object_get_string(obj, "stdin_data"));
 
 	// Keyboard params
-	req->initial_value = safe_strdup(json_get_string(obj, "initial_value"));
+	req->initial_value = safe_strdup(json_object_get_string(obj, "initial_value"));
 
 	json_value_free(root);
 	return req;
@@ -272,9 +245,9 @@ Response* ipc_read_response(void) {
 		return NULL;
 	}
 
-	resp->request_id = safe_strdup(json_get_string(obj, "request_id"));
+	resp->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
 	resp->exit_code = json_get_int(obj, "exit_code", EXIT_ERROR);
-	resp->output = safe_strdup(json_get_string(obj, "output"));
+	resp->output = safe_strdup(json_object_get_string(obj, "output"));
 
 	json_value_free(root);
 	return resp;

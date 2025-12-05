@@ -30,12 +30,6 @@ typedef struct {
 	char* selected_value; // Value of selected item (caller must free)
 } ListResult;
 
-// Initialize list UI resources
-void ui_list_init(void);
-
-// Clean up list UI resources
-void ui_list_cleanup(void);
-
 // Parse list items from JSON string
 // Returns allocated array and sets item_count. Caller must free.
 ListItem* ui_list_parse_json(const char* json, const char* item_key, int* item_count);

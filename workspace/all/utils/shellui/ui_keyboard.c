@@ -1,12 +1,9 @@
 #include "ui_keyboard.h"
+#include "fonts.h"
 #include "api.h"
 #include "defines.h"
 #include <stdlib.h>
 #include <string.h>
-
-// Fonts
-static TTF_Font* font_large = NULL;
-static TTF_Font* font_small = NULL;
 
 // Keyboard layouts (5 rows, up to 14 columns)
 static const char* layout_lower[5][14] = {
@@ -37,34 +34,9 @@ static int row_length(int row) {
 	return len;
 }
 
-void ui_keyboard_init(void) {
-	if (font_large) return;
-
-	font_large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
-	if (font_large) {
-		TTF_SetFontStyle(font_large, TTF_STYLE_BOLD);
-	}
-
-	font_small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
-}
-
-void ui_keyboard_cleanup(void) {
-	if (font_large) {
-		TTF_CloseFont(font_large);
-		font_large = NULL;
-	}
-	if (font_small) {
-		TTF_CloseFont(font_small);
-		font_small = NULL;
-	}
-}
-
 KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts) {
 	KeyboardResult result = {EXIT_ERROR, NULL};
-	if (!screen) return result;
-
-	ui_keyboard_init();
-	if (!font_large) return result;
+	if (!screen || !g_font_large) return result;
 
 	// Initialize text buffer
 	char text[1024] = "";
@@ -187,8 +159,8 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			GFX_clear(screen);
 
 			// Title
-			if (opts && opts->title && font_small) {
-				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font_small, opts->title, COLOR_WHITE);
+			if (opts && opts->title && g_font_small) {
+				SDL_Surface* title_text = TTF_RenderUTF8_Blended(g_font_small, opts->title, COLOR_WHITE);
 				if (title_text) {
 					SDL_Rect pos = {DP(16), DP(8), title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
@@ -203,10 +175,10 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			GFX_blitPill(ASSET_BLACK_PILL, screen, &input_bg);
 
 			// Current text
-			if (font_large) {
+			if (g_font_large) {
 				char display_text[1024];
 				snprintf(display_text, sizeof(display_text), "%s_", text);  // Add cursor
-				SDL_Surface* text_surf = TTF_RenderUTF8_Blended(font_large, display_text, COLOR_WHITE);
+				SDL_Surface* text_surf = TTF_RenderUTF8_Blended(g_font_large, display_text, COLOR_WHITE);
 				if (text_surf) {
 					int text_x = DP(24);
 					int text_y = input_y + (input_h - text_surf->h) / 2;
@@ -248,7 +220,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 					SDL_Color color = (row == cursor_row && col == cursor_col) ? COLOR_BLACK : COLOR_WHITE;
 					const char* label = (strcmp(key, " ") == 0) ? "SPACE" : key;
 
-					SDL_Surface* key_text = TTF_RenderUTF8_Blended(font_large, label, color);
+					SDL_Surface* key_text = TTF_RenderUTF8_Blended(g_font_large, label, color);
 					if (key_text) {
 						int tx = x + (kw - key_text->w) / 2;
 						int ty = y + (key_h - key_text->h) / 2;

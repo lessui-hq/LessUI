@@ -17,12 +17,6 @@ typedef struct {
 	char* text;           // Entered text (caller must free)
 } KeyboardResult;
 
-// Initialize keyboard UI resources
-void ui_keyboard_init(void);
-
-// Clean up keyboard UI resources
-void ui_keyboard_cleanup(void);
-
 // Show keyboard input dialog
 KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts);
 

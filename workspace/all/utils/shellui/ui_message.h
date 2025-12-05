@@ -17,12 +17,6 @@ typedef struct {
 	bool show_time_left;     // Show countdown timer
 } MessageOptions;
 
-// Initialize message UI resources (fonts)
-void ui_message_init(void);
-
-// Clean up message UI resources
-void ui_message_cleanup(void);
-
 // Show a message dialog
 // Returns exit code based on user action
 ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts);

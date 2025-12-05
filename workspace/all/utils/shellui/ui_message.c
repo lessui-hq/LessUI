@@ -1,9 +1,10 @@
 #include "ui_message.h"
+#include "fonts.h"
+#include "utils.h"
 #include "api.h"
 #include "defines.h"
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <sys/time.h>
 
 #ifdef USE_SDL2
@@ -54,10 +55,6 @@ static SDL_Surface* scale_surface(SDL_Surface* surface, int width, int height) {
 }
 #endif
 
-// Fonts for message rendering
-static TTF_Font* font_large = NULL;
-static TTF_Font* font_small = NULL;
-
 // Maximum lines to display
 #define MAX_LINES 8
 
@@ -74,81 +71,8 @@ typedef struct {
 	int width;
 } Line;
 
-// Convert hex color string to SDL_Color
-static SDL_Color hex_to_color(const char* hex) {
-	SDL_Color color = {0, 0, 0, 255};
-	if (!hex || hex[0] != '#' || strlen(hex) < 7) {
-		return color;
-	}
-
-	unsigned int r, g, b;
-	if (sscanf(hex + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-		color.r = r;
-		color.g = g;
-		color.b = b;
-	}
-	return color;
-}
-
-// Replace \n escape sequences with actual newlines
-static void process_escapes(const char* src, char* dst, size_t dst_size) {
-	size_t si = 0, di = 0;
-	while (src[si] && di < dst_size - 1) {
-		if (src[si] == '\\' && src[si + 1] == 'n') {
-			dst[di++] = '\n';
-			si += 2;
-		} else {
-			dst[di++] = src[si++];
-		}
-	}
-	dst[di] = '\0';
-}
-
-// Trim whitespace from string
-static void trim(char* s) {
-	if (!s || !*s) return;
-
-	// Trim leading
-	char* start = s;
-	while (*start && isspace(*start)) start++;
-
-	// Trim trailing
-	char* end = start + strlen(start) - 1;
-	while (end > start && isspace(*end)) *end-- = '\0';
-
-	// Shift if needed
-	if (start != s) {
-		memmove(s, start, strlen(start) + 1);
-	}
-}
-
-void ui_message_init(void) {
-	if (font_large) return;
-
-	font_large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
-	if (font_large) {
-		TTF_SetFontStyle(font_large, TTF_STYLE_BOLD);
-	}
-
-	font_small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
-}
-
-void ui_message_cleanup(void) {
-	if (font_large) {
-		TTF_CloseFont(font_large);
-		font_large = NULL;
-	}
-	if (font_small) {
-		TTF_CloseFont(font_small);
-		font_small = NULL;
-	}
-}
-
 ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
-	if (!screen || !opts) return EXIT_ERROR;
-
-	ui_message_init();
-	if (!font_large) return EXIT_ERROR;
+	if (!screen || !opts || !g_font_large) return EXIT_ERROR;
 
 	struct timeval start_time;
 	gettimeofday(&start_time, NULL);
@@ -163,7 +87,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 	// Process message text
 	char processed_text[1024] = "";
 	if (opts->text) {
-		process_escapes(opts->text, processed_text, sizeof(processed_text));
+		unescapeNewlines(processed_text, opts->text, sizeof(processed_text));
 	}
 
 	// Parse into words (handling newlines)
@@ -184,7 +108,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 			*nl = '\0';
 			if (strlen(token) > 0) {
 				strncpy(words[word_count].text, token, sizeof(words[word_count].text) - 1);
-				TTF_SizeUTF8(font_large, token, &words[word_count].width, &word_height);
+				TTF_SizeUTF8(g_font_large, token, &words[word_count].width, &word_height);
 				words[word_count].is_newline = false;
 				word_count++;
 			}
@@ -200,7 +124,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 		// Remaining part
 		if (strlen(token) > 0) {
 			strncpy(words[word_count].text, token, sizeof(words[word_count].text) - 1);
-			TTF_SizeUTF8(font_large, token, &words[word_count].width, &word_height);
+			TTF_SizeUTF8(g_font_large, token, &words[word_count].width, &word_height);
 			words[word_count].is_newline = false;
 			word_count++;
 		}
@@ -209,7 +133,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 
 	// Calculate space width
 	int space_width = 0;
-	TTF_SizeUTF8(font_large, " ", &space_width, NULL);
+	TTF_SizeUTF8(g_font_large, " ", &space_width, NULL);
 
 	// Build lines with word wrap
 	Line lines[MAX_LINES];
@@ -275,7 +199,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 			// Background color
 			SDL_Color bg = {0, 0, 0, 255};
 			if (opts->background_color) {
-				bg = hex_to_color(opts->background_color);
+				bg = hexToColor(opts->background_color);
 			}
 			uint32_t bg_color = SDL_MapRGB(screen->format, bg.r, bg.g, bg.b);
 			SDL_FillRect(screen, NULL, bg_color);
@@ -314,7 +238,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 
 			// Time left display
 			int time_offset = 0;
-			if (opts->show_time_left && opts->timeout > 0 && font_small) {
+			if (opts->show_time_left && opts->timeout > 0 && g_font_small) {
 				struct timeval now;
 				gettimeofday(&now, NULL);
 				int elapsed = now.tv_sec - start_time.tv_sec;
@@ -328,7 +252,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 					snprintf(time_str, sizeof(time_str), "Time left: %d seconds", remaining);
 				}
 
-				SDL_Surface* time_text = TTF_RenderUTF8_Blended(font_small, time_str, COLOR_WHITE);
+				SDL_Surface* time_text = TTF_RenderUTF8_Blended(g_font_small, time_str, COLOR_WHITE);
 				if (time_text) {
 					SDL_Rect time_pos = {DP(8), DP(8), time_text->w, time_text->h};
 					SDL_BlitSurface(time_text, NULL, screen, &time_pos);
@@ -345,7 +269,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 			for (int i = 0; i < line_count; i++) {
 				if (strlen(lines[i].text) == 0) continue;
 
-				SDL_Surface* text = TTF_RenderUTF8_Blended(font_large, lines[i].text, COLOR_WHITE);
+				SDL_Surface* text = TTF_RenderUTF8_Blended(g_font_large, lines[i].text, COLOR_WHITE);
 				if (!text) continue;
 
 				int x = (screen->w - text->w) / 2;

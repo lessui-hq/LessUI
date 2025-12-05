@@ -31,6 +31,7 @@
 #ifdef PLATFORM
 #include "api.h"
 #include "defines.h"
+#include "fonts.h"
 #include "ui_message.h"
 #include "ui_list.h"
 #include "ui_keyboard.h"
@@ -425,12 +426,11 @@ static void daemon_init(void) {
 	PAD_init();
 	PWR_init();
 	InitSettings();
+	fonts_init();
 }
 
 static void daemon_cleanup(void) {
-	ui_message_cleanup();
-	ui_list_cleanup();
-	ui_keyboard_cleanup();
+	fonts_cleanup();
 	QuitSettings();
 	PWR_quit();
 	PAD_quit();

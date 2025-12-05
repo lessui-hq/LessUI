@@ -1,40 +1,15 @@
 #include "ui_list.h"
+#include "fonts.h"
 #include "api.h"
 #include "defines.h"
 #include <parson/parson.h>
 #include <stdlib.h>
 #include <string.h>
 
-// Fonts
-static TTF_Font* font_large = NULL;
-static TTF_Font* font_small = NULL;
-
 // UI constants
 #define VISIBLE_ITEMS 8
 #define ITEM_HEIGHT_DP 28
 #define TITLE_HEIGHT_DP 32
-
-void ui_list_init(void) {
-	if (font_large) return;
-
-	font_large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
-	if (font_large) {
-		TTF_SetFontStyle(font_large, TTF_STYLE_BOLD);
-	}
-
-	font_small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
-}
-
-void ui_list_cleanup(void) {
-	if (font_large) {
-		TTF_CloseFont(font_large);
-		font_large = NULL;
-	}
-	if (font_small) {
-		TTF_CloseFont(font_small);
-		font_small = NULL;
-	}
-}
 
 ListItem* ui_list_parse_json(const char* json, const char* item_key, int* item_count) {
 	*item_count = 0;
@@ -173,8 +148,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 	ListResult result = {EXIT_ERROR, -1, NULL};
 	if (!screen || !opts || opts->item_count == 0) return result;
 
-	ui_list_init();
-	if (!font_large) return result;
+	if (!g_font_large) return result;
 
 	// Find first selectable item
 	int selected = opts->initial_index;
@@ -250,8 +224,8 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			int y = DP(8);
 
 			// Title
-			if (opts->title && font_small) {
-				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font_small, opts->title, COLOR_WHITE);
+			if (opts->title && g_font_small) {
+				SDL_Surface* title_text = TTF_RenderUTF8_Blended(g_font_small, opts->title, COLOR_WHITE);
 				if (title_text) {
 					SDL_Rect pos = {DP(16), y, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
@@ -282,8 +256,8 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 				}
 
 				// Render item name
-				if (item->name && font_large) {
-					SDL_Surface* text = TTF_RenderUTF8_Blended(font_large, item->name, color);
+				if (item->name && g_font_large) {
+					SDL_Surface* text = TTF_RenderUTF8_Blended(g_font_large, item->name, color);
 					if (text) {
 						int text_x = DP(16);
 						int text_y = y + (item_height - text->h) / 2;
@@ -299,12 +273,12 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			// Scroll indicators
 			if (first_visible > 0) {
 				// Show "more above" indicator
-				GFX_blitText(font_small, "...", 0, COLOR_GRAY, screen,
+				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
 					&(SDL_Rect){screen->w - DP(32), DP(opts->title ? TITLE_HEIGHT_DP + 8 : 8), 0, 0});
 			}
 			if (first_visible + visible_count < opts->item_count) {
 				// Show "more below" indicator
-				GFX_blitText(font_small, "...", 0, COLOR_GRAY, screen,
+				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
 					&(SDL_Rect){screen->w - DP(32), screen->h - DP(48), 0, 0});
 			}
 
