@@ -38,6 +38,7 @@ typedef enum {
 #define SHUI_READY_FILE SHUI_DIR "/ready"
 #define SHUI_REQUEST_FILE SHUI_DIR "/request"
 #define SHUI_RESPONSE_FILE SHUI_DIR "/response"
+#define SHUI_LOCK_FILE SHUI_DIR "/spawn.lock"
 
 // Timeouts
 #define DAEMON_STARTUP_TIMEOUT_MS 5000

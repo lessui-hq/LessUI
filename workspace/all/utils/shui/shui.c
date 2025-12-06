@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -359,6 +360,32 @@ static int daemon_is_running(void) {
 }
 
 static int daemon_spawn(void) {
+	// Create directory first (needed for lock file)
+	if (mkdir(SHUI_DIR, 0755) != 0 && errno != EEXIST) {
+		perror("mkdir");
+		return -1;
+	}
+
+	// Acquire exclusive lock to prevent concurrent spawn attempts
+	int lock_fd = open(SHUI_LOCK_FILE, O_CREAT | O_RDWR, 0644);
+	if (lock_fd < 0) {
+		perror("open lock file");
+		return -1;
+	}
+
+	if (flock(lock_fd, LOCK_EX) < 0) {
+		perror("flock");
+		close(lock_fd);
+		return -1;
+	}
+
+	// Re-check after acquiring lock - another process may have spawned daemon
+	if (daemon_is_running()) {
+		close(lock_fd);  // Releases lock
+		return daemon_wait_ready(DAEMON_STARTUP_TIMEOUT_MS);
+	}
+
+	// We hold the lock and daemon is not running - safe to spawn
 	// Clean up old IPC files
 	ipc_cleanup();
 	ipc_init();
@@ -366,11 +393,13 @@ static int daemon_spawn(void) {
 	pid_t pid = fork();
 	if (pid < 0) {
 		perror("fork");
+		close(lock_fd);
 		return -1;
 	}
 
 	if (pid == 0) {
-		// Child: become daemon
+		// Child: become daemon (lock fd inherited, closed on exec)
+		close(lock_fd);
 		setsid();
 
 		// Re-exec ourselves with --daemon flag
@@ -386,8 +415,10 @@ static int daemon_spawn(void) {
 		exit(run_daemon());
 	}
 
-	// Parent: wait for daemon to be ready
-	return daemon_wait_ready(DAEMON_STARTUP_TIMEOUT_MS);
+	// Parent: wait for daemon to be ready, then release lock
+	int result = daemon_wait_ready(DAEMON_STARTUP_TIMEOUT_MS);
+	close(lock_fd);  // Releases lock
+	return result;
 }
 
 static int daemon_wait_ready(int timeout_ms) {
@@ -439,9 +470,10 @@ static bool request_needs_response(const Request* req) {
 }
 
 static int send_command(const Request* req) {
-	// Special case: stop when not running is a no-op
+	// Special case: stop always cleans up (handles crash recovery)
 	if (req->command == CMD_SHUTDOWN) {
 		if (!daemon_is_running()) {
+			ipc_cleanup();  // Remove any stale files from crash
 			return EXIT_SUCCESS_CODE;
 		}
 	}

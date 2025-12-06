@@ -26,6 +26,7 @@ void ipc_cleanup(void) {
 	unlink(SHUI_RESPONSE_FILE);
 	unlink(SHUI_READY_FILE);
 	unlink(SHUI_PID_FILE);
+	unlink(SHUI_LOCK_FILE);
 	rmdir(SHUI_DIR);
 }
 

@@ -84,8 +84,8 @@ while [ -f "$EXEC_PATH" ]; do
 
 	if [ -f $NEXT_PATH ]; then
 		CMD=`cat $NEXT_PATH`
-		# Start shui only for tool paks (not minui/minarch)
-		echo "$CMD" | grep -q "/Tools/" && shui start
+		# Start shui in background for tool paks (not minui/minarch)
+		echo "$CMD" | grep -q "/Tools/" && shui start &
 		eval $CMD
 		shui stop 2>/dev/null
 		rm -f $NEXT_PATH

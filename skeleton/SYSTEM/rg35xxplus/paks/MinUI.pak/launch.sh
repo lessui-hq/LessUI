@@ -87,8 +87,8 @@ while [ -f "$EXEC_PATH" ]; do
 
 	if [ -f $NEXT_PATH ]; then
 		. $HDMI_EXPORT_PATH
-		# Start shui only for tool paks (not minui/minarch)
-		grep -q "/Tools/" $NEXT_PATH && shui start
+		# Start shui in background for tool paks (not minui/minarch)
+		grep -q "/Tools/" $NEXT_PATH && shui start &
 		. $NEXT_PATH
 		shui stop 2>/dev/null
 		rm -f $NEXT_PATH
