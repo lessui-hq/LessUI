@@ -172,6 +172,10 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 		line_count++;
 	}
 
+	// Drain any stale input events from before the dialog appeared
+	PAD_poll();
+	PAD_reset();
+
 	// Main loop
 	while (1) {
 		GFX_startFrame();

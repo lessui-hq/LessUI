@@ -138,6 +138,10 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 	Uint32 color_key_selected = SDL_MapRGB(screen->format, TRIAD_WHITE);
 	Uint32 color_input_bg = SDL_MapRGB(screen->format, 0x1a, 0x1a, 0x1a);
 
+	// Drain any stale input events from before the keyboard appeared
+	PAD_poll();
+	PAD_reset();
+
 	while (1) {
 		GFX_startFrame();
 		PWR_update(&redraw, &show_setting, NULL, NULL);

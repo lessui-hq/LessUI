@@ -289,6 +289,10 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 		PWR_disableAutosleep();
 	}
 
+	// Drain any stale input events from before the list appeared
+	PAD_poll();
+	PAD_reset();
+
 	while (1) {
 		GFX_startFrame();
 		PWR_update(&redraw, &show_setting, NULL, NULL);
