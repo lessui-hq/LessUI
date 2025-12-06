@@ -584,16 +584,16 @@ void PLAT_setCPUSpeed(int speed) {
 	int freq = 0;
 	switch (speed) {
 	case CPU_SPEED_IDLE:
-		freq = 408000; // 20% of max (307 → 408 MHz)
+		freq = 408000;
 		break;
 	case CPU_SPEED_POWERSAVE:
-		freq = 816000; // 55% of max (845 → 816 MHz)
+		freq = 816000;
 		break;
 	case CPU_SPEED_NORMAL:
-		freq = 1200000; // 80% of max (1229 → 1200 MHz)
+		freq = 1104000;
 		break;
 	case CPU_SPEED_PERFORMANCE:
-		freq = 1536000; // 100% (1536 MHz)
+		freq = 1440000;
 		break;
 	}
 
@@ -603,14 +603,25 @@ void PLAT_setCPUSpeed(int speed) {
 }
 
 /**
- * Gets available CPU frequencies from sysfs.
+ * Returns hardcoded CPU frequencies for trimuismart.
+ *
+ * The trimuismart kernel (3.4.39) doesn't expose scaling_available_frequencies,
+ * so we return the frequencies discovered via probing.
  *
  * @param frequencies Output array to fill with frequencies (in kHz)
  * @param max_count Maximum number of frequencies to return
- * @return Number of frequencies found
+ * @return Number of frequencies returned
  */
 int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
-	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+	static const int known_freqs[] = {
+	    60000,   240000,  312000,  408000,  480000,  600000,  720000,
+	    816000,  912000,  1008000, 1104000, 1200000, 1344000, 1440000,
+	};
+	int count = sizeof(known_freqs) / sizeof(known_freqs[0]);
+	if (count > max_count)
+		count = max_count;
+	memcpy(frequencies, known_freqs, count * sizeof(int));
+	return count;
 }
 
 /**
