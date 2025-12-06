@@ -1,5 +1,5 @@
 #include "ipc.h"
-#include "utils.h"
+#include "shellui_utils.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>

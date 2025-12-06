@@ -2,12 +2,12 @@
     "settings": [
         {
             "name": "Enable",
-            "options": ["false", "true"],
+            "options": ["Off", "On"],
             "selected": 0
         },
         {
             "name": "Start on boot",
-            "options": ["false", "true"],
+            "options": ["Off", "On"],
             "selected": 0
         }
     ]

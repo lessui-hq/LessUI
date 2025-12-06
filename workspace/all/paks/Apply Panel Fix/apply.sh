@@ -3,11 +3,6 @@
 DIR="$(dirname "$0")"
 cd "$DIR"
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
-$PRESENTER --message "Extracting device configuration..." --timeout 60 &
-PRESENTER_PID=$!
-
 # PATH doesn't like spaces in paths
 cp -rf bin /tmp/
 PATH=/tmp/bin:$PATH
@@ -15,10 +10,10 @@ PATH=/tmp/bin:$PATH
 # const
 DT_NAME=device
 DEV_PATH=/dev/mmcblk0
-# BOOT_OFFSET=$((16400 * 1024))
-# DTB_OFFSET=$((BOOT_OFFSET+1161216))
 DTB_OFFSET=17954816
 DTB_MAGIC=$(xxd -s "$DTB_OFFSET" -l4 -ps "$DEV_PATH")
+
+shellui progress "Reading device configuration..." --value 0
 
 if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 	echo "bad DTB_MAGIC at $DTB_OFFSET"
@@ -27,9 +22,8 @@ if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 
 	if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 		echo "bad DTB_MAGIC at $DTB_OFFSET"
-		kill "$PRESENTER_PID" 2>/dev/null
-		$PRESENTER --message "Unable to find device configuration.\nAborting." --timeout 3
-		echo "unable to decompile dtb, aborting"
+		shellui message "Unable to find device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		echo "unable to find dtb, aborting"
 		exit 1
 	fi
 fi
@@ -38,15 +32,18 @@ fi
 SIZE_OFFSET=$((DTB_OFFSET+4))
 DTB_SIZE=$((0x$(xxd -s "$SIZE_OFFSET" -l4 -ps "$DEV_PATH")))
 
+shellui progress "Extracting configuration..." --value 10
+
 dd if="$DEV_PATH" of="$DT_NAME.dtb" bs=1 skip="$DTB_OFFSET" count="$DTB_SIZE" 2>/dev/null # extract
 dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null # decompile
 
 if [ ! -f "$DT_NAME.dts" ]; then
-	kill "$PRESENTER_PID" 2>/dev/null
-	$PRESENTER --message "Unable to decompile device configuration.\nAborting." --timeout 3
+	shellui message "Unable to read device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
 	echo "unable to decompile dtb, aborting"
 	exit 1
 fi
+
+shellui progress "Analyzing panel settings..." --value 20
 
 CF= # lcd_dclk_freq
 HT= # lcd_ht
@@ -79,6 +76,8 @@ done < <(grep 'lcd_backlight\|lcd_dclk_freq\|lcd_ht\|lcd_vt' "$DT_NAME.dts")
 echo "    CF HT  VT  (BL)"
 echo "IN  $CF-$HT-$VT ($BL)"
 
+shellui progress "Checking panel compatibility..." --value 30
+
 # match to known (incorrect) values
 CF_OFFSET=0
 HT_OFFSET=0
@@ -109,7 +108,7 @@ case $CF-$HT-$VT in
 	VT_OFFSET=-1 # 521
 	;;
 25-728-568) # 35xxSP 1.0.6
-	# the numbers don't add up but 
+	# the numbers don't add up but
 	# this is already hitting 60fps
 	# so fudge BL to exit early
 	echo "known good config"
@@ -132,18 +131,19 @@ if [ "$BL_OFFSET" -ne 0 ]; then
 	VT=$((VT+VT_OFFSET))
 	BL=$((BL-BL_OFFSET))
 else
-	kill "$PRESENTER_PID" 2>/dev/null
 	if [ "$BL" -ne 50 ]; then
-		$PRESENTER --message "Panel has already been patched." --timeout 3
+		shellui message "Panel fix already applied!\n\nNo changes needed." --confirm "Done"
 		echo "this panel has (probably) already been patched"
 	else
-		$PRESENTER --message "Unrecognized panel configuration.\nAborting." --timeout 3
+		shellui message "Unrecognized panel configuration.\n\nYour device is unchanged." --confirm "Dismiss"
 		echo "unrecognized panel configuration, aborting"
 	fi
 	exit 0
 fi
 
 echo "OUT $CF-$HT-$VT ($BL)"
+
+shellui progress "Preparing new configuration..." --value 50
 
 # dupe and inject updated values
 MOD_PATH=$DT_NAME-mod.dts
@@ -157,9 +157,7 @@ dtc -I dts -O dtb -o "$DT_NAME-mod.dtb" "$DT_NAME-mod.dts" 2>/dev/null # recompi
 dd if="$DT_NAME.dtb" of="$DT_NAME-mod.dtb" bs=1 skip=4 seek=4 count=4 conv=notrunc 2>/dev/null # inject original size
 fallocate -l "$DTB_SIZE" "$DT_NAME-mod.dtb" # zero fill empty space
 
-kill "$PRESENTER_PID" 2>/dev/null
-$PRESENTER --message "Verifying checksum..." --timeout 60 &
-PRESENTER_PID=$!
+shellui progress "Verifying checksum..." --value 70
 
 # validate checksum
 A_PATH=$DT_NAME.dtb
@@ -182,23 +180,22 @@ done
 B_SUM=$SUM
 
 if [ "$A_SUM" != "$B_SUM" ]; then
-	kill "$PRESENTER_PID" 2>/dev/null
-	$PRESENTER --message "Checksum mismatch!\nAborting." --timeout 3
+	shellui message "Checksum verification failed!\n\nYour device is unchanged." --confirm "Dismiss"
 	echo "A $A_SUM"
 	echo "B $B_SUM"
 	echo "mismatched checksum, aborting"
 	exit 1
 fi
 
-kill "$PRESENTER_PID" 2>/dev/null
-$PRESENTER --message "Applying panel fix..." --timeout 60 &
-PRESENTER_PID=$!
+shellui progress "Applying panel fix..." --value 85
 
 dd if="$DT_NAME-mod.dtb" of="$DEV_PATH" bs=1 seek="$DTB_OFFSET" conv=notrunc 2>/dev/null # inject
 sync
 
-kill "$PRESENTER_PID" 2>/dev/null
+shellui progress "Panel fix applied!" --value 100
+sleep 0.5
+
 echo "applied fix successfully!"
 
-$PRESENTER --message "Panel fix applied!\n\nRebooting in 2 seconds..." --timeout 2
+shellui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot Now"
 reboot

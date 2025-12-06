@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
 
 #define CHAR_SLASH 10
 #define CHAR_COLON 11
-	while (c = chars[i]) {
+	while ((c = chars[i])) {
 		digit = TTF_RenderUTF8_Blended(font.large, c, COLOR_WHITE);
 		// Colon sits too low naturally, adjust vertically
 		int y = i == CHAR_COLON ? DP(-1.5) : 0;
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
 
 	int32_t day_selected = tm.tm_mday;
 	int32_t month_selected = tm.tm_mon + 1;
-	uint32_t year_selected = tm.tm_year + 1900;
+	int32_t year_selected = tm.tm_year + 1900;
 	int32_t hour_selected = tm.tm_hour;
 	int32_t minute_selected = tm.tm_min;
 	int32_t seconds_selected = tm.tm_sec;
@@ -109,8 +109,9 @@ int main(int argc, char* argv[]) {
 	 * @param y Y position (pre-scaled)
 	 * @return New x position after blitting (x + digit width)
 	 */
-	int blit(int i, int x, int y) {
-		SDL_BlitSurface(digits, &(SDL_Rect){i * DP(10), 0, DP2(10, 16)}, screen, &(SDL_Rect){x, y});
+	int blit(int idx, int x, int y) {
+		SDL_BlitSurface(digits, &(SDL_Rect){idx * DP(10), 0, DP2(10, 16)}, screen,
+		                &(SDL_Rect){x, y});
 		return x + DP(10);
 	}
 
@@ -330,7 +331,7 @@ int main(int argc, char* argv[]) {
 			x = blit(CHAR_COLON, x, y);
 			x = blitNumber(seconds_selected, x, y);
 
-			int ampm_w;
+			int ampm_w = 0;
 			if (!show_24hour) {
 				x += DP(10); // space before AM/PM
 				SDL_Surface* text =

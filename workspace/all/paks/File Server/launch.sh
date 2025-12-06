@@ -24,19 +24,14 @@ NETWORK_SCHEME="http"
 
 show_message() {
     message="$1"
-    seconds="$2"
-
-    if [ -z "$seconds" ]; then
-        seconds="forever"
-    fi
-
-    killall minui-presenter >/dev/null 2>&1 || true
     echo "$message" 1>&2
-    if [ "$seconds" = "forever" ]; then
-        minui-presenter --message "$message" --timeout -1 &
-    else
-        minui-presenter --message "$message" --timeout "$seconds"
-    fi
+    shellui message "$message" --confirm "OK"
+}
+
+show_progress() {
+    message="$1"
+    echo "$message" 1>&2
+    shellui progress "$message" --indeterminate
 }
 
 disable_start_on_boot() {
@@ -169,7 +164,7 @@ main_screen() {
         fi
     fi
 
-    minui-list --disable-auto-sleep --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm-text "SAVE" --item-key "settings" --write-value state
+    shellui list --disable-auto-sleep --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
 }
 
 cleanup() {
@@ -178,7 +173,7 @@ cleanup() {
     rm -f "/tmp/${PAK_NAME}-settings.json"
     rm -f "/tmp/${PAK_NAME}-minui-list.json"
     rm -f /tmp/stay_awake
-    killall minui-presenter >/dev/null 2>&1 || true
+    shellui shutdown 2>/dev/null || true
 }
 
 main() {
@@ -190,18 +185,13 @@ main() {
         export PLATFORM="tg5040"
     fi
 
-    if ! command -v minui-list >/dev/null 2>&1; then
-        show_message "minui-list not found" 2
-        return 1
-    fi
-
-    if ! command -v minui-presenter >/dev/null 2>&1; then
-        show_message "minui-presenter not found" 2
+    if ! command -v shellui >/dev/null 2>&1; then
+        echo "shellui not found"
         return 1
     fi
 
     if ! command -v jq >/dev/null 2>&1; then
-        show_message "jq not found" 2
+        show_message "jq not found"
         return 1
     fi
 
@@ -213,13 +203,13 @@ main() {
 
     allowed_platforms="miyoomini my282 my355 rg35xxplus tg5040"
     if ! echo "$allowed_platforms" | grep -q "$PLATFORM"; then
-        show_message "$PLATFORM is not a supported platform" 2
+        show_message "$PLATFORM is not a supported platform"
         return 1
     fi
 
     if [ "$PLATFORM" = "miyoomini" ]; then
         if [ ! -f /customer/app/axp_test ]; then
-            show_message "Wifi not supported on non-Plus version of the Miyoo Mini" 2
+            show_message "Wifi not supported on non-Plus\nversion of the Miyoo Mini"
             return 1
         fi
     fi
@@ -227,7 +217,7 @@ main() {
     if [ "$PLATFORM" = "rg35xxplus" ]; then
         RGXX_MODEL="$(strings /mnt/vendor/bin/dmenu.bin | grep ^RG)"
         if [ "$RGXX_MODEL" = "RG28xx" ]; then
-            show_message "Wifi not supported on RG28XX" 2
+            show_message "Wifi not supported on RG28XX"
             return 1
         fi
     fi
@@ -252,41 +242,39 @@ main() {
 
         if [ "$old_enabled" != "$enabled" ]; then
             if [ "$enabled" = "1" ]; then
-                show_message "Enabling $HUMAN_READABLE_NAME" 2
+                show_progress "Enabling $HUMAN_READABLE_NAME..."
                 if ! service-on; then
-                    show_message "Failed to enable $HUMAN_READABLE_NAME!" 2
+                    show_message "Failed to enable $HUMAN_READABLE_NAME!"
                     continue
                 fi
 
-                show_message "Waiting for $HUMAN_READABLE_NAME to be running" forever
+                show_progress "Starting $HUMAN_READABLE_NAME..."
                 if ! wait_for_service 10; then
-                    show_message "Failed to start $HUMAN_READABLE_NAME" 2
+                    show_message "Failed to start $HUMAN_READABLE_NAME"
                 fi
-                killall minui-presenter >/dev/null 2>&1 || true
             else
-                show_message "Disabling $HUMAN_READABLE_NAME" 2
+                show_progress "Disabling $HUMAN_READABLE_NAME..."
                 if ! service-off; then
-                    show_message "Failed to disable $HUMAN_READABLE_NAME!" 2
+                    show_message "Failed to disable $HUMAN_READABLE_NAME!"
                 fi
 
-                show_message "Waiting for $HUMAN_READABLE_NAME to stop" forever
+                show_progress "Stopping $HUMAN_READABLE_NAME..."
                 if ! wait_for_service_to_stop 10; then
-                    show_message "Failed to stop $HUMAN_READABLE_NAME" 2
+                    show_message "Failed to stop $HUMAN_READABLE_NAME"
                 fi
-                killall minui-presenter >/dev/null 2>&1 || true
             fi
         fi
 
         if [ "$old_start_on_boot" != "$start_on_boot" ]; then
             if [ "$start_on_boot" = "1" ]; then
-                show_message "Enabling start on boot" 2
+                show_progress "Enabling start on boot..."
                 if ! enable_start_on_boot; then
-                    show_message "Failed to enable start on boot!" 2
+                    show_message "Failed to enable start on boot!"
                 fi
             else
-                show_message "Disabling start on boot" 2
+                show_progress "Disabling start on boot..."
                 if ! disable_start_on_boot; then
-                    show_message "Failed to disable start on boot!" 2
+                    show_message "Failed to disable start on boot!"
                 fi
             fi
         fi

@@ -305,7 +305,7 @@ main_screen() {
 	sed -i "s/NETWORK_SSID/$ssid/" "$minui_list_file"
 	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$minui_list_file"
 
-	shellui list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --cancel-text "EXIT" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
+	shellui list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
 }
 
 networks_screen() {
@@ -332,7 +332,7 @@ networks_screen() {
 		done
 	fi
 
-	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --confirm-text "CONNECT" --title "Wifi Networks" --write-location /tmp/minui-output
+	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
 }
 
 saved_networks_screen() {
@@ -352,7 +352,7 @@ saved_networks_screen() {
 		return 1
 	fi
 
-	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --title "Wifi Networks" --confirm-text "FORGET" --write-location /tmp/minui-output
+	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
 }
 
 password_screen() {
@@ -569,7 +569,7 @@ main() {
 			selected_option_index="$(echo "$output" | jq -r ".settings[0].selected")"
 			selected_option="$(echo "$output" | jq -r ".settings[0].options[$selected_option_index]")"
 
-			if [ "$selected_option" = "true" ]; then
+			if [ "$selected_option" = "On" ]; then
 				if ! "$PAK_DIR/bin/wifi-enabled"; then
 					# wifi_on shows connection progress
 					if ! wifi_on; then
@@ -591,7 +591,7 @@ main() {
 			selected_option_index="$(echo "$output" | jq -r ".settings[1].selected")"
 			selected_option="$(echo "$output" | jq -r ".settings[1].options[$selected_option_index]")"
 
-			if [ "$selected_option" = "true" ]; then
+			if [ "$selected_option" = "On" ]; then
 				if ! will_start_on_boot; then
 					shellui progress "Enabling start on boot..." --indeterminate
 					if ! enable_start_on_boot; then

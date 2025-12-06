@@ -31,39 +31,51 @@ export PATH="$PAK_DIR:$PATH"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 REPORT_FILE="$SDCARD_PATH/system_report_${PLATFORM}_${TIMESTAMP}.md"
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
-show_message() {
-    message="$1"
-    seconds="$2"
-
-    if [ -z "$seconds" ]; then
-        seconds="3"
-    fi
-
-    echo "$message" 1>&2
-    $PRESENTER --message "$message" --timeout "$seconds"
-}
-
 cleanup() {
     rm -f /tmp/stay_awake
-    killall minui-presenter >/dev/null 2>&1 || true
+    shellui shutdown 2>/dev/null || true
 }
 
 run_report() {
     cd "$SDCARD_PATH" || return 1
 
-    show_message "Generating System Report...\n\nIncluding CPU benchmarking\nThis may take a minute." 3
+    # Confirm before generating
+    if ! shellui message "Generate system report?\n\nThis includes CPU benchmarking\nand may take a minute." \
+        --confirm "Generate Report" --cancel "Cancel"; then
+        exit 0
+    fi
 
-    # Run the report generator
-    "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1
+    # Run the report generator with progress updates
+    {
+        shellui progress "Collecting system info..." --value 10
+
+        # Run the report generator
+        "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1 &
+        REPORT_PID=$!
+
+        # Update progress while running
+        progress=20
+        while kill -0 "$REPORT_PID" 2>/dev/null; do
+            shellui progress "Generating report..." --value "$progress"
+            sleep 2
+            progress=$((progress + 10))
+            if [ "$progress" -gt 90 ]; then
+                progress=90
+            fi
+        done
+
+        wait "$REPORT_PID"
+
+        shellui progress "Complete!" --value 100
+        sleep 0.5
+    }
 
     # Verify report was created and show result
     if [ -s "$REPORT_FILE" ]; then
         LINES=$(wc -l < "$REPORT_FILE" | tr -d ' ')
-        show_message "Report Complete!\n\n$LINES lines\n\nSaved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" 4
+        shellui message "Report generated!\n\n$LINES lines saved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" --confirm "Done"
     else
-        show_message "Report generation failed.\n\nCheck logs for details." 4
+        shellui message "Report generation failed.\n\nCheck logs for details." --confirm "Dismiss"
     fi
 }
 

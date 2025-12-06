@@ -6,18 +6,20 @@
 DIR="$(dirname "$0")"
 cd "$DIR" || exit 1
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
 # Platform-specific implementations
 case "$PLATFORM" in
 	miyoomini)
+		# Confirm before modifying firmware
+		if ! shellui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
+			--confirm "Remove Loading" --cancel "Cancel"; then
+			exit 0
+		fi
+
 		overclock.elf "$CPU_SPEED_GAME" # slow down, my282 didn't like overclock during this operation
 
-		# Show progress
-		$PRESENTER --message "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" --timeout 120 &
-		PRESENTER_PID=$!
-
 		{
+			shellui progress "Preparing tools..." --value 5
+
 			# squashfs tools and liblzma.so sourced from toolchain buildroot
 			cp -r miyoomini/bin /tmp
 			cp -r miyoomini/lib /tmp
@@ -29,52 +31,67 @@ case "$PLATFORM" in
 
 			rm -rf customer squashfs-root customer.modified
 
+			shellui progress "Reading firmware..." --value 15
+
 			cp /dev/mtd6 customer
+
+			shellui progress "Extracting firmware..." --value 30
 
 			unsquashfs customer
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to extract firmware.\nYour device is safe." --timeout 4
+				shellui message "Failed to extract firmware.\n\nYour device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
+
+			shellui progress "Patching firmware..." --value 50
 
 			sed -i '/^\/customer\/app\/sdldisplay/d' squashfs-root/main
 			echo "patched main"
 
+			shellui progress "Repacking firmware..." --value 65
+
 			mksquashfs squashfs-root customer.mod -comp xz -b 131072 -xattrs -all-root
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to repack firmware.\nYour device is safe." --timeout 4
+				shellui message "Failed to repack firmware.\n\nYour device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
+
+			shellui progress "Writing firmware..." --value 85
 
 			dd if=customer.mod of=/dev/mtdblock6 bs=128K conv=fsync
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to write firmware!\nDevice may need recovery." --timeout 5
+				shellui message "Failed to write firmware!\n\nDevice may need recovery." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
 
+			shellui progress "Complete!" --value 100
+			sleep 0.5
+
 		} &> ./log.txt
 
-		kill "$PRESENTER_PID" 2>/dev/null
-		$PRESENTER --message "Loading screen removed!\n\nRebooting in 2 seconds..." --timeout 2
+		# Self-destruct before reboot
 		mv "$DIR" "$DIR.disabled"
 		sync
+
+		shellui message "Loading screen removed!\n\nDevice will reboot to apply changes." --confirm "Reboot Now"
 		reboot
 		;;
 
 	my282)
+		# Confirm before modifying firmware
+		if ! shellui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
+			--confirm "Remove Loading" --cancel "Cancel"; then
+			exit 0
+		fi
+
 		overclock.elf performance 2 1200 384 1080 0
 
-		# Show progress
-		$PRESENTER --message "Patching firmware...\n\nPlease wait up to 2 minutes.\nDo not power off!" --timeout 120 &
-		PRESENTER_PID=$!
-
 		{
+			shellui progress "Preparing tools..." --value 5
+
 			# same as miyoomini
 			cp -r my282/bin /tmp
 			cp -r my282/lib /tmp
@@ -86,53 +103,77 @@ case "$PLATFORM" in
 
 			rm -rf rootfs squashfs-root rootfs.modified
 
+			shellui progress "Reading firmware..." --value 15
+
 			mtd read rootfs /dev/mtd3
+
+			shellui progress "Extracting firmware..." --value 30
 
 			unsquashfs rootfs
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to extract firmware.\nYour device is safe." --timeout 4
+				shellui message "Failed to extract firmware.\n\nYour device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
+
+			shellui progress "Patching firmware..." --value 50
 
 			sed -i '/^\/customer\/app\/sdldisplay/d' squashfs-root/customer/main
 			echo "patched main"
 
+			shellui progress "Repacking firmware..." --value 65
+
 			mksquashfs squashfs-root rootfs.mod -comp xz -b 262144 -Xbcj arm
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to repack firmware.\nYour device is safe." --timeout 4
+				shellui message "Failed to repack firmware.\n\nYour device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
+
+			shellui progress "Writing firmware..." --value 85
 
 			mtd write rootfs.mod /dev/mtd3
 			if [ $? -ne 0 ]; then
-				kill "$PRESENTER_PID" 2>/dev/null
-				$PRESENTER --message "Failed to write firmware!\nDevice may need recovery." --timeout 5
+				shellui message "Failed to write firmware!\n\nDevice may need recovery." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
 
+			shellui progress "Complete!" --value 100
+			sleep 0.5
+
 		} &> ./log.txt
 
-		kill "$PRESENTER_PID" 2>/dev/null
-		$PRESENTER --message "Loading screen removed successfully!" --timeout 3
+		# Self-destruct
 		mv "$DIR" "$DIR.disabled"
 		sync
+
+		shellui message "Loading screen removed!" --confirm "Done"
 		;;
 
 	tg5040)
-		sed -i '/^\/usr\/sbin\/pic2fb \/etc\/splash.png/d' /etc/init.d/runtrimui
-		$PRESENTER --message "Boot loading screen removed!" --timeout 3
+		# Confirm before modifying
+		if ! shellui message "Remove boot loading screen?\n\nThis modifies system files." \
+			--confirm "Remove Loading" --cancel "Cancel"; then
+			exit 0
+		fi
 
+		shellui progress "Patching boot script..." --indeterminate
+
+		sed -i '/^\/usr\/sbin\/pic2fb \/etc\/splash.png/d' /etc/init.d/runtrimui
+
+		shellui progress "Complete!" --value 100
+		sleep 0.5
+
+		# Self-destruct
 		mv "$DIR" "$DIR.disabled"
 		sync
+
+		shellui message "Loading screen removed!" --confirm "Done"
 		;;
 
 	*)
-		$PRESENTER --message "Remove Loading not supported on $PLATFORM" --timeout 3
+		shellui message "Loading screen removal is not\nsupported on $PLATFORM." --confirm "Dismiss"
 		exit 1
 		;;
 esac

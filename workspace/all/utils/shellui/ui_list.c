@@ -1,5 +1,5 @@
 #include "ui_list.h"
-#include "utils.h"
+#include "shellui_utils.h"
 #include "api.h"
 #include "defines.h"
 #include <parson/parson.h>
@@ -275,6 +275,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 			break;
 		}
 	}
+	(void)has_options;  // TODO: use for left/right button hints
 
 	// Calculate visible range using dynamic UI layout
 	int first_visible = 0;
