@@ -15,31 +15,13 @@ static void parse_item_features(JSON_Object* features_obj, ListItemFeature* feat
 	if (!features_obj) return;
 
 	const char* str;
-	str = json_object_get_string(features_obj, "background_color");
-	if (str) features->background_color = strdup(str);
-
-	str = json_object_get_string(features_obj, "background_image");
-	if (str) features->background_image = strdup(str);
-
 	str = json_object_get_string(features_obj, "confirm_text");
 	if (str) features->confirm_text = strdup(str);
 
-	str = json_object_get_string(features_obj, "alignment");
-	if (str) features->alignment = strdup(str);
-
 	// Boolean fields - parson returns 0 for false, 1 for true, -1 for not present
 	int val;
-	val = json_object_get_boolean(features_obj, "can_disable");
-	if (val != -1) features->can_disable = (val == 1);
-
 	val = json_object_get_boolean(features_obj, "disabled");
 	if (val != -1) features->disabled = (val == 1);
-
-	val = json_object_get_boolean(features_obj, "draw_arrows");
-	if (val != -1) features->draw_arrows = (val == 1);
-
-	val = json_object_get_boolean(features_obj, "hide_action");
-	if (val != -1) features->hide_action = (val == 1);
 
 	val = json_object_get_boolean(features_obj, "hide_cancel");
 	if (val != -1) features->hide_cancel = (val == 1);
@@ -192,10 +174,7 @@ ListItem* ui_list_parse_text(const char* text, int* item_count) {
 }
 
 static void free_item_features(ListItemFeature* f) {
-	free(f->background_color);
-	free(f->background_image);
 	free(f->confirm_text);
-	free(f->alignment);
 }
 
 void ui_list_free_items(ListItem* items, int count) {

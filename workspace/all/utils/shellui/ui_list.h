@@ -6,18 +6,12 @@
 
 // Per-item feature flags
 typedef struct {
-	char* background_color;    // Hex color for item background
-	char* background_image;    // Image path for item background
 	char* confirm_text;        // Custom confirm button text for this item
-	char* alignment;           // Text alignment: "left", "center", "right"
-	bool can_disable;          // Item can be toggled disabled/enabled
 	bool disabled;             // Item is disabled (grayed out)
-	bool draw_arrows;          // Draw < > arrows around option value
-	bool hide_action;          // Hide action button when selected
-	bool hide_cancel;          // Hide cancel button when selected
-	bool hide_confirm;         // Hide confirm button when selected
 	bool is_header;            // Item is a non-selectable header
 	bool unselectable;         // Item cannot be selected
+	bool hide_confirm;         // Hide confirm button when selected
+	bool hide_cancel;          // Hide cancel button when selected
 } ListItemFeature;
 
 // List item with optional toggle/options support
@@ -46,18 +40,9 @@ typedef struct {
 	int item_count;            // Number of items
 	int initial_index;         // Initially selected index
 
-	// Button configuration
-	char* confirm_button;      // Physical button (default: "A")
+	// Button labels
 	char* confirm_text;        // Confirm button label (default: "SELECT")
-	char* cancel_button;       // Physical button (default: "B")
 	char* cancel_text;         // Cancel button label (default: "BACK")
-	char* action_button;       // Action button (optional)
-	char* action_text;         // Action button label
-	char* enable_button;       // Enable/disable toggle button (default: "Y")
-
-	// Styling
-	char* background_color;    // Global background color
-	char* background_image;    // Global background image
 
 	// Output
 	char* write_location;      // File path or "-" for stdout
@@ -65,7 +50,6 @@ typedef struct {
 
 	// Flags
 	bool disable_auto_sleep;
-	bool show_hardware_group;
 } ListOptions;
 
 // Result from list selection

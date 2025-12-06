@@ -189,32 +189,26 @@ static int run_cli(int argc, char** argv) {
 		return EXIT_ERROR;
 	}
 
-	// Parse options - compatible with minui-presenter, minui-list, minui-keyboard
+	// Parse options
 	static struct option long_options[] = {
-		// Common options
+		// Message options
 		{"timeout", required_argument, 0, 't'},
 		{"confirm", required_argument, 0, 'c'},
-		{"confirm-text", required_argument, 0, 'c'},    // alias
 		{"cancel", required_argument, 0, 'x'},
-		{"cancel-text", required_argument, 0, 'x'},     // alias
 		{"background-color", required_argument, 0, 'b'},
 		{"background-image", required_argument, 0, 'B'},
 		{"show-pill", no_argument, 0, 'p'},
-		{"disable-auto-sleep", no_argument, 0, 'U'},
 		// List options
 		{"file", required_argument, 0, 'f'},
 		{"format", required_argument, 0, 'F'},
 		{"title", required_argument, 0, 'T'},
+		{"title-alignment", required_argument, 0, 'L'},
 		{"item-key", required_argument, 0, 'k'},
 		{"write-location", required_argument, 0, 'w'},
 		{"write-value", required_argument, 0, 'W'},
-		{"action-button", required_argument, 0, 'a'},
-		{"action-text", required_argument, 0, 'A'},
-		{"enable-button", required_argument, 0, 'e'},
-		{"title-alignment", required_argument, 0, 'L'},
+		{"disable-auto-sleep", no_argument, 0, 'U'},
 		// Keyboard options
 		{"initial", required_argument, 0, 'i'},
-		{"initial-value", required_argument, 0, 'i'},   // alias
 		// Progress options
 		{"value", required_argument, 0, 'v'},
 		{"indeterminate", no_argument, 0, 'I'},
@@ -225,7 +219,7 @@ static int run_cli(int argc, char** argv) {
 
 	optind = 2;  // Skip program name and command
 	int opt;
-	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pUf:F:T:k:w:W:a:A:e:L:i:v:Ih", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pf:F:T:L:k:w:W:Ui:v:Ih", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 't':
 				req.timeout = atoi(optarg);
@@ -245,9 +239,6 @@ static int run_cli(int argc, char** argv) {
 			case 'p':
 				req.show_pill = true;
 				break;
-			case 'U':
-				req.disable_auto_sleep = true;
-				break;
 			case 'f':
 				req.file_path = strdup(optarg);
 				break;
@@ -257,6 +248,9 @@ static int run_cli(int argc, char** argv) {
 				break;
 			case 'T':
 				req.title = strdup(optarg);
+				break;
+			case 'L':
+				req.title_alignment = strdup(optarg);
 				break;
 			case 'k':
 				free(req.item_key);
@@ -268,17 +262,8 @@ static int run_cli(int argc, char** argv) {
 			case 'W':
 				req.write_value = strdup(optarg);
 				break;
-			case 'a':
-				req.action_button = strdup(optarg);
-				break;
-			case 'A':
-				req.action_text = strdup(optarg);
-				break;
-			case 'e':
-				req.enable_button = strdup(optarg);
-				break;
-			case 'L':
-				req.title_alignment = strdup(optarg);
+			case 'U':
+				req.disable_auto_sleep = true;
 				break;
 			case 'i':
 				req.initial_value = strdup(optarg);
@@ -637,11 +622,6 @@ static void handle_list(const Request* req, Response* resp) {
 		.title_alignment = req->title_alignment,
 		.confirm_text = req->confirm_text,
 		.cancel_text = req->cancel_text,
-		.action_button = req->action_button,
-		.action_text = req->action_text,
-		.enable_button = req->enable_button,
-		.background_color = req->background_color,
-		.background_image = req->background_image,
 		.write_location = req->write_location,
 		.write_value = req->write_value,
 		.disable_auto_sleep = req->disable_auto_sleep,

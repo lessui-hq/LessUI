@@ -51,33 +51,17 @@ int ipc_write_request(const Request* req) {
 	json_object_set_string(obj, "command", cmd_str);
 	json_set_string_if(obj, "request_id", req->request_id);
 
-	// === Common params ===
-	json_set_string_if(obj, "background_color", req->background_color);
-	json_set_string_if(obj, "background_image", req->background_image);
-	json_set_string_if(obj, "confirm_button", req->confirm_button);
-	json_set_string_if(obj, "confirm_text", req->confirm_text);
-	json_set_string_if(obj, "cancel_button", req->cancel_button);
-	json_set_string_if(obj, "cancel_text", req->cancel_text);
-	json_set_string_if(obj, "action_button", req->action_button);
-	json_set_string_if(obj, "action_text", req->action_text);
-	json_object_set_boolean(obj, "disable_auto_sleep", req->disable_auto_sleep);
-	json_object_set_boolean(obj, "show_hardware_group", req->show_hardware_group);
-
-	// === Message params ===
+	// Message params
 	json_set_string_if(obj, "message", req->message);
 	json_object_set_number(obj, "timeout", req->timeout);
+	json_set_string_if(obj, "background_color", req->background_color);
+	json_set_string_if(obj, "background_image", req->background_image);
+	json_set_string_if(obj, "confirm_text", req->confirm_text);
+	json_set_string_if(obj, "cancel_text", req->cancel_text);
 	json_object_set_boolean(obj, "show_pill", req->show_pill);
 	json_object_set_boolean(obj, "show_time_left", req->show_time_left);
-	json_set_string_if(obj, "message_alignment", req->message_alignment);
-	json_object_set_boolean(obj, "confirm_show", req->confirm_show);
-	json_object_set_boolean(obj, "cancel_show", req->cancel_show);
-	json_object_set_boolean(obj, "action_show", req->action_show);
-	json_set_string_if(obj, "inaction_button", req->inaction_button);
-	json_set_string_if(obj, "inaction_text", req->inaction_text);
-	json_object_set_boolean(obj, "inaction_show", req->inaction_show);
-	json_object_set_boolean(obj, "quit_after_last_item", req->quit_after_last_item);
 
-	// === List params ===
+	// List params
 	json_set_string_if(obj, "file_path", req->file_path);
 	json_set_string_if(obj, "format", req->format);
 	json_set_string_if(obj, "title", req->title);
@@ -86,12 +70,12 @@ int ipc_write_request(const Request* req) {
 	json_set_string_if(obj, "stdin_data", req->stdin_data);
 	json_set_string_if(obj, "write_location", req->write_location);
 	json_set_string_if(obj, "write_value", req->write_value);
-	json_set_string_if(obj, "enable_button", req->enable_button);
+	json_object_set_boolean(obj, "disable_auto_sleep", req->disable_auto_sleep);
 
-	// === Keyboard params ===
+	// Keyboard params
 	json_set_string_if(obj, "initial_value", req->initial_value);
 
-	// === Progress params ===
+	// Progress params
 	json_object_set_number(obj, "value", req->value);
 	json_object_set_boolean(obj, "indeterminate", req->indeterminate);
 
@@ -145,33 +129,17 @@ Request* ipc_read_request(void) {
 
 	req->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
 
-	// === Common params ===
-	req->background_color = safe_strdup(json_object_get_string(obj, "background_color"));
-	req->background_image = safe_strdup(json_object_get_string(obj, "background_image"));
-	req->confirm_button = safe_strdup(json_object_get_string(obj, "confirm_button"));
-	req->confirm_text = safe_strdup(json_object_get_string(obj, "confirm_text"));
-	req->cancel_button = safe_strdup(json_object_get_string(obj, "cancel_button"));
-	req->cancel_text = safe_strdup(json_object_get_string(obj, "cancel_text"));
-	req->action_button = safe_strdup(json_object_get_string(obj, "action_button"));
-	req->action_text = safe_strdup(json_object_get_string(obj, "action_text"));
-	req->disable_auto_sleep = json_get_bool(obj, "disable_auto_sleep", false);
-	req->show_hardware_group = json_get_bool(obj, "show_hardware_group", false);
-
-	// === Message params ===
+	// Message params
 	req->message = safe_strdup(json_object_get_string(obj, "message"));
 	req->timeout = json_get_int(obj, "timeout", -1);
+	req->background_color = safe_strdup(json_object_get_string(obj, "background_color"));
+	req->background_image = safe_strdup(json_object_get_string(obj, "background_image"));
+	req->confirm_text = safe_strdup(json_object_get_string(obj, "confirm_text"));
+	req->cancel_text = safe_strdup(json_object_get_string(obj, "cancel_text"));
 	req->show_pill = json_get_bool(obj, "show_pill", false);
 	req->show_time_left = json_get_bool(obj, "show_time_left", false);
-	req->message_alignment = safe_strdup(json_object_get_string(obj, "message_alignment"));
-	req->confirm_show = json_get_bool(obj, "confirm_show", false);
-	req->cancel_show = json_get_bool(obj, "cancel_show", false);
-	req->action_show = json_get_bool(obj, "action_show", false);
-	req->inaction_button = safe_strdup(json_object_get_string(obj, "inaction_button"));
-	req->inaction_text = safe_strdup(json_object_get_string(obj, "inaction_text"));
-	req->inaction_show = json_get_bool(obj, "inaction_show", false);
-	req->quit_after_last_item = json_get_bool(obj, "quit_after_last_item", false);
 
-	// === List params ===
+	// List params
 	req->file_path = safe_strdup(json_object_get_string(obj, "file_path"));
 	req->format = safe_strdup(json_object_get_string(obj, "format"));
 	req->title = safe_strdup(json_object_get_string(obj, "title"));
@@ -180,12 +148,12 @@ Request* ipc_read_request(void) {
 	req->stdin_data = safe_strdup(json_object_get_string(obj, "stdin_data"));
 	req->write_location = safe_strdup(json_object_get_string(obj, "write_location"));
 	req->write_value = safe_strdup(json_object_get_string(obj, "write_value"));
-	req->enable_button = safe_strdup(json_object_get_string(obj, "enable_button"));
+	req->disable_auto_sleep = json_get_bool(obj, "disable_auto_sleep", false);
 
-	// === Keyboard params ===
+	// Keyboard params
 	req->initial_value = safe_strdup(json_object_get_string(obj, "initial_value"));
 
-	// === Progress params ===
+	// Progress params
 	req->value = json_get_int(obj, "value", 0);
 	req->indeterminate = json_get_bool(obj, "indeterminate", false);
 
@@ -196,18 +164,11 @@ Request* ipc_read_request(void) {
 void ipc_free_request_fields(Request* req) {
 	if (!req) return;
 	free(req->request_id);
+	free(req->message);
 	free(req->background_color);
 	free(req->background_image);
-	free(req->confirm_button);
 	free(req->confirm_text);
-	free(req->cancel_button);
 	free(req->cancel_text);
-	free(req->action_button);
-	free(req->action_text);
-	free(req->message);
-	free(req->message_alignment);
-	free(req->inaction_button);
-	free(req->inaction_text);
 	free(req->file_path);
 	free(req->format);
 	free(req->title);
@@ -216,7 +177,6 @@ void ipc_free_request_fields(Request* req) {
 	free(req->stdin_data);
 	free(req->write_location);
 	free(req->write_value);
-	free(req->enable_button);
 	free(req->initial_value);
 }
 

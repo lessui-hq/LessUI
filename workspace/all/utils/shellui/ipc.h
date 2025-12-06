@@ -9,31 +9,15 @@ typedef struct {
 	CommandType command;
 	char* request_id;
 
-	// === Common params ===
-	char* background_color;
-	char* background_image;
-	char* confirm_button;      // Physical button (default: "A")
-	char* confirm_text;        // Button label
-	char* cancel_button;       // Physical button (default: "B")
-	char* cancel_text;         // Button label
-	char* action_button;       // Physical button for action
-	char* action_text;         // Action button label
-	bool disable_auto_sleep;
-	bool show_hardware_group;
-
 	// === Message command params ===
 	char* message;
 	int timeout;               // -1 = forever, 0+ = seconds
+	char* background_color;
+	char* background_image;
+	char* confirm_text;        // Confirm button label
+	char* cancel_text;         // Cancel button label
 	bool show_pill;
 	bool show_time_left;
-	char* message_alignment;   // "left", "center", "right"
-	bool confirm_show;
-	bool cancel_show;
-	bool action_show;
-	char* inaction_button;
-	char* inaction_text;
-	bool inaction_show;
-	bool quit_after_last_item;
 
 	// === List command params ===
 	char* file_path;
@@ -44,15 +28,16 @@ typedef struct {
 	char* stdin_data;          // for piped input
 	char* write_location;      // file path or "-" for stdout
 	char* write_value;         // "selected", "state", "name", "value"
-	char* enable_button;       // Physical button for enable toggle
+	bool disable_auto_sleep;
 
 	// === Keyboard command params ===
 	char* initial_value;
-	// write_location is shared with list
+	// title and write_location shared with list
 
 	// === Progress command params ===
-	int value;             // Progress percentage 0-100
-	bool indeterminate;    // Show spinner instead of progress bar
+	// message and title shared with above
+	int value;                 // Progress percentage 0-100
+	bool indeterminate;        // Show spinner instead of progress bar
 } Request;
 
 // Response structure sent from daemon to CLI
