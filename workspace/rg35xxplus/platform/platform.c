@@ -719,8 +719,13 @@ void PLAT_enableBacklight(int enable) {
 	}
 }
 
+/**
+ * Powers off the device.
+ *
+ * Calls shutdown script directly for consistent behavior regardless of
+ * which process triggers the shutdown (minui, minarch, shui, or paks).
+ */
 void PLAT_powerOff(void) {
-	system("rm -f /tmp/minui_exec && sync");
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
@@ -731,7 +736,9 @@ void PLAT_powerOff(void) {
 	PWR_quit();
 	GFX_quit();
 
-	exit(0);
+	system("shutdown");
+	while (1)
+		pause();
 }
 
 #define CPU_GOVERNOR_PATH "/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed"

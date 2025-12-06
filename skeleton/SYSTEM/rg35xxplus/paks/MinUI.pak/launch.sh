@@ -80,18 +80,17 @@ EXEC_PATH="/tmp/minui_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
-	# Start shui daemon (or reset state if already running)
-	shui restart &
 	. $HDMI_EXPORT_PATH
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	echo `date +'%F %T'` > "$DATETIME_PATH"
 	sync
-	
+
 	if [ -f $NEXT_PATH ]; then
 		. $HDMI_EXPORT_PATH
-		# Shutdown shui before games to free memory
-		grep -q "minarch" $NEXT_PATH && shui shutdown
+		# Start shui only for tool paks (not minui/minarch)
+		grep -q "/Tools/" $NEXT_PATH && shui start
 		. $NEXT_PATH
+		shui stop 2>/dev/null
 		rm -f $NEXT_PATH
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync

@@ -57,19 +57,18 @@ EXEC_PATH=/tmp/minui_exec
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
-	# Start shui daemon (or reset state if already running)
-	shui restart &
 	echo $CPU_SPEED_PERF > $CPU_PATH
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	echo `date +'%F %T'` > "$DATETIME_PATH"
 	sync
-	
+
 	if [ -f $NEXT_PATH ]; then
 		echo $CPU_SPEED_PERF > $CPU_PATH
 		CMD=`cat $NEXT_PATH`
-		# Shutdown shui before games to free memory
-		echo "$CMD" | grep -q "minarch" && shui shutdown
+		# Start shui only for tool paks (not minui/minarch)
+		echo "$CMD" | grep -q "/Tools/" && shui start
 		eval $CMD
+		shui stop 2>/dev/null
 		rm -f $NEXT_PATH
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync

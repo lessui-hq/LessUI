@@ -492,7 +492,7 @@ network_loop() {
 
 cleanup() {
 	rm -f /tmp/stay_awake /tmp/wifi-next-screen
-	shui shutdown 2>/dev/null || true
+	shui stop 2>/dev/null || true
 }
 
 # ============================================================================

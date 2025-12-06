@@ -330,12 +330,10 @@ void PLAT_enableBacklight(int enable) {
 /**
  * Powers off the device.
  *
- * Breaks MinUI launch loop by removing /tmp/minui_exec.
- * Actual shutdown handled by PLATFORM/bin/shutdown script.
+ * Calls shutdown script directly for consistent behavior regardless of
+ * which process triggers the shutdown (minui, minarch, shui, or paks).
  */
 void PLAT_powerOff(void) {
-	// Break the MinUI.pak/launch.sh while loop
-	unlink("/tmp/minui_exec");
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
@@ -345,7 +343,9 @@ void PLAT_powerOff(void) {
 	PWR_quit();
 	GFX_quit();
 
-	exit(0); // Poweroff handled by PLATFORM/bin/shutdown
+	system("shutdown");
+	while (1)
+		pause();
 }
 
 #define GOVERNOR_PATH "/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed"

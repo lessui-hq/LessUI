@@ -158,7 +158,7 @@ main_screen() {
 cleanup() {
     rm -f "/tmp/${PAK_NAME}-settings.json"
     rm -f "/tmp/${PAK_NAME}-output"
-    shui shutdown 2>/dev/null || true
+    shui stop 2>/dev/null || true
 }
 
 main() {

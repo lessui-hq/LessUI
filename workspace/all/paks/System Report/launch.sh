@@ -33,7 +33,7 @@ REPORT_FILE="$SDCARD_PATH/system_report_${PLATFORM}_${TIMESTAMP}.md"
 
 cleanup() {
     rm -f /tmp/stay_awake
-    shui shutdown 2>/dev/null || true
+    shui stop 2>/dev/null || true
 }
 
 run_report() {

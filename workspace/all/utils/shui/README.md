@@ -6,7 +6,7 @@ A persistent UI daemon for shell scripts. Consolidates message dialogs, list sel
 
 Previously, shell scripts used separate utilities (`minui-presenter`, `minui-list`, `minui-keyboard`) for UI. Each utility initialized and cleaned up SDL graphics independently, causing noticeable blank screens between calls.
 
-shui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shui shutdown` after each pak completes.
+shui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shui stop` after each pak completes.
 
 ## Key Concept: Push-Based Updates
 
@@ -205,12 +205,12 @@ shui restart
 
 Re-enables auto-sleep and clears any cached state, ensuring a clean slate for the next pak.
 
-### shutdown
+### stop
 
 Stop the daemon process. Called automatically by the launcher after pak execution. Also re-enables auto-sleep.
 
 ```bash
-shui shutdown
+shui stop
 ```
 
 ## Exit Codes
@@ -358,7 +358,7 @@ shui message "Found $(wc -l < /tmp/networks.txt) networks"
 4. CLI writes request
 5. For interactive commands: CLI waits for response
 6. For status messages: CLI returns immediately
-7. `shui shutdown` (from launcher) stops daemon
+7. `shui stop` (from launcher) stops daemon
 
 ## Building
 

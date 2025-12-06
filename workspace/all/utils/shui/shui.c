@@ -9,7 +9,7 @@
  *   shui message "text" [--timeout N] [--confirm TEXT] [--cancel TEXT]
  *   shui list --file FILE [--format json|text] [--title TEXT]
  *   shui keyboard [--title TEXT] [--initial TEXT]
- *   shui shutdown
+ *   shui stop
  */
 
 #include <errno.h>
@@ -112,7 +112,7 @@ static void print_usage(void) {
 		"  auto-sleep <on|off>  Control device auto-sleep\n"
 		"  restart           Start daemon or reset session state\n"
 		"  start             Start the daemon (for pre-warming)\n"
-		"  shutdown          Stop the daemon\n"
+		"  stop              Stop the daemon\n"
 		"\n"
 		"Message options:\n"
 		"  --timeout N       Auto-dismiss after N seconds (-1 = forever)\n"
@@ -184,7 +184,7 @@ static int run_cli(int argc, char** argv) {
 		req.command = CMD_PROGRESS;
 	} else if (strcmp(cmd, "start") == 0) {
 		req.command = CMD_START;
-	} else if (strcmp(cmd, "shutdown") == 0) {
+	} else if (strcmp(cmd, "stop") == 0) {
 		req.command = CMD_SHUTDOWN;
 	} else if (strcmp(cmd, "auto-sleep") == 0) {
 		req.command = CMD_AUTO_SLEEP;
@@ -439,7 +439,7 @@ static bool request_needs_response(const Request* req) {
 }
 
 static int send_command(const Request* req) {
-	// Special case: shutdown when not running is a no-op
+	// Special case: stop when not running is a no-op
 	if (req->command == CMD_SHUTDOWN) {
 		if (!daemon_is_running()) {
 			return EXIT_SUCCESS_CODE;
@@ -809,6 +809,11 @@ static int run_daemon(void) {
 
 	// Main loop: wait for requests
 	while (!daemon_quit) {
+		// Handle power button even when idle (NULLs: no redraw tracking,
+		// no settings overlay, no sleep callbacks - we're not rendering)
+		PAD_poll();
+		PWR_update(NULL, NULL, NULL, NULL);
+
 		// Check for request file
 		if (access(SHUI_REQUEST_FILE, F_OK) == 0) {
 			Request* req = ipc_read_request();
@@ -832,7 +837,7 @@ static int run_daemon(void) {
 		}
 
 		// Brief sleep to avoid busy-waiting
-		usleep(16000);  // ~60fps for smooth animation
+		usleep(16000);  // ~60fps
 	}
 
 	// Cleanup

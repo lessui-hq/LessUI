@@ -396,15 +396,10 @@ void PLAT_enableBacklight(int enable) {
 /**
  * Powers off the device.
  *
- * Performs cleanup sequence:
- * 1. Removes exec flag and syncs filesystem
- * 2. Waits 2 seconds for sync to complete
- * 3. Mutes audio and disables backlight
- * 4. Shuts down subsystems
- * 5. Exits process (system will handle power-off)
+ * Calls shutdown script directly for consistent behavior regardless of
+ * which process triggers the shutdown (minui, minarch, shui, or paks).
  */
 void PLAT_powerOff(void) {
-	system("rm -f /tmp/minui_exec && sync");
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
@@ -413,7 +408,10 @@ void PLAT_powerOff(void) {
 	VIB_quit();
 	PWR_quit();
 	GFX_quit();
-	exit(0);
+
+	system("shutdown");
+	while (1)
+		pause();
 }
 
 ///////////////////////////////
