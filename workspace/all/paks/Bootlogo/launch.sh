@@ -31,7 +31,7 @@ case "$PLATFORM" in
 			fi
 
 			shui progress "Reading current logo..." --value 20
-			./logoread.elf
+			./bin/logoread.elf
 
 			if [ -f ./logo.jpg ]; then
 				cp ./logo.jpg ./image1.jpg
@@ -41,7 +41,7 @@ case "$PLATFORM" in
 
 			shui progress "Preparing new logo..." --value 40
 
-			if ! ./logomake.elf; then
+			if ! ./bin/logomake.elf; then
 				echo "Preparing bootlogo failed. Aborted."
 				shui message "Failed to prepare boot logo.\n\nYour device is unchanged." --confirm "Dismiss"
 				exit 1
@@ -49,7 +49,7 @@ case "$PLATFORM" in
 
 			shui progress "Flashing to device..." --value 70
 
-			if ! ./logowrite.elf; then
+			if ! ./bin/logowrite.elf; then
 				echo "Flashing bootlogo failed. Aborted."
 				shui message "Failed to flash boot logo.\n\nCheck logs for details." --confirm "Dismiss"
 				exit 1
