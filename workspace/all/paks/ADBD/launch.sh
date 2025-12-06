@@ -21,7 +21,7 @@ case "$PLATFORM" in
 	miyoomini)
 		# Confirm before enabling
 		if ! shui message "Enable ADB debugging?\n\nThis will also enable WiFi\nif not already connected." \
-			--confirm "Enable ADB" --cancel "Cancel"; then
+			--confirm "Enable" --cancel "Cancel"; then
 			exit 0
 		fi
 

@@ -41,7 +41,7 @@ run_report() {
 
     # Confirm before generating
     if ! shui message "Generate system report?\n\nThis includes CPU benchmarking\nand may take a minute." \
-        --confirm "Generate Report" --cancel "Cancel"; then
+        --confirm "Generate" --cancel "Cancel"; then
         exit 0
     fi
 

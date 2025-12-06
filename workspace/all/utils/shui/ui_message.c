@@ -288,17 +288,23 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 				SDL_FreeSurface(text);
 			}
 
-			// Button hints
+			// Button hints (uppercase for UI consistency)
 			if (opts->confirm_text || opts->cancel_text) {
 				char* hints[5] = {NULL};
 				int idx = 0;
+				char cancel_upper[64] = "";
+				char confirm_upper[64] = "";
 				if (opts->cancel_text) {
+					strncpy(cancel_upper, opts->cancel_text, sizeof(cancel_upper) - 1);
+					toUppercase(cancel_upper);
 					hints[idx++] = "B";
-					hints[idx++] = (char*)opts->cancel_text;
+					hints[idx++] = cancel_upper;
 				}
 				if (opts->confirm_text) {
+					strncpy(confirm_upper, opts->confirm_text, sizeof(confirm_upper) - 1);
+					toUppercase(confirm_upper);
 					hints[idx++] = "A";
-					hints[idx++] = (char*)opts->confirm_text;
+					hints[idx++] = confirm_upper;
 				}
 				GFX_blitButtonGroup(hints, (opts->confirm_text ? 1 : 0), screen, 1);
 			}

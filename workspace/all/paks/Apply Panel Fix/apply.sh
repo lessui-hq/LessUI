@@ -197,5 +197,5 @@ sleep 0.5
 
 echo "applied fix successfully!"
 
-shui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot Now"
+shui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot"
 reboot

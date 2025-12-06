@@ -74,7 +74,7 @@ fi
 if [ "$STATUS" = "up" ]; then
 	# Already connected, ask what to do
 	if shui message "WiFi is connected.\n\nWhat would you like to do?" \
-		--confirm "Disconnect" --cancel "Keep Connected"; then
+		--confirm "Disconnect" --cancel "Keep"; then
 		disconnect
 	fi
 else

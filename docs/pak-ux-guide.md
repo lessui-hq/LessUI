@@ -68,18 +68,19 @@ shui message "Success!" --timeout 3
 shui message "WiFi enabled successfully!" --confirm "Done"
 
 # GOOD: When something happens after dismissal
-shui message "Firmware updated!" --confirm "Reboot Now"
+shui message "Firmware updated!" --confirm "Reboot"
 reboot
 
 # GOOD: With an option to stay
-if shui message "SSH installed!" --confirm "Reboot Now" --cancel "Later"; then
+if shui message "SSH installed!" --confirm "Reboot" --cancel "Later"; then
     reboot
 fi
 ```
 
-**Button text should be action words:**
-- Use: "Enable", "Install", "Reboot Now", "Continue", "Done"
-- Avoid: "OK", "Yes", "No"
+**Button text should be single-word action verbs in propercase:**
+- Use: "Enable", "Install", "Reboot", "Continue", "Done", "Dismiss"
+- Avoid: "OK", "Yes", "No", "Reboot Now", "Install SSH"
+- Text is automatically uppercased for display (e.g., "Generate" → "GENERATE")
 
 ### 4. Speak Human
 
@@ -145,7 +146,7 @@ fi
 
 # Second confirmation for truly dangerous ops
 if ! shui message "This cannot be undone!\n\nProceed anyway?" \
-    --confirm "Yes, Proceed" --cancel "Go Back"; then
+    --confirm "Proceed" --cancel "Back"; then
     exit 0
 fi
 
@@ -158,7 +159,7 @@ shui progress "Finalizing..." --value 100
 sleep 0.3
 
 # Clear outcome with next action
-shui message "Firmware updated successfully!" --confirm "Reboot Now"
+shui message "Firmware updated successfully!" --confirm "Reboot"
 reboot
 ```
 
@@ -330,7 +331,7 @@ fi
 
 # Describe what will happen and get confirmation
 if ! shui message "A firmware update is available.\n\nThis will update your device and reboot." \
-    --confirm "Install Update" --cancel "Cancel"; then
+    --confirm "Install" --cancel "Cancel"; then
     exit 0
 fi
 
@@ -359,7 +360,7 @@ fi
 
 # Check result and announce clearly
 if verify_success; then
-    shui message "Update installed successfully!\n\nYour device will now reboot." --confirm "Reboot Now"
+    shui message "Update installed successfully!\n\nYour device will now reboot." --confirm "Reboot"
     reboot
 else
     shui message "Update failed.\n\nYour previous firmware has been restored.\nCheck logs for details." --confirm "Dismiss"
@@ -377,10 +378,10 @@ fi
 | During long operations | Show progress (indeterminate or percentage) |
 | After completing | Announce result with action button |
 | For toggles | Use "On"/"Off", never "true"/"false" |
-| For confirmations | Use action verbs: "Delete", "Install", "Enable" |
-| For cancellations | Be specific: "Keep", "Go Back", "Cancel" |
+| For confirmations | Single-word verbs: "Delete", "Install", "Enable" |
+| For cancellations | Single-word verbs: "Keep", "Back", "Cancel" |
 | For errors | Clear message + "Dismiss" or recovery options |
-| Before reboot | Let user trigger: "Reboot Now" |
+| Before reboot | Let user trigger: "Reboot" |
 | Progress bar | Always hit 100% before transitioning |
 
 ---
@@ -394,7 +395,7 @@ Before shipping a pak, verify:
 - [ ] Progress shown for anything > 1 second
 - [ ] Progress bar reaches 100% before transitioning
 - [ ] Success/failure clearly announced
-- [ ] All buttons use action words
+- [ ] All buttons use single-word action verbs
 - [ ] All toggles use human-friendly options
 - [ ] Error messages are helpful, not technical
 - [ ] User controls all transitions (no auto-dismiss for important info)

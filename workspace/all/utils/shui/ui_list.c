@@ -477,19 +477,27 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 					&(SDL_Rect){screen->w - DP(ui.edge_padding * 2), screen->h - DP(ui.pill_height + ui.edge_padding), 0, 0});
 			}
 
-			// Button hints
-			const char* confirm = opts->confirm_text ? opts->confirm_text : "SELECT";
-			const char* cancel = opts->cancel_text ? opts->cancel_text : "BACK";
+			// Button hints (uppercase for UI consistency)
+			char confirm_upper[64] = "SELECT";
+			char cancel_upper[64] = "BACK";
+			if (opts->confirm_text) {
+				strncpy(confirm_upper, opts->confirm_text, sizeof(confirm_upper) - 1);
+				toUppercase(confirm_upper);
+			}
+			if (opts->cancel_text) {
+				strncpy(cancel_upper, opts->cancel_text, sizeof(cancel_upper) - 1);
+				toUppercase(cancel_upper);
+			}
 
 			// Determine which hints to show
 			if (!sel_item->features.hide_confirm && !sel_item->features.hide_cancel) {
-				char* hints[] = {"B", (char*)cancel, "A", (char*)confirm, NULL};
+				char* hints[] = {"B", cancel_upper, "A", confirm_upper, NULL};
 				GFX_blitButtonGroup(hints, 1, screen, 1);
 			} else if (!sel_item->features.hide_confirm) {
-				char* hints[] = {"A", (char*)confirm, NULL};
+				char* hints[] = {"A", confirm_upper, NULL};
 				GFX_blitButtonGroup(hints, 0, screen, 1);
 			} else if (!sel_item->features.hide_cancel) {
-				char* hints[] = {"B", (char*)cancel, NULL};
+				char* hints[] = {"B", cancel_upper, NULL};
 				GFX_blitButtonGroup(hints, 0, screen, 1);
 			}
 

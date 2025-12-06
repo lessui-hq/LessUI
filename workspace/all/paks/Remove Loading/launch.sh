@@ -11,7 +11,7 @@ case "$PLATFORM" in
 	miyoomini)
 		# Confirm before modifying firmware
 		if ! shui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
-			--confirm "Remove Loading" --cancel "Cancel"; then
+			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -76,14 +76,14 @@ case "$PLATFORM" in
 		mv "$DIR" "$DIR.disabled"
 		sync
 
-		shui message "Loading screen removed!\n\nDevice will reboot to apply changes." --confirm "Reboot Now"
+		shui message "Loading screen removed!\n\nDevice will reboot to apply changes." --confirm "Reboot"
 		reboot
 		;;
 
 	my282)
 		# Confirm before modifying firmware
 		if ! shui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
-			--confirm "Remove Loading" --cancel "Cancel"; then
+			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -154,7 +154,7 @@ case "$PLATFORM" in
 	tg5040)
 		# Confirm before modifying
 		if ! shui message "Remove boot loading screen?\n\nThis modifies system files." \
-			--confirm "Remove Loading" --cancel "Cancel"; then
+			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
 

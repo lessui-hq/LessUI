@@ -22,7 +22,7 @@ Unlike the old utilities which required backgrounding (`&`) and manual cleanup, 
 shui message "Loading..."
 
 # Interactive: waits for user response
-shui message "Delete file?" --confirm "YES" --cancel "NO"
+shui message "Delete file?" --confirm "Delete" --cancel "Keep"
 ```
 
 ## Commands
@@ -38,7 +38,7 @@ do_connection
 shui message "Connected!"
 
 # Confirmation dialog (waits for response)
-if shui message "Are you sure?" --confirm "YES" --cancel "NO"; then
+if shui message "Are you sure?" --confirm "Confirm" --cancel "Cancel"; then
     do_action
 fi
 
@@ -50,8 +50,8 @@ shui message "Operation failed" --confirm "OK"
 | Option | Description |
 |--------|-------------|
 | `--timeout N` | Auto-dismiss after N seconds |
-| `--confirm TEXT` | Label for confirm button (A) - makes command wait |
-| `--cancel TEXT` | Label for cancel button (B) - makes command wait |
+| `--confirm TEXT` | Label for confirm button (A) - makes command wait. Use a single propercase verb (e.g., "Done", "Generate"). Text is automatically uppercased for display. |
+| `--cancel TEXT` | Label for cancel button (B) - makes command wait. Use a single propercase verb (e.g., "Cancel", "Keep"). Text is automatically uppercased for display. |
 | `--background-color #RRGGBB` | Hex background color |
 | `--background-image PATH` | Background image file |
 | `--show-pill` | Draw pill background around text |
@@ -106,7 +106,7 @@ shui list --file settings.json --item-key settings --write-location /tmp/out --w
 {
   "name": "Advanced Item",
   "features": {
-    "confirm_text": "SAVE",
+    "confirm_text": "Save",
     "disabled": false,
     "is_header": false,
     "unselectable": false,
@@ -220,7 +220,7 @@ sleep 1
 ### Confirmation dialog
 
 ```bash
-if shui message "Delete save file?" --confirm "DELETE" --cancel "KEEP"; then
+if shui message "Delete save file?" --confirm "Delete" --cancel "Keep"; then
     rm "$SAVE_FILE"
 fi
 ```

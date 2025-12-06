@@ -11,12 +11,12 @@ case "$PLATFORM" in
 	miyoomini)
 		# Check for custom logo
 		if [ ! -f ./logo.jpg ]; then
-			shui message "No custom logo found.\n\nPlace logo.jpg in the pak folder\nto use your own boot logo." --confirm "Use Default"
+			shui message "No custom logo found.\n\nPlace logo.jpg in the pak folder\nto use your own boot logo." --confirm "Continue"
 		fi
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -85,7 +85,7 @@ case "$PLATFORM" in
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -116,7 +116,7 @@ case "$PLATFORM" in
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -173,7 +173,7 @@ case "$PLATFORM" in
 	my355)
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware\nand will reboot when done." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -229,7 +229,7 @@ case "$PLATFORM" in
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -259,7 +259,7 @@ case "$PLATFORM" in
 			# Self-destruct before reboot
 			mv "$DIR" "$DIR.disabled"
 			rm -f /tmp/minui_exec
-			shui message "Boot logo flashed!" --confirm "Reboot Now"
+			shui message "Boot logo flashed!" --confirm "Reboot"
 			reboot
 		else
 			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
@@ -277,7 +277,7 @@ case "$PLATFORM" in
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 
@@ -301,7 +301,7 @@ case "$PLATFORM" in
 		# Self-destruct before reboot
 		mv "$DIR" "$DIR.disabled"
 
-		shui message "Boot logo flashed!" --confirm "Reboot Now"
+		shui message "Boot logo flashed!" --confirm "Reboot"
 		reboot
 		;;
 
@@ -315,7 +315,7 @@ case "$PLATFORM" in
 
 		# Confirm before flashing
 		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
-			--confirm "Flash Logo" --cancel "Cancel"; then
+			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
 

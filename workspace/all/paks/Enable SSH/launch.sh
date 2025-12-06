@@ -10,7 +10,7 @@ fi
 
 # Confirm before installing
 if ! shui message "Install SSH server?\n\nThis will download packages\nand reboot when complete.\n\nLogin: root / root" \
-	--confirm "Install SSH" --cancel "Cancel"; then
+	--confirm "Install" --cancel "Cancel"; then
 	exit 0
 fi
 
@@ -48,7 +48,7 @@ if grep -q "Success" ./log.txt; then
 	# Self-destruct before reboot
 	mv "$DIR" "$DIR.disabled"
 
-	shui message "SSH installed successfully!\n\nLogin: root / root\n\nDevice will reboot to apply changes." --confirm "Reboot Now"
+	shui message "SSH installed successfully!\n\nLogin: root / root\n\nDevice will reboot to apply changes." --confirm "Reboot"
 	reboot
 else
 	shui message "SSH installation failed.\n\nCheck log.txt for details." --confirm "Dismiss"

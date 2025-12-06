@@ -44,6 +44,13 @@ void unescapeNewlines(char* dst, const char* src, size_t dst_size) {
 	dst[di] = '\0';
 }
 
+void toUppercase(char* s) {
+	if (!s) return;
+	for (; *s; s++) {
+		*s = toupper((unsigned char)*s);
+	}
+}
+
 ///////////////////////////////
 // JSON helpers
 ///////////////////////////////

@@ -30,6 +30,11 @@ void trimWhitespace(char* s);
  */
 void unescapeNewlines(char* dst, const char* src, size_t dst_size);
 
+/**
+ * Converts a string to uppercase in-place.
+ */
+void toUppercase(char* s);
+
 ///////////////////////////////
 // JSON helpers (parson wrappers)
 ///////////////////////////////
