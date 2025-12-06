@@ -119,6 +119,7 @@ static void print_usage(void) {
 		"  --timeout N       Auto-dismiss after N seconds (-1 = forever)\n"
 		"  --confirm TEXT    Confirm button label (A button)\n"
 		"  --cancel TEXT     Cancel button label (B button)\n"
+		"  --subtext TEXT    Secondary text below main message\n"
 		"  --background-color #RRGGBB\n"
 		"  --background-image PATH\n"
 		"  --show-pill       Show pill background around text\n"
@@ -142,6 +143,7 @@ static void print_usage(void) {
 		"  --value N         Progress percentage (0-100)\n"
 		"  --indeterminate   Show animated bar instead of fixed\n"
 		"  --title TEXT      Title above progress bar\n"
+		"  --subtext TEXT    Secondary text below main message\n"
 		"\n"
 		"Output is written to stdout. Exit codes:\n"
 		"  0 = Success, 2 = Cancel, 3 = Menu, 124 = Timeout\n"
@@ -223,6 +225,7 @@ static int run_cli(int argc, char** argv) {
 		{"timeout", required_argument, 0, 't'},
 		{"confirm", required_argument, 0, 'c'},
 		{"cancel", required_argument, 0, 'x'},
+		{"subtext", required_argument, 0, 's'},
 		{"background-color", required_argument, 0, 'b'},
 		{"background-image", required_argument, 0, 'B'},
 		{"show-pill", no_argument, 0, 'p'},
@@ -246,7 +249,7 @@ static int run_cli(int argc, char** argv) {
 
 	optind = 2;  // Skip program name and command
 	int opt;
-	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pf:F:T:L:k:w:W:i:v:Ih", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "t:c:x:s:b:B:pf:F:T:L:k:w:W:i:v:Ih", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 't':
 				req.timeout = atoi(optarg);
@@ -256,6 +259,9 @@ static int run_cli(int argc, char** argv) {
 				break;
 			case 'x':
 				req.cancel_text = strdup(optarg);
+				break;
+			case 's':
+				req.subtext = strdup(optarg);
 				break;
 			case 'b':
 				req.background_color = strdup(optarg);
@@ -621,6 +627,7 @@ static ExitCode handle_message(const Request* req, bool wait_for_response) {
 	// Interactive: full ui_message_show with event loop
 	MessageOptions opts = {
 		.text = req->message,
+		.subtext = req->subtext,
 		.timeout = req->timeout,
 		.background_color = req->background_color,
 		.background_image = req->background_image,
@@ -723,8 +730,10 @@ static void process_request(const Request* req, Response* resp) {
 		ui_progress_reset(&progress_state);
 		free(current_progress_opts.message);
 		free(current_progress_opts.title);
+		free(current_progress_opts.subtext);
 		current_progress_opts.message = NULL;
 		current_progress_opts.title = NULL;
+		current_progress_opts.subtext = NULL;
 	}
 
 	switch (req->command) {
@@ -764,10 +773,12 @@ static void process_request(const Request* req, Response* resp) {
 			// Free previous copies
 			free(current_progress_opts.message);
 			free(current_progress_opts.title);
+			free(current_progress_opts.subtext);
 
 			// Store copies of options for rendering (must outlive request)
 			current_progress_opts.message = req->message ? strdup(req->message) : NULL;
 			current_progress_opts.title = req->title ? strdup(req->title) : NULL;
+			current_progress_opts.subtext = req->subtext ? strdup(req->subtext) : NULL;
 			current_progress_opts.value = req->value;
 			current_progress_opts.indeterminate = req->indeterminate;
 
@@ -801,8 +812,10 @@ static void process_request(const Request* req, Response* resp) {
 			ui_progress_reset(&progress_state);
 			free(current_progress_opts.message);
 			free(current_progress_opts.title);
+			free(current_progress_opts.subtext);
 			current_progress_opts.message = NULL;
 			current_progress_opts.title = NULL;
+			current_progress_opts.subtext = NULL;
 			resp->exit_code = EXIT_SUCCESS_CODE;
 			break;
 

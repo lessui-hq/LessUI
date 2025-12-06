@@ -4,12 +4,14 @@ cd "$DIR"
 
 # Must be connected to wifi
 if [ "$(cat /sys/class/net/wlan0/operstate)" != "up" ]; then
-	shui message "WiFi not connected.\n\nPlease connect to WiFi first." --confirm "Dismiss"
+	shui message "WiFi not connected." \
+		--subtext "Please connect to WiFi first." --confirm "Dismiss"
 	exit 0
 fi
 
 # Confirm before installing
-if ! shui message "Install SSH server?\n\nThis will download packages\nand reboot when complete.\n\nLogin: root / root" \
+if ! shui message "Install SSH server?" \
+	--subtext "Downloads packages and reboots when complete.\nLogin: root / root" \
 	--confirm "Install" --cancel "Cancel"; then
 	exit 0
 fi
@@ -48,8 +50,10 @@ if grep -q "Success" ./log.txt; then
 	# Self-destruct before reboot
 	mv "$DIR" "$DIR.disabled"
 
-	shui message "SSH installed successfully!\n\nLogin: root / root\n\nDevice will reboot to apply changes." --confirm "Reboot"
+	shui message "SSH installed successfully!" \
+		--subtext "Login: root / root\nDevice will reboot to apply changes." --confirm "Reboot"
 	reboot
 else
-	shui message "SSH installation failed.\n\nCheck log.txt for details." --confirm "Dismiss"
+	shui message "SSH installation failed." \
+		--subtext "Check log.txt for details." --confirm "Dismiss"
 fi

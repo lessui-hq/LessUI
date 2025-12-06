@@ -52,9 +52,10 @@ connect()
 
 	if [ "$STATUS" = "up" ]; then
 		IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
-		shui message "WiFi connected!\n\nIP: $IP" --confirm "Done"
+		shui message "WiFi connected!" --subtext "IP: $IP" --confirm "Done"
 	else
-		shui message "WiFi connection failed.\n\nCheck credentials in wifi.txt" --confirm "Dismiss"
+		shui message "WiFi connection failed." \
+			--subtext "Check credentials in wifi.txt" --confirm "Dismiss"
 	fi
 }
 
@@ -73,13 +74,15 @@ fi
 
 if [ "$STATUS" = "up" ]; then
 	# Already connected, ask what to do
-	if shui message "WiFi is connected.\n\nWhat would you like to do?" \
+	if shui message "WiFi is connected." \
+		--subtext "What would you like to do?" \
 		--confirm "Disconnect" --cancel "Keep"; then
 		disconnect
 	fi
 else
 	# Not connected, ask to connect
-	if shui message "WiFi is disconnected.\n\nConnect to $WIFI_NAME?" \
+	if shui message "WiFi is disconnected." \
+		--subtext "Connect to $WIFI_NAME?" \
 		--confirm "Connect" --cancel "Cancel"; then
 		connect
 	fi

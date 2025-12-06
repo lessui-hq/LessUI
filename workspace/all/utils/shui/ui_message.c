@@ -51,6 +51,8 @@ static SDL_Surface* scale_surface(SDL_Surface* surface, int width, int height) {
 
 // Maximum lines to display
 #define MAX_LINES 8
+#define MAX_SUBTEXT_LINES 4
+#define SUBTEXT_GAP 12  // Gap between main text and subtext in dp
 
 // Word structure for text wrapping
 typedef struct {
@@ -172,6 +174,101 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 		line_count++;
 	}
 
+	// Process subtext (similar word-wrapping but with smaller font)
+	Line subtext_lines[MAX_SUBTEXT_LINES];
+	int subtext_line_count = 0;
+	int subtext_line_height = 0;
+
+	for (int i = 0; i < MAX_SUBTEXT_LINES; i++) {
+		subtext_lines[i].text[0] = '\0';
+		subtext_lines[i].width = 0;
+	}
+
+	if (opts->subtext && g_font_small) {
+		char processed_subtext[1024] = "";
+		unescapeNewlines(processed_subtext, opts->subtext, sizeof(processed_subtext));
+
+		// Parse subtext into words
+		Word subtext_words[256];
+		int subtext_word_count = 0;
+
+		char subtext_temp[1024];
+		strncpy(subtext_temp, processed_subtext, sizeof(subtext_temp) - 1);
+		subtext_temp[sizeof(subtext_temp) - 1] = '\0';
+
+		char* st_token = strtok(subtext_temp, " ");
+		while (st_token && subtext_word_count < 256) {
+			char* nl = strchr(st_token, '\n');
+			while (nl) {
+				*nl = '\0';
+				if (strlen(st_token) > 0) {
+					strncpy(subtext_words[subtext_word_count].text, st_token,
+					        sizeof(subtext_words[subtext_word_count].text) - 1);
+					TTF_SizeUTF8(g_font_small, st_token,
+					             &subtext_words[subtext_word_count].width, &subtext_line_height);
+					subtext_words[subtext_word_count].is_newline = false;
+					subtext_word_count++;
+				}
+				subtext_words[subtext_word_count].text[0] = '\0';
+				subtext_words[subtext_word_count].width = 0;
+				subtext_words[subtext_word_count].is_newline = true;
+				subtext_word_count++;
+				st_token = nl + 1;
+				nl = strchr(st_token, '\n');
+			}
+			if (strlen(st_token) > 0) {
+				strncpy(subtext_words[subtext_word_count].text, st_token,
+				        sizeof(subtext_words[subtext_word_count].text) - 1);
+				TTF_SizeUTF8(g_font_small, st_token,
+				             &subtext_words[subtext_word_count].width, &subtext_line_height);
+				subtext_words[subtext_word_count].is_newline = false;
+				subtext_word_count++;
+			}
+			st_token = strtok(NULL, " ");
+		}
+
+		// Calculate space width for small font
+		int subtext_space_width = 0;
+		TTF_SizeUTF8(g_font_small, " ", &subtext_space_width, NULL);
+
+		// Build subtext lines with word wrap
+		for (int i = 0; i < subtext_word_count && subtext_line_count < MAX_SUBTEXT_LINES; i++) {
+			if (subtext_words[i].is_newline) {
+				subtext_line_count++;
+				continue;
+			}
+
+			int new_width = subtext_lines[subtext_line_count].width + subtext_words[i].width;
+			if (subtext_lines[subtext_line_count].width > 0) {
+				new_width += subtext_space_width;
+			}
+
+			if (subtext_lines[subtext_line_count].width == 0) {
+				strncpy(subtext_lines[subtext_line_count].text, subtext_words[i].text,
+				        sizeof(subtext_lines[subtext_line_count].text) - 1);
+				subtext_lines[subtext_line_count].width = subtext_words[i].width;
+			} else if (new_width <= max_width) {
+				strncat(subtext_lines[subtext_line_count].text, " ",
+				        sizeof(subtext_lines[subtext_line_count].text) -
+				            strlen(subtext_lines[subtext_line_count].text) - 1);
+				strncat(subtext_lines[subtext_line_count].text, subtext_words[i].text,
+				        sizeof(subtext_lines[subtext_line_count].text) -
+				            strlen(subtext_lines[subtext_line_count].text) - 1);
+				subtext_lines[subtext_line_count].width = new_width;
+			} else {
+				subtext_line_count++;
+				if (subtext_line_count < MAX_SUBTEXT_LINES) {
+					strncpy(subtext_lines[subtext_line_count].text, subtext_words[i].text,
+					        sizeof(subtext_lines[subtext_line_count].text) - 1);
+					subtext_lines[subtext_line_count].width = subtext_words[i].width;
+				}
+			}
+		}
+		if (subtext_lines[subtext_line_count].width > 0) {
+			subtext_line_count++;
+		}
+	}
+
 	// Drain any stale input events from before the dialog appeared
 	PAD_poll();
 	PAD_reset();
@@ -259,8 +356,14 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 				}
 			}
 
-			// Calculate total message height
-			int total_height = line_count * word_height + (line_count - 1) * DP(4);
+			// Calculate total message height (including subtext if present)
+			int main_text_height = line_count * word_height + (line_count - 1) * DP(4);
+			int subtext_height = 0;
+			if (subtext_line_count > 0) {
+				subtext_height = DP(SUBTEXT_GAP) + subtext_line_count * subtext_line_height +
+				                 (subtext_line_count - 1) * DP(4);
+			}
+			int total_height = main_text_height + subtext_height;
 			int start_y = (screen->h - total_height) / 2 + time_offset / 2;
 
 			// Render message lines
@@ -286,6 +389,25 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 				SDL_Rect pos = {x, y, text->w, text->h};
 				SDL_BlitSurface(text, NULL, screen, &pos);
 				SDL_FreeSurface(text);
+			}
+
+			// Render subtext lines (smaller, gray)
+			if (subtext_line_count > 0 && g_font_small) {
+				int subtext_start_y = start_y + main_text_height + DP(SUBTEXT_GAP);
+				for (int i = 0; i < subtext_line_count; i++) {
+					if (strlen(subtext_lines[i].text) == 0) continue;
+
+					SDL_Surface* text = TTF_RenderUTF8_Blended(g_font_small, subtext_lines[i].text,
+					                                           COLOR_GRAY);
+					if (!text) continue;
+
+					int x = (screen->w - text->w) / 2;
+					int y = subtext_start_y + i * (subtext_line_height + DP(4));
+
+					SDL_Rect pos = {x, y, text->w, text->h};
+					SDL_BlitSurface(text, NULL, screen, &pos);
+					SDL_FreeSurface(text);
+				}
 			}
 
 			// Button hints (uppercase for UI consistency)

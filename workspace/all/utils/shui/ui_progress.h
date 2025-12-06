@@ -12,6 +12,7 @@
 typedef struct {
 	char* message;        // Message to display
 	char* title;          // Optional title above progress (also used as context key)
+	char* subtext;        // Secondary text below message (smaller, gray)
 	int value;            // Progress percentage 0-100
 	bool indeterminate;   // Show spinner instead of progress bar
 } ProgressOptions;

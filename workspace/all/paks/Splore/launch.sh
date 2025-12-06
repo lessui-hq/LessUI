@@ -35,25 +35,29 @@ if [ ! -d ./pico-8 ]; then
 		shui progress "Extracting PICO-8..." --indeterminate
 
 		if ! unzip -o "$PICO8_ZIP" -d ./ >> ./log.txt 2>&1; then
-			shui message "Failed to extract PICO-8.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to extract PICO-8." \
+				--subtext "Check log.txt for details." --confirm "Dismiss"
 			exit 1
 		fi
 
 		cp ./sdl_controllers.txt ./pico-8
 	else
-		shui message "PICO-8 zip not found!\n\nPlace pico-8*raspi.zip in:\n$DIR" --confirm "Dismiss"
+		shui message "PICO-8 zip not found!" \
+			--subtext "Place pico-8*raspi.zip\nin the pak folder." --confirm "Dismiss"
 		exit 1
 	fi
 fi
 
 # Verify PICO-8 directory and binary exist
 if [ ! -d ./pico-8 ]; then
-	shui message "PICO-8 directory missing!\n\nExtraction may have failed." --confirm "Dismiss"
+	shui message "PICO-8 directory missing!" \
+		--subtext "Extraction may have failed." --confirm "Dismiss"
 	exit 1
 fi
 
 if [ ! -f ./pico-8/pico8_64 ]; then
-	shui message "PICO-8 binary not found!\n\nCheck pico-8 directory." --confirm "Dismiss"
+	shui message "PICO-8 binary not found!" \
+		--subtext "Check pico-8 directory." --confirm "Dismiss"
 	exit 1
 fi
 

@@ -10,7 +10,8 @@ case "$PLATFORM" in
 		# Use system file manager on rg35xxplus
 		DIR="/mnt/vendor/bin/fileM"
 		if [ ! -d "$DIR" ]; then
-			shui message "File manager not found.\n\nUpdate stock firmware from Anbernic." --confirm "Dismiss"
+			shui message "File manager not found." \
+				--subtext "Update stock firmware from Anbernic." --confirm "Dismiss"
 			exit 1
 		fi
 		if [ ! -f "$DIR/dinguxCommand_en.dge" ]; then

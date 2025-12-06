@@ -52,6 +52,7 @@ shui message "Operation failed" --confirm "OK"
 | `--timeout N` | Auto-dismiss after N seconds |
 | `--confirm TEXT` | Label for confirm button (A) - makes command wait. Use a single propercase verb (e.g., "Done", "Generate"). Text is automatically uppercased for display. |
 | `--cancel TEXT` | Label for cancel button (B) - makes command wait. Use a single propercase verb (e.g., "Cancel", "Keep"). Text is automatically uppercased for display. |
+| `--subtext TEXT` | Secondary text below main message. Rendered smaller and gray to provide context or instructions. |
 | `--background-color #RRGGBB` | Hex background color |
 | `--background-image PATH` | Background image file |
 | `--show-pill` | Draw pill background around text |
@@ -178,6 +179,7 @@ shui progress "Downloading..." --value 75 --title "RetroArch"
 | `--value N` | Progress percentage (0-100) |
 | `--indeterminate` | Show animated bar instead of fixed progress |
 | `--title TEXT` | Title displayed above the progress bar |
+| `--subtext TEXT` | Secondary text below the message. Rendered smaller and gray for warnings or additional context. |
 
 **Behavior:** Fire-and-forget. The command returns immediately after updating the display. Call repeatedly to update progress.
 
@@ -246,6 +248,27 @@ sleep 1
 if shui message "Delete save file?" --confirm "Delete" --cancel "Keep"; then
     rm "$SAVE_FILE"
 fi
+```
+
+### Message with subtext
+
+```bash
+# Confirmation with additional context
+if shui message "Enable ADB debugging?" \
+    --subtext "This will also enable WiFi if not already connected." \
+    --confirm "Enable" --cancel "Cancel"; then
+    enable_adb
+fi
+
+# Success message with next steps
+shui message "Boot logo flashed!" \
+    --subtext "A backup was saved to the pak folder." \
+    --confirm "Done"
+
+# Error with instructions
+shui message "WiFi not connected." \
+    --subtext "Please connect to WiFi first." \
+    --confirm "Dismiss"
 ```
 
 ### Error with acknowledgment
@@ -330,6 +353,15 @@ shui message "Backup complete!" --timeout 2
 shui progress "Scanning for networks..." --indeterminate
 scan_wifi_networks
 shui message "Found $(wc -l < /tmp/networks.txt) networks"
+```
+
+### Progress with subtext warning
+
+```bash
+# Show a warning during critical operations
+shui progress "Writing firmware..." --value 50 \
+    --title "Firmware Update" \
+    --subtext "Do not power off the device"
 ```
 
 ## Architecture

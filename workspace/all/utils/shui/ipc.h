@@ -37,6 +37,9 @@ typedef struct {
 	// message and title shared with above
 	int value;                 // Progress percentage 0-100
 	bool indeterminate;        // Show spinner instead of progress bar
+
+	// === Shared params (message + progress) ===
+	char* subtext;             // Secondary text below main message
 } Request;
 
 // Response structure sent from daemon to CLI

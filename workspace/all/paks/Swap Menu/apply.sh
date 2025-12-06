@@ -28,7 +28,8 @@ if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 
 	if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 		echo "bad DTB_MAGIC at $DTB_OFFSET"
-		shui message "Unable to find device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		shui message "Unable to find device configuration." \
+			--subtext "Your device is unchanged." --confirm "Dismiss"
 		echo "unable to find dtb, aborting"
 		exit 1
 	fi
@@ -44,7 +45,8 @@ dd if="$DEV_PATH" of="$DT_NAME.dtb" bs=1 skip="$DTB_OFFSET" count="$DTB_SIZE" 2>
 dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null # decompile
 
 if [ ! -f "$DT_NAME.dts" ]; then
-	shui message "Unable to read device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+	shui message "Unable to read device configuration." \
+		--subtext "Your device is unchanged." --confirm "Dismiss"
 	echo "unable to decompile dtb, aborting"
 	exit 1
 fi
@@ -77,5 +79,6 @@ sync
 shui progress "Complete!" --value 100
 sleep 0.5
 
-shui message "Buttons swapped!\n\nPlease reboot your device\nfor changes to take effect." --confirm "Done"
+shui message "Buttons swapped!" \
+	--subtext "Please reboot your device\nfor changes to take effect." --confirm "Done"
 exit 0

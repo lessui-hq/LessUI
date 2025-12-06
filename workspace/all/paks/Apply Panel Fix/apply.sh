@@ -22,7 +22,8 @@ if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 
 	if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 		echo "bad DTB_MAGIC at $DTB_OFFSET"
-		shui message "Unable to find device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		shui message "Unable to find device configuration." \
+			--subtext "Your device is unchanged." --confirm "Dismiss"
 		echo "unable to find dtb, aborting"
 		exit 1
 	fi
@@ -38,7 +39,8 @@ dd if="$DEV_PATH" of="$DT_NAME.dtb" bs=1 skip="$DTB_OFFSET" count="$DTB_SIZE" 2>
 dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null # decompile
 
 if [ ! -f "$DT_NAME.dts" ]; then
-	shui message "Unable to read device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+	shui message "Unable to read device configuration." \
+		--subtext "Your device is unchanged." --confirm "Dismiss"
 	echo "unable to decompile dtb, aborting"
 	exit 1
 fi
@@ -132,10 +134,12 @@ if [ "$BL_OFFSET" -ne 0 ]; then
 	BL=$((BL-BL_OFFSET))
 else
 	if [ "$BL" -ne 50 ]; then
-		shui message "Panel fix already applied!\n\nNo changes needed." --confirm "Done"
+		shui message "Panel fix already applied!" \
+			--subtext "No changes needed." --confirm "Done"
 		echo "this panel has (probably) already been patched"
 	else
-		shui message "Unrecognized panel configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		shui message "Unrecognized panel configuration." \
+			--subtext "Your device is unchanged." --confirm "Dismiss"
 		echo "unrecognized panel configuration, aborting"
 	fi
 	exit 0
@@ -180,7 +184,8 @@ done
 B_SUM=$SUM
 
 if [ "$A_SUM" != "$B_SUM" ]; then
-	shui message "Checksum verification failed!\n\nYour device is unchanged." --confirm "Dismiss"
+	shui message "Checksum verification failed!" \
+		--subtext "Your device is unchanged." --confirm "Dismiss"
 	echo "A $A_SUM"
 	echo "B $B_SUM"
 	echo "mismatched checksum, aborting"
@@ -197,5 +202,6 @@ sleep 0.5
 
 echo "applied fix successfully!"
 
-shui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot"
+shui message "Panel fix applied!" \
+	--subtext "Your device needs to reboot\nfor changes to take effect." --confirm "Reboot"
 reboot

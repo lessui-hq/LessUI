@@ -116,19 +116,18 @@ For any action that modifies system state:
 ```bash
 #!/bin/sh
 
-TITLE="Reset Calibration"
-DESCRIPTION="This will delete your stick calibration.\nYou'll need to recalibrate afterward."
-CONFIRM_TEXT="Reset"
-CANCEL_TEXT="Cancel"
-
-if ! shui message "$DESCRIPTION" --confirm "$CONFIRM_TEXT" --cancel "$CANCEL_TEXT"; then
+if ! shui message "Delete your stick calibration?" \
+    --subtext "You'll need to recalibrate afterward." \
+    --confirm "Reset" --cancel "Cancel"; then
     exit 0  # User cancelled
 fi
 
 shui progress "Resetting calibration..." --indeterminate
 do_the_reset
 
-shui message "Calibration reset!\n\nMove the stick to recalibrate." --confirm "Done"
+shui message "Calibration reset!" \
+    --subtext "Move the stick to recalibrate." \
+    --confirm "Done"
 ```
 
 ### The Dangerous Action Pattern
@@ -139,23 +138,25 @@ For firmware modifications, destructive operations, or anything irreversible:
 #!/bin/sh
 
 # First confirmation
-if ! shui message "This will modify your device firmware.\n\nAre you sure?" \
+if ! shui message "Modify device firmware?" \
+    --subtext "This will update your device software." \
     --confirm "Continue" --cancel "Cancel"; then
     exit 0
 fi
 
 # Second confirmation for truly dangerous ops
-if ! shui message "This cannot be undone!\n\nProceed anyway?" \
+if ! shui message "This cannot be undone!" \
+    --subtext "Proceed anyway?" \
     --confirm "Proceed" --cancel "Back"; then
     exit 0
 fi
 
-# Now do the work with progress
-shui progress "Preparing..." --value 0
+# Now do the work with progress (subtext for warnings)
+shui progress "Preparing..." --value 0 --subtext "Do not power off"
 # ... work ...
-shui progress "Applying changes..." --value 50
+shui progress "Applying changes..." --value 50 --subtext "Do not power off"
 # ... work ...
-shui progress "Finalizing..." --value 100
+shui progress "Finalizing..." --value 100 --subtext "Do not power off"
 sleep 0.3
 
 # Clear outcome with next action
@@ -222,7 +223,9 @@ When things go wrong:
 ```bash
 if ! do_operation 2>/dev/null; then
     # Give user a clear error with acknowledgment
-    shui message "Operation failed.\n\nCheck the log file for details." --confirm "Dismiss"
+    shui message "Operation failed." \
+        --subtext "Check the log file for details." \
+        --confirm "Dismiss"
     exit 1
 fi
 ```
@@ -231,7 +234,8 @@ For recoverable errors, offer options:
 
 ```bash
 if ! connect_wifi; then
-    if shui message "Connection failed.\n\nWould you like to try again?" \
+    if shui message "Connection failed." \
+        --subtext "Would you like to try again?" \
         --confirm "Retry" --cancel "Cancel"; then
         # retry logic
     fi
@@ -325,32 +329,35 @@ cd "$PAK_DIR" || exit 1
 
 # Bail early if update isn't available
 if [ ! -f ./update.bin ]; then
-    shui message "No update file found.\n\nPlace update.bin in the pak folder." --confirm "Dismiss"
+    shui message "No update file found." \
+        --subtext "Place update.bin in the pak folder." \
+        --confirm "Dismiss"
     exit 1
 fi
 
 # Describe what will happen and get confirmation
-if ! shui message "A firmware update is available.\n\nThis will update your device and reboot." \
+if ! shui message "A firmware update is available." \
+    --subtext "This will update your device and reboot." \
     --confirm "Install" --cancel "Cancel"; then
     exit 0
 fi
 
-# Show progress during operation
+# Show progress during operation (subtext for warnings)
 {
-    shui progress "Preparing update..." --value 0
+    shui progress "Preparing update..." --value 0 --subtext "Do not power off"
     prepare_update
 
-    shui progress "Backing up current firmware..." --value 20
+    shui progress "Backing up current firmware..." --value 20 --subtext "Do not power off"
     backup_firmware
 
-    shui progress "Writing new firmware..." --value 40
+    shui progress "Writing new firmware..." --value 40 --subtext "Do not power off"
     for chunk in $(seq 1 10); do
         write_chunk "$chunk"
         progress=$((40 + chunk * 5))
-        shui progress "Writing new firmware..." --value "$progress"
+        shui progress "Writing new firmware..." --value "$progress" --subtext "Do not power off"
     done
 
-    shui progress "Verifying installation..." --value 95
+    shui progress "Verifying installation..." --value 95 --subtext "Do not power off"
     verify_update
 
     shui progress "Completing..." --value 100
@@ -360,10 +367,14 @@ fi
 
 # Check result and announce clearly
 if verify_success; then
-    shui message "Update installed successfully!\n\nYour device will now reboot." --confirm "Reboot"
+    shui message "Update installed successfully!" \
+        --subtext "Your device will now reboot." \
+        --confirm "Reboot"
     reboot
 else
-    shui message "Update failed.\n\nYour previous firmware has been restored.\nCheck logs for details." --confirm "Dismiss"
+    shui message "Update failed." \
+        --subtext "Your previous firmware has been restored. Check logs for details." \
+        --confirm "Dismiss"
     exit 1
 fi
 ```
@@ -383,6 +394,8 @@ fi
 | For errors | Clear message + "Dismiss" or recovery options |
 | Before reboot | Let user trigger: "Reboot" |
 | Progress bar | Always hit 100% before transitioning |
+| Additional context | Use `--subtext` for explanations, not `\n\n` |
+| Critical warnings | Use `--subtext` on progress for "Do not power off" |
 
 ---
 
@@ -400,3 +413,5 @@ Before shipping a pak, verify:
 - [ ] Error messages are helpful, not technical
 - [ ] User controls all transitions (no auto-dismiss for important info)
 - [ ] Reboots require explicit user trigger
+- [ ] Secondary info uses `--subtext`, not `\n\n` in messages
+- [ ] Critical operations show warnings via `--subtext` on progress

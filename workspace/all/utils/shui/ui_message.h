@@ -7,6 +7,7 @@
 // Message display options
 typedef struct {
 	char* text;              // Message text (supports \n for newlines)
+	char* subtext;           // Secondary text below main message (smaller, gray)
 	int timeout;             // Seconds before auto-dismiss (-1 = forever)
 	char* background_color;  // Hex color like "#FF0000"
 	char* background_image;  // Path to image file

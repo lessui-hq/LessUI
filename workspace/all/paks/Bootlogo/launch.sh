@@ -11,11 +11,13 @@ case "$PLATFORM" in
 	miyoomini)
 		# Check for custom logo
 		if [ ! -f ./logo.jpg ]; then
-			shui message "No custom logo found.\n\nPlace logo.jpg in the pak folder\nto use your own boot logo." --confirm "Continue"
+			shui message "No custom logo found." \
+				--subtext "Place logo.jpg in the pak folder\nto use your own boot logo." --confirm "Continue"
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This modifies device firmware." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -26,7 +28,8 @@ case "$PLATFORM" in
 			SUPPORTED_VERSION="202304280000"
 			if [ "$MIYOO_VERSION" -gt "$SUPPORTED_VERSION" ]; then
 				echo "Unknown firmware version. Aborted."
-				shui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Unsupported firmware version." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				exit 1
 			fi
 
@@ -43,7 +46,8 @@ case "$PLATFORM" in
 
 			if ! ./bin/logomake.elf; then
 				echo "Preparing bootlogo failed. Aborted."
-				shui message "Failed to prepare boot logo.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to prepare boot logo." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				exit 1
 			fi
 
@@ -51,7 +55,8 @@ case "$PLATFORM" in
 
 			if ! ./bin/logowrite.elf; then
 				echo "Flashing bootlogo failed. Aborted."
-				shui message "Failed to flash boot logo.\n\nCheck logs for details." --confirm "Dismiss"
+				shui message "Failed to flash boot logo." \
+					--subtext "Check logs for details." --confirm "Dismiss"
 				exit 1
 			fi
 
@@ -79,12 +84,14 @@ case "$PLATFORM" in
 		fi
 
 		if [ ! -f $LOGO_PATH ]; then
-			shui message "No logo.bmp available.\n\nPlace logo.bmp in the pak folder." --confirm "Dismiss"
+			shui message "No logo.bmp available." \
+				--subtext "Place logo.bmp in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This modifies device firmware." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -98,7 +105,8 @@ case "$PLATFORM" in
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
 			shui message "Boot logo flashed!" --confirm "Done"
 		else
-			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo." \
+				--subtext "Check log.txt for details." --confirm "Dismiss"
 		fi
 
 		# Self-destruct
@@ -110,12 +118,14 @@ case "$PLATFORM" in
 		LOGO_PATH=$DIR/$LOGO_NAME
 
 		if [ ! -f $LOGO_PATH ]; then
-			shui message "Missing bootlogo.bmp file!\n\nPlace bootlogo.bmp in the pak folder." --confirm "Dismiss"
+			shui message "Missing bootlogo.bmp file!" \
+				--subtext "Place bootlogo.bmp in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This modifies device firmware." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -128,7 +138,8 @@ case "$PLATFORM" in
 		OFFSET_PATH="res/offset-$VERSION"
 
 		if [ ! -f "$OFFSET_PATH" ]; then
-			shui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
+			shui message "Unsupported firmware version." \
+				--subtext "Your device is unchanged." --confirm "Dismiss"
 			exit 1
 		fi
 
@@ -142,7 +153,8 @@ case "$PLATFORM" in
 
 		MAX_SIZE=62234
 		if [ "$LOGO_SIZE" -gt "$MAX_SIZE" ]; then
-			shui message "Logo image too complex.\n\nSimplify the image and try again." --confirm "Dismiss"
+			shui message "Logo image too complex." \
+				--subtext "Simplify the image and try again." --confirm "Dismiss"
 			rm -f "$LOGO_PATH"
 			exit 1
 		fi
@@ -172,7 +184,8 @@ case "$PLATFORM" in
 
 	my355)
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware\nand will reboot when done." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This modifies device firmware\nand will reboot when done." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -223,12 +236,14 @@ case "$PLATFORM" in
 		fi
 
 		if [ ! -f "$LOGO_PATH" ]; then
-			shui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No bootlogo.bmp file found!" \
+				--subtext "Place it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This will copy the logo and reboot." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -262,7 +277,8 @@ case "$PLATFORM" in
 			shui message "Boot logo flashed!" --confirm "Reboot"
 			reboot
 		else
-			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo." \
+				--subtext "Check log.txt for details." --confirm "Dismiss"
 		fi
 		;;
 
@@ -271,12 +287,14 @@ case "$PLATFORM" in
 		BOOT_PATH=/mnt/boot
 
 		if [ ! -f bootlogo.bmp ]; then
-			shui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No bootlogo.bmp file found!" \
+				--subtext "Place it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This will copy the logo and reboot." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -309,12 +327,14 @@ case "$PLATFORM" in
 		LOGO_PATH=$DIR/logo.bmp
 
 		if [ ! -f $LOGO_PATH ]; then
-			shui message "No logo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No logo.bmp file found!" \
+				--subtext "Place it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This modifies device firmware." \
 			--confirm "Flash" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -331,7 +351,8 @@ case "$PLATFORM" in
 			COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
 			if [ $COUNT -gt 32768 ]; then
 				echo "logo.bmp too large ($COUNT). Aborted."
-				shui message "Logo file too large.\n\nMaximum size is 32KB." --confirm "Dismiss"
+				shui message "Logo file too large." \
+					--subtext "Maximum size is 32KB." --confirm "Dismiss"
 				exit 1
 			fi
 
@@ -355,7 +376,8 @@ case "$PLATFORM" in
 						echo "Rev C"
 					else
 						echo "Rev unknown. Aborted."
-						shui message "Unknown boot partition format.\n\nYour device is unchanged." --confirm "Dismiss"
+						shui message "Unknown boot partition format." \
+							--subtext "Your device is unchanged." --confirm "Dismiss"
 						exit 1
 					fi
 				fi
@@ -389,9 +411,11 @@ case "$PLATFORM" in
 		} > ./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			shui message "Boot logo flashed!\n\nA backup was saved to the pak folder." --confirm "Done"
+			shui message "Boot logo flashed!" \
+				--subtext "A backup was saved to the pak folder." --confirm "Done"
 		else
-			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo." \
+				--subtext "Check log.txt for details." --confirm "Dismiss"
 		fi
 
 		# Self-destruct
@@ -399,7 +423,7 @@ case "$PLATFORM" in
 		;;
 
 	*)
-		shui message "Boot logo flashing is not\nsupported on $PLATFORM." --confirm "Dismiss"
+		shui message "Boot logo flashing is not supported on $PLATFORM." --confirm "Dismiss"
 		exit 1
 		;;
 esac

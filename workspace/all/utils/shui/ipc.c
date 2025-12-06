@@ -81,6 +81,9 @@ int ipc_write_request(const Request* req) {
 	json_object_set_number(obj, "value", req->value);
 	json_object_set_boolean(obj, "indeterminate", req->indeterminate);
 
+	// Shared params
+	json_set_string_if(obj, "subtext", req->subtext);
+
 	// Write to file
 	char* json_str = json_serialize_to_string_pretty(root);
 	if (!json_str) {
@@ -160,6 +163,9 @@ Request* ipc_read_request(void) {
 	req->value = json_get_int(obj, "value", 0);
 	req->indeterminate = json_get_bool(obj, "indeterminate", false);
 
+	// Shared params
+	req->subtext = safe_strdup(json_object_get_string(obj, "subtext"));
+
 	json_value_free(root);
 	return req;
 }
@@ -181,6 +187,7 @@ void ipc_free_request_fields(Request* req) {
 	free(req->write_location);
 	free(req->write_value);
 	free(req->initial_value);
+	free(req->subtext);
 }
 
 void ipc_free_request(Request* req) {

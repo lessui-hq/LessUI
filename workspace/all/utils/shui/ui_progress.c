@@ -94,9 +94,17 @@ void ui_progress_render(SDL_Surface* screen, ProgressState* state, const Progres
 		msg_h = th;
 	}
 
-	// Total content height: title + message + gap + bar
+	// Subtext height (optional, below message)
+	int subtext_h = 0;
+	if (opts->subtext && g_font_small) {
+		int tw, th;
+		TTF_SizeUTF8(g_font_small, opts->subtext, &tw, &th);
+		subtext_h = th + DP(4);  // Small gap between message and subtext
+	}
+
+	// Total content height: title + message + subtext + gap + bar
 	int gap = DP(16);
-	int total_h = title_h + msg_h + gap + bar_h;
+	int total_h = title_h + msg_h + subtext_h + gap + bar_h;
 	int start_y = screen_cy - total_h / 2;
 	int bar_x = (screen->w - bar_w) / 2;
 
@@ -122,6 +130,19 @@ void ui_progress_render(SDL_Surface* screen, ProgressState* state, const Progres
 			SDL_BlitSurface(msg_text, NULL, screen, &pos);
 			y += msg_text->h;
 			SDL_FreeSurface(msg_text);
+		}
+	}
+
+	// Draw subtext (smaller, gray, below message)
+	if (opts->subtext && g_font_small) {
+		y += DP(4);  // Small gap between message and subtext
+		SDL_Surface* subtext = TTF_RenderUTF8_Blended(g_font_small, opts->subtext, COLOR_GRAY);
+		if (subtext) {
+			int subtext_x = screen_cx - subtext->w / 2;
+			SDL_Rect pos = {subtext_x, y, subtext->w, subtext->h};
+			SDL_BlitSurface(subtext, NULL, screen, &pos);
+			y += subtext->h;
+			SDL_FreeSurface(subtext);
 		}
 	}
 

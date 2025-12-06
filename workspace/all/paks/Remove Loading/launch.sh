@@ -10,7 +10,8 @@ cd "$DIR" || exit 1
 case "$PLATFORM" in
 	miyoomini)
 		# Confirm before modifying firmware
-		if ! shui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
+		if ! shui message "Remove boot loading screen?" \
+			--subtext "This modifies device firmware.\nDo not power off during process." \
 			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -39,7 +40,8 @@ case "$PLATFORM" in
 
 			unsquashfs customer
 			if [ $? -ne 0 ]; then
-				shui message "Failed to extract firmware.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to extract firmware." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -53,7 +55,8 @@ case "$PLATFORM" in
 
 			mksquashfs squashfs-root customer.mod -comp xz -b 131072 -xattrs -all-root
 			if [ $? -ne 0 ]; then
-				shui message "Failed to repack firmware.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to repack firmware." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -62,7 +65,8 @@ case "$PLATFORM" in
 
 			dd if=customer.mod of=/dev/mtdblock6 bs=128K conv=fsync
 			if [ $? -ne 0 ]; then
-				shui message "Failed to write firmware!\n\nDevice may need recovery." --confirm "Dismiss"
+				shui message "Failed to write firmware!" \
+					--subtext "Device may need recovery." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -76,13 +80,15 @@ case "$PLATFORM" in
 		mv "$DIR" "$DIR.disabled"
 		sync
 
-		shui message "Loading screen removed!\n\nDevice will reboot to apply changes." --confirm "Reboot"
+		shui message "Loading screen removed!" \
+			--subtext "Device will reboot to apply changes." --confirm "Reboot"
 		reboot
 		;;
 
 	my282)
 		# Confirm before modifying firmware
-		if ! shui message "Remove boot loading screen?\n\nThis modifies device firmware.\nDo not power off during process." \
+		if ! shui message "Remove boot loading screen?" \
+			--subtext "This modifies device firmware.\nDo not power off during process." \
 			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -111,7 +117,8 @@ case "$PLATFORM" in
 
 			unsquashfs rootfs
 			if [ $? -ne 0 ]; then
-				shui message "Failed to extract firmware.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to extract firmware." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -125,7 +132,8 @@ case "$PLATFORM" in
 
 			mksquashfs squashfs-root rootfs.mod -comp xz -b 262144 -Xbcj arm
 			if [ $? -ne 0 ]; then
-				shui message "Failed to repack firmware.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to repack firmware." \
+					--subtext "Your device is unchanged." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -134,7 +142,8 @@ case "$PLATFORM" in
 
 			mtd write rootfs.mod /dev/mtd3
 			if [ $? -ne 0 ]; then
-				shui message "Failed to write firmware!\n\nDevice may need recovery." --confirm "Dismiss"
+				shui message "Failed to write firmware!" \
+					--subtext "Device may need recovery." --confirm "Dismiss"
 				sync
 				exit 1
 			fi
@@ -153,7 +162,8 @@ case "$PLATFORM" in
 
 	tg5040)
 		# Confirm before modifying
-		if ! shui message "Remove boot loading screen?\n\nThis modifies system files." \
+		if ! shui message "Remove boot loading screen?" \
+			--subtext "This modifies system files." \
 			--confirm "Remove" --cancel "Cancel"; then
 			exit 0
 		fi
