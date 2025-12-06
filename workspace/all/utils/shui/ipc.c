@@ -1,5 +1,5 @@
 #include "ipc.h"
-#include "shellui_utils.h"
+#include "shui_utils.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,23 +10,23 @@
 
 int ipc_init(void) {
 	// Create directory if needed
-	if (mkdir(SHELLUI_DIR, 0755) != 0 && errno != EEXIST) {
+	if (mkdir(SHUI_DIR, 0755) != 0 && errno != EEXIST) {
 		return -1;
 	}
 
 	// Clean stale files
-	unlink(SHELLUI_REQUEST_FILE);
-	unlink(SHELLUI_RESPONSE_FILE);
+	unlink(SHUI_REQUEST_FILE);
+	unlink(SHUI_RESPONSE_FILE);
 
 	return 0;
 }
 
 void ipc_cleanup(void) {
-	unlink(SHELLUI_REQUEST_FILE);
-	unlink(SHELLUI_RESPONSE_FILE);
-	unlink(SHELLUI_READY_FILE);
-	unlink(SHELLUI_PID_FILE);
-	rmdir(SHELLUI_DIR);
+	unlink(SHUI_REQUEST_FILE);
+	unlink(SHUI_RESPONSE_FILE);
+	unlink(SHUI_READY_FILE);
+	unlink(SHUI_PID_FILE);
+	rmdir(SHUI_DIR);
 }
 
 // Helper to set string field if not NULL
@@ -86,7 +86,7 @@ int ipc_write_request(const Request* req) {
 		return -1;
 	}
 
-	FILE* f = fopen(SHELLUI_REQUEST_FILE, "w");
+	FILE* f = fopen(SHUI_REQUEST_FILE, "w");
 	if (!f) {
 		json_free_serialized_string(json_str);
 		json_value_free(root);
@@ -102,7 +102,7 @@ int ipc_write_request(const Request* req) {
 }
 
 Request* ipc_read_request(void) {
-	JSON_Value* root = json_parse_file(SHELLUI_REQUEST_FILE);
+	JSON_Value* root = json_parse_file(SHUI_REQUEST_FILE);
 	if (!root) return NULL;
 
 	JSON_Object* obj = json_object(root);
@@ -200,7 +200,7 @@ int ipc_write_response(const Response* resp) {
 		return -1;
 	}
 
-	FILE* f = fopen(SHELLUI_RESPONSE_FILE, "w");
+	FILE* f = fopen(SHUI_RESPONSE_FILE, "w");
 	if (!f) {
 		json_free_serialized_string(json_str);
 		json_value_free(root);
@@ -216,7 +216,7 @@ int ipc_write_response(const Response* resp) {
 }
 
 Response* ipc_read_response(void) {
-	JSON_Value* root = json_parse_file(SHELLUI_RESPONSE_FILE);
+	JSON_Value* root = json_parse_file(SHUI_RESPONSE_FILE);
 	if (!root) return NULL;
 
 	JSON_Object* obj = json_object(root);
@@ -252,7 +252,7 @@ int ipc_wait_for_response(int timeout_ms) {
 	gettimeofday(&start, NULL);
 
 	while (1) {
-		if (access(SHELLUI_RESPONSE_FILE, F_OK) == 0) {
+		if (access(SHUI_RESPONSE_FILE, F_OK) == 0) {
 			return 0;
 		}
 
@@ -267,11 +267,11 @@ int ipc_wait_for_response(int timeout_ms) {
 }
 
 void ipc_delete_request(void) {
-	unlink(SHELLUI_REQUEST_FILE);
+	unlink(SHUI_REQUEST_FILE);
 }
 
 void ipc_delete_response(void) {
-	unlink(SHELLUI_RESPONSE_FILE);
+	unlink(SHUI_RESPONSE_FILE);
 }
 
 char* ipc_generate_request_id(void) {

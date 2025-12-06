@@ -1,16 +1,16 @@
-# shellui
+# shui
 
 A persistent UI daemon for shell scripts. Consolidates message dialogs, list selectors, and keyboard input into a single tool that keeps SDL initialized between calls, eliminating blank screens.
 
-## Why shellui?
+## Why shui?
 
 Previously, shell scripts used separate utilities (`minui-presenter`, `minui-list`, `minui-keyboard`) for UI. Each utility initialized and cleaned up SDL graphics independently, causing noticeable blank screens between calls.
 
-shellui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shellui shutdown` after each pak completes.
+shui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shui shutdown` after each pak completes.
 
 ## Key Concept: Push-Based Updates
 
-Unlike the old utilities which required backgrounding (`&`) and manual cleanup, shellui uses a **push-based model**:
+Unlike the old utilities which required backgrounding (`&`) and manual cleanup, shui uses a **push-based model**:
 
 - **Status messages** return immediately (fire-and-forget)
 - **Interactive dialogs** wait for user input
@@ -19,10 +19,10 @@ Unlike the old utilities which required backgrounding (`&`) and manual cleanup, 
 
 ```bash
 # Fire-and-forget: returns immediately, script continues
-shellui message "Loading..."
+shui message "Loading..."
 
 # Interactive: waits for user response
-shellui message "Delete file?" --confirm "YES" --cancel "NO"
+shui message "Delete file?" --confirm "YES" --cancel "NO"
 ```
 
 ## Commands
@@ -33,17 +33,17 @@ Display a message dialog. Returns immediately unless buttons are specified.
 
 ```bash
 # Status message (fire-and-forget)
-shellui message "Connecting..."
+shui message "Connecting..."
 do_connection
-shellui message "Connected!"
+shui message "Connected!"
 
 # Confirmation dialog (waits for response)
-if shellui message "Are you sure?" --confirm "YES" --cancel "NO"; then
+if shui message "Are you sure?" --confirm "YES" --cancel "NO"; then
     do_action
 fi
 
 # Error with acknowledgment
-shellui message "Operation failed" --confirm "OK"
+shui message "Operation failed" --confirm "OK"
 ```
 
 **Options:**
@@ -62,10 +62,10 @@ Display a scrollable list selector with optional toggle support.
 
 ```bash
 # Simple list
-choice=$(shellui list --file menu.json --title "Main Menu")
+choice=$(shui list --file menu.json --title "Main Menu")
 
 # With toggle items (use left/right to change values)
-shellui list --file settings.json --item-key settings --write-location /tmp/out --write-value state
+shui list --file settings.json --item-key settings --write-location /tmp/out --write-value state
 ```
 
 **Options:**
@@ -123,8 +123,8 @@ shellui list --file settings.json --item-key settings --write-location /tmp/out 
 Display an on-screen keyboard for text input.
 
 ```bash
-shellui keyboard --title "Enter Password"
-shellui keyboard --title "WiFi SSID" --initial "MyNetwork"
+shui keyboard --title "Enter Password"
+shui keyboard --title "WiFi SSID" --initial "MyNetwork"
 ```
 
 **Options:**
@@ -164,13 +164,13 @@ Display a progress bar. Returns immediately (fire-and-forget).
 
 ```bash
 # Determinate progress bar
-shellui progress "Installing..." --value 45
+shui progress "Installing..." --value 45
 
 # Indeterminate (animated bouncing bar)
-shellui progress "Scanning..." --indeterminate
+shui progress "Scanning..." --indeterminate
 
 # With title
-shellui progress "Downloading..." --value 75 --title "RetroArch"
+shui progress "Downloading..." --value 75 --title "RetroArch"
 ```
 
 **Options:**
@@ -187,7 +187,7 @@ shellui progress "Downloading..." --value 75 --title "RetroArch"
 Stop the daemon process. Called automatically by the launcher after pak execution.
 
 ```bash
-shellui shutdown
+shui shutdown
 ```
 
 ## Exit Codes
@@ -204,23 +204,23 @@ shellui shutdown
 ### Status updates during operation
 
 ```bash
-shellui message "Enabling WiFi..."
+shui message "Enabling WiFi..."
 enable_wifi
 
-shellui message "Scanning for networks..."
+shui message "Scanning for networks..."
 scan_networks
 
-shellui message "Connecting..."
+shui message "Connecting..."
 connect_to_network
 
-shellui message "Connected!"
+shui message "Connected!"
 sleep 1
 ```
 
 ### Confirmation dialog
 
 ```bash
-if shellui message "Delete save file?" --confirm "DELETE" --cancel "KEEP"; then
+if shui message "Delete save file?" --confirm "DELETE" --cancel "KEEP"; then
     rm "$SAVE_FILE"
 fi
 ```
@@ -229,7 +229,7 @@ fi
 
 ```bash
 if ! do_operation; then
-    shellui message "Operation failed" --confirm "OK"
+    shui message "Operation failed" --confirm "OK"
     exit 1
 fi
 ```
@@ -241,7 +241,7 @@ cat > /tmp/menu.json << 'EOF'
 {"items": ["Continue", "New Game", "Options", "Quit"]}
 EOF
 
-choice=$(shellui list --file /tmp/menu.json --title "Main Menu")
+choice=$(shui list --file /tmp/menu.json --title "Main Menu")
 case "$choice" in
     "Continue") load_game ;;
     "New Game") new_game ;;
@@ -263,7 +263,7 @@ cat > /tmp/settings.json << 'EOF'
 }
 EOF
 
-shellui list --file /tmp/settings.json --item-key settings \
+shui list --file /tmp/settings.json --item-key settings \
     --write-location /tmp/result.json --write-value state
 
 # Parse result with jq
@@ -273,14 +273,14 @@ sound=$(jq -r '.settings[0].selected' /tmp/result.json)
 ### Text input
 
 ```bash
-name=$(shellui keyboard --title "Enter your name")
+name=$(shui keyboard --title "Enter your name")
 echo "Hello, $name!"
 ```
 
 ### WiFi password entry
 
 ```bash
-password=$(shellui keyboard --title "WiFi Password")
+password=$(shui keyboard --title "WiFi Password")
 if [ $? -eq 0 ] && [ -n "$password" ]; then
     connect_wifi "$SSID" "$password"
 fi
@@ -294,27 +294,27 @@ total=$(ls -1 *.rom | wc -l)
 count=0
 for file in *.rom; do
     percent=$((count * 100 / total))
-    shellui progress "Copying ROMs..." --value $percent --title "Backup"
+    shui progress "Copying ROMs..." --value $percent --title "Backup"
     cp "$file" /backup/
     count=$((count + 1))
 done
-shellui message "Backup complete!" --timeout 2
+shui message "Backup complete!" --timeout 2
 ```
 
 ### Indeterminate progress for unknown duration
 
 ```bash
-shellui progress "Scanning for networks..." --indeterminate
+shui progress "Scanning for networks..." --indeterminate
 scan_wifi_networks
-shellui message "Found $(wc -l < /tmp/networks.txt) networks"
+shui message "Found $(wc -l < /tmp/networks.txt) networks"
 ```
 
 ## Architecture
 
 ```
-┌──────────────────┐         /tmp/shellui/         ┌──────────────────┐
+┌──────────────────┐         /tmp/shui/         ┌──────────────────┐
 │                  │                               │                  │
-│  shellui (CLI)   │  ────▶  request (JSON)        │  shellui daemon  │
+│  shui (CLI)   │  ────▶  request (JSON)        │  shui daemon  │
 │                  │                               │                  │
 │  Sends command   │  ◀────  response (JSON)       │  SDL initialized │
 │  Fire-and-forget │         (if needed)           │  Processes UI    │
@@ -323,34 +323,34 @@ shellui message "Found $(wc -l < /tmp/networks.txt) networks"
 ```
 
 **IPC Files:**
-- `/tmp/shellui/pid` - Daemon process ID
-- `/tmp/shellui/ready` - Signals daemon is initialized
-- `/tmp/shellui/request` - Command from CLI to daemon
-- `/tmp/shellui/response` - Result from daemon to CLI
+- `/tmp/shui/pid` - Daemon process ID
+- `/tmp/shui/ready` - Signals daemon is initialized
+- `/tmp/shui/request` - Command from CLI to daemon
+- `/tmp/shui/response` - Result from daemon to CLI
 
 **Lifecycle:**
-1. First `shellui` command checks for running daemon
+1. First `shui` command checks for running daemon
 2. If not running, forks daemon process
 3. Daemon initializes SDL once, writes `ready` file
 4. CLI writes request
 5. For interactive commands: CLI waits for response
 6. For status messages: CLI returns immediately
-7. `shellui shutdown` (from launcher) stops daemon
+7. `shui shutdown` (from launcher) stops daemon
 
 ## Building
 
-shellui is built as part of the standard LessUI build:
+shui is built as part of the standard LessUI build:
 
 ```bash
 make PLATFORM=miyoomini build
 make PLATFORM=miyoomini system
 ```
 
-The binary is installed to `$SYSTEM_PATH/bin/shellui`.
+The binary is installed to `$SYSTEM_PATH/bin/shui`.
 
 ## Comparison with Previous Utilities
 
-| Feature | minui-presenter/list/keyboard | shellui |
+| Feature | minui-presenter/list/keyboard | shui |
 |---------|------------------------------|---------|
 | SDL init | Every call | Once per session |
 | Blank screens | Yes, between calls | No |

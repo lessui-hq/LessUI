@@ -1,5 +1,5 @@
-#ifndef SHELLUI_UI_KEYBOARD_H
-#define SHELLUI_UI_KEYBOARD_H
+#ifndef SHUI_UI_KEYBOARD_H
+#define SHUI_UI_KEYBOARD_H
 
 #include "common.h"
 #include "sdl.h"
@@ -19,4 +19,4 @@ typedef struct {
 // Show keyboard input dialog
 KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts);
 
-#endif // SHELLUI_UI_KEYBOARD_H
+#endif // SHUI_UI_KEYBOARD_H

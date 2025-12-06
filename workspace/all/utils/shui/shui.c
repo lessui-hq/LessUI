@@ -1,15 +1,15 @@
 /**
- * shellui - Persistent UI daemon for shell scripts
+ * shui - Persistent UI daemon for shell scripts
  *
  * Single binary that operates in two modes:
  * - CLI mode: Sends commands to daemon, auto-starts if needed
  * - Daemon mode: Keeps SDL initialized, processes UI requests
  *
  * Usage:
- *   shellui message "text" [--timeout N] [--confirm TEXT] [--cancel TEXT]
- *   shellui list --file FILE [--format json|text] [--title TEXT]
- *   shellui keyboard [--title TEXT] [--initial TEXT]
- *   shellui shutdown
+ *   shui message "text" [--timeout N] [--confirm TEXT] [--cancel TEXT]
+ *   shui list --file FILE [--format json|text] [--title TEXT]
+ *   shui keyboard [--title TEXT] [--initial TEXT]
+ *   shui shutdown
  */
 
 #include <errno.h>
@@ -32,7 +32,7 @@
 #include "api.h"
 #include "defines.h"
 #include "fonts.h"
-#include "shellui_utils.h"
+#include "shui_utils.h"
 #include "ui_message.h"
 #include "ui_list.h"
 #include "ui_keyboard.h"
@@ -102,7 +102,7 @@ static char* read_stdin_all(void) {
 
 static void print_usage(void) {
 	fprintf(stderr,
-		"Usage: shellui <command> [options]\n"
+		"Usage: shui <command> [options]\n"
 		"\n"
 		"Commands:\n"
 		"  message TEXT      Show a message dialog\n"
@@ -321,7 +321,7 @@ static int run_cli(int argc, char** argv) {
 }
 
 static int daemon_is_running(void) {
-	FILE* f = fopen(SHELLUI_PID_FILE, "r");
+	FILE* f = fopen(SHUI_PID_FILE, "r");
 	if (!f) return 0;
 
 	pid_t pid;
@@ -337,7 +337,7 @@ static int daemon_is_running(void) {
 	}
 
 	// Stale PID file
-	unlink(SHELLUI_PID_FILE);
+	unlink(SHUI_PID_FILE);
 	return 0;
 }
 
@@ -362,7 +362,7 @@ static int daemon_spawn(void) {
 		ssize_t len = readlink(self, path, sizeof(path) - 1);
 		if (len > 0) {
 			path[len] = '\0';
-			execl(path, "shellui", "--daemon", NULL);
+			execl(path, "shui", "--daemon", NULL);
 		}
 
 		// Fallback: just run daemon directly (shouldn't reach here in normal cases)
@@ -378,7 +378,7 @@ static int daemon_wait_ready(int timeout_ms) {
 	gettimeofday(&start, NULL);
 
 	while (1) {
-		if (access(SHELLUI_READY_FILE, F_OK) == 0) {
+		if (access(SHUI_READY_FILE, F_OK) == 0) {
 			return 0;
 		}
 
@@ -750,7 +750,7 @@ static int run_daemon(void) {
 
 	// Write PID file
 	ipc_init();
-	FILE* f = fopen(SHELLUI_PID_FILE, "w");
+	FILE* f = fopen(SHUI_PID_FILE, "w");
 	if (f) {
 		fprintf(f, "%d", getpid());
 		fclose(f);
@@ -762,13 +762,13 @@ static int run_daemon(void) {
 	restore_output();
 
 	// Signal that we're ready
-	f = fopen(SHELLUI_READY_FILE, "w");
+	f = fopen(SHUI_READY_FILE, "w");
 	if (f) fclose(f);
 
 	// Main loop: wait for requests
 	while (!daemon_quit) {
 		// Check for request file
-		if (access(SHELLUI_REQUEST_FILE, F_OK) == 0) {
+		if (access(SHUI_REQUEST_FILE, F_OK) == 0) {
 			Request* req = ipc_read_request();
 			if (req) {
 				ipc_delete_request();

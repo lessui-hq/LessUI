@@ -1,6 +1,6 @@
 #include "ui_message.h"
 #include "fonts.h"
-#include "shellui_utils.h"
+#include "shui_utils.h"
 #include "api.h"
 #include "defines.h"
 #include <stdlib.h>

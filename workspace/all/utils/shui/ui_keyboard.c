@@ -242,7 +242,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 
 			GFX_clear(screen);
 
-			// Title (centered, using font.medium like other shellui screens)
+			// Title (centered, using font.medium like other shui screens)
 			int title_y = DP(ui.edge_padding);
 			if (opts && opts->title) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);

@@ -1,5 +1,5 @@
-#ifndef SHELLUI_UI_MESSAGE_H
-#define SHELLUI_UI_MESSAGE_H
+#ifndef SHUI_UI_MESSAGE_H
+#define SHUI_UI_MESSAGE_H
 
 #include "common.h"
 #include "sdl.h"
@@ -20,4 +20,4 @@ typedef struct {
 // Returns exit code based on user action
 ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts);
 
-#endif // SHELLUI_UI_MESSAGE_H
+#endif // SHUI_UI_MESSAGE_H

@@ -1,5 +1,5 @@
-#ifndef SHELLUI_IPC_H
-#define SHELLUI_IPC_H
+#ifndef SHUI_IPC_H
+#define SHUI_IPC_H
 
 #include "common.h"
 #include <parson/parson.h>
@@ -90,4 +90,4 @@ void ipc_delete_response(void);
 // Generate unique request ID
 char* ipc_generate_request_id(void);
 
-#endif // SHELLUI_IPC_H
+#endif // SHUI_IPC_H

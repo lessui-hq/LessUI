@@ -10,11 +10,11 @@ case "$PLATFORM" in
 		# Use system file manager on rg35xxplus
 		DIR="/mnt/vendor/bin/fileM"
 		if [ ! -d "$DIR" ]; then
-			shellui message "File manager not found.\n\nUpdate stock firmware from Anbernic." --confirm "Dismiss"
+			shui message "File manager not found.\n\nUpdate stock firmware from Anbernic." --confirm "Dismiss"
 			exit 1
 		fi
 		if [ ! -f "$DIR/dinguxCommand_en.dge" ]; then
-			shellui message "File manager binary missing\nor corrupt." --confirm "Dismiss"
+			shui message "File manager binary missing\nor corrupt." --confirm "Dismiss"
 			exit 1
 		fi
 		cd "$DIR" || exit 1
@@ -25,7 +25,7 @@ case "$PLATFORM" in
 		# Use 351Files on magicmini
 		BINARY="./bin/$PLATFORM/351Files"
 		if [ ! -f "$BINARY" ]; then
-			shellui message "File manager not available\nfor $PLATFORM." --confirm "Dismiss"
+			shui message "File manager not available\nfor $PLATFORM." --confirm "Dismiss"
 			exit 1
 		fi
 		"$BINARY"
@@ -34,7 +34,7 @@ case "$PLATFORM" in
 		# Use DinguxCommander on all other platforms
 		BINARY="./bin/$PLATFORM/DinguxCommander"
 		if [ ! -f "$BINARY" ]; then
-			shellui message "File manager not available\nfor $PLATFORM." --confirm "Dismiss"
+			shui message "File manager not available\nfor $PLATFORM." --confirm "Dismiss"
 			exit 1
 		fi
 		"$BINARY"

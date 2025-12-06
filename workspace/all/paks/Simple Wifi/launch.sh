@@ -30,15 +30,15 @@ STATUS=$(cat "/sys/class/net/wlan0/operstate")
 
 disconnect()
 {
-	shellui progress "Disconnecting..." --indeterminate
+	shui progress "Disconnecting..." --indeterminate
 	wifictl disable
-	shellui message "WiFi disconnected." --confirm "Done"
+	shui message "WiFi disconnected." --confirm "Done"
 	STATUS=down
 }
 
 connect()
 {
-	shellui progress "Connecting to WiFi..." --indeterminate
+	shui progress "Connecting to WiFi..." --indeterminate
 	wifictl enable &
 
 	DELAY=30
@@ -52,34 +52,34 @@ connect()
 
 	if [ "$STATUS" = "up" ]; then
 		IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
-		shellui message "WiFi connected!\n\nIP: $IP" --confirm "Done"
+		shui message "WiFi connected!\n\nIP: $IP" --confirm "Done"
 	else
-		shellui message "WiFi connection failed.\n\nCheck credentials in wifi.txt" --confirm "Dismiss"
+		shui message "WiFi connection failed.\n\nCheck credentials in wifi.txt" --confirm "Dismiss"
 	fi
 }
 
 {
 if [ "$WIFI_NAME" != "$CUR_NAME" ] || [ "$WIFI_PASS" != "$CUR_PASS" ]; then
 	if [ "$STATUS" = "up" ]; then
-		shellui progress "Disconnecting..." --indeterminate
+		shui progress "Disconnecting..." --indeterminate
 		wifictl disable
 		STATUS=down
 	fi
 
-	shellui progress "Updating WiFi credentials..." --indeterminate
+	shui progress "Updating WiFi credentials..." --indeterminate
 	set_setting wifi.ssid "$WIFI_NAME"
 	set_setting wifi.key "$WIFI_PASS"
 fi
 
 if [ "$STATUS" = "up" ]; then
 	# Already connected, ask what to do
-	if shellui message "WiFi is connected.\n\nWhat would you like to do?" \
+	if shui message "WiFi is connected.\n\nWhat would you like to do?" \
 		--confirm "Disconnect" --cancel "Keep Connected"; then
 		disconnect
 	fi
 else
 	# Not connected, ask to connect
-	if shellui message "WiFi is disconnected.\n\nConnect to $WIFI_NAME?" \
+	if shui message "WiFi is disconnected.\n\nConnect to $WIFI_NAME?" \
 		--confirm "Connect" --cancel "Cancel"; then
 		connect
 	fi

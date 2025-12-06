@@ -33,21 +33,21 @@ REPORT_FILE="$SDCARD_PATH/system_report_${PLATFORM}_${TIMESTAMP}.md"
 
 cleanup() {
     rm -f /tmp/stay_awake
-    shellui shutdown 2>/dev/null || true
+    shui shutdown 2>/dev/null || true
 }
 
 run_report() {
     cd "$SDCARD_PATH" || return 1
 
     # Confirm before generating
-    if ! shellui message "Generate system report?\n\nThis includes CPU benchmarking\nand may take a minute." \
+    if ! shui message "Generate system report?\n\nThis includes CPU benchmarking\nand may take a minute." \
         --confirm "Generate Report" --cancel "Cancel"; then
         exit 0
     fi
 
     # Run the report generator with progress updates
     {
-        shellui progress "Collecting system info..." --value 10
+        shui progress "Collecting system info..." --value 10
 
         # Run the report generator
         "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1 &
@@ -56,7 +56,7 @@ run_report() {
         # Update progress while running
         progress=20
         while kill -0 "$REPORT_PID" 2>/dev/null; do
-            shellui progress "Generating report..." --value "$progress"
+            shui progress "Generating report..." --value "$progress"
             sleep 2
             progress=$((progress + 10))
             if [ "$progress" -gt 90 ]; then
@@ -66,16 +66,16 @@ run_report() {
 
         wait "$REPORT_PID"
 
-        shellui progress "Complete!" --value 100
+        shui progress "Complete!" --value 100
         sleep 0.5
     }
 
     # Verify report was created and show result
     if [ -s "$REPORT_FILE" ]; then
         LINES=$(wc -l < "$REPORT_FILE" | tr -d ' ')
-        shellui message "Report generated!\n\n$LINES lines saved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" --confirm "Done"
+        shui message "Report generated!\n\n$LINES lines saved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" --confirm "Done"
     else
-        shellui message "Report generation failed.\n\nCheck logs for details." --confirm "Dismiss"
+        shui message "Report generation failed.\n\nCheck logs for details." --confirm "Dismiss"
     fi
 }
 

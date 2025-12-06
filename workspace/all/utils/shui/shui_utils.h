@@ -1,5 +1,5 @@
-#ifndef SHELLUI_UTILS_H
-#define SHELLUI_UTILS_H
+#ifndef SHUI_UTILS_H
+#define SHUI_UTILS_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -56,4 +56,4 @@ bool json_get_bool(JSON_Object* obj, const char* name, bool def);
 SDL_Color hexToColor(const char* hex);
 #endif
 
-#endif // SHELLUI_UTILS_H
+#endif // SHUI_UTILS_H

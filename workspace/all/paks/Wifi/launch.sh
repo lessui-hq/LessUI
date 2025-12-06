@@ -26,15 +26,15 @@ export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
 show_message() {
 	message="$1"
 	echo "$message"
-	# Fire-and-forget: shellui returns immediately for messages without buttons
-	shellui message "$message"
+	# Fire-and-forget: shui returns immediately for messages without buttons
+	shui message "$message"
 }
 
 show_message_wait() {
 	message="$1"
 	echo "$message"
 	# Wait for user to acknowledge
-	shellui message "$message" --confirm "OK"
+	shui message "$message" --confirm "OK"
 }
 
 get_ssid_and_ip() {
@@ -234,7 +234,7 @@ wifi_on() {
 	fi
 
 	# Wait for connection (up to 30 seconds)
-	shellui progress "Connecting..." --indeterminate
+	shui progress "Connecting..." --indeterminate
 	for _ in $(seq 1 30); do
 		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
@@ -305,7 +305,7 @@ main_screen() {
 	sed -i "s/NETWORK_SSID/$ssid/" "$minui_list_file"
 	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$minui_list_file"
 
-	shellui list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
+	shui list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
 }
 
 networks_screen() {
@@ -318,21 +318,21 @@ networks_screen() {
 	if [ "$PLATFORM" = "my355" ]; then
 		wpa_cli -i wlan0 scan
 		for _ in $(seq 1 "$DELAY"); do
-			shellui progress "Scanning for networks..." --indeterminate
+			shui progress "Scanning for networks..." --indeterminate
 			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
 		done
 	else
 		for _ in $(seq 1 "$DELAY"); do
-			shellui progress "Scanning for networks..." --indeterminate
+			shui progress "Scanning for networks..." --indeterminate
 			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
 		done
 	fi
 
-	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
+	shui list --disable-auto-sleep --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
 }
 
 saved_networks_screen() {
@@ -352,7 +352,7 @@ saved_networks_screen() {
 		return 1
 	fi
 
-	shellui list --disable-auto-sleep --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
+	shui list --disable-auto-sleep --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
 }
 
 password_screen() {
@@ -366,7 +366,7 @@ password_screen() {
 		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | xargs)"
 	fi
 
-	shellui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/minui-output
+	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/minui-output
 	exit_code=$?
 
 	[ "$exit_code" -eq 2 ] && return 2
@@ -415,13 +415,13 @@ forget_network_loop() {
 		SSID="$(cat /tmp/minui-output)"
 		sed -i "/^$SSID:/d" "$SDCARD_PATH/wifi.txt"
 
-		shellui progress "Updating config..." --indeterminate
+		shui progress "Updating config..." --indeterminate
 		if ! write_config "true"; then
 			show_message_wait "Failed to write wireless config"
 			break
 		fi
 
-		shellui progress "Disconnecting..." --indeterminate
+		shui progress "Disconnecting..." --indeterminate
 		if ! wifi_off; then
 			show_message_wait "Failed to disable wifi"
 			break
@@ -440,7 +440,7 @@ forget_network_loop() {
 
 network_loop() {
 	if ! "$PAK_DIR/bin/wifi-enabled"; then
-		shellui progress "Enabling wifi..." --indeterminate
+		shui progress "Enabling wifi..." --indeterminate
 		if ! "$PAK_DIR/bin/service-on"; then
 			show_message_wait "Failed to enable wifi"
 			return 1
@@ -492,7 +492,7 @@ network_loop() {
 
 cleanup() {
 	rm -f /tmp/stay_awake /tmp/wifi-next-screen
-	shellui shutdown 2>/dev/null || true
+	shui shutdown 2>/dev/null || true
 }
 
 # ============================================================================
@@ -517,8 +517,8 @@ main() {
 	fi
 
 	# Check required tools
-	if ! command -v shellui >/dev/null 2>&1; then
-		echo "shellui not found"
+	if ! command -v shui >/dev/null 2>&1; then
+		echo "shui not found"
 		return 1
 	fi
 
@@ -579,7 +579,7 @@ main() {
 				fi
 			else
 				if "$PAK_DIR/bin/wifi-enabled"; then
-					shellui progress "Disabling wifi..." --indeterminate
+					shui progress "Disabling wifi..." --indeterminate
 					if ! wifi_off; then
 						show_message_wait "Failed to disable wifi"
 						continue
@@ -593,7 +593,7 @@ main() {
 
 			if [ "$selected_option" = "On" ]; then
 				if ! will_start_on_boot; then
-					shellui progress "Enabling start on boot..." --indeterminate
+					shui progress "Enabling start on boot..." --indeterminate
 					if ! enable_start_on_boot; then
 						show_message_wait "Failed to enable start on boot"
 						continue
@@ -601,7 +601,7 @@ main() {
 				fi
 			else
 				if will_start_on_boot; then
-					shellui progress "Disabling start on boot..." --indeterminate
+					shui progress "Disabling start on boot..." --indeterminate
 					if ! disable_start_on_boot; then
 						show_message_wait "Failed to disable start on boot"
 						continue
@@ -617,18 +617,18 @@ main() {
 			next_screen="$(cat /tmp/wifi-next-screen)"
 			[ "$next_screen" = "exit" ] && break
 		elif echo "$selection" | grep -q "^Refresh connection$"; then
-			shellui progress "Disconnecting..." --indeterminate
+			shui progress "Disconnecting..." --indeterminate
 			if ! wifi_off; then
 				show_message_wait "Failed to stop wifi"
 				return 1
 			fi
 
-			shellui progress "Updating config..." --indeterminate
+			shui progress "Updating config..." --indeterminate
 			if ! write_config "true"; then
 				show_message_wait "Failed to write config"
 			fi
 
-			shellui progress "Reconnecting..." --indeterminate
+			shui progress "Reconnecting..." --indeterminate
 			if ! "$PAK_DIR/bin/service-on"; then
 				show_message_wait "Failed to enable wifi"
 				continue

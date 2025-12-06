@@ -1,11 +1,11 @@
-#ifndef SHELLUI_FONTS_H
-#define SHELLUI_FONTS_H
+#ifndef SHUI_FONTS_H
+#define SHUI_FONTS_H
 
 #ifdef PLATFORM
 #include "api.h"
 
 /**
- * Shared fonts for shellui UI modules.
+ * Shared fonts for shui UI modules.
  *
  * These are initialized once by the daemon and shared across
  * ui_message, ui_list, and ui_keyboard modules.
@@ -26,4 +26,4 @@ void fonts_cleanup(void);
 
 #endif // PLATFORM
 
-#endif // SHELLUI_FONTS_H
+#endif // SHUI_FONTS_H

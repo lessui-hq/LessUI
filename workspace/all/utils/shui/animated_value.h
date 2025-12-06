@@ -1,5 +1,5 @@
-#ifndef SHELLUI_ANIMATED_VALUE_H
-#define SHELLUI_ANIMATED_VALUE_H
+#ifndef SHUI_ANIMATED_VALUE_H
+#define SHUI_ANIMATED_VALUE_H
 
 #include <stdbool.h>
 #include <sys/time.h>
@@ -53,4 +53,4 @@ bool animated_value_is_animating(AnimatedValue* v);
  */
 void animated_value_reset(AnimatedValue* v);
 
-#endif // SHELLUI_ANIMATED_VALUE_H
+#endif // SHUI_ANIMATED_VALUE_H

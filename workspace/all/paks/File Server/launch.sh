@@ -25,13 +25,13 @@ NETWORK_SCHEME="http"
 show_message() {
     message="$1"
     echo "$message" 1>&2
-    shellui message "$message" --confirm "OK"
+    shui message "$message" --confirm "OK"
 }
 
 show_progress() {
     message="$1"
     echo "$message" 1>&2
-    shellui progress "$message" --indeterminate
+    shui progress "$message" --indeterminate
 }
 
 disable_start_on_boot() {
@@ -164,7 +164,7 @@ main_screen() {
         fi
     fi
 
-    shellui list --disable-auto-sleep --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
+    shui list --disable-auto-sleep --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
 }
 
 cleanup() {
@@ -173,7 +173,7 @@ cleanup() {
     rm -f "/tmp/${PAK_NAME}-settings.json"
     rm -f "/tmp/${PAK_NAME}-minui-list.json"
     rm -f /tmp/stay_awake
-    shellui shutdown 2>/dev/null || true
+    shui shutdown 2>/dev/null || true
 }
 
 main() {
@@ -185,8 +185,8 @@ main() {
         export PLATFORM="tg5040"
     fi
 
-    if ! command -v shellui >/dev/null 2>&1; then
-        echo "shellui not found"
+    if ! command -v shui >/dev/null 2>&1; then
+        echo "shui not found"
         return 1
     fi
 

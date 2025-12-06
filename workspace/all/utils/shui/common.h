@@ -1,5 +1,5 @@
-#ifndef SHELLUI_COMMON_H
-#define SHELLUI_COMMON_H
+#ifndef SHUI_COMMON_H
+#define SHUI_COMMON_H
 
 #include <stdbool.h>
 
@@ -19,7 +19,7 @@ typedef enum {
 	EXIT_SIGTERM = 143,
 } ExitCode;
 
-// Commands supported by shellui
+// Commands supported by shui
 typedef enum {
 	CMD_NONE = 0,
 	CMD_MESSAGE,
@@ -31,15 +31,15 @@ typedef enum {
 } CommandType;
 
 // IPC paths
-#define SHELLUI_DIR "/tmp/shellui"
-#define SHELLUI_PID_FILE SHELLUI_DIR "/pid"
-#define SHELLUI_READY_FILE SHELLUI_DIR "/ready"
-#define SHELLUI_REQUEST_FILE SHELLUI_DIR "/request"
-#define SHELLUI_RESPONSE_FILE SHELLUI_DIR "/response"
+#define SHUI_DIR "/tmp/shui"
+#define SHUI_PID_FILE SHUI_DIR "/pid"
+#define SHUI_READY_FILE SHUI_DIR "/ready"
+#define SHUI_REQUEST_FILE SHUI_DIR "/request"
+#define SHUI_RESPONSE_FILE SHUI_DIR "/response"
 
 // Timeouts
 #define DAEMON_STARTUP_TIMEOUT_MS 5000
 #define RESPONSE_POLL_INTERVAL_MS 10
 #define RESPONSE_TIMEOUT_MS 300000  // 5 minutes max for user interaction
 
-#endif // SHELLUI_COMMON_H
+#endif // SHUI_COMMON_H

@@ -13,7 +13,7 @@ DEV_PATH=/dev/mmcblk0
 DTB_OFFSET=17954816
 DTB_MAGIC=$(xxd -s "$DTB_OFFSET" -l4 -ps "$DEV_PATH")
 
-shellui progress "Reading device configuration..." --value 0
+shui progress "Reading device configuration..." --value 0
 
 if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 	echo "bad DTB_MAGIC at $DTB_OFFSET"
@@ -22,7 +22,7 @@ if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 
 	if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 		echo "bad DTB_MAGIC at $DTB_OFFSET"
-		shellui message "Unable to find device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		shui message "Unable to find device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
 		echo "unable to find dtb, aborting"
 		exit 1
 	fi
@@ -32,18 +32,18 @@ fi
 SIZE_OFFSET=$((DTB_OFFSET+4))
 DTB_SIZE=$((0x$(xxd -s "$SIZE_OFFSET" -l4 -ps "$DEV_PATH")))
 
-shellui progress "Extracting configuration..." --value 10
+shui progress "Extracting configuration..." --value 10
 
 dd if="$DEV_PATH" of="$DT_NAME.dtb" bs=1 skip="$DTB_OFFSET" count="$DTB_SIZE" 2>/dev/null # extract
 dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null # decompile
 
 if [ ! -f "$DT_NAME.dts" ]; then
-	shellui message "Unable to read device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+	shui message "Unable to read device configuration.\n\nYour device is unchanged." --confirm "Dismiss"
 	echo "unable to decompile dtb, aborting"
 	exit 1
 fi
 
-shellui progress "Analyzing panel settings..." --value 20
+shui progress "Analyzing panel settings..." --value 20
 
 CF= # lcd_dclk_freq
 HT= # lcd_ht
@@ -76,7 +76,7 @@ done < <(grep 'lcd_backlight\|lcd_dclk_freq\|lcd_ht\|lcd_vt' "$DT_NAME.dts")
 echo "    CF HT  VT  (BL)"
 echo "IN  $CF-$HT-$VT ($BL)"
 
-shellui progress "Checking panel compatibility..." --value 30
+shui progress "Checking panel compatibility..." --value 30
 
 # match to known (incorrect) values
 CF_OFFSET=0
@@ -132,10 +132,10 @@ if [ "$BL_OFFSET" -ne 0 ]; then
 	BL=$((BL-BL_OFFSET))
 else
 	if [ "$BL" -ne 50 ]; then
-		shellui message "Panel fix already applied!\n\nNo changes needed." --confirm "Done"
+		shui message "Panel fix already applied!\n\nNo changes needed." --confirm "Done"
 		echo "this panel has (probably) already been patched"
 	else
-		shellui message "Unrecognized panel configuration.\n\nYour device is unchanged." --confirm "Dismiss"
+		shui message "Unrecognized panel configuration.\n\nYour device is unchanged." --confirm "Dismiss"
 		echo "unrecognized panel configuration, aborting"
 	fi
 	exit 0
@@ -143,7 +143,7 @@ fi
 
 echo "OUT $CF-$HT-$VT ($BL)"
 
-shellui progress "Preparing new configuration..." --value 50
+shui progress "Preparing new configuration..." --value 50
 
 # dupe and inject updated values
 MOD_PATH=$DT_NAME-mod.dts
@@ -157,7 +157,7 @@ dtc -I dts -O dtb -o "$DT_NAME-mod.dtb" "$DT_NAME-mod.dts" 2>/dev/null # recompi
 dd if="$DT_NAME.dtb" of="$DT_NAME-mod.dtb" bs=1 skip=4 seek=4 count=4 conv=notrunc 2>/dev/null # inject original size
 fallocate -l "$DTB_SIZE" "$DT_NAME-mod.dtb" # zero fill empty space
 
-shellui progress "Verifying checksum..." --value 70
+shui progress "Verifying checksum..." --value 70
 
 # validate checksum
 A_PATH=$DT_NAME.dtb
@@ -180,22 +180,22 @@ done
 B_SUM=$SUM
 
 if [ "$A_SUM" != "$B_SUM" ]; then
-	shellui message "Checksum verification failed!\n\nYour device is unchanged." --confirm "Dismiss"
+	shui message "Checksum verification failed!\n\nYour device is unchanged." --confirm "Dismiss"
 	echo "A $A_SUM"
 	echo "B $B_SUM"
 	echo "mismatched checksum, aborting"
 	exit 1
 fi
 
-shellui progress "Applying panel fix..." --value 85
+shui progress "Applying panel fix..." --value 85
 
 dd if="$DT_NAME-mod.dtb" of="$DEV_PATH" bs=1 seek="$DTB_OFFSET" conv=notrunc 2>/dev/null # inject
 sync
 
-shellui progress "Panel fix applied!" --value 100
+shui progress "Panel fix applied!" --value 100
 sleep 0.5
 
 echo "applied fix successfully!"
 
-shellui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot Now"
+shui message "Panel fix applied!\n\nYour device needs to reboot\nfor changes to take effect." --confirm "Reboot Now"
 reboot

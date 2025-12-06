@@ -1,5 +1,5 @@
-#ifndef SHELLUI_UI_PROGRESS_H
-#define SHELLUI_UI_PROGRESS_H
+#ifndef SHUI_UI_PROGRESS_H
+#define SHUI_UI_PROGRESS_H
 
 #include "common.h"
 #include "animated_value.h"
@@ -54,4 +54,4 @@ bool ui_progress_needs_animation(ProgressState* state);
  */
 void ui_progress_reset(ProgressState* state);
 
-#endif // SHELLUI_UI_PROGRESS_H
+#endif // SHUI_UI_PROGRESS_H

@@ -11,26 +11,26 @@ case "$PLATFORM" in
 	miyoomini)
 		# Check for custom logo
 		if [ ! -f ./logo.jpg ]; then
-			shellui message "No custom logo found.\n\nPlace logo.jpg in the pak folder\nto use your own boot logo." --confirm "Use Default"
+			shui message "No custom logo found.\n\nPlace logo.jpg in the pak folder\nto use your own boot logo." --confirm "Use Default"
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
 
 		{
-			shellui progress "Checking firmware..." --value 0
+			shui progress "Checking firmware..." --value 0
 
 			SUPPORTED_VERSION="202304280000"
 			if [ "$MIYOO_VERSION" -gt "$SUPPORTED_VERSION" ]; then
 				echo "Unknown firmware version. Aborted."
-				shellui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
 				exit 1
 			fi
 
-			shellui progress "Reading current logo..." --value 20
+			shui progress "Reading current logo..." --value 20
 			./logoread.elf
 
 			if [ -f ./logo.jpg ]; then
@@ -39,33 +39,33 @@ case "$PLATFORM" in
 				cp "$SYSTEM_PATH/dat/image1.jpg" ./
 			fi
 
-			shellui progress "Preparing new logo..." --value 40
+			shui progress "Preparing new logo..." --value 40
 
 			if ! ./logomake.elf; then
 				echo "Preparing bootlogo failed. Aborted."
-				shellui message "Failed to prepare boot logo.\n\nYour device is unchanged." --confirm "Dismiss"
+				shui message "Failed to prepare boot logo.\n\nYour device is unchanged." --confirm "Dismiss"
 				exit 1
 			fi
 
-			shellui progress "Flashing to device..." --value 70
+			shui progress "Flashing to device..." --value 70
 
 			if ! ./logowrite.elf; then
 				echo "Flashing bootlogo failed. Aborted."
-				shellui message "Failed to flash boot logo.\n\nCheck logs for details." --confirm "Dismiss"
+				shui message "Failed to flash boot logo.\n\nCheck logs for details." --confirm "Dismiss"
 				exit 1
 			fi
 
-			shellui progress "Cleaning up..." --value 90
+			shui progress "Cleaning up..." --value 90
 
 			rm -f image1.jpg image2.jpg image3.jpg logo.img
 
-			shellui progress "Complete!" --value 100
+			shui progress "Complete!" --value 100
 			sleep 0.5
 
 			echo "Done."
 		} > ./log.txt 2>&1
 
-		shellui message "Boot logo flashed!" --confirm "Done"
+		shui message "Boot logo flashed!" --confirm "Done"
 
 		# Self-destruct (prevent re-running)
 		mv "$DIR" "$DIR.disabled"
@@ -79,26 +79,26 @@ case "$PLATFORM" in
 		fi
 
 		if [ ! -f $LOGO_PATH ]; then
-			shellui message "No logo.bmp available.\n\nPlace logo.bmp in the pak folder." --confirm "Dismiss"
+			shui message "No logo.bmp available.\n\nPlace logo.bmp in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
 
 		{
-			shellui progress "Flashing boot logo..." --indeterminate
+			shui progress "Flashing boot logo..." --indeterminate
 			dd if=$LOGO_PATH of=/dev/by-name/bootlogo bs=65536
 			echo "Done."
 		} > ./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			shellui message "Boot logo flashed!" --confirm "Done"
+			shui message "Boot logo flashed!" --confirm "Done"
 		else
-			shellui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
 		fi
 
 		# Self-destruct
@@ -110,12 +110,12 @@ case "$PLATFORM" in
 		LOGO_PATH=$DIR/$LOGO_NAME
 
 		if [ ! -f $LOGO_PATH ]; then
-			shellui message "Missing bootlogo.bmp file!\n\nPlace bootlogo.bmp in the pak folder." --confirm "Dismiss"
+			shui message "Missing bootlogo.bmp file!\n\nPlace bootlogo.bmp in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -128,13 +128,13 @@ case "$PLATFORM" in
 		OFFSET_PATH="res/offset-$VERSION"
 
 		if [ ! -f "$OFFSET_PATH" ]; then
-			shellui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
+			shui message "Unsupported firmware version.\n\nYour device is unchanged." --confirm "Dismiss"
 			exit 1
 		fi
 
 		OFFSET=$(cat "$OFFSET_PATH")
 
-		shellui progress "Compressing logo..." --value 20
+		shui progress "Compressing logo..." --value 20
 
 		gzip -k "$LOGO_PATH"
 		LOGO_PATH=$LOGO_PATH.gz
@@ -142,12 +142,12 @@ case "$PLATFORM" in
 
 		MAX_SIZE=62234
 		if [ "$LOGO_SIZE" -gt "$MAX_SIZE" ]; then
-			shellui message "Logo image too complex.\n\nSimplify the image and try again." --confirm "Dismiss"
+			shui message "Logo image too complex.\n\nSimplify the image and try again." --confirm "Dismiss"
 			rm -f "$LOGO_PATH"
 			exit 1
 		fi
 
-		shellui progress "Preparing firmware..." --value 50
+		shui progress "Preparing firmware..." --value 50
 
 		# Workaround for missing conv=notrunc support
 		OFFSET_PART=$((OFFSET+LOGO_SIZE))
@@ -155,16 +155,16 @@ case "$PLATFORM" in
 		dd if=$LOGO_PATH of=boot0 bs=1 seek=$OFFSET 2>/dev/null
 		dd if=boot0-suffix of=boot0 bs=1 seek=$OFFSET_PART 2>/dev/null
 
-		shellui progress "Flashing to device..." --value 80
+		shui progress "Flashing to device..." --value 80
 
 		mtd write "$DIR/boot0" boot
 
-		shellui progress "Complete!" --value 100
+		shui progress "Complete!" --value 100
 		sleep 0.5
 
 		rm -f $LOGO_PATH boot0 boot0-suffix
 
-		shellui message "Boot logo flashed!" --confirm "Done"
+		shui message "Boot logo flashed!" --confirm "Done"
 
 		# Self-destruct
 		mv "$DIR" "$DIR.disabled"
@@ -172,7 +172,7 @@ case "$PLATFORM" in
 
 	my355)
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis modifies device firmware\nand will reboot when done." \
+		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware\nand will reboot when done." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
@@ -182,32 +182,32 @@ case "$PLATFORM" in
 		APPLY_PID=$!
 
 		# Show progress messages based on timing
-		shellui progress "Preparing environment..." --value 10
+		shui progress "Preparing environment..." --value 10
 		sleep 2
 		if ps | grep -q $APPLY_PID; then
-			shellui progress "Extracting boot image..." --value 30
+			shui progress "Extracting boot image..." --value 30
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			shellui progress "Unpacking resources..." --value 50
+			shui progress "Unpacking resources..." --value 50
 		fi
 		sleep 4
 		if ps | grep -q $APPLY_PID; then
-			shellui progress "Replacing logo..." --value 65
+			shui progress "Replacing logo..." --value 65
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			shellui progress "Repacking boot image..." --value 80
+			shui progress "Repacking boot image..." --value 80
 		fi
 		sleep 3
 		if ps | grep -q $APPLY_PID; then
-			shellui progress "Flashing to device..." --value 95
+			shui progress "Flashing to device..." --value 95
 		fi
 		sleep 5
 
 		wait $APPLY_PID
 
-		shellui progress "Complete!" --value 100
+		shui progress "Complete!" --value 100
 		sleep 0.5
 
 		# Self-destruct
@@ -223,33 +223,33 @@ case "$PLATFORM" in
 		fi
 
 		if [ ! -f "$LOGO_PATH" ]; then
-			shellui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
+		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
 
 		{
-			shellui progress "Mounting boot partition..." --value 20
+			shui progress "Mounting boot partition..." --value 20
 
 			BOOT_PATH=/mnt/boot/
 			mkdir -p "$BOOT_PATH"
 			mount -t vfat /dev/mmcblk0p1 "$BOOT_PATH"
 
-			shellui progress "Copying boot logo..." --value 60
+			shui progress "Copying boot logo..." --value 60
 
 			cp "$LOGO_PATH" "$BOOT_PATH/bootlogo.bmp"
 			sync
 
-			shellui progress "Unmounting..." --value 90
+			shui progress "Unmounting..." --value 90
 
 			umount "$BOOT_PATH"
 
-			shellui progress "Complete!" --value 100
+			shui progress "Complete!" --value 100
 			sleep 0.5
 
 			echo "Done."
@@ -259,10 +259,10 @@ case "$PLATFORM" in
 			# Self-destruct before reboot
 			mv "$DIR" "$DIR.disabled"
 			rm -f /tmp/minui_exec
-			shellui message "Boot logo flashed!" --confirm "Reboot Now"
+			shui message "Boot logo flashed!" --confirm "Reboot Now"
 			reboot
 		else
-			shellui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
 		fi
 		;;
 
@@ -271,37 +271,37 @@ case "$PLATFORM" in
 		BOOT_PATH=/mnt/boot
 
 		if [ ! -f bootlogo.bmp ]; then
-			shellui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No bootlogo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
+		if ! shui message "Flash boot logo to device?\n\nThis will copy the logo and reboot." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
 
-		shellui progress "Mounting boot partition..." --value 20
+		shui progress "Mounting boot partition..." --value 20
 
 		mkdir -p $BOOT_PATH
 		mount -t vfat $BOOT_DEV $BOOT_PATH
 
-		shellui progress "Copying boot logo..." --value 60
+		shui progress "Copying boot logo..." --value 60
 
 		cp bootlogo.bmp $BOOT_PATH
 
-		shellui progress "Unmounting..." --value 90
+		shui progress "Unmounting..." --value 90
 
 		umount $BOOT_PATH
 		rm -rf $BOOT_PATH
 
-		shellui progress "Complete!" --value 100
+		shui progress "Complete!" --value 100
 		sleep 0.5
 
 		# Self-destruct before reboot
 		mv "$DIR" "$DIR.disabled"
 
-		shellui message "Boot logo flashed!" --confirm "Reboot Now"
+		shui message "Boot logo flashed!" --confirm "Reboot Now"
 		reboot
 		;;
 
@@ -309,18 +309,18 @@ case "$PLATFORM" in
 		LOGO_PATH=$DIR/logo.bmp
 
 		if [ ! -f $LOGO_PATH ]; then
-			shellui message "No logo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
+			shui message "No logo.bmp file found!\n\nPlace it in the pak folder." --confirm "Dismiss"
 			exit 1
 		fi
 
 		# Confirm before flashing
-		if ! shellui message "Flash boot logo to device?\n\nThis modifies device firmware." \
+		if ! shui message "Flash boot logo to device?\n\nThis modifies device firmware." \
 			--confirm "Flash Logo" --cancel "Cancel"; then
 			exit 0
 		fi
 
 		{
-			shellui progress "Reading logo size..." --value 10
+			shui progress "Reading logo size..." --value 10
 
 			# Read new bitmap size
 			HEX=`dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p`
@@ -331,11 +331,11 @@ case "$PLATFORM" in
 			COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
 			if [ $COUNT -gt 32768 ]; then
 				echo "logo.bmp too large ($COUNT). Aborted."
-				shellui message "Logo file too large.\n\nMaximum size is 32KB." --confirm "Dismiss"
+				shui message "Logo file too large.\n\nMaximum size is 32KB." --confirm "Dismiss"
 				exit 1
 			fi
 
-			shellui progress "Detecting boot partition..." --value 25
+			shui progress "Detecting boot partition..." --value 25
 
 			# Detect boot partition revision
 			OFFSET=4044800 # rev A
@@ -355,13 +355,13 @@ case "$PLATFORM" in
 						echo "Rev C"
 					else
 						echo "Rev unknown. Aborted."
-						shellui message "Unknown boot partition format.\n\nYour device is unchanged." --confirm "Dismiss"
+						shui message "Unknown boot partition format.\n\nYour device is unchanged." --confirm "Dismiss"
 						exit 1
 					fi
 				fi
 			fi
 
-			shellui progress "Creating backup..." --value 50
+			shui progress "Creating backup..." --value 50
 
 			# Create backup
 			DT=`date +'%Y%m%d%H%M%S'`
@@ -374,7 +374,7 @@ case "$PLATFORM" in
 			echo "copying $COUNT bytes from $OFFSET to backup-$DT.bmp"
 			dd if=/dev/block/by-name/boot of=./backup-$DT.bmp bs=1 skip=$OFFSET count=$COUNT
 
-			shellui progress "Flashing new logo..." --value 75
+			shui progress "Flashing new logo..." --value 75
 
 			# Inject new logo
 			echo "injecting $LOGO_PATH"
@@ -382,16 +382,16 @@ case "$PLATFORM" in
 
 			sync
 
-			shellui progress "Complete!" --value 100
+			shui progress "Complete!" --value 100
 			sleep 0.5
 
 			echo "Done."
 		} > ./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			shellui message "Boot logo flashed!\n\nA backup was saved to the pak folder." --confirm "Done"
+			shui message "Boot logo flashed!\n\nA backup was saved to the pak folder." --confirm "Done"
 		else
-			shellui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
+			shui message "Failed to flash boot logo.\n\nCheck log.txt for details." --confirm "Dismiss"
 		fi
 
 		# Self-destruct
@@ -399,7 +399,7 @@ case "$PLATFORM" in
 		;;
 
 	*)
-		shellui message "Boot logo flashing is not\nsupported on $PLATFORM." --confirm "Dismiss"
+		shui message "Boot logo flashing is not\nsupported on $PLATFORM." --confirm "Dismiss"
 		exit 1
 		;;
 esac

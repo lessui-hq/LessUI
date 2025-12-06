@@ -1,5 +1,5 @@
-#ifndef SHELLUI_UI_LIST_H
-#define SHELLUI_UI_LIST_H
+#ifndef SHUI_UI_LIST_H
+#define SHUI_UI_LIST_H
 
 #include "common.h"
 #include "sdl.h"
@@ -73,4 +73,4 @@ void ui_list_free_items(ListItem* items, int count);
 // Show a list dialog
 ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts);
 
-#endif // SHELLUI_UI_LIST_H
+#endif // SHUI_UI_LIST_H

@@ -80,8 +80,8 @@ EXEC_PATH="/tmp/minui_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
-	# Pre-start shellui daemon so paks have instant UI
-	shellui start &
+	# Pre-start shui daemon so paks have instant UI
+	shui start &
 	. $HDMI_EXPORT_PATH
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	echo `date +'%F %T'` > "$DATETIME_PATH"
@@ -89,8 +89,8 @@ while [ -f "$EXEC_PATH" ]; do
 	
 	if [ -f $NEXT_PATH ]; then
 		. $HDMI_EXPORT_PATH
-		# Shutdown shellui before games to free memory
-		grep -q "minarch" $NEXT_PATH && shellui shutdown
+		# Shutdown shui before games to free memory
+		grep -q "minarch" $NEXT_PATH && shui shutdown
 		. $NEXT_PATH
 		rm -f $NEXT_PATH
 		echo `date +'%F %T'` > "$DATETIME_PATH"

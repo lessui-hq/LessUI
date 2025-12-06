@@ -9,9 +9,9 @@ cd "$PAK_DIR" || exit 1
 if pidof adbd >/dev/null 2>&1; then
 	IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 	if [ -n "$IP" ]; then
-		shellui message "ADB is already running.\n\nConnect via:\nadb connect $IP:5555" --confirm "Done"
+		shui message "ADB is already running.\n\nConnect via:\nadb connect $IP:5555" --confirm "Done"
 	else
-		shellui message "ADB is already running.\n\nGet IP from WiFi settings,\nthen: adb connect <ip>:5555" --confirm "Done"
+		shui message "ADB is already running.\n\nGet IP from WiFi settings,\nthen: adb connect <ip>:5555" --confirm "Done"
 	fi
 	exit 0
 fi
@@ -20,12 +20,12 @@ fi
 case "$PLATFORM" in
 	miyoomini)
 		# Confirm before enabling
-		if ! shellui message "Enable ADB debugging?\n\nThis will also enable WiFi\nif not already connected." \
+		if ! shui message "Enable ADB debugging?\n\nThis will also enable WiFi\nif not already connected." \
 			--confirm "Enable ADB" --cancel "Cancel"; then
 			exit 0
 		fi
 
-		shellui progress "Enabling WiFi..." --indeterminate
+		shui progress "Enabling WiFi..." --indeterminate
 
 		{
 			# Load the WiFi driver from the SD card
@@ -63,16 +63,16 @@ case "$PLATFORM" in
 		if pidof adbd >/dev/null 2>&1; then
 			IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 			if [ -n "$IP" ]; then
-				shellui message "ADB enabled!\n\nConnect via:\nadb connect $IP:5555" --confirm "Done"
+				shui message "ADB enabled!\n\nConnect via:\nadb connect $IP:5555" --confirm "Done"
 			else
-				shellui message "ADB enabled!\n\nGet IP from WiFi settings,\nthen: adb connect <ip>:5555" --confirm "Done"
+				shui message "ADB enabled!\n\nGet IP from WiFi settings,\nthen: adb connect <ip>:5555" --confirm "Done"
 			fi
 		else
-			shellui message "Failed to start ADB.\n\nCheck logs for details." --confirm "Dismiss"
+			shui message "Failed to start ADB.\n\nCheck logs for details." --confirm "Dismiss"
 		fi
 		;;
 	*)
-		shellui message "ADB is not supported on $PLATFORM." --confirm "Dismiss"
+		shui message "ADB is not supported on $PLATFORM." --confirm "Dismiss"
 		exit 1
 		;;
 esac
