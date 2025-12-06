@@ -1,5 +1,4 @@
 #include "ui_list.h"
-#include "fonts.h"
 #include "utils.h"
 #include "api.h"
 #include "defines.h"
@@ -8,10 +7,8 @@
 #include <string.h>
 #include <ctype.h>
 
-// UI constants
-#define VISIBLE_ITEMS 8
-#define ITEM_HEIGHT_DP 28
-#define TITLE_HEIGHT_DP 32
+// Match minarch menu padding
+#define OPTION_PADDING 8
 
 // Helper to parse features object from JSON
 static void parse_item_features(JSON_Object* features_obj, ListItemFeature* features) {
@@ -282,7 +279,7 @@ static char* generate_state_json(const ListOptions* opts, int selected) {
 ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 	ListResult result = {EXIT_ERROR, -1, NULL, NULL};
 	if (!screen || !opts || opts->item_count == 0) return result;
-	if (!g_font_large) return result;
+	if (!font.medium) return result;
 
 	// Find first selectable item
 	int selected = opts->initial_index;
@@ -300,9 +297,9 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 		}
 	}
 
-	// Calculate visible range
+	// Calculate visible range using dynamic UI layout
 	int first_visible = 0;
-	int visible_count = VISIBLE_ITEMS;
+	int visible_count = ui.row_count;
 	if (opts->title) visible_count--;  // Title takes one row
 
 	int redraw = 1;
@@ -395,79 +392,88 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 		if (redraw) {
 			GFX_clear(screen);
 
-			int y = DP(8);
+			int y = DP(ui.edge_padding);
 
-			// Title
-			if (opts->title && g_font_small) {
-				SDL_Surface* title_text = TTF_RenderUTF8_Blended(g_font_small, opts->title, COLOR_WHITE);
+			// Title (using font.medium like minarch)
+			if (opts->title) {
+				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);
 				if (title_text) {
-					int title_x = DP(16);
+					int title_x = DP(ui.edge_padding);
 					// Handle title alignment
 					if (opts->title_alignment) {
 						if (strcmp(opts->title_alignment, "center") == 0) {
 							title_x = (screen->w - title_text->w) / 2;
 						} else if (strcmp(opts->title_alignment, "right") == 0) {
-							title_x = screen->w - title_text->w - DP(16);
+							title_x = screen->w - title_text->w - DP(ui.edge_padding);
 						}
 					}
-					SDL_Rect pos = {title_x, y, title_text->w, title_text->h};
+					SDL_Rect pos = {title_x, y + DP(ui.option_baseline), title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
 				}
-				y += DP(TITLE_HEIGHT_DP);
+				y += DP(ui.pill_height);
 			}
 
-			// List items
-			int item_height = DP(ITEM_HEIGHT_DP);
+			// List items (matching minarch menu style)
+			int item_height = DP(ui.option_size);
+			int row_width = screen->w - DP(ui.edge_padding * 2);
+
 			for (int i = first_visible; i < opts->item_count && i < first_visible + visible_count; i++) {
 				ListItem* item = &opts->items[i];
+				int ox = DP(ui.edge_padding);
 
-				// Highlight selected
-				if (i == selected && is_selectable(item)) {
-					SDL_Rect pill = {DP(8), y, screen->w - DP(16), item_height};
-					GFX_blitPill(ASSET_WHITE_PILL, screen, &pill);
-				}
+				// Determine text colors
+				SDL_Color label_color = COLOR_WHITE;
+				SDL_Color value_color = COLOR_WHITE;
 
-				// Determine text color
-				SDL_Color color = COLOR_WHITE;
-				if (i == selected && is_selectable(item)) {
-					color = COLOR_BLACK;
-				} else if (item->features.disabled || item->features.unselectable) {
-					color = COLOR_GRAY;
+				if (item->features.disabled || item->features.unselectable) {
+					label_color = COLOR_GRAY;
+					value_color = COLOR_GRAY;
 				} else if (item->features.is_header) {
-					color = COLOR_GRAY;
+					label_color = COLOR_GRAY;
 				}
 
-				// Render item name
-				int text_x = DP(16);
-				if (item->name && g_font_large) {
-					SDL_Surface* text = TTF_RenderUTF8_Blended(g_font_large, item->name, color);
+				// Calculate label width for pill sizing
+				int label_w = row_width;
+				if (item->has_options && item->option_count > 0) {
+					int lw = 0;
+					TTF_SizeUTF8(font.medium, item->name, &lw, NULL);
+					label_w = lw + DP(OPTION_PADDING * 2);
+				}
+
+				// Draw pills for selected item
+				if (i == selected && is_selectable(item)) {
+					if (item->has_options && item->option_count > 0) {
+						// Gray pill for full row (shows value on gray background)
+						GFX_blitPill(ASSET_OPTION, screen,
+						             &(SDL_Rect){ox, y, row_width, item_height});
+					}
+					// White pill for label
+					GFX_blitPill(ASSET_OPTION_WHITE, screen,
+					             &(SDL_Rect){ox, y, label_w, item_height});
+					label_color = COLOR_BLACK;
+				}
+
+				// Render item name using font.medium (like minarch)
+				if (item->name) {
+					SDL_Surface* text = TTF_RenderUTF8_Blended(font.medium, item->name, label_color);
 					if (text) {
-						int text_y = y + (item_height - text->h) / 2;
-						SDL_Rect pos = {text_x, text_y, text->w, text->h};
-						SDL_BlitSurface(text, NULL, screen, &pos);
+						int text_x = ox + DP(OPTION_PADDING);
+						int text_y = y + DP(ui.option_baseline);
+						SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){text_x, text_y, text->w, text->h});
 						SDL_FreeSurface(text);
 					}
 				}
 
-				// Render option value on the right side
+				// Render option value on the right side using font.small (like minarch)
 				if (item->has_options && item->option_count > 0) {
 					const char* opt_str = item->options[item->selected];
-					if (opt_str && g_font_large) {
-						// Build display string with arrows if selected
-						char display[256];
-						if (i == selected && item->option_count > 1) {
-							snprintf(display, sizeof(display), "< %s >", opt_str);
-						} else {
-							snprintf(display, sizeof(display), "%s", opt_str);
-						}
-
-						SDL_Surface* opt_text = TTF_RenderUTF8_Blended(g_font_large, display, color);
+					if (opt_str) {
+						SDL_Surface* opt_text = TTF_RenderUTF8_Blended(font.small, opt_str, value_color);
 						if (opt_text) {
-							int opt_x = screen->w - opt_text->w - DP(16);
-							int opt_y = y + (item_height - opt_text->h) / 2;
-							SDL_Rect pos = {opt_x, opt_y, opt_text->w, opt_text->h};
-							SDL_BlitSurface(opt_text, NULL, screen, &pos);
+							int opt_x = ox + row_width - opt_text->w - DP(OPTION_PADDING);
+							int opt_y = y + DP(ui.option_value_baseline);
+							SDL_BlitSurface(opt_text, NULL, screen, &(SDL_Rect){opt_x, opt_y, opt_text->w, opt_text->h});
 							SDL_FreeSurface(opt_text);
 						}
 					}
@@ -478,12 +484,13 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 
 			// Scroll indicators
 			if (first_visible > 0) {
-				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
-					&(SDL_Rect){screen->w - DP(32), DP(opts->title ? TITLE_HEIGHT_DP + 8 : 8), 0, 0});
+				int scroll_y = DP(opts->title ? ui.edge_padding + ui.pill_height : ui.edge_padding);
+				GFX_blitText(font.small, "...", 0, COLOR_GRAY, screen,
+					&(SDL_Rect){screen->w - DP(ui.edge_padding * 2), scroll_y, 0, 0});
 			}
 			if (first_visible + visible_count < opts->item_count) {
-				GFX_blitText(g_font_small, "...", 0, COLOR_GRAY, screen,
-					&(SDL_Rect){screen->w - DP(32), screen->h - DP(48), 0, 0});
+				GFX_blitText(font.small, "...", 0, COLOR_GRAY, screen,
+					&(SDL_Rect){screen->w - DP(ui.edge_padding * 2), screen->h - DP(ui.pill_height + ui.edge_padding), 0, 0});
 			}
 
 			// Button hints

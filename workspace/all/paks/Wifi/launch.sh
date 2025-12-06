@@ -19,6 +19,9 @@ export HOME="$USERDATA_PATH/$PAK_NAME"
 export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
 
+# Show loading message immediately (before function definitions are even parsed)
+shellui message "Loading..."
+
 # ============================================================================
 # Utility Functions
 # ============================================================================

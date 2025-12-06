@@ -139,12 +139,22 @@ shellui keyboard --title "WiFi SSID" --initial "MyNetwork"
 - A: Select key
 - B: Backspace
 - Y: Cancel (returns initial value)
-- Select: Cycle layouts (lowercase → uppercase → symbols)
+- Select: Cycle through all layouts
 
-**Layouts:**
-- Lowercase: `a-z`, `0-9`
-- Uppercase: `A-Z`, `!@#$%^&*()`
-- Symbols: `` ~`-_=+[]{}\|;:'",.<>/? ``
+**Layouts (iPhone-style):**
+- **Lowercase**: `a-z` with `aA` key to toggle case
+- **Uppercase**: `A-Z` with `Aa` key to toggle case
+- **Numbers/Symbols**: `0-9`, `-/:;()$&@"` and common punctuation (access via `123` key)
+- **Additional Symbols**: `[]{}#%^*+=_\|~<>` (access via `#+=` key)
+
+**On-screen keys:**
+- `aA`/`Aa`: Toggle between lowercase and uppercase
+- `DEL`: Backspace (same as B button)
+- `123`: Switch to numbers/symbols layout
+- `ABC`: Switch back to letters
+- `#+=`: Switch to additional symbols
+- `SPACE`: Insert space
+- `OK`: Confirm and return text
 
 **Output:** Entered text written to stdout.
 
