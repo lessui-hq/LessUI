@@ -25,19 +25,16 @@ export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
 
 show_message() {
 	message="$1"
-	seconds="${2:-forever}"
-
-	killall minui-presenter >/dev/null 2>&1 || true
 	echo "$message"
+	# Fire-and-forget: shui returns immediately for messages without buttons
+	shui message "$message"
+}
 
-	# miyoomini doesn't support presenter well
-	[ "$PLATFORM" = "miyoomini" ] && return 0
-
-	if [ "$seconds" = "forever" ]; then
-		minui-presenter --message "$message" --timeout -1 &
-	else
-		minui-presenter --message "$message" --timeout "$seconds"
-	fi
+show_message_wait() {
+	message="$1"
+	echo "$message"
+	# Wait for user to acknowledge
+	shui message "$message" --confirm "OK"
 }
 
 get_ssid_and_ip() {
@@ -210,7 +207,7 @@ write_config() {
 			cp "$PAK_DIR/res/wpa_supplicant.conf" /etc/wifi/wpa_supplicant.conf
 			;;
 		*)
-			show_message "$PLATFORM is not a supported platform" 2
+			show_message_wait "$PLATFORM is not a supported platform"
 			return 1
 			;;
 	esac
@@ -232,11 +229,12 @@ wifi_on() {
 	fi
 
 	if ! has_credentials; then
-		show_message "No credentials found in wifi.txt" 2
+		show_message_wait "No credentials found in wifi.txt"
 		return 0
 	fi
 
-	# Wait for connection
+	# Wait for connection (up to 30 seconds)
+	shui progress "Connecting..." --indeterminate
 	for _ in $(seq 1 30); do
 		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
@@ -307,8 +305,7 @@ main_screen() {
 	sed -i "s/NETWORK_SSID/$ssid/" "$minui_list_file"
 	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$minui_list_file"
 
-	killall minui-presenter >/dev/null 2>&1 || true
-	minui-list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --cancel-text "EXIT" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
+	shui list --item-key settings --file "$minui_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
 }
 
 networks_screen() {
@@ -316,26 +313,26 @@ networks_screen() {
 	rm -f "$minui_list_file" "/tmp/minui-output"
 	touch "$minui_list_file"
 
-	show_message "Scanning for networks" forever
 	DELAY=30
 
 	if [ "$PLATFORM" = "my355" ]; then
 		wpa_cli -i wlan0 scan
 		for _ in $(seq 1 "$DELAY"); do
+			shui progress "Scanning for networks..." --indeterminate
 			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
 		done
 	else
 		for _ in $(seq 1 "$DELAY"); do
+			shui progress "Scanning for networks..." --indeterminate
 			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
 		done
 	fi
 
-	killall minui-presenter >/dev/null 2>&1 || true
-	minui-list --disable-auto-sleep --file "$minui_list_file" --format text --confirm-text "CONNECT" --title "Wifi Networks" --write-location /tmp/minui-output
+	shui list --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
 }
 
 saved_networks_screen() {
@@ -344,19 +341,18 @@ saved_networks_screen() {
 	touch "$minui_list_file"
 
 	if [ ! -f "$SDCARD_PATH/wifi.txt" ]; then
-		show_message "No wifi.txt file found" 2
+		show_message_wait "No wifi.txt file found"
 		return 1
 	fi
 
 	sed '/^#/d; /^$/d; s/:.*//' "$SDCARD_PATH/wifi.txt" >"$minui_list_file"
 
 	if [ ! -s "$minui_list_file" ]; then
-		show_message "No saved networks found" 2
+		show_message_wait "No saved networks found"
 		return 1
 	fi
 
-	killall minui-presenter >/dev/null 2>&1 || true
-	minui-list --disable-auto-sleep --file "$minui_list_file" --format text --title "Wifi Networks" --confirm-text "FORGET" --write-location /tmp/minui-output
+	shui list --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
 }
 
 password_screen() {
@@ -370,15 +366,14 @@ password_screen() {
 		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | xargs)"
 	fi
 
-	killall minui-presenter >/dev/null 2>&1 || true
-	minui-keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/minui-output
+	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/minui-output
 	exit_code=$?
 
 	[ "$exit_code" -eq 2 ] && return 2
 	[ "$exit_code" -eq 3 ] && return 3
 
 	if [ "$exit_code" -ne 0 ]; then
-		show_message "Error entering password" 2
+		show_message_wait "Error entering password"
 		return 1
 	fi
 
@@ -418,36 +413,38 @@ forget_network_loop() {
 		fi
 
 		SSID="$(cat /tmp/minui-output)"
-		sed -i "/^$SSID:/d" "$SDCARD_PATH/wifi.txt"
+		# Use grep -Fv for literal matching to avoid SSID injection attacks
+		grep -Fv "$SSID:" "$SDCARD_PATH/wifi.txt" > /tmp/wifi.txt.tmp && \
+			mv /tmp/wifi.txt.tmp "$SDCARD_PATH/wifi.txt"
 
+		shui progress "Updating config..." --indeterminate
 		if ! write_config "true"; then
-			show_message "Failed to write wireless config" 2
+			show_message_wait "Failed to write wireless config"
 			break
 		fi
 
-		show_message "Refreshing connection" forever
-
+		shui progress "Disconnecting..." --indeterminate
 		if ! wifi_off; then
-			show_message "Failed to disable wifi" 2
+			show_message_wait "Failed to disable wifi"
 			break
 		fi
 
+		# wifi_on shows its own connection progress
 		if ! wifi_on; then
-			show_message "Failed to enable wifi" 2
+			show_message_wait "Failed to enable wifi"
 			break
 		fi
 		break
 	done
 
-	killall minui-presenter >/dev/null 2>&1 || true
 	echo "$next_screen" >/tmp/wifi-next-screen
 }
 
 network_loop() {
 	if ! "$PAK_DIR/bin/wifi-enabled"; then
-		show_message "Enabling wifi" forever
+		shui progress "Enabling wifi..." --indeterminate
 		if ! "$PAK_DIR/bin/service-on"; then
-			show_message "Failed to enable wifi" 2
+			show_message_wait "Failed to enable wifi"
 			return 1
 		fi
 	fi
@@ -463,7 +460,7 @@ network_loop() {
 			break
 		fi
 		if [ "$exit_code" -ne 0 ]; then
-			show_message "Error selecting a network" 2
+			show_message_wait "Error selecting a network"
 			next_screen="main"
 			break
 		fi
@@ -479,16 +476,15 @@ network_loop() {
 		fi
 		[ "$exit_code" -ne 0 ] && continue
 
-		show_message "Connecting to $SSID" forever
+		# wifi_on shows connection progress
 		if ! wifi_on; then
-			show_message "Failed to start wifi" 2
+			show_message_wait "Failed to start wifi"
 			break
 		fi
 
 		break
 	done
 
-	killall minui-presenter >/dev/null 2>&1 || true
 	echo "$next_screen" >/tmp/wifi-next-screen
 }
 
@@ -498,7 +494,7 @@ network_loop() {
 
 cleanup() {
 	rm -f /tmp/stay_awake /tmp/wifi-next-screen
-	killall minui-presenter >/dev/null 2>&1 || true
+	shui stop 2>/dev/null || true
 }
 
 # ============================================================================
@@ -523,18 +519,8 @@ main() {
 	fi
 
 	# Check required tools
-	if ! command -v minui-keyboard >/dev/null 2>&1; then
-		show_message "minui-keyboard not found" 2
-		return 1
-	fi
-
-	if ! command -v minui-list >/dev/null 2>&1; then
-		show_message "minui-list not found" 2
-		return 1
-	fi
-
-	if ! command -v minui-presenter >/dev/null 2>&1; then
-		show_message "minui-presenter not found" 2
+	if ! command -v shui >/dev/null 2>&1; then
+		echo "shui not found"
 		return 1
 	fi
 
@@ -542,7 +528,7 @@ main() {
 	case "$PLATFORM" in
 		miyoomini|my282|my355|tg5040|rg35xxplus) ;;
 		*)
-			show_message "$PLATFORM is not a supported platform" 2
+			show_message_wait "$PLATFORM is not a supported platform"
 			return 1
 			;;
 	esac
@@ -550,7 +536,7 @@ main() {
 	# Platform-specific checks
 	if [ "$PLATFORM" = "miyoomini" ]; then
 		if [ ! -f /customer/app/axp_test ]; then
-			show_message "Wifi not supported on non-Plus version" 2
+			show_message_wait "Wifi not supported on non-Plus version"
 			return 1
 		fi
 
@@ -563,7 +549,7 @@ main() {
 	if [ "$PLATFORM" = "rg35xxplus" ]; then
 		RGXX_MODEL="$(strings /mnt/vendor/bin/dmenu.bin 2>/dev/null | grep ^RG)"
 		if [ "$RGXX_MODEL" = "RG28xx" ]; then
-			show_message "Wifi not supported on RG28XX" 2
+			show_message_wait "Wifi not supported on RG28XX"
 			return 1
 		fi
 	fi
@@ -585,19 +571,19 @@ main() {
 			selected_option_index="$(echo "$output" | jq -r ".settings[0].selected")"
 			selected_option="$(echo "$output" | jq -r ".settings[0].options[$selected_option_index]")"
 
-			if [ "$selected_option" = "true" ]; then
+			if [ "$selected_option" = "On" ]; then
 				if ! "$PAK_DIR/bin/wifi-enabled"; then
-					show_message "Enabling wifi" forever
+					# wifi_on shows connection progress
 					if ! wifi_on; then
-						show_message "Failed to enable wifi" 2
+						show_message_wait "Failed to enable wifi"
 						continue
 					fi
 				fi
 			else
 				if "$PAK_DIR/bin/wifi-enabled"; then
-					show_message "Disabling wifi" forever
+					shui progress "Disabling wifi..." --indeterminate
 					if ! wifi_off; then
-						show_message "Failed to disable wifi" 2
+						show_message_wait "Failed to disable wifi"
 						continue
 					fi
 				fi
@@ -607,19 +593,19 @@ main() {
 			selected_option_index="$(echo "$output" | jq -r ".settings[1].selected")"
 			selected_option="$(echo "$output" | jq -r ".settings[1].options[$selected_option_index]")"
 
-			if [ "$selected_option" = "true" ]; then
+			if [ "$selected_option" = "On" ]; then
 				if ! will_start_on_boot; then
-					show_message "Enabling start on boot" forever
+					shui progress "Enabling start on boot..." --indeterminate
 					if ! enable_start_on_boot; then
-						show_message "Failed to enable start on boot" 2
+						show_message_wait "Failed to enable start on boot"
 						continue
 					fi
 				fi
 			else
 				if will_start_on_boot; then
-					show_message "Disabling start on boot" forever
+					shui progress "Disabling start on boot..." --indeterminate
 					if ! disable_start_on_boot; then
-						show_message "Failed to disable start on boot" 2
+						show_message_wait "Failed to disable start on boot"
 						continue
 					fi
 				fi
@@ -633,20 +619,20 @@ main() {
 			next_screen="$(cat /tmp/wifi-next-screen)"
 			[ "$next_screen" = "exit" ] && break
 		elif echo "$selection" | grep -q "^Refresh connection$"; then
-			show_message "Disconnecting from wifi" forever
+			shui progress "Disconnecting..." --indeterminate
 			if ! wifi_off; then
-				show_message "Failed to stop wifi" 2
+				show_message_wait "Failed to stop wifi"
 				return 1
 			fi
 
-			show_message "Updating wifi config" forever
+			shui progress "Updating config..." --indeterminate
 			if ! write_config "true"; then
-				show_message "Failed to write config" 2
+				show_message_wait "Failed to write config"
 			fi
 
-			show_message "Refreshing connection" forever
+			shui progress "Reconnecting..." --indeterminate
 			if ! "$PAK_DIR/bin/service-on"; then
-				show_message "Failed to enable wifi" 2
+				show_message_wait "Failed to enable wifi"
 				continue
 			fi
 		fi

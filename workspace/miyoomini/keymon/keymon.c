@@ -460,7 +460,7 @@ int main (int argc, char *argv[]) {
 			break;
 		case BUTTON_SELECT:
 			// Update SELECT bit in button_flag (ignore REPEAT)
-			if ( val != REPEAT ) button_flag = button_flag & (~SELECT) | (val<<SELECT_BIT);
+			if ( val != REPEAT ) button_flag = (button_flag & (~SELECT)) | (val<<SELECT_BIT);
 			// if (val) {
 			// 	static int tick = 0;
 			// 	char cmd[256];
@@ -474,7 +474,7 @@ int main (int argc, char *argv[]) {
 			break;
 		case BUTTON_START:
 			// Update START bit in button_flag (ignore REPEAT)
-			if ( val != REPEAT ) button_flag = button_flag & (~START) | (val<<START_BIT);
+			if ( val != REPEAT ) button_flag = (button_flag & (~START)) | (val<<START_BIT);
 			break;
 		case BUTTON_L1:
 		case BUTTON_L2:

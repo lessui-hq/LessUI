@@ -72,7 +72,7 @@ int main()
 		if (read_ofs + size32 > read_buf + IMGSIZE) { puts("img size overflow"); return -1; }
 		if (size) {
 			memset(read_ofs, 0, size32);
-			if (read(imgfd, read_ofs, size) != size) { puts("failed to read"); return -1; }
+			if (read(imgfd, read_ofs, size) != (ssize_t)size) { puts("failed to read"); return -1; }
 		}
 		close(imgfd);
 		if (size != size32) read_ofs[size] = 0xff;

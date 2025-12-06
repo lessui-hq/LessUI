@@ -209,6 +209,7 @@ int main (int argc, char *argv[]) {
 			up_repeat_at = 0;
 			down_repeat_at = 0;
 		}
+		(void)power_pressed; // Currently unused but tracked for potential future use
 
 		// Handle PLUS button (initial press or repeat after delay)
 		if (up_just_pressed || (up_pressed && now>=up_repeat_at)) {

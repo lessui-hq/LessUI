@@ -5,20 +5,30 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR" .pak)"
 cd "$PAK_DIR" || exit 1
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
-# Bail if already running
+# Check if already running
 if pidof adbd >/dev/null 2>&1; then
-	$PRESENTER --message "ADB is already running" --timeout 3
+	IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
+	if [ -n "$IP" ]; then
+		shui message "ADB is already running." \
+			--subtext "Connect via: adb connect $IP:5555" --confirm "Done"
+	else
+		shui message "ADB is already running." \
+			--subtext "Get IP from WiFi settings, then:\nadb connect <ip>:5555" --confirm "Done"
+	fi
 	exit 0
 fi
 
 # Platform-specific implementation
 case "$PLATFORM" in
 	miyoomini)
-		# Show progress message
-		$PRESENTER --message "Enabling WiFi and ADB...\n\nPlease wait up to 20 seconds." --timeout 20 &
-		PRESENTER_PID=$!
+		# Confirm before enabling
+		if ! shui message "Enable ADB debugging?" \
+			--subtext "This will also enable WiFi\nif not already connected." \
+			--confirm "Enable" --cancel "Cancel"; then
+			exit 0
+		fi
+
+		shui progress "Enabling WiFi..." --indeterminate
 
 		{
 			# Load the WiFi driver from the SD card
@@ -52,23 +62,23 @@ case "$PLATFORM" in
 			echo "Success"
 		} > "$LOGS_PATH/$PAK_NAME.txt" 2>&1
 
-		# Kill progress indicator
-		kill "$PRESENTER_PID" 2>/dev/null
-
 		# Verify adbd started and get IP
 		if pidof adbd >/dev/null 2>&1; then
 			IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
 			if [ -n "$IP" ]; then
-				$PRESENTER --message "ADB enabled!\n\nConnect via:\nadb connect $IP:5555" --timeout 5
+				shui message "ADB enabled!" \
+					--subtext "Connect via: adb connect $IP:5555" --confirm "Done"
 			else
-				$PRESENTER --message "ADB enabled!\n\nGet IP from WiFi menu,\nthen: adb connect <ip>:5555" --timeout 5
+				shui message "ADB enabled!" \
+					--subtext "Get IP from WiFi settings, then:\nadb connect <ip>:5555" --confirm "Done"
 			fi
 		else
-			$PRESENTER --message "Failed to start ADB.\n\nCheck $LOGS_PATH/$PAK_NAME.txt" --timeout 5
+			shui message "Failed to start ADB." \
+				--subtext "Check logs for details." --confirm "Dismiss"
 		fi
 		;;
 	*)
-		$PRESENTER --message "Platform $PLATFORM not supported" --timeout 3
+		shui message "ADB is not supported on $PLATFORM." --confirm "Dismiss"
 		exit 1
 		;;
 esac

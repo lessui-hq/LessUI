@@ -374,6 +374,52 @@ fn_cpu_benchmark() {
         fi
     done
 
+    # Fallback: probe for frequencies by writing values and seeing what sticks
+    if [ -z "$AVAIL_FREQS" ]; then
+        log_info "scaling_available_frequencies not found, probing for valid frequencies..."
+
+        # Get min/max from sysfs
+        MIN_FREQ=""
+        MAX_FREQ=""
+        for path in "$POLICY0_PATH" "$CPU0_PATH"; do
+            [ -z "$MIN_FREQ" ] && [ -f "$path/scaling_min_freq" ] && MIN_FREQ=$(cat "$path/scaling_min_freq" 2>/dev/null)
+            [ -z "$MAX_FREQ" ] && [ -f "$path/scaling_max_freq" ] && MAX_FREQ=$(cat "$path/scaling_max_freq" 2>/dev/null)
+        done
+
+        if [ -n "$MIN_FREQ" ] && [ -n "$MAX_FREQ" ] && [ -n "$FREQ_PATH" ]; then
+            # Switch to userspace governor for probing
+            echo "userspace" > "$GOV_PATH" 2>/dev/null
+            sleep 0.2
+
+            # Probe from min to max in 100MHz steps
+            DISCOVERED_FREQS=""
+            LAST_ACTUAL=""
+            freq=$MIN_FREQ
+            while [ "$freq" -le "$MAX_FREQ" ]; do
+                echo "$freq" > "$FREQ_PATH" 2>/dev/null
+                # Small delay for frequency to settle
+                usleep 50000 2>/dev/null || sleep 0.05
+
+                # Read what frequency was actually set
+                ACTUAL=$(cat "$POLICY0_PATH/scaling_cur_freq" 2>/dev/null || cat "$CPU0_PATH/scaling_cur_freq" 2>/dev/null)
+
+                # Only add if different from last (avoid duplicates)
+                if [ -n "$ACTUAL" ] && [ "$ACTUAL" != "$LAST_ACTUAL" ]; then
+                    DISCOVERED_FREQS="$DISCOVERED_FREQS $ACTUAL"
+                    LAST_ACTUAL="$ACTUAL"
+                fi
+
+                freq=$((freq + 100000))
+            done
+
+            # Sort and dedupe the discovered frequencies
+            if [ -n "$DISCOVERED_FREQS" ]; then
+                AVAIL_FREQS=$(echo "$DISCOVERED_FREQS" | tr ' ' '\n' | sort -n | uniq | tr '\n' ' ')
+                log_info "Discovered frequencies: $AVAIL_FREQS"
+            fi
+        fi
+    fi
+
     if [ -z "$AVAIL_FREQS" ]; then
         log_warn "Cannot run benchmark - no available frequencies found"
         return

@@ -293,15 +293,10 @@ void PLAT_enableBacklight(int enable) {
 /**
  * Performs graceful system shutdown.
  *
- * Shutdown sequence:
- * 1. Remove exec marker and sync filesystem
- * 2. Mute audio
- * 3. Turn off backlight and enable LED
- * 4. Clean up all subsystems (SND, VIB, PWR, GFX)
- * 5. Exit process (shutdown handled by system)
+ * Calls shutdown script directly for consistent behavior regardless of
+ * which process triggers the shutdown (minui, minarch, shui, or paks).
  */
 void PLAT_powerOff(void) {
-	system("rm -f /tmp/minui_exec && sync");
 	sleep(2);
 
 	SetRawVolume(MUTE_VOLUME_RAW);
@@ -312,7 +307,9 @@ void PLAT_powerOff(void) {
 	PWR_quit();
 	GFX_quit();
 
-	exit(0);
+	system("shutdown");
+	while (1)
+		pause();
 }
 
 ///////////////////////////////

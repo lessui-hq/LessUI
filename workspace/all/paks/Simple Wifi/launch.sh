@@ -4,8 +4,6 @@
 
 cd "$(dirname "$0")"
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
 # Read credentials from wifi.txt (line 1 = SSID, line 2 = password)
 WIFI_NAME=""
 WIFI_PASS=""
@@ -32,20 +30,18 @@ STATUS=$(cat "/sys/class/net/wlan0/operstate")
 
 disconnect()
 {
-	echo "disconnect"
+	shui progress "Disconnecting..." --indeterminate
 	wifictl disable
-	$PRESENTER --message "WiFi disconnected" --timeout 2
+	shui message "WiFi disconnected." --confirm "Done"
 	STATUS=down
 }
 
 connect()
 {
-	echo "connect"
+	shui progress "Connecting to WiFi..." --indeterminate
 	wifictl enable &
-	DELAY=30
-	$PRESENTER --message "Connecting to WiFi...\n\nPlease wait up to 30 seconds." --timeout $DELAY &
-	PRESENTER_PID=$!
 
+	DELAY=30
 	for _ in $(seq 1 $DELAY); do
 		STATUS=$(cat "/sys/class/net/wlan0/operstate")
 		if [ "$STATUS" = "up" ]; then
@@ -54,32 +50,41 @@ connect()
 		sleep 1
 	done
 
-	kill "$PRESENTER_PID" 2>/dev/null
-
 	if [ "$STATUS" = "up" ]; then
-		$PRESENTER --message "WiFi connected successfully!" --timeout 2
+		IP=$(ip -4 addr show dev wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1)
+		shui message "WiFi connected!" --subtext "IP: $IP" --confirm "Done"
 	else
-		$PRESENTER --message "WiFi connection failed" --timeout 3
+		shui message "WiFi connection failed." \
+			--subtext "Check credentials in wifi.txt" --confirm "Dismiss"
 	fi
 }
 
 {
 if [ "$WIFI_NAME" != "$CUR_NAME" ] || [ "$WIFI_PASS" != "$CUR_PASS" ]; then
-	echo "change"
-
 	if [ "$STATUS" = "up" ]; then
-		disconnect
+		shui progress "Disconnecting..." --indeterminate
+		wifictl disable
+		STATUS=down
 	fi
 
-	$PRESENTER --message "Updating WiFi credentials..." --timeout 2
+	shui progress "Updating WiFi credentials..." --indeterminate
 	set_setting wifi.ssid "$WIFI_NAME"
 	set_setting wifi.key "$WIFI_PASS"
 fi
 
-echo "toggle"
 if [ "$STATUS" = "up" ]; then
-	disconnect
+	# Already connected, ask what to do
+	if shui message "WiFi is connected." \
+		--subtext "What would you like to do?" \
+		--confirm "Disconnect" --cancel "Keep"; then
+		disconnect
+	fi
 else
-	connect
+	# Not connected, ask to connect
+	if shui message "WiFi is disconnected." \
+		--subtext "Connect to $WIFI_NAME?" \
+		--confirm "Connect" --cancel "Cancel"; then
+		connect
+	fi
 fi
 } > ./log.txt 2>&1

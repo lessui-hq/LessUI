@@ -106,7 +106,7 @@ void getFile(char* path, char* buffer, size_t buffer_size) {
  * @return 1 if strings match, 0 otherwise
  */
 int exactMatch(char* str1, char* str2) {
-	int len1 = strlen(str1);
+	size_t len1 = strlen(str1);
 	if (len1!=strlen(str2)) return 0;
 	return (strncmp(str1,str2,len1)==0);
 }

@@ -1,15 +1,25 @@
 #!/bin/sh
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
 if [ -z "$USERDATA_PATH" ]; then
-	$PRESENTER --message "Error: USERDATA_PATH not set" --timeout 3
+	shui message "Configuration error." \
+		--subtext "USERDATA_PATH not set." --confirm "Dismiss"
 	exit 1
 fi
+
+# Confirm before resetting
+if ! shui message "Reset stick calibration?" \
+	--subtext "You will need to recalibrate\nthe analog stick afterward." \
+	--confirm "Reset" --cancel "Cancel"; then
+	exit 0
+fi
+
+shui progress "Resetting calibration..." --indeterminate
 
 if ! rm -f "$USERDATA_PATH/mstick.bin" 2>/dev/null; then
-	$PRESENTER --message "Error: Failed to reset calibration" --timeout 3
+	shui message "Failed to reset calibration." \
+		--subtext "Check logs for details." --confirm "Dismiss"
 	exit 1
 fi
 
-$PRESENTER --message "Stick calibration reset.\n\nMove stick to recalibrate." --timeout 3
+shui message "Calibration reset!" \
+	--subtext "Move the stick in circles to recalibrate." --confirm "Done"

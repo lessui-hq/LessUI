@@ -2,46 +2,58 @@
 DIR="$(dirname "$0")"
 cd "$DIR"
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
-# must be connected to wifi
+# Must be connected to wifi
 if [ "$(cat /sys/class/net/wlan0/operstate)" != "up" ]; then
-	$PRESENTER --message "WiFi not connected.\n\nPlease connect to WiFi first." --timeout 4
+	shui message "WiFi not connected." \
+		--subtext "Please connect to WiFi first." --confirm "Dismiss"
+	exit 0
+fi
+
+# Confirm before installing
+if ! shui message "Install SSH server?" \
+	--subtext "Downloads packages and reboots when complete.\nLogin: root / root" \
+	--confirm "Install" --cancel "Cancel"; then
 	exit 0
 fi
 
 {
+	shui progress "Updating package list..." --value 10
+
 	# switch language from mandarin to english since we require a reboot anyway
 	locale-gen "en_US.UTF-8"
 	echo "LANG=en_US.UTF-8" > /etc/default/locale
 
+	shui progress "Downloading SSH server..." --value 30
+
 	# install or update ssh server
-	apt -y update && apt -y install --reinstall openssh-server
+	apt -y update
+
+	shui progress "Installing SSH server..." --value 50
+
+	apt -y install --reinstall openssh-server
+
+	shui progress "Configuring SSH..." --value 80
+
 	echo "d /run/sshd 0755 root root" > /etc/tmpfiles.d/sshd.conf
 
 	# enable login root:root
 	echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
 	printf "root\nroot" | passwd root
 
+	shui progress "Complete!" --value 100
+	sleep 0.5
+
 	echo "Success"
-} > ./log.txt 2>&1 &
-INSTALL_PID=$!
-
-# Show installing message while it runs
-$PRESENTER --message "Installing SSH server...\n\nThis may take a few minutes.\nDevice will reboot when done." --timeout 200 &
-PRESENTER_PID=$!
-
-# Wait for installation to complete
-wait "$INSTALL_PID"
-
-# Kill the presenter
-kill "$PRESENTER_PID" 2>/dev/null
+} > ./log.txt 2>&1
 
 if grep -q "Success" ./log.txt; then
-	$PRESENTER --message "SSH enabled successfully!\n\nLogin: root / root\nDevice will reboot now." --timeout 5 &
-	sleep 5
+	# Self-destruct before reboot
 	mv "$DIR" "$DIR.disabled"
+
+	shui message "SSH installed successfully!" \
+		--subtext "Login: root / root\nDevice will reboot to apply changes." --confirm "Reboot"
 	reboot
 else
-	$PRESENTER --message "SSH installation failed.\nCheck log.txt for details." --timeout 5
+	shui message "SSH installation failed." \
+		--subtext "Check log.txt for details." --confirm "Dismiss"
 fi

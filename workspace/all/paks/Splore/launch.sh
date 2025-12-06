@@ -1,7 +1,5 @@
 #!/bin/sh
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
 HOME="$USERDATA_PATH/splore"
 mkdir -p "$HOME"
 
@@ -34,31 +32,32 @@ if [ ! -d ./pico-8 ]; then
 	done
 
 	if [ -n "$PICO8_ZIP" ]; then
-		$PRESENTER --message "Extracting PICO-8..." --timeout 60 &
-		PRESENTER_PID=$!
+		shui progress "Extracting PICO-8..." --indeterminate
 
 		if ! unzip -o "$PICO8_ZIP" -d ./ >> ./log.txt 2>&1; then
-			kill "$PRESENTER_PID" 2>/dev/null
-			$PRESENTER --message "Failed to extract PICO-8.\n\nCheck log.txt for details." --timeout 4
+			shui message "Failed to extract PICO-8." \
+				--subtext "Check log.txt for details." --confirm "Dismiss"
 			exit 1
 		fi
 
 		cp ./sdl_controllers.txt ./pico-8
-		kill "$PRESENTER_PID" 2>/dev/null
 	else
-		$PRESENTER --message "PICO-8 zip file not found!\n\nPlace pico-8*raspi.zip in:\n$DIR" --timeout 4
+		shui message "PICO-8 zip not found!" \
+			--subtext "Place pico-8*raspi.zip\nin the pak folder." --confirm "Dismiss"
 		exit 1
 	fi
 fi
 
 # Verify PICO-8 directory and binary exist
 if [ ! -d ./pico-8 ]; then
-	$PRESENTER --message "PICO-8 directory missing!\n\nExtraction may have failed." --timeout 4
+	shui message "PICO-8 directory missing!" \
+		--subtext "Extraction may have failed." --confirm "Dismiss"
 	exit 1
 fi
 
 if [ ! -f ./pico-8/pico8_64 ]; then
-	$PRESENTER --message "PICO-8 binary not found!\n\nCheck pico-8 directory." --timeout 4
+	shui message "PICO-8 binary not found!" \
+		--subtext "Check pico-8 directory." --confirm "Dismiss"
 	exit 1
 fi
 

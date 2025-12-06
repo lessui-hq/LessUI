@@ -68,10 +68,16 @@ while [ -f "$EXEC_PATH" ]; do
 	reclock
 	echo `date +'%F %T'` > "$DATETIME_PATH"
 	sync
-	
+
 	if [ -f $NEXT_PATH ]; then
 		CMD=`cat $NEXT_PATH`
-		eval $CMD
+		# Start shui in background for tool paks (not minui/minarch)
+		echo "$CMD" | grep -q "/Tools/" && shui start &
+		# Extract pak name for logging (e.g., "Clock" from ".../Clock.pak/launch.sh")
+		PAK_NAME=$(echo "$CMD" | sed -n 's|.*/\([^/]*\)\.pak/.*|\1|p')
+		[ -z "$PAK_NAME" ] && PAK_NAME="pak"
+		eval $CMD > "$LOGS_PATH/${PAK_NAME}.log" 2>&1
+		shui stop 2>/dev/null
 		rm -f $NEXT_PATH
 		reclock
 		echo `date +'%F %T'` > "$DATETIME_PATH"

@@ -36,7 +36,10 @@ endif  # not setup/clean
 
 CC = $(CROSS_COMPILE)gcc
 SOURCE = benchmark.c
-CFLAGS = $(ARCH) -O2 -Wall
+CFLAGS = $(ARCH) -O2
+CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
+          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 LDFLAGS = -lm
 
 PRODUCT = $(BUILD_DIR)/$(PLATFORM)/$(TARGET)$(BINARY_EXT)

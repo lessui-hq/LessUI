@@ -61,11 +61,17 @@ while [ -f "$EXEC_PATH" ]; do
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	echo `date +'%F %T'` > "$DATETIME_PATH"
 	sync
-	
+
 	if [ -f $NEXT_PATH ]; then
 		echo $CPU_SPEED_PERF > $CPU_PATH
 		CMD=`cat $NEXT_PATH`
-		eval $CMD
+		# Start shui in background for tool paks (not minui/minarch)
+		echo "$CMD" | grep -q "/Tools/" && shui start &
+		# Extract pak name for logging (e.g., "Clock" from ".../Clock.pak/launch.sh")
+		PAK_NAME=$(echo "$CMD" | sed -n 's|.*/\([^/]*\)\.pak/.*|\1|p')
+		[ -z "$PAK_NAME" ] && PAK_NAME="pak"
+		eval $CMD > "$LOGS_PATH/${PAK_NAME}.log" 2>&1
+		shui stop 2>/dev/null
 		rm -f $NEXT_PATH
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync

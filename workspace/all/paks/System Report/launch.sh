@@ -31,39 +31,95 @@ export PATH="$PAK_DIR:$PATH"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 REPORT_FILE="$SDCARD_PATH/system_report_${PLATFORM}_${TIMESTAMP}.md"
 
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
-
-show_message() {
-    message="$1"
-    seconds="$2"
-
-    if [ -z "$seconds" ]; then
-        seconds="3"
-    fi
-
-    echo "$message" 1>&2
-    $PRESENTER --message "$message" --timeout "$seconds"
-}
-
 cleanup() {
     rm -f /tmp/stay_awake
-    killall minui-presenter >/dev/null 2>&1 || true
+    shui stop 2>/dev/null || true
 }
 
 run_report() {
     cd "$SDCARD_PATH" || return 1
 
-    show_message "Generating System Report...\n\nIncluding CPU benchmarking\nThis may take a minute." 3
+    # Confirm before generating
+    if ! shui message "Generate system report?" \
+        --subtext "This includes CPU benchmarking\nand may take a minute." \
+        --confirm "Generate" --cancel "Cancel"; then
+        exit 0
+    fi
 
-    # Run the report generator
-    "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1
+    # Run the report generator with progress updates
+    {
+        # Run the report generator in background
+        "$PAK_DIR/bin/generate-report" > "$REPORT_FILE" 2>&1 &
+        REPORT_PID=$!
+
+        # Show progress with step information based on timing estimates
+        # Steps: device tree, cpu scaling, cpu benchmark (slow), gpu, display, audio,
+        #        arch test, sdl libs, system, modules, hardware, pwm, buses, special hw,
+        #        environment, network, dmesg
+
+        shui progress "Generating report..." --value 5 --subtext "Device tree detection"
+        sleep 1
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 10 --subtext "CPU frequency analysis"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 20 --subtext "CPU benchmark (this takes a while)"
+            sleep 8
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 40 --subtext "GPU and display info"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 50 --subtext "Audio subsystem"
+            sleep 1
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 55 --subtext "Architecture detection"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 65 --subtext "System information"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 75 --subtext "Hardware paths"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 85 --subtext "Network and environment"
+            sleep 2
+        fi
+
+        # Wait for completion if still running
+        while kill -0 "$REPORT_PID" 2>/dev/null; do
+            shui progress "Generating report..." --value 90 --subtext "Finishing up..."
+            sleep 1
+        done
+
+        wait "$REPORT_PID"
+
+        shui progress "Complete!" --value 100
+        sleep 0.5
+    }
 
     # Verify report was created and show result
     if [ -s "$REPORT_FILE" ]; then
         LINES=$(wc -l < "$REPORT_FILE" | tr -d ' ')
-        show_message "Report Complete!\n\n$LINES lines\n\nSaved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" 4
+        shui message "Report generated!" \
+            --subtext "$LINES lines saved to:\nsystem_report_${PLATFORM}_${TIMESTAMP}.md" --confirm "Done"
     else
-        show_message "Report generation failed.\n\nCheck logs for details." 4
+        shui message "Report generation failed." \
+            --subtext "Check logs for details." --confirm "Dismiss"
     fi
 }
 

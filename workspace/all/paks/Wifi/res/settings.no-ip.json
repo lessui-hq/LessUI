@@ -2,7 +2,7 @@
     "settings": [
         {
             "name": "Enable",
-            "options": ["false", "true"],
+            "options": ["Off", "On"],
             "selected": IS_ENABLED,
             "features": {
                 "confirm_text": "SAVE"
@@ -10,7 +10,7 @@
         },
         {
             "name": "Start on boot",
-            "options": ["false", "true"],
+            "options": ["Off", "On"],
             "selected": IS_START_ON_BOOT,
             "features": {
                 "confirm_text": "SAVE"
