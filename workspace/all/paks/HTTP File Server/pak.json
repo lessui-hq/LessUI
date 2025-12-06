@@ -1,5 +1,5 @@
 {
-  "name": "File Server",
+  "name": "HTTP File Server",
   "type": "tool",
   "description": "Transfer files via web browser",
   "version": "1.0.0",

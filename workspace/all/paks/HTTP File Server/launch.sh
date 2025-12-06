@@ -2,7 +2,6 @@
 PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR")"
 PAK_NAME="${PAK_NAME%.*}"
-set -x
 
 rm -f "$LOGS_PATH/$PAK_NAME.txt"
 exec >>"$LOGS_PATH/$PAK_NAME.txt"
@@ -17,7 +16,7 @@ mkdir -p "$USERDATA_PATH/$PAK_NAME"
 export PATH="$PAK_DIR/bin:$PATH"
 
 SERVICE_NAME="dufs"
-HUMAN_READABLE_NAME="File Server"
+HUMAN_READABLE_NAME="HTTP File Server"
 LAUNCHES_SCRIPT="false"
 NETWORK_PORT=80
 NETWORK_SCHEME="http"
@@ -25,7 +24,7 @@ NETWORK_SCHEME="http"
 show_message() {
     message="$1"
     echo "$message" 1>&2
-    shui message "$message" --confirm "OK"
+    shui message "$message" --confirm "Dismiss"
 }
 
 show_progress() {
@@ -98,80 +97,67 @@ get_ip_address() {
         return
     fi
 
-    enabled="$(cat /sys/class/net/wlan0/operstate)"
-    if [ "$enabled" != "up" ]; then
-        echo "Not connected to WiFi"
+    # Check if WiFi interface is up
+    if [ ! -f /sys/class/net/wlan0/operstate ]; then
+        echo "WiFi not available"
         return
     fi
-    ip_address=""
 
-    count=0
-    while true; do
-        count=$((count + 1))
-        if [ "$count" -gt 5 ]; then
-            break
-        fi
+    enabled="$(cat /sys/class/net/wlan0/operstate)"
+    if [ "$enabled" != "up" ]; then
+        echo "WiFi not connected"
+        return
+    fi
 
-        ip_address="$(ip addr show wlan0 | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
-        if [ -n "$ip_address" ]; then
-            break
-        fi
-        sleep 1
-    done
-
+    # Get IP address (no retry loop - screen refreshes on each interaction)
+    ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
     if [ -z "$ip_address" ]; then
-        echo "Not connected to WiFi"
+        echo "Waiting for IP..."
         return
     fi
 
     echo "$NETWORK_SCHEME://$ip_address:$NETWORK_PORT"
 }
 
-current_settings() {
-    minui_list_file="/tmp/${PAK_NAME}-settings.json"
-    rm -f "$minui_list_file"
+build_settings_json() {
+    # Build settings JSON in a single jq call
+    is_running="false"
+    service_pid=""
+    ip_address=""
 
-    jq -rM '{settings: .settings}' "$PAK_DIR/settings.json" >"$minui_list_file"
     if service-is-running; then
-        jq '.settings[0].selected = 1' "$minui_list_file" >"$minui_list_file.tmp"
-        mv "$minui_list_file.tmp" "$minui_list_file"
+        is_running="true"
+        service_pid="$(get_service_pid)"
+        ip_address="$(get_ip_address)"
     fi
 
+    start_on_boot="false"
     if will_start_on_boot; then
-        jq '.settings[1].selected = 1' "$minui_list_file" >"$minui_list_file.tmp"
-        mv "$minui_list_file.tmp" "$minui_list_file"
+        start_on_boot="true"
     fi
 
-    cat "$minui_list_file"
+    jq -rM \
+        --argjson is_running "$is_running" \
+        --argjson start_on_boot "$start_on_boot" \
+        --arg pid "$service_pid" \
+        --arg ip "$ip_address" \
+        '{settings: .settings}
+        | if $is_running then .settings[0].selected = 1 else . end
+        | if $start_on_boot then .settings[1].selected = 1 else . end
+        | if $is_running and $pid != "" then .settings += [{"name": "PID", "options": [$pid], "selected": 0, "features": {"unselectable": true}}] else . end
+        | if $is_running and $ip != "" then .settings += [{"name": "Address", "options": [$ip], "selected": 0, "features": {"unselectable": true}}] else . end' \
+        "$PAK_DIR/settings.json"
 }
 
 main_screen() {
-    settings="$1"
-    minui_list_file="/tmp/${PAK_NAME}-minui-list.json"
-    rm -f "$minui_list_file"
-
-    echo "$settings" >"$minui_list_file"
-
-    if service-is-running; then
-        service_pid="$(get_service_pid)"
-        jq --arg pid "$service_pid" '.settings[.settings | length] |= . + {"name": "PID", "options": [$pid], "selected": 0, "features": {"unselectable": true}}' "$minui_list_file" >"$minui_list_file.tmp"
-        mv "$minui_list_file.tmp" "$minui_list_file"
-
-        ip_address="$(get_ip_address)"
-        if [ -n "$ip_address" ]; then
-            jq --arg ip "$ip_address" '.settings[.settings | length] |= . + {"name": "Address", "options": [$ip], "selected": 0, "features": {"unselectable": true}}' "$minui_list_file" >"$minui_list_file.tmp"
-            mv "$minui_list_file.tmp" "$minui_list_file"
-        fi
-    fi
-
-    shui list --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
+    settings_file="/tmp/${PAK_NAME}-settings.json"
+    build_settings_json >"$settings_file"
+    shui list --file "$settings_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --cancel "Back" --item-key "settings" --write-location "/tmp/${PAK_NAME}-output" --write-value state
 }
 
 cleanup() {
-    rm -f "/tmp/${PAK_NAME}-old-settings.json"
-    rm -f "/tmp/${PAK_NAME}-new-settings.json"
     rm -f "/tmp/${PAK_NAME}-settings.json"
-    rm -f "/tmp/${PAK_NAME}-minui-list.json"
+    rm -f "/tmp/${PAK_NAME}-output"
     shui shutdown 2>/dev/null || true
 }
 
@@ -224,59 +210,52 @@ main() {
     fi
 
     while true; do
-        settings="$(current_settings)"
-        new_settings="$(main_screen "$settings")"
+        # Capture current state before showing UI
+        old_enabled=0
+        if service-is-running; then
+            old_enabled=1
+        fi
+
+        old_start_on_boot=0
+        if will_start_on_boot; then
+            old_start_on_boot=1
+        fi
+
+        # Show settings screen and get user's choices
+        main_screen
         exit_code=$?
+
         # exit codes: 2 = back button, 3 = menu button
         if [ "$exit_code" -ne 0 ]; then
             break
         fi
 
-        echo "$settings" >"/tmp/${PAK_NAME}-old-settings.json"
-        echo "$new_settings" >"/tmp/${PAK_NAME}-new-settings.json"
-
-        old_enabled="$(jq -rM '.settings[0].selected' "/tmp/${PAK_NAME}-old-settings.json")"
-        enabled="$(jq -rM '.settings[0].selected' "/tmp/${PAK_NAME}-new-settings.json")"
-
-        old_start_on_boot="$(jq -rM '.settings[1].selected' "/tmp/${PAK_NAME}-old-settings.json")"
-        start_on_boot="$(jq -rM '.settings[1].selected' "/tmp/${PAK_NAME}-new-settings.json")"
+        # Read new settings from shui output
+        enabled="$(jq -rM '.settings[0].selected' "/tmp/${PAK_NAME}-output")"
+        start_on_boot="$(jq -rM '.settings[1].selected' "/tmp/${PAK_NAME}-output")"
 
         if [ "$old_enabled" != "$enabled" ]; then
             if [ "$enabled" = "1" ]; then
-                show_progress "Enabling $HUMAN_READABLE_NAME..."
-                if ! service-on; then
-                    show_message "Failed to enable $HUMAN_READABLE_NAME!"
-                    continue
-                fi
-
-                show_progress "Starting $HUMAN_READABLE_NAME..."
+                show_progress "Starting..."
+                service-on
                 if ! wait_for_service 10; then
-                    show_message "Failed to start $HUMAN_READABLE_NAME"
+                    show_message "Failed to start server"
                 fi
             else
-                show_progress "Disabling $HUMAN_READABLE_NAME..."
-                if ! service-off; then
-                    show_message "Failed to disable $HUMAN_READABLE_NAME!"
-                fi
-
-                show_progress "Stopping $HUMAN_READABLE_NAME..."
+                show_progress "Stopping..."
+                service-off
                 if ! wait_for_service_to_stop 10; then
-                    show_message "Failed to stop $HUMAN_READABLE_NAME"
+                    show_message "Failed to stop server"
                 fi
             fi
         fi
 
+        # Start on boot changes are instant, no progress needed
         if [ "$old_start_on_boot" != "$start_on_boot" ]; then
             if [ "$start_on_boot" = "1" ]; then
-                show_progress "Enabling start on boot..."
-                if ! enable_start_on_boot; then
-                    show_message "Failed to enable start on boot!"
-                fi
+                enable_start_on_boot
             else
-                show_progress "Disabling start on boot..."
-                if ! disable_start_on_boot; then
-                    show_message "Failed to disable start on boot!"
-                fi
+                disable_start_on_boot
             fi
         fi
     done
