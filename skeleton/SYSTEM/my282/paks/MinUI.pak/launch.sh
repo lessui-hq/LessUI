@@ -64,6 +64,8 @@ EXEC_PATH="/tmp/minui_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
+	# Pre-start shellui daemon so paks have instant UI
+	shellui start &
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	reclock
 	echo `date +'%F %T'` > "$DATETIME_PATH"
@@ -71,14 +73,14 @@ while [ -f "$EXEC_PATH" ]; do
 	
 	if [ -f $NEXT_PATH ]; then
 		CMD=`cat $NEXT_PATH`
+		# Shutdown shellui before games to free memory
+		echo "$CMD" | grep -q "minarch" && shellui shutdown
 		eval $CMD
 		rm -f $NEXT_PATH
-		shellui shutdown 2>/dev/null || true
 		reclock
 		echo `date +'%F %T'` > "$DATETIME_PATH"
 		sync
 	fi
 done
 
-shellui shutdown 2>/dev/null || true
 shutdown

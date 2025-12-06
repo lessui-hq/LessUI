@@ -132,6 +132,8 @@ EXEC_PATH=/tmp/minui_exec
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH"  && sync
 while [ -f "$EXEC_PATH" ]; do
+	# Pre-start shellui daemon so paks have instant UI
+	shellui start &
 	overclock.elf $CPU_SPEED_PERF
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	
@@ -140,9 +142,10 @@ while [ -f "$EXEC_PATH" ]; do
 	
 	if [ -f $NEXT_PATH ]; then
 		CMD=`cat $NEXT_PATH`
+		# Shutdown shellui before games to free memory
+		echo "$CMD" | grep -q "minarch" && shellui shutdown
 		eval $CMD
 		rm -f $NEXT_PATH
-		shellui shutdown 2>/dev/null || true
 		if [ -f "/tmp/using-swap" ]; then
 			swapoff $USERDATA_PATH/swapfile
 			rm -f "/tmp/using-swap"
@@ -154,5 +157,4 @@ while [ -f "$EXEC_PATH" ]; do
 	fi
 done
 
-shellui shutdown 2>/dev/null || true
 shutdown # just in case

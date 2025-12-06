@@ -102,6 +102,7 @@ static void print_usage(void) {
 		"  message TEXT      Show a message dialog\n"
 		"  list              Show a list selector\n"
 		"  keyboard          Show keyboard input\n"
+		"  start             Start the daemon (for pre-warming)\n"
 		"  shutdown          Stop the daemon\n"
 		"\n"
 		"Message options:\n"
@@ -160,6 +161,8 @@ static int run_cli(int argc, char** argv) {
 		req.item_key = strdup("items");
 	} else if (strcmp(cmd, "keyboard") == 0) {
 		req.command = CMD_KEYBOARD;
+	} else if (strcmp(cmd, "start") == 0) {
+		req.command = CMD_START;
 	} else if (strcmp(cmd, "shutdown") == 0) {
 		req.command = CMD_SHUTDOWN;
 	} else if (strcmp(cmd, "--help") == 0 || strcmp(cmd, "-h") == 0) {
@@ -406,6 +409,11 @@ static int send_command(const Request* req) {
 		}
 	}
 
+	// Special case: start just ensures daemon is running, no command needed
+	if (req->command == CMD_START) {
+		return EXIT_SUCCESS_CODE;
+	}
+
 	// Clean up any stale response from previous fire-and-forget command
 	ipc_delete_response();
 
@@ -484,7 +492,6 @@ static void restore_output(void) {
 }
 
 static void daemon_init(void) {
-	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 	if (screen == NULL) {
 		screen = GFX_init(MODE_MAIN);
 	}
