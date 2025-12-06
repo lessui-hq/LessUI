@@ -25,6 +25,7 @@ typedef enum {
 	CMD_MESSAGE,
 	CMD_LIST,
 	CMD_KEYBOARD,
+	CMD_PROGRESS,
 	CMD_START,
 	CMD_SHUTDOWN,
 } CommandType;

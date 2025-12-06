@@ -9,7 +9,7 @@ PLATFORM_DEPTH = ../../../
 
 # Include parson JSON library
 EXTRA_INCDIR = -I..
-EXTRA_SOURCE = ../parson/parson.c utils.c fonts.c ipc.c ui_message.c ui_list.c ui_keyboard.c
+EXTRA_SOURCE = ../parson/parson.c utils.c fonts.c ipc.c ui_message.c ui_list.c ui_keyboard.c ui_progress.c animated_value.c
 EXTRA_CFLAGS = -std=gnu99
 
 include ../../common/build.mk

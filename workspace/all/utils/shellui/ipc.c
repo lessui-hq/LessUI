@@ -44,6 +44,7 @@ int ipc_write_request(const Request* req) {
 		case CMD_MESSAGE: cmd_str = "message"; break;
 		case CMD_LIST: cmd_str = "list"; break;
 		case CMD_KEYBOARD: cmd_str = "keyboard"; break;
+		case CMD_PROGRESS: cmd_str = "progress"; break;
 		case CMD_SHUTDOWN: cmd_str = "shutdown"; break;
 		default: break;
 	}
@@ -90,6 +91,10 @@ int ipc_write_request(const Request* req) {
 	// === Keyboard params ===
 	json_set_string_if(obj, "initial_value", req->initial_value);
 
+	// === Progress params ===
+	json_object_set_number(obj, "value", req->value);
+	json_object_set_boolean(obj, "indeterminate", req->indeterminate);
+
 	// Write to file
 	char* json_str = json_serialize_to_string_pretty(root);
 	if (!json_str) {
@@ -134,6 +139,7 @@ Request* ipc_read_request(void) {
 		if (strcmp(cmd_str, "message") == 0) req->command = CMD_MESSAGE;
 		else if (strcmp(cmd_str, "list") == 0) req->command = CMD_LIST;
 		else if (strcmp(cmd_str, "keyboard") == 0) req->command = CMD_KEYBOARD;
+		else if (strcmp(cmd_str, "progress") == 0) req->command = CMD_PROGRESS;
 		else if (strcmp(cmd_str, "shutdown") == 0) req->command = CMD_SHUTDOWN;
 	}
 
@@ -178,6 +184,10 @@ Request* ipc_read_request(void) {
 
 	// === Keyboard params ===
 	req->initial_value = safe_strdup(json_object_get_string(obj, "initial_value"));
+
+	// === Progress params ===
+	req->value = json_get_int(obj, "value", 0);
+	req->indeterminate = json_get_bool(obj, "indeterminate", false);
 
 	json_value_free(root);
 	return req;

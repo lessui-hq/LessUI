@@ -233,7 +233,8 @@ wifi_on() {
 		return 0
 	fi
 
-	# Wait for connection
+	# Wait for connection (up to 30 seconds)
+	shellui progress "Connecting..." --indeterminate
 	for _ in $(seq 1 30); do
 		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
@@ -312,18 +313,19 @@ networks_screen() {
 	rm -f "$minui_list_file" "/tmp/minui-output"
 	touch "$minui_list_file"
 
-	show_message "Scanning for networks"
 	DELAY=30
 
 	if [ "$PLATFORM" = "my355" ]; then
 		wpa_cli -i wlan0 scan
 		for _ in $(seq 1 "$DELAY"); do
+			shellui progress "Scanning for networks..." --indeterminate
 			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
 		done
 	else
 		for _ in $(seq 1 "$DELAY"); do
+			shellui progress "Scanning for networks..." --indeterminate
 			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$minui_list_file"
 			[ -s "$minui_list_file" ] && break
 			sleep 1
@@ -413,18 +415,19 @@ forget_network_loop() {
 		SSID="$(cat /tmp/minui-output)"
 		sed -i "/^$SSID:/d" "$SDCARD_PATH/wifi.txt"
 
+		shellui progress "Updating config..." --indeterminate
 		if ! write_config "true"; then
 			show_message_wait "Failed to write wireless config"
 			break
 		fi
 
-		show_message "Refreshing connection"
-
+		shellui progress "Disconnecting..." --indeterminate
 		if ! wifi_off; then
 			show_message_wait "Failed to disable wifi"
 			break
 		fi
 
+		# wifi_on shows its own connection progress
 		if ! wifi_on; then
 			show_message_wait "Failed to enable wifi"
 			break
@@ -437,7 +440,7 @@ forget_network_loop() {
 
 network_loop() {
 	if ! "$PAK_DIR/bin/wifi-enabled"; then
-		show_message "Enabling wifi"
+		shellui progress "Enabling wifi..." --indeterminate
 		if ! "$PAK_DIR/bin/service-on"; then
 			show_message_wait "Failed to enable wifi"
 			return 1
@@ -471,7 +474,7 @@ network_loop() {
 		fi
 		[ "$exit_code" -ne 0 ] && continue
 
-		show_message "Connecting to $SSID"
+		# wifi_on shows connection progress
 		if ! wifi_on; then
 			show_message_wait "Failed to start wifi"
 			break
@@ -568,7 +571,7 @@ main() {
 
 			if [ "$selected_option" = "true" ]; then
 				if ! "$PAK_DIR/bin/wifi-enabled"; then
-					show_message "Enabling wifi"
+					# wifi_on shows connection progress
 					if ! wifi_on; then
 						show_message_wait "Failed to enable wifi"
 						continue
@@ -576,7 +579,7 @@ main() {
 				fi
 			else
 				if "$PAK_DIR/bin/wifi-enabled"; then
-					show_message "Disabling wifi"
+					shellui progress "Disabling wifi..." --indeterminate
 					if ! wifi_off; then
 						show_message_wait "Failed to disable wifi"
 						continue
@@ -590,7 +593,7 @@ main() {
 
 			if [ "$selected_option" = "true" ]; then
 				if ! will_start_on_boot; then
-					show_message "Enabling start on boot"
+					shellui progress "Enabling start on boot..." --indeterminate
 					if ! enable_start_on_boot; then
 						show_message_wait "Failed to enable start on boot"
 						continue
@@ -598,7 +601,7 @@ main() {
 				fi
 			else
 				if will_start_on_boot; then
-					show_message "Disabling start on boot"
+					shellui progress "Disabling start on boot..." --indeterminate
 					if ! disable_start_on_boot; then
 						show_message_wait "Failed to disable start on boot"
 						continue
@@ -614,18 +617,18 @@ main() {
 			next_screen="$(cat /tmp/wifi-next-screen)"
 			[ "$next_screen" = "exit" ] && break
 		elif echo "$selection" | grep -q "^Refresh connection$"; then
-			show_message "Disconnecting from wifi"
+			shellui progress "Disconnecting..." --indeterminate
 			if ! wifi_off; then
 				show_message_wait "Failed to stop wifi"
 				return 1
 			fi
 
-			show_message "Updating wifi config"
+			shellui progress "Updating config..." --indeterminate
 			if ! write_config "true"; then
 				show_message_wait "Failed to write config"
 			fi
 
-			show_message "Refreshing connection"
+			shellui progress "Reconnecting..." --indeterminate
 			if ! "$PAK_DIR/bin/service-on"; then
 				show_message_wait "Failed to enable wifi"
 				continue

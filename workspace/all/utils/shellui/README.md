@@ -158,6 +158,30 @@ shellui keyboard --title "WiFi SSID" --initial "MyNetwork"
 
 **Output:** Entered text written to stdout.
 
+### progress
+
+Display a progress bar. Returns immediately (fire-and-forget).
+
+```bash
+# Determinate progress bar
+shellui progress "Installing..." --value 45
+
+# Indeterminate (animated bouncing bar)
+shellui progress "Scanning..." --indeterminate
+
+# With title
+shellui progress "Downloading..." --value 75 --title "RetroArch"
+```
+
+**Options:**
+| Option | Description |
+|--------|-------------|
+| `--value N` | Progress percentage (0-100) |
+| `--indeterminate` | Show animated bar instead of fixed progress |
+| `--title TEXT` | Title displayed above the progress bar |
+
+**Behavior:** Fire-and-forget. The command returns immediately after updating the display. Call repeatedly to update progress.
+
 ### shutdown
 
 Stop the daemon process. Called automatically by the launcher after pak execution.
@@ -260,6 +284,29 @@ password=$(shellui keyboard --title "WiFi Password")
 if [ $? -eq 0 ] && [ -n "$password" ]; then
     connect_wifi "$SSID" "$password"
 fi
+```
+
+### Progress during file operations
+
+```bash
+# Copy files with progress
+total=$(ls -1 *.rom | wc -l)
+count=0
+for file in *.rom; do
+    percent=$((count * 100 / total))
+    shellui progress "Copying ROMs..." --value $percent --title "Backup"
+    cp "$file" /backup/
+    count=$((count + 1))
+done
+shellui message "Backup complete!" --timeout 2
+```
+
+### Indeterminate progress for unknown duration
+
+```bash
+shellui progress "Scanning for networks..." --indeterminate
+scan_wifi_networks
+shellui message "Found $(wc -l < /tmp/networks.txt) networks"
 ```
 
 ## Architecture

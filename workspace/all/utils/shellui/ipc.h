@@ -49,6 +49,10 @@ typedef struct {
 	// === Keyboard command params ===
 	char* initial_value;
 	// write_location is shared with list
+
+	// === Progress command params ===
+	int value;             // Progress percentage 0-100
+	bool indeterminate;    // Show spinner instead of progress bar
 } Request;
 
 // Response structure sent from daemon to CLI

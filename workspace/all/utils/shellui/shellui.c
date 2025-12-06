@@ -35,6 +35,7 @@
 #include "ui_message.h"
 #include "ui_list.h"
 #include "ui_keyboard.h"
+#include "ui_progress.h"
 #include <msettings.h>
 #ifdef USE_SDL2
 #include <SDL2/SDL_ttf.h>
@@ -55,6 +56,10 @@ static int send_command(const Request* req);
 static volatile sig_atomic_t daemon_quit = 0;
 #ifdef PLATFORM
 static SDL_Surface* screen = NULL;
+
+// State for progress UI (persists between calls for animation)
+static ProgressState progress_state = {0};
+static ProgressOptions current_progress_opts = {0};
 #endif
 
 // Signal handler
@@ -102,6 +107,7 @@ static void print_usage(void) {
 		"  message TEXT      Show a message dialog\n"
 		"  list              Show a list selector\n"
 		"  keyboard          Show keyboard input\n"
+		"  progress TEXT     Show a progress bar\n"
 		"  start             Start the daemon (for pre-warming)\n"
 		"  shutdown          Stop the daemon\n"
 		"\n"
@@ -122,6 +128,11 @@ static void print_usage(void) {
 		"Keyboard options:\n"
 		"  --title TEXT      Prompt title\n"
 		"  --initial TEXT    Initial input value\n"
+		"\n"
+		"Progress options:\n"
+		"  --value N         Progress percentage (0-100)\n"
+		"  --indeterminate   Show animated spinner instead of bar\n"
+		"  --title TEXT      Title above progress bar\n"
 		"\n"
 		"Output is written to stdout. Exit codes:\n"
 		"  0 = Success, 2 = Cancel, 3 = Menu, 124 = Timeout\n"
@@ -161,6 +172,8 @@ static int run_cli(int argc, char** argv) {
 		req.item_key = strdup("items");
 	} else if (strcmp(cmd, "keyboard") == 0) {
 		req.command = CMD_KEYBOARD;
+	} else if (strcmp(cmd, "progress") == 0) {
+		req.command = CMD_PROGRESS;
 	} else if (strcmp(cmd, "start") == 0) {
 		req.command = CMD_START;
 	} else if (strcmp(cmd, "shutdown") == 0) {
@@ -202,6 +215,9 @@ static int run_cli(int argc, char** argv) {
 		// Keyboard options
 		{"initial", required_argument, 0, 'i'},
 		{"initial-value", required_argument, 0, 'i'},   // alias
+		// Progress options
+		{"value", required_argument, 0, 'v'},
+		{"indeterminate", no_argument, 0, 'I'},
 		// Help
 		{"help", no_argument, 0, 'h'},
 		{0, 0, 0, 0}
@@ -209,7 +225,7 @@ static int run_cli(int argc, char** argv) {
 
 	optind = 2;  // Skip program name and command
 	int opt;
-	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pUf:F:T:k:w:W:a:A:e:L:i:h", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pUf:F:T:k:w:W:a:A:e:L:i:v:Ih", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 't':
 				req.timeout = atoi(optarg);
@@ -267,6 +283,12 @@ static int run_cli(int argc, char** argv) {
 			case 'i':
 				req.initial_value = strdup(optarg);
 				break;
+			case 'v':
+				req.value = atoi(optarg);
+				break;
+			case 'I':
+				req.indeterminate = true;
+				break;
 			case 'h':
 				print_usage();
 				ipc_free_request_fields(&req);
@@ -276,8 +298,8 @@ static int run_cli(int argc, char** argv) {
 		}
 	}
 
-	// Get positional argument (message text)
-	if (req.command == CMD_MESSAGE && optind < argc) {
+	// Get positional argument (message text for message/progress commands)
+	if ((req.command == CMD_MESSAGE || req.command == CMD_PROGRESS) && optind < argc) {
 		req.message = strdup(argv[optind]);
 	}
 
@@ -289,6 +311,11 @@ static int run_cli(int argc, char** argv) {
 	// Validate
 	if (req.command == CMD_MESSAGE && !req.message) {
 		fprintf(stderr, "Error: message command requires text argument\n");
+		ipc_free_request_fields(&req);
+		return EXIT_ERROR;
+	}
+	if (req.command == CMD_PROGRESS && !req.message) {
+		fprintf(stderr, "Error: progress command requires text argument\n");
 		ipc_free_request_fields(&req);
 		return EXIT_ERROR;
 	}
@@ -386,6 +413,11 @@ static bool request_needs_response(const Request* req) {
 
 	// Shutdown doesn't need a response
 	if (req->command == CMD_SHUTDOWN) {
+		return false;
+	}
+
+	// Progress is fire-and-forget
+	if (req->command == CMD_PROGRESS) {
 		return false;
 	}
 
@@ -647,6 +679,15 @@ static void process_request(const Request* req, Response* resp) {
 	resp->request_id = req->request_id ? strdup(req->request_id) : NULL;
 	resp->output = NULL;
 
+	// Reset progress state when switching to a different UI
+	if (req->command != CMD_PROGRESS) {
+		ui_progress_reset(&progress_state);
+		free(current_progress_opts.message);
+		free(current_progress_opts.title);
+		current_progress_opts.message = NULL;
+		current_progress_opts.title = NULL;
+	}
+
 	switch (req->command) {
 		case CMD_MESSAGE: {
 			// Check if message has buttons
@@ -677,6 +718,26 @@ static void process_request(const Request* req, Response* resp) {
 					fclose(f);
 				}
 			}
+			break;
+		}
+
+		case CMD_PROGRESS: {
+			// Free previous copies
+			free(current_progress_opts.message);
+			free(current_progress_opts.title);
+
+			// Store copies of options for rendering (must outlive request)
+			current_progress_opts.message = req->message ? strdup(req->message) : NULL;
+			current_progress_opts.title = req->title ? strdup(req->title) : NULL;
+			current_progress_opts.value = req->value;
+			current_progress_opts.indeterminate = req->indeterminate;
+
+			// Update state (handles context matching and animation setup)
+			ui_progress_update(&progress_state, &current_progress_opts);
+
+			// Render immediately
+			ui_progress_render(screen, &progress_state, &current_progress_opts);
+			resp->exit_code = EXIT_SUCCESS_CODE;
 			break;
 		}
 
@@ -737,8 +798,13 @@ static int run_daemon(void) {
 			}
 		}
 
+		// Animate progress bar (indeterminate or value transition)
+		if (ui_progress_needs_animation(&progress_state)) {
+			ui_progress_render(screen, &progress_state, &current_progress_opts);
+		}
+
 		// Brief sleep to avoid busy-waiting
-		usleep(10000);  // 10ms
+		usleep(16000);  // ~60fps for smooth animation
 	}
 
 	// Cleanup

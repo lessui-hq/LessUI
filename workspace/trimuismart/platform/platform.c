@@ -614,8 +614,8 @@ void PLAT_setCPUSpeed(int speed) {
  */
 int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
 	static const int known_freqs[] = {
-	    60000,   240000,  312000,  408000,  480000,  600000,  720000,
-	    816000,  912000,  1008000, 1104000, 1200000, 1344000, 1440000,
+	    60000,  240000, 312000,  408000,  480000,  600000,  720000,
+	    816000, 912000, 1008000, 1104000, 1200000, 1344000, 1440000,
 	};
 	int count = sizeof(known_freqs) / sizeof(known_freqs[0]);
 	if (count > max_count)
