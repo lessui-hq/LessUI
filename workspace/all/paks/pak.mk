@@ -3,10 +3,10 @@
 #
 # Usage in pak's src/makefile:
 #   TARGET = clock
-#   include ../../pak.mk
+#   include ../../../pak.mk
 
-# Paks are at paks/Name/src/, need to go up to workspace/
-PLATFORM_DEPTH = ../../../../
+# Paks are at paks/Tools/Name/src/, need to go up to workspace/
+PLATFORM_DEPTH = ../../../../../
 
 # Output to pak's build directory (../build relative to src/)
 BUILD_DIR = ../build
@@ -15,4 +15,4 @@ BUILD_DIR = ../build
 BINARY_EXT = .elf
 
 # Include the main build system
-include ../../../common/build.mk
+include ../../../../common/build.mk

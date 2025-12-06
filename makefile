@@ -148,8 +148,8 @@ system:
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	# Install utils (calls install hook for each util)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
-	# Construct tool paks from workspace/all/paks/
-	@for pak_dir in ./workspace/all/paks/*/; do \
+	# Construct tool paks from workspace/all/paks/Tools/
+	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
 		pak_name=$$(basename "$$pak_dir"); \
 		[ -f "$$pak_dir/pak.json" ] || continue; \
@@ -215,7 +215,7 @@ clean:
 	# Clean workspace/all component build directories
 	rm -rf workspace/all/minui/build
 	rm -rf workspace/all/minarch/build
-	rm -rf workspace/all/paks/*/build
+	rm -rf workspace/all/paks/Tools/*/build
 	rm -rf workspace/all/utils/*/build
 	rm -rf workspace/all/syncsettings/build
 	# Clean platform-specific boot outputs
@@ -277,6 +277,7 @@ setup: name
 	# Generate platform-specific paks from templates
 	@echo "Generating paks from templates..."
 	@./scripts/generate-paks.sh all
+	@./scripts/generate-minui-pak.sh all
 
 # Platform-specific packaging for Miyoo/Trimui family
 special:
