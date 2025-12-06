@@ -109,6 +109,8 @@ static void print_usage(void) {
 		"  list              Show a list selector\n"
 		"  keyboard          Show keyboard input\n"
 		"  progress TEXT     Show a progress bar\n"
+		"  auto-sleep <on|off>  Control device auto-sleep\n"
+		"  restart           Start daemon or reset session state\n"
 		"  start             Start the daemon (for pre-warming)\n"
 		"  shutdown          Stop the daemon\n"
 		"\n"
@@ -184,6 +186,25 @@ static int run_cli(int argc, char** argv) {
 		req.command = CMD_START;
 	} else if (strcmp(cmd, "shutdown") == 0) {
 		req.command = CMD_SHUTDOWN;
+	} else if (strcmp(cmd, "auto-sleep") == 0) {
+		req.command = CMD_AUTO_SLEEP;
+		// Requires "on" or "off" argument
+		if (argc < 3) {
+			fprintf(stderr, "Usage: shui auto-sleep <on|off>\n");
+			free(req.request_id);
+			return EXIT_ERROR;
+		}
+		if (strcmp(argv[2], "on") == 0) {
+			req.value = 1;
+		} else if (strcmp(argv[2], "off") == 0) {
+			req.value = 0;
+		} else {
+			fprintf(stderr, "Usage: shui auto-sleep <on|off>\n");
+			free(req.request_id);
+			return EXIT_ERROR;
+		}
+	} else if (strcmp(cmd, "restart") == 0) {
+		req.command = CMD_RESTART;
 	} else if (strcmp(cmd, "--help") == 0 || strcmp(cmd, "-h") == 0) {
 		print_usage();
 		free(req.request_id);
@@ -212,7 +233,6 @@ static int run_cli(int argc, char** argv) {
 		{"item-key", required_argument, 0, 'k'},
 		{"write-location", required_argument, 0, 'w'},
 		{"write-value", required_argument, 0, 'W'},
-		{"disable-auto-sleep", no_argument, 0, 'U'},
 		// Keyboard options
 		{"initial", required_argument, 0, 'i'},
 		// Progress options
@@ -225,7 +245,7 @@ static int run_cli(int argc, char** argv) {
 
 	optind = 2;  // Skip program name and command
 	int opt;
-	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pf:F:T:L:k:w:W:Ui:v:Ih", long_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "t:c:x:b:B:pf:F:T:L:k:w:W:i:v:Ih", long_options, NULL)) != -1) {
 		switch (opt) {
 			case 't':
 				req.timeout = atoi(optarg);
@@ -267,9 +287,6 @@ static int run_cli(int argc, char** argv) {
 				break;
 			case 'W':
 				req.write_value = strdup(optarg);
-				break;
-			case 'U':
-				req.disable_auto_sleep = true;
 				break;
 			case 'i':
 				req.initial_value = strdup(optarg);
@@ -409,6 +426,11 @@ static bool request_needs_response(const Request* req) {
 
 	// Progress is fire-and-forget
 	if (req->command == CMD_PROGRESS) {
+		return false;
+	}
+
+	// Auto-sleep and restart are fire-and-forget
+	if (req->command == CMD_AUTO_SLEEP || req->command == CMD_RESTART) {
 		return false;
 	}
 
@@ -630,7 +652,6 @@ static void handle_list(const Request* req, Response* resp) {
 		.cancel_text = req->cancel_text,
 		.write_location = req->write_location,
 		.write_value = req->write_value,
-		.disable_auto_sleep = req->disable_auto_sleep,
 		.items = items,
 		.item_count = item_count,
 		.initial_index = 0,
@@ -728,8 +749,29 @@ static void process_request(const Request* req, Response* resp) {
 		}
 
 		case CMD_SHUTDOWN:
+			PWR_enableAutosleep();
 			resp->exit_code = EXIT_SUCCESS_CODE;
 			daemon_quit = 1;
+			break;
+
+		case CMD_AUTO_SLEEP:
+			if (req->value) {
+				PWR_enableAutosleep();
+			} else {
+				PWR_disableAutosleep();
+			}
+			resp->exit_code = EXIT_SUCCESS_CODE;
+			break;
+
+		case CMD_RESTART:
+			// Reset all session state
+			PWR_enableAutosleep();
+			ui_progress_reset(&progress_state);
+			free(current_progress_opts.message);
+			free(current_progress_opts.title);
+			current_progress_opts.message = NULL;
+			current_progress_opts.title = NULL;
+			resp->exit_code = EXIT_SUCCESS_CODE;
 			break;
 
 		default:

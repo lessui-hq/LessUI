@@ -60,8 +60,8 @@ EXEC_PATH=/tmp/minui_exec
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
-	# Pre-start shui daemon so paks have instant UI
-	shui start &
+	# Start shui daemon (or reset state if already running)
+	shui restart &
 	overclock.elf $CPU_SPEED_PERF
 	minui.elf > $LOGS_PATH/minui.log 2>&1
 	echo `date +'%F %T'` > "$DATETIME_PATH"

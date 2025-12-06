@@ -28,6 +28,8 @@ typedef enum {
 	CMD_PROGRESS,
 	CMD_START,
 	CMD_SHUTDOWN,
+	CMD_AUTO_SLEEP,
+	CMD_RESTART,
 } CommandType;
 
 // IPC paths

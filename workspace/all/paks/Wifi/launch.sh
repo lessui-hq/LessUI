@@ -305,7 +305,7 @@ main_screen() {
 	sed -i "s/NETWORK_SSID/$ssid/" "$minui_list_file"
 	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$minui_list_file"
 
-	shui list --disable-auto-sleep --item-key settings --file "$minui_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
+	shui list --item-key settings --file "$minui_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
 }
 
 networks_screen() {
@@ -332,7 +332,7 @@ networks_screen() {
 		done
 	fi
 
-	shui list --disable-auto-sleep --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
+	shui list --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
 }
 
 saved_networks_screen() {
@@ -352,7 +352,7 @@ saved_networks_screen() {
 		return 1
 	fi
 
-	shui list --disable-auto-sleep --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
+	shui list --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
 }
 
 password_screen() {

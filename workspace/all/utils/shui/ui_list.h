@@ -47,9 +47,6 @@ typedef struct {
 	// Output
 	char* write_location;      // File path or "-" for stdout
 	char* write_value;         // "selected", "state", "name", "value"
-
-	// Flags
-	bool disable_auto_sleep;
 } ListOptions;
 
 // Result from list selection

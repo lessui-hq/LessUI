@@ -80,7 +80,6 @@ shui list --file settings.json --item-key settings --write-location /tmp/out --w
 | `--cancel TEXT` | Cancel button label |
 | `--write-location PATH` | Write output to file instead of stdout |
 | `--write-value TYPE` | Output type: `selected`, `state`, `name`, `value` |
-| `--disable-auto-sleep` | Keep device awake |
 
 **JSON format:**
 ```json
@@ -182,9 +181,33 @@ shui progress "Downloading..." --value 75 --title "RetroArch"
 
 **Behavior:** Fire-and-forget. The command returns immediately after updating the display. Call repeatedly to update progress.
 
+### auto-sleep
+
+Control device auto-sleep behavior for the current session. Use this when running long operations (like file servers) where the device should stay awake.
+
+```bash
+# Disable auto-sleep (keep device awake)
+shui auto-sleep off
+
+# Re-enable auto-sleep
+shui auto-sleep on
+```
+
+**Note:** Auto-sleep is automatically re-enabled when the daemon shuts down or receives a `restart` command.
+
+### restart
+
+Start the daemon if not running, or reset session state if already running. This is the recommended way to initialize shui at the start of each launcher loop iteration.
+
+```bash
+shui restart
+```
+
+Re-enables auto-sleep and clears any cached state, ensuring a clean slate for the next pak.
+
 ### shutdown
 
-Stop the daemon process. Called automatically by the launcher after pak execution.
+Stop the daemon process. Called automatically by the launcher after pak execution. Also re-enables auto-sleep.
 
 ```bash
 shui shutdown

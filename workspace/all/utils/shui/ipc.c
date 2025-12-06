@@ -46,6 +46,8 @@ int ipc_write_request(const Request* req) {
 		case CMD_KEYBOARD: cmd_str = "keyboard"; break;
 		case CMD_PROGRESS: cmd_str = "progress"; break;
 		case CMD_SHUTDOWN: cmd_str = "shutdown"; break;
+		case CMD_AUTO_SLEEP: cmd_str = "auto-sleep"; break;
+		case CMD_RESTART: cmd_str = "restart"; break;
 		default: break;
 	}
 	json_object_set_string(obj, "command", cmd_str);
@@ -70,7 +72,6 @@ int ipc_write_request(const Request* req) {
 	json_set_string_if(obj, "stdin_data", req->stdin_data);
 	json_set_string_if(obj, "write_location", req->write_location);
 	json_set_string_if(obj, "write_value", req->write_value);
-	json_object_set_boolean(obj, "disable_auto_sleep", req->disable_auto_sleep);
 
 	// Keyboard params
 	json_set_string_if(obj, "initial_value", req->initial_value);
@@ -125,6 +126,8 @@ Request* ipc_read_request(void) {
 		else if (strcmp(cmd_str, "keyboard") == 0) req->command = CMD_KEYBOARD;
 		else if (strcmp(cmd_str, "progress") == 0) req->command = CMD_PROGRESS;
 		else if (strcmp(cmd_str, "shutdown") == 0) req->command = CMD_SHUTDOWN;
+		else if (strcmp(cmd_str, "auto-sleep") == 0) req->command = CMD_AUTO_SLEEP;
+		else if (strcmp(cmd_str, "restart") == 0) req->command = CMD_RESTART;
 	}
 
 	req->request_id = safe_strdup(json_object_get_string(obj, "request_id"));
@@ -148,7 +151,6 @@ Request* ipc_read_request(void) {
 	req->stdin_data = safe_strdup(json_object_get_string(obj, "stdin_data"));
 	req->write_location = safe_strdup(json_object_get_string(obj, "write_location"));
 	req->write_value = safe_strdup(json_object_get_string(obj, "write_value"));
-	req->disable_auto_sleep = json_get_bool(obj, "disable_auto_sleep", false);
 
 	// Keyboard params
 	req->initial_value = safe_strdup(json_object_get_string(obj, "initial_value"));

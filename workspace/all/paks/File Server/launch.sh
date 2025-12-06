@@ -164,7 +164,7 @@ main_screen() {
         fi
     fi
 
-    shui list --disable-auto-sleep --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
+    shui list --file "$minui_list_file" --format json --title "$HUMAN_READABLE_NAME" --confirm "Save" --item-key "settings" --write-location /tmp/minui-output --write-value state
 }
 
 cleanup() {
@@ -172,12 +172,10 @@ cleanup() {
     rm -f "/tmp/${PAK_NAME}-new-settings.json"
     rm -f "/tmp/${PAK_NAME}-settings.json"
     rm -f "/tmp/${PAK_NAME}-minui-list.json"
-    rm -f /tmp/stay_awake
     shui shutdown 2>/dev/null || true
 }
 
 main() {
-    echo "1" >/tmp/stay_awake
     trap "cleanup" EXIT INT TERM HUP QUIT
 
     if [ "$PLATFORM" = "tg3040" ] && [ -z "$DEVICE" ]; then
@@ -189,6 +187,9 @@ main() {
         echo "shui not found"
         return 1
     fi
+
+    # Keep device awake while File Server pak is active
+    shui auto-sleep off
 
     if ! command -v jq >/dev/null 2>&1; then
         show_message "jq not found"

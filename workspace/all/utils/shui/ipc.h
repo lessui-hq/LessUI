@@ -28,7 +28,6 @@ typedef struct {
 	char* stdin_data;          // for piped input
 	char* write_location;      // file path or "-" for stdout
 	char* write_value;         // "selected", "state", "name", "value"
-	bool disable_auto_sleep;
 
 	// === Keyboard command params ===
 	char* initial_value;
