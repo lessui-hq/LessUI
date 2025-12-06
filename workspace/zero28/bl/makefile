@@ -7,6 +7,9 @@ endif
 CC = $(CROSS_COMPILE)gcc
 CFLAGS	= -Os -lrt -ldl -Wl,--gc-sections -s
 CFLAGS  += -I.
+CFLAGS  += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
+           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 
 all:
 	$(CC) bl_enable.c -o bl_enable $(CFLAGS)

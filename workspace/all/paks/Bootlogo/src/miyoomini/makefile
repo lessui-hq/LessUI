@@ -20,6 +20,9 @@ include ../../../../../$(PLATFORM)/platform/makefile.env
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS = $(ARCH) -fomit-frame-pointer -Ofast
+CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
+          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 
 # Output goes to parent directory's build folder
 OUTDIR = ../../build/$(PLATFORM)

@@ -5,8 +5,11 @@ endif
 TARGET = show
 PRODUCT = $(TARGET).elf
 
-CC = $(CROSS_COMPILE)gcc 
-FLAGS	= -Os -lSDL2 -lSDL2_image -lrt -ldl -Wl,--gc-sections -s
+CC = $(CROSS_COMPILE)gcc
+CFLAGS  = -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
+          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+FLAGS	= -Os -lSDL2 -lSDL2_image -lrt -ldl -Wl,--gc-sections -s $(CFLAGS)
 
 all:
 	$(CC) $(TARGET).c -o $(PRODUCT) $(FLAGS)

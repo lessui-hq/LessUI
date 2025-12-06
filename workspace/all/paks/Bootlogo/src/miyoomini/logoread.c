@@ -60,7 +60,7 @@ int main()
 
 		imgfd = creat(img_name[imgcount], 777);
 		if (imgfd < 0) { puts("failed to create"); return -1; }
-		if (size) if (write(imgfd, read_ofs, size) != size) { puts("failed to read"); return -1; }
+		if (size) if (write(imgfd, read_ofs, size) != (ssize_t)size) { puts("failed to read"); return -1; }
 		close(imgfd);
 		puts("OK");
 

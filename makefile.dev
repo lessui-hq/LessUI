@@ -55,6 +55,9 @@ LOG_FLAGS ?= -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) -Ofast -std=gnu99
 CFLAGS += -DDEV_SCREEN_WIDTH=$(SCREEN_WIDTH) -DDEV_SCREEN_HEIGHT=$(SCREEN_HEIGHT)
 CFLAGS += -fsanitize=address -fno-common
+CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
+          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
 LDFLAGS = -ldl -flto $(SDL_LIBS) -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address
 
