@@ -172,5 +172,30 @@
 #define SAMPLES 400 // Audio buffer size (helps reduce fceumm audio underruns)
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 158
+#define KEYMON_BUTTON_MENU_ALT -1
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 0
+#define KEYMON_HAS_JACK 0
+
+#define KEYMON_INPUT_COUNT 2
+#define KEYMON_INPUT_DEVICE_0 "/dev/input/event1"
+#define KEYMON_INPUT_DEVICE_1 "/dev/input/event2"
+
+#define KEYMON_HAS_JACK_SWITCH 1 // Uses EV_SW events for jack detection
+
+///////////////////////////////
+// Show Configuration
+///////////////////////////////
+
+// zero28 uses clockwise rotation (90° = rotate 1) instead of CCW (270° = rotate 3)
+#define SHOW_ROTATION_CLOCKWISE 1
+
+///////////////////////////////
 
 #endif

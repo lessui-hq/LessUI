@@ -170,5 +170,21 @@
 #define SAMPLES 400 // Audio buffer size (helps reduce fceumm audio underruns)
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 312
+#define KEYMON_BUTTON_MENU_ALT -1
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 1
+#define KEYMON_HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"
+#define KEYMON_HAS_JACK 0
+
+// Uses /dev/input/event1 (not event0!)
+#define KEYMON_INPUT_DEVICE "/dev/input/event1"
+
+///////////////////////////////
 
 #endif

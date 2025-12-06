@@ -16,7 +16,6 @@ REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 
 all: readmes
 	cd bl && make
-	cd show && make
 
 early: $(REQUIRES_COMMANDER)
 	mkdir -p other
@@ -24,7 +23,6 @@ early: $(REQUIRES_COMMANDER)
 		
 clean:
 	cd bl && make clean
-	cd show && make clean
 	cd $(REQUIRES_COMMANDER) && make clean
 	
 $(REQUIRES_COMMANDER):

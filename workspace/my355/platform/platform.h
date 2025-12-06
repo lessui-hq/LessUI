@@ -183,3 +183,20 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 ///////////////////////////////
 
 #endif
+
+///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 1
+#define KEYMON_BUTTON_MENU_ALT -1
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 1
+#define KEYMON_HDMI_STATE_PATH "/sys/class/drm/card0-HDMI-A-1/status"
+#define KEYMON_HDMI_USE_STRING 1
+
+#define KEYMON_HAS_JACK 1
+#define KEYMON_JACK_STATE_PATH "/sys/class/gpio/gpio150/value"
+#define KEYMON_JACK_INVERTED 1

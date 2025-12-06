@@ -159,5 +159,21 @@
 #define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 1
+#define KEYMON_BUTTON_MENU_ALT 354
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 0
+#define KEYMON_HAS_JACK 1
+#define KEYMON_JACK_STATE_PATH "/sys/class/switch/h2w/state"
+
+// Uses event0 and event1
+#define KEYMON_INPUT_COUNT 2
+
+///////////////////////////////
 
 #endif

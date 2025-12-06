@@ -176,5 +176,33 @@
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+// tg5040 has three menu button codes (314, 315, 316)
+#define KEYMON_BUTTON_MENU 314
+#define KEYMON_BUTTON_MENU_ALT 315
+#define KEYMON_BUTTON_MENU_ALT2 316
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+// Uses 4 input devices (event0-3)
+#define KEYMON_INPUT_COUNT 4
+
+#define KEYMON_HAS_HDMI 1
+#define KEYMON_HDMI_STATE_PATH "/sys/class/drm/card0-HDMI-A-1/status"
+#define KEYMON_HDMI_USE_STRING 1
+
+#define KEYMON_HAS_JACK 1
+#define KEYMON_JACK_STATE_PATH "/sys/bus/platform/devices/singleadc-joypad/hp"
+
+// tg5040 also uses EV_SW switch events for jack detection
+#define KEYMON_HAS_JACK_SWITCH 1
+
+// tg5040 needs mute monitoring via GPIO243
+#define KEYMON_HAS_MUTE 1
+#define KEYMON_MUTE_STATE_PATH "/sys/class/gpio/gpio243/value"
+
+///////////////////////////////
 
 #endif

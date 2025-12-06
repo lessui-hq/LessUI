@@ -16,7 +16,6 @@ REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 REQUIRES_UNZIP60=other/unzip60
 
 all: readmes
-	cd show && make
 	cd overclock && make
 	cd other/squashfs && make
 
@@ -27,7 +26,6 @@ early: $(REQUIRES_COMMANDER) $(REQUIRES_UNZIP60)
 	cd libmstick && make
 	
 clean:
-	cd show && make clean
 	cd overclock && make clean
 	cd other/squashfs && make clean
 	cd $(REQUIRES_COMMANDER) && make clean

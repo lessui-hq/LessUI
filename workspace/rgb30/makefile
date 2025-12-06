@@ -13,9 +13,9 @@ endif
 REQUIRES_COMMANDER=other/DinguxCommander
 REQUIRES_SDLCOMPAT=other/sdl12-compat
 
+# show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
-	cd show && make
-	
+
 early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
 	cd $(REQUIRES_COMMANDER) && make -j
 	cd $(REQUIRES_SDLCOMPAT) && cmake --build build

@@ -158,5 +158,30 @@
 #define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+// trimuismart uses SELECT/START instead of MENU button
+#define KEYMON_USE_SELECT_START 1
+#define KEYMON_BUTTON_SELECT CODE_SELECT
+#define KEYMON_BUTTON_START CODE_START
+#define KEYMON_BUTTON_L1 CODE_L1
+#define KEYMON_BUTTON_R1 CODE_R1
+
+// No HDMI or jack monitoring
+#define KEYMON_HAS_HDMI 0
+#define KEYMON_HAS_JACK 0
+
+// Two input devices
+#define KEYMON_INPUT_COUNT 2
+
+///////////////////////////////
+// Show Configuration
+///////////////////////////////
+
+// trimuismart needs path resolution (adds prefix for relative paths)
+#define SHOW_NEEDS_PATH_RESOLUTION 1
+
+///////////////////////////////
 
 #endif

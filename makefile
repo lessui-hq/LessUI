@@ -138,16 +138,16 @@ build:
 
 # Copy platform binaries to build directory
 system:
-	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
-
-	# populate system
-	cp ./workspace/$(PLATFORM)/keymon/keymon.elf ./build/SYSTEM/$(PLATFORM)/bin/
+	# populate system (binaries that makefile.copy may reference)
+	# keymon.elf and show.elf are now installed by utils install hook (unified implementation)
 	cp ./workspace/$(PLATFORM)/libmsettings/libmsettings.so ./build/SYSTEM/$(PLATFORM)/lib
 	cp ./workspace/all/minui/build/$(PLATFORM)/minui.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/minarch.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
-	# Install utils (calls install hook for each util)
+	# Install utils (calls install hook for each util - includes keymon.elf and show.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
+	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
+	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	# Construct tool paks from workspace/all/paks/Tools/
 	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
