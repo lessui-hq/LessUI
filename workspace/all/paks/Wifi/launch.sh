@@ -413,7 +413,9 @@ forget_network_loop() {
 		fi
 
 		SSID="$(cat /tmp/minui-output)"
-		sed -i "/^$SSID:/d" "$SDCARD_PATH/wifi.txt"
+		# Use grep -Fv for literal matching to avoid SSID injection attacks
+		grep -Fv "$SSID:" "$SDCARD_PATH/wifi.txt" > /tmp/wifi.txt.tmp && \
+			mv /tmp/wifi.txt.tmp "$SDCARD_PATH/wifi.txt"
 
 		shui progress "Updating config..." --indeterminate
 		if ! write_config "true"; then
