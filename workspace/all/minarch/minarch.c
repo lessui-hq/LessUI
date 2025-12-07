@@ -191,7 +191,10 @@ static int auto_cpu_thread_running = 0;
 #define AUTO_CPU_UTIL_LOW 55 // Utilization below 55% = can reduce (conservative)
 #define AUTO_CPU_BOOST_WINDOWS 2 // Boost after ~1s of high utilization
 #define AUTO_CPU_REDUCE_WINDOWS 4 // Reduce after ~2s of low utilization (conservative)
-#define AUTO_CPU_STARTUP_GRACE 60 // Ignore first N frames (~1 sec at 60fps)
+#define AUTO_CPU_STARTUP_GRACE 300 // Ignore first N frames (~5 sec at 60fps)
+#define AUTO_CPU_MIN_FREQ_KHZ 400000 // Minimum frequency to consider (400 MHz)
+#define AUTO_CPU_TARGET_UTIL 70 // Target utilization after frequency change
+#define AUTO_CPU_MAX_STEP 2 // Maximum frequency steps per change (prevents oscillation)
 
 // Input Settings
 static int has_custom_controllers = 0; // Custom controller mappings defined
@@ -1737,8 +1740,15 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
-	auto_cpu_freq_count =
-	    PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+	int raw_count = PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+
+	// Filter out frequencies below minimum threshold
+	auto_cpu_freq_count = 0;
+	for (int i = 0; i < raw_count; i++) {
+		if (auto_cpu_frequencies[i] >= AUTO_CPU_MIN_FREQ_KHZ) {
+			auto_cpu_frequencies[auto_cpu_freq_count++] = auto_cpu_frequencies[i];
+		}
+	}
 
 	if (auto_cpu_freq_count >= 2) {
 		auto_cpu_use_granular = 1;
@@ -1757,8 +1767,8 @@ static void auto_cpu_detectFrequencies(void) {
 		// PERFORMANCE: max frequency
 		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
 
-		LOG_info("Auto CPU: detected %d frequencies (%d - %d kHz)\n", auto_cpu_freq_count,
-		         auto_cpu_frequencies[0], max_freq);
+		LOG_info("Auto CPU: %d frequencies available (%d - %d kHz), filtered from %d\n",
+		         auto_cpu_freq_count, auto_cpu_frequencies[0], max_freq, raw_count);
 		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
 		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
 		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
@@ -1771,8 +1781,8 @@ static void auto_cpu_detectFrequencies(void) {
 		}
 	} else {
 		auto_cpu_use_granular = 0;
-		LOG_info("Auto CPU: frequency detection failed (%d found), using 3-level fallback\n",
-		         auto_cpu_freq_count);
+		LOG_info("Auto CPU: %d frequencies after filtering (raw: %d), using 3-level fallback\n",
+		         auto_cpu_freq_count, raw_count);
 	}
 }
 
@@ -1802,16 +1812,7 @@ static void resetAutoCPUState(void) {
 		frequencies_detected = 1;
 	}
 
-	// Reset to NORMAL preset (thread-safe)
-	pthread_mutex_lock(&auto_cpu_mutex);
-	if (auto_cpu_use_granular) {
-		auto_cpu_target_index = auto_cpu_preset_indices[1]; // NORMAL
-		auto_cpu_current_index = auto_cpu_preset_indices[1];
-	} else {
-		auto_cpu_target_level = 1; // NORMAL
-		auto_cpu_current_level = 1;
-	}
-	pthread_mutex_unlock(&auto_cpu_mutex);
+	// Note: target/current frequency set by setOverclock() after this call
 
 	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
 	         (unsigned long long)auto_cpu_frame_budget_us, core.fps, auto_cpu_use_granular);
@@ -1840,19 +1841,21 @@ static void setOverclock(int i) {
 		break;
 	case 3: // Auto
 		resetAutoCPUState();
-		// Apply initial frequency immediately (synchronous) to avoid startup underrun
-		// Background thread will then maintain this or adjust as needed
+		// Start at max frequency to avoid startup stutter during grace period
+		// Background thread will scale down as needed after grace period
 		if (auto_cpu_use_granular) {
-			int start_idx = auto_cpu_preset_indices[1]; // NORMAL preset
+			int start_idx = auto_cpu_preset_indices[2]; // PERFORMANCE - start high
 			int start_freq = auto_cpu_frequencies[start_idx];
 			PLAT_setCPUFrequency(start_freq);
 			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_target_index = start_idx; // Set target so thread doesn't immediately change
 			auto_cpu_current_index = start_idx; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		} else {
-			PWR_setCPUSpeed(CPU_SPEED_NORMAL);
+			PWR_setCPUSpeed(CPU_SPEED_PERFORMANCE);
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_current_level = 1; // Mark as applied
+			auto_cpu_target_level = 2; // Set target so thread doesn't immediately change
+			auto_cpu_current_level = 2; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		}
 		auto_cpu_startThread();
@@ -1873,14 +1876,13 @@ static float current_vsync_hz = 0;
  *
  * Granular Mode Algorithm:
  * - Performance scales linearly with frequency
- * - Step through frequency indices one at a time for smooth transitions
- * - Use predicted utilization to find optimal frequency
+ * - Boost: Jump to predicted optimal frequency (no step limit)
+ * - Reduce: Limited to MAX_STEP indices to prevent underruns
+ * - Panic: Boost by MAX_STEP on underrun, with cooldown
  *
  * Fallback Mode Algorithm (3 levels):
- * - Same as before: count consecutive high/low util windows
+ * - Count consecutive high/low util windows
  * - Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
- *
- * Both modes handle emergency escalation on actual audio underruns (panic path).
  */
 static void updateAutoCPU(void) {
 	// Skip if not in auto mode or during special states
@@ -1908,20 +1910,24 @@ static void updateAutoCPU(void) {
 	int at_max = auto_cpu_use_granular ? (current_idx >= max_idx) : (current_level >= 2);
 
 	if (underruns > auto_cpu_last_underrun && !at_max) {
-		// Underrun detected - request immediate boost to max
+		// Underrun detected - boost by up to MAX_STEP (not straight to max)
 		if (auto_cpu_use_granular) {
-			auto_cpu_setTargetIndex(max_idx);
-			LOG_warn("Auto CPU: PANIC - underrun, boosting to %d kHz\n",
-			         auto_cpu_frequencies[max_idx]);
+			int new_idx = current_idx + AUTO_CPU_MAX_STEP;
+			if (new_idx > max_idx)
+				new_idx = max_idx;
+			auto_cpu_setTargetIndex(new_idx);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting %d→%d kHz\n",
+			         auto_cpu_frequencies[current_idx], auto_cpu_frequencies[new_idx]);
 		} else {
-			auto_cpu_setTargetLevel(2);
-			LOG_warn("Auto CPU: PANIC - underrun, boosting to PERFORMANCE\n");
+			int new_level = current_level + AUTO_CPU_MAX_STEP;
+			if (new_level > 2)
+				new_level = 2;
+			auto_cpu_setTargetLevel(new_level);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to level %d\n", new_level);
 		}
 		auto_cpu_high_util_windows = 0;
 		auto_cpu_low_util_windows = 0;
-		// Set cooldown: wait 8 windows (~4 seconds) before allowing reduction
-		// This prevents rapid oscillation after a panic (especially on platforms
-		// with few frequency steps like miyoomini)
+		// Cooldown: wait 8 windows (~4 seconds) before allowing reduction
 		auto_cpu_panic_cooldown = 8;
 		SND_resetUnderrunCount();
 		auto_cpu_last_underrun = 0;
@@ -1975,11 +1981,11 @@ static void updateAutoCPU(void) {
 				auto_cpu_low_util_windows = 0;
 
 				if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_idx < max_idx) {
-					// Find next frequency that would bring util under 75% (target sweet spot)
+					// Find next frequency that would bring util to target (sweet spot)
 					// Using: new_util = util * (current_freq / new_freq)
 					// So: new_freq = current_freq * util / target_util
-					int target_util = 70; // Target 70% after boost
-					int needed_freq = current_freq * (int)util / target_util;
+					// No step limit - linear scaling prediction is accurate, boost aggressively
+					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go higher
@@ -1991,7 +1997,7 @@ static void updateAutoCPU(void) {
 					auto_cpu_setTargetIndex(new_idx);
 					auto_cpu_high_util_windows = 0;
 					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
-					         auto_cpu_frequencies[new_idx], util, target_util);
+					         auto_cpu_frequencies[new_idx], util, AUTO_CPU_TARGET_UTIL);
 				}
 			} else if (util < AUTO_CPU_UTIL_LOW) {
 				// Can reduce power - step down
@@ -2003,11 +2009,10 @@ static void updateAutoCPU(void) {
 				                (auto_cpu_panic_cooldown == 0) && (current_idx > 0);
 
 				if (reduce_ok) {
-					// Find frequency that would bring util up to ~70% (target sweet spot)
+					// Find frequency that would bring util up to target (sweet spot)
 					// new_util = util * (current_freq / new_freq)
 					// new_freq = current_freq * util / target_util
-					int target_util = 70; // Target 70% after reduction
-					int needed_freq = current_freq * (int)util / target_util;
+					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go lower
@@ -2016,33 +2021,18 @@ static void updateAutoCPU(void) {
 					if (new_idx < 0)
 						new_idx = 0;
 
-					// CONSERVATIVE STEP LIMIT: Never step down more than 2 indices at once
-					// This prevents jumping from max to min on platforms with few frequencies
-					// (e.g., miyoomini 1600→400 MHz caused immediate underruns)
-					int max_step = 2;
-					if (current_idx - new_idx > max_step) {
-						new_idx = current_idx - max_step;
+					// Limit reduction to MAX_STEP indices at once
+					if (current_idx - new_idx > AUTO_CPU_MAX_STEP) {
+						new_idx = current_idx - AUTO_CPU_MAX_STEP;
 					}
 
-					// Safety check: predict new utilization, keep comfortable headroom (≤75%)
-					// Using 75% instead of 85% gives buffer for jitter and measurement error
 					int new_freq = auto_cpu_frequencies[new_idx];
 					int predicted_util = util * current_freq / new_freq;
-					int safe_util = 75; // Conservative threshold for reduction decisions
 
-					if (predicted_util > safe_util) {
-						// Would be too close to edge - step down by only 1 instead
-						new_idx = current_idx - 1;
-						new_freq = auto_cpu_frequencies[new_idx];
-						predicted_util = util * current_freq / new_freq;
-					}
-
-					if (new_idx >= 0 && predicted_util <= AUTO_CPU_UTIL_HIGH) {
-						auto_cpu_setTargetIndex(new_idx);
-						auto_cpu_low_util_windows = 0;
-						LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
-						         current_freq, new_freq, util, predicted_util);
-					}
+					auto_cpu_setTargetIndex(new_idx);
+					auto_cpu_low_util_windows = 0;
+					LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
+					         current_freq, new_freq, util, predicted_util);
 				}
 			} else {
 				// In sweet spot - reset counters

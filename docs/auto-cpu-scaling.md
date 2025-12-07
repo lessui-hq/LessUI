@@ -198,12 +198,12 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 ### Phase 3: Emergency Escalation ✅
 - [x] Track actual underrun events in audio callback (`snd.underrun_count`)
 - [x] Expose `SND_getUnderrunCount()` and `SND_resetUnderrunCount()`
-- [x] On underrun: immediate boost to PERFORMANCE, reset counters
+- [x] On underrun: boost by max 2 steps, 4s cooldown before reducing
 
 ### Phase 4: Special State Handling ✅
 - [x] Disable auto-scaling during `fast_forward`
 - [x] Disable auto-scaling during `show_menu`
-- [x] Ignore first ~1 second after game start (`AUTO_CPU_STARTUP_GRACE = 60`)
+- [x] Ignore first ~5 seconds after game start (`AUTO_CPU_STARTUP_GRACE = 300`)
 - [x] Returns 0 stress if audio not initialized (safe fallback)
 
 ### Phase 5: Menu Integration ✅
@@ -339,11 +339,11 @@ if (underrun_occurred) {
 
 // In main loop:
 if (SND_getUnderrunCount() > last_underrun_count) {
-    // Emergency! Immediate boost to PERFORMANCE
-    cpu_level = MAX_LEVEL;
-    apply_cpu_level();
-    high_util_windows = 0;
-    low_util_windows = 0;
+    // Emergency! Boost by up to MAX_STEP (not straight to max)
+    new_idx = current_idx + AUTO_CPU_MAX_STEP;
+    if (new_idx > max_idx) new_idx = max_idx;
+    apply_frequency(new_idx);
+    panic_cooldown = 8;  // ~4 seconds before allowing reduction
 }
 ```
 
@@ -498,9 +498,12 @@ The discovered frequency steps and performance data come from a custom CPU bench
 | Window size | 30 frames (~500ms) | Filters noise, responsive to changes |
 | Utilization high | 85% | Frame time >85% of budget = boost |
 | Utilization low | 55% | Frame time <55% of budget = reduce |
+| Target util | 70% | Target utilization after frequency change |
+| Max step (reduce/panic) | 2 | Max frequency steps down (boost unlimited) |
+| Min frequency | 400 MHz | Floor for frequency scaling |
 | Boost windows | 2 (~1s) | Fast response to performance issues |
 | Reduce windows | 4 (~2s) | Conservative to prevent oscillation |
-| Startup grace | 60 frames (~1s) | Avoids false positives during warmup |
+| Startup grace | 300 frames (~5s) | Starts at max freq, then scales |
 | Percentile | 90th | Ignores outliers (loading screens) |
 
 ### Display Rate Handling
@@ -586,13 +589,16 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 - Runtime frequency detection via `PLAT_getAvailableCPUFrequencies()`
 - Direct frequency setting via `PLAT_setCPUFrequency()`
 - Linear performance scaling for intelligent frequency selection
+- Minimum frequency floor (400 MHz) filters out unusably slow frequencies
 - Automatic fallback to 3-level mode if detection fails
 
 **Algorithm improvements:**
 - Performance scales linearly with frequency: `new_util = current_util × (current_freq / new_freq)`
-- Target 70% utilization in the "sweet spot"
-- Predict utilization at lower frequencies before stepping down
-- Safety checks prevent stepping into overload (>85% predicted util)
+- Target 70% utilization after frequency changes
+- **Boost**: Uses linear prediction, no step limit (aggressive is safe)
+- **Reduce**: Uses linear prediction, max 2 steps (conservative to avoid underruns)
+- **Panic**: Boost by max 2 steps on underrun, 4s cooldown
+- **Startup**: Begin at max frequency during 5s grace period
 
 **Preset mapping for manual modes:**
 - POWERSAVE: ~25% up from minimum frequency
