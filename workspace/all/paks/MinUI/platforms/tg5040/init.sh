@@ -1,9 +1,14 @@
 #!/bin/sh
 # tg5040 initialization
 
-# Extra paths
-export PATH="/usr/trimui/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/trimui/lib:$LD_LIBRARY_PATH"
+# Extra paths (appended so system paths have priority)
+export PATH="$PATH:/usr/trimui/bin"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
+
+# Create standard directories (tg5040 needs these created explicitly)
+mkdir -p "$BIOS_PATH"
+mkdir -p "$SDCARD_PATH/Roms"
+mkdir -p "$SAVES_PATH"
 
 # Detect model
 TRIMUI_MODEL=$(strings /usr/trimui/bin/MainUI | grep ^Trimui)

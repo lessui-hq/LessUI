@@ -54,7 +54,8 @@ for hook in pre-init init late-init; do
 
 	if [ -f "$hook_file" ]; then
 		tmp=$(mktemp)
-		cat "$hook_file" > "$tmp"
+		# Strip shebang line from hook files (not needed when embedded)
+		grep -v '^#!/' "$hook_file" > "$tmp"
 		awk -v marker="$marker" -v file="$tmp" '
 			$0 == marker { while ((getline line < file) > 0) print line; next }
 			{ print }

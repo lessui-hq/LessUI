@@ -1,9 +1,9 @@
 #!/bin/sh
 # trimuismart initialization
 
-# Extra paths
-export PATH="/usr/trimui/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/trimui/lib:$LD_LIBRARY_PATH"
+# Extra paths (appended so system paths have priority)
+export PATH="$PATH:/usr/trimui/bin"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
 
 # Button configuration
 echo A,B,X,Y,L,R > /sys/module/gpio_keys_polled/parameters/button_config

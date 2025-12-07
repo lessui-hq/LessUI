@@ -1,9 +1,9 @@
 #!/bin/sh
 # my355 initialization
 
-# Extra paths
-export PATH="/usr/miyoo/bin:/usr/miyoo/sbin:$PATH"
-export LD_LIBRARY_PATH="/usr/miyoo/lib:$LD_LIBRARY_PATH"
+# Extra paths (appended so system paths have priority)
+export PATH="$PATH:/usr/miyoo/bin:/usr/miyoo/sbin"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/miyoo/lib"
 
 # CPU setup
 echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor

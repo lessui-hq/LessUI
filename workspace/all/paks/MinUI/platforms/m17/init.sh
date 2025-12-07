@@ -1,9 +1,9 @@
 #!/bin/sh
 # m17 initialization
 
-# Extra paths
-export PATH="/usr/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/lib:$LD_LIBRARY_PATH"
+# Extra paths (appended so system paths have priority)
+export PATH="$PATH:/usr/bin"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib"
 
 # CPU/GPU governors (performance mode, no speed control)
 echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
@@ -28,6 +28,9 @@ loop_tail_hook() {
 		done
 	fi
 }
+
+# Start ADB daemon
+start_adbd.sh
 
 # Start keymon
 keymon.elf &
