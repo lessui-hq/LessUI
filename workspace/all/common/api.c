@@ -1634,14 +1634,11 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// Rate control sensitivity (d parameter from Arntzen's paper).
-// Controls how aggressively pitch is adjusted based on buffer fill level.
-// Paper recommends 0.002-0.005 (0.2-0.5%) for desktop systems with stable displays.
-// We use 1.0% to handle timing jitter plus display rate measurement error.
-// Handheld devices have ±0.2% display rate measurement variance on top of
-// the 0.5-0.6% display/core mismatch. 1.0% provides adequate headroom.
+// Rate control feedback gain (d parameter from Arntzen paper).
+// Controls response speed to buffer deviations. Paper recommends 0.2-0.5%.
+// Base/audio corrections handle static mismatch; d only handles jitter.
 // See docs/audio-rate-control.md for detailed analysis.
-#define SND_RATE_CONTROL_D 0.01f
+#define SND_RATE_CONTROL_D 0.005f
 
 // Buffer sizing constants
 #define SND_BASE_BUFFER_FRAMES 4 // Minimum buffer size in video frames (~67ms at 60fps)
@@ -1874,22 +1871,17 @@ static float SND_getBufferFillLevel(void) {
  *   - fill = 0.5 (half): ratio_adjust = 1.0 → equilibrium
  *   - fill = 1 (full): ratio_adjust = 1+d → fewer outputs → drains buffer
  *
- * Adaptive d parameter:
- *   - Before meters stable: d=2% (handles unknown mismatch during measurement)
- *   - After meters stable: d=1% (handles jitter only, mismatch via base_correction)
+ * The d parameter (0.5%) controls response speed. Base/audio corrections handle
+ * static clock drift; d only handles jitter. Paper recommends 0.2-0.5%.
  *
- * The algorithm is stable and converges exponentially to half-full buffer,
- * providing maximum headroom for timing jitter in both directions.
+ * The algorithm converges exponentially to half-full buffer, providing
+ * maximum headroom for timing jitter in both directions.
  *
- * @return Rate adjustment factor (1.0 ± d) for resampler step size
+ * @return Rate adjustment factor (1.0 ± 0.5%) for resampler step size
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
-	// Use larger d during measurement phase, smaller d once meters are stable
-	int meters_stable =
-	    RateMeter_isStable(&snd.display_meter) && RateMeter_isStable(&snd.audio_meter);
-	float d = meters_stable ? SND_RATE_CONTROL_D : 0.02f;
-	return 1.0f - (1.0f - 2.0f * fill) * d;
+	return 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
 }
 
 /**
@@ -1897,12 +1889,11 @@ static float SND_calculateRateAdjust(void) {
  *
  * Uses linear interpolation resampling with dynamic rate control:
  * - Linear interpolation: Smoothly blends between adjacent samples
- * - Dynamic rate control: Adjusts pitch ±1-2% based on buffer fill level
+ * - Dynamic rate control: Adjusts pitch ±0.5% based on buffer fill level
  *
  * Implements Hans-Kristian Arntzen's "Dynamic Rate Control" algorithm which
- * maintains buffer at 50% full. The adaptive d (2% before meters stable, 1% after)
- * handles display/audio clock drift on handheld devices while keeping average pitch
- * deviation well under the ~1% threshold of human perception.
+ * maintains buffer at 50% full. Base/audio corrections handle static clock
+ * drift; d=0.5% handles only jitter (paper recommends 0.2-0.5%).
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array

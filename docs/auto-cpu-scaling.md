@@ -32,7 +32,7 @@ On rg35xxplus, low buffer fill triggered max CPU even though CPU was only 50% lo
 **Why this happens:**
 - NES outputs 60.0988 Hz
 - rg35xxplus display runs at 59.711 Hz (-0.65% mismatch)
-- Rate control compensates with pitch shift (up to ±2%)
+- Rate control compensates with pitch shift (up to ±0.5%)
 - If mismatch exceeds rate control range, buffer drifts away from 50%
 - Buffer fill now reflects timing quality, not CPU performance
 
@@ -82,7 +82,7 @@ while (!quit) {
 - Produces audio at 59.71 fps instead of 60.10 fps
 - Creates -0.65% audio production deficit
 - Buffer drains regardless of CPU performance
-- Rate control (d=2%) fights deficit that shouldn't exist
+- Rate control fights deficit that shouldn't exist
 
 #### Current Architecture (Improved)
 
@@ -106,10 +106,10 @@ while (!quit) {
 - Still produces -0.65% less audio than expected
 - Buffer settles at ~17-30%, not the ideal 50%
 
-**The math:** With d=1% and 0.65% mismatch, equilibrium is:
+**The math:** With d=0.5% and 0.65% mismatch, equilibrium is:
 ```
-adjustment = 1.0 - (1.0 - 2*fill) * 0.01 = 0.9935
-fill = 0.175 (17.5%)
+adjustment = 1.0 - (1.0 - 2*fill) * 0.005 = 0.9935
+fill = 0.15 (15%)
 ```
 
 Buffer CANNOT settle at 50% when display ≠ core rate, no matter the buffer size.
@@ -426,12 +426,11 @@ float base_correction = display_hz / core_fps;  // e.g., 0.9935 for -0.65% misma
 #define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum (catches bugs)
 ```
 
-**Why adaptive d + base correction:**
-- Display/core rate mismatch is **static** (handled via vsync measurement)
+**Why fixed d + base correction:**
+- Display/core rate mismatch is **static** (handled via base_correction from frame 1)
 - Timing jitter is **dynamic** (handled via rate control d=0.5%)
-- Adaptive d (2% → 0.5%) solves the bootstrap problem
-- d=2% keeps buffer stable during measurement phase
-- d=0.5% prevents oscillation after measurement complete
+- Base correction applies immediately using display_meter median
+- d=0.5% handles only jitter (paper recommends 0.2-0.5%)
 - This separation maintains stable 50% fill on all devices
 
 ### Audio Buffer Size
@@ -570,7 +569,7 @@ After implementing the unified RateMeter system with dual clock correction (disp
    - Low quality: frame timing drops → auto scaler correctly reduces CPU
    - The system responds to actual emulation workload, not arbitrary core labels
 
-3. **No feedback loops** - Buffer fill is now influenced by adaptive d (2%→1%), base correction, audio correction, and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+3. **No feedback loops** - Buffer fill is influenced by rate control (d=0.5%), base correction, audio correction, and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
 
 **The two-layer separation is optimal:**
 
