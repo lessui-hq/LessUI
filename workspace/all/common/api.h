@@ -833,38 +833,6 @@ unsigned SND_getUnderrunCount(void);
 void SND_resetUnderrunCount(void);
 
 /**
- * Adds a display rate sample for continuous measurement.
- * Called every frame with vsync interval converted to Hz.
- *
- * @param hz Display refresh rate in Hz for this frame
- */
-void SND_addDisplaySample(float hz);
-
-/**
- * Adds an audio rate sample for continuous measurement.
- * Called periodically with measured consumption rate.
- *
- * @param hz Audio consumption rate in Hz
- */
-void SND_addAudioSample(float hz);
-
-/**
- * Gets the current display rate swing (max - min).
- * Used for dynamic buffer sizing.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getDisplaySwing(void);
-
-/**
- * Gets the current audio rate swing (max - min).
- * Used for dynamic buffer sizing.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getAudioSwing(void);
-
-/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
@@ -889,14 +857,10 @@ typedef struct {
 	uint64_t samples_consumed; // Total samples consumed by audio callback
 	uint64_t samples_requested; // Total samples requested by SDL callback
 
-	// Rate control parameters
-	float display_hz; // Measured display rate (0 if not measured)
-	float audio_hz; // Measured audio consumption rate (0 if not measured)
+	// Rate control parameters (Arntzen algorithm)
 	float frame_rate; // Core frame rate (e.g., 60.0988)
-	float base_correction; // Static display/core correction
-	float audio_correction; // Static audio clock drift correction
-	float rate_adjust; // Dynamic rate control adjustment
-	float total_adjust; // Combined adjustment (base * audio * rate)
+	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
+	float total_adjust; // Same as rate_adjust (no separate corrections)
 
 	// Resampler state
 	int sample_rate_in; // Input sample rate (from core)

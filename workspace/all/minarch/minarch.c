@@ -56,7 +56,6 @@
 #include "defines.h"
 #include "libretro.h"
 #include "minui_file_utils.h"
-#include "rate_meter.h" // For RATE_METER_AUDIO_INTERVAL
 #include "scaler.h"
 #include "utils.h"
 
@@ -1537,7 +1536,6 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
 // Components:
 // - Background thread: Applies CPU changes without blocking main loop
 // - updateAutoCPU(): Per-frame monitoring called from main loop
-// - measureDisplayRate(): Vsync timing (in Performance Tracking section)
 
 /**
  * Background thread that applies CPU frequency changes.
@@ -1863,8 +1861,7 @@ static void setOverclock(int i) {
 	}
 }
 
-// Display rate tracking - shared between Performance Tracking and Auto CPU Scaling
-// Set by measureDisplayRate(), used by updateAutoCPU() for diagnostics
+// Vsync rate for diagnostics (currently unused, would need measurement to populate)
 static float current_vsync_hz = 0;
 
 /**
@@ -3948,7 +3945,6 @@ static double fps_double = 0;
 static double cpu_double = 0;
 static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
-// Note: current_vsync_hz is declared earlier (used by updateAutoCPU, set by measureDisplayRate)
 
 #ifdef USES_SWSCALER
 static int fit = 1; // Use software scaler (fit to screen)
@@ -6865,14 +6861,10 @@ static void Menu_loop(void) {
 // Functions:
 // - getUsage(): System CPU% from /proc/self/stat
 // - trackFPS(): FPS and CPU counters for debug HUD (once per second)
-// - measureDisplayRate(): Vsync timing for audio rate control (per frame)
-// - measureAudioRate(): Audio consumption rate for rate control (2s windows)
 // - limitFF(): Fast-forward speed limiter
 //
 // These feed data to:
 // - Debug HUD (top-left corner): FPS, CPU%
-// - Audio rate control (api.c): Display/audio rate meters
-// - Auto CPU scaling: current_vsync_hz for diagnostics
 
 /**
  * Gets CPU usage percentage from /proc/self/stat.
@@ -6941,68 +6933,6 @@ static void trackFPS(void) {
 				last_underrun_count = underruns;
 			}
 		}
-	}
-}
-
-/**
- * Measures display refresh rate via vsync timing.
- *
- * Called every frame from main loop. Measures the interval between vsync
- * events, converts to Hz, and passes to the rate meter in api.c.
- * The meter handles windowing, median calculation, and stability detection.
- */
-static void measureDisplayRate(void) {
-	static uint64_t last_flip = 0;
-
-	uint64_t now = getMicroseconds();
-
-	if (last_flip > 0) {
-		// Calculate this interval in Hz
-		uint64_t interval_us = now - last_flip;
-		if (interval_us > 0) {
-			float hz = 1000000.0f / (float)interval_us;
-			SND_addDisplaySample(hz);
-
-			// Update current measurement for diagnostic logging
-			current_vsync_hz = hz;
-		}
-	}
-
-	last_flip = now;
-}
-
-/**
- * Measures audio consumption rate by tracking SDL callback requests.
- *
- * Called every frame. Measures samples consumed over longer windows
- * (configured by RATE_METER_AUDIO_INTERVAL) to average out SDL callback
- * burst patterns. The meter handles windowing and stability detection.
- */
-static void measureAudioRate(void) {
-	static uint64_t last_time = 0;
-	static uint64_t last_requested = 0;
-
-	SND_Snapshot snap = SND_getSnapshot();
-	uint64_t now = snap.timestamp_us;
-
-	if (last_time > 0 && snap.samples_requested > last_requested) {
-		float dt = (now - last_time) / 1000000.0f;
-
-		// Measure over longer windows to average out callback bursts
-		// Short windows (100ms) see 40-53kHz swings; 2s windows see stable ~48kHz
-		if (dt >= RATE_METER_AUDIO_INTERVAL) {
-			uint64_t requested_delta = snap.samples_requested - last_requested;
-			float hz = requested_delta / dt;
-			SND_addAudioSample(hz);
-
-			// Reset tracking for next window
-			last_time = now;
-			last_requested = snap.samples_requested;
-		}
-	} else {
-		// Initialize tracking
-		last_time = now;
-		last_requested = snap.samples_requested;
 	}
 }
 
@@ -7209,8 +7139,6 @@ int main(int argc, char* argv[]) {
 		// accurate frame time measurement (emulation only, no vsync wait)
 		if (frame_ready_for_flip) {
 			GFX_flip(screen);
-			measureDisplayRate();
-			measureAudioRate();
 			frame_ready_for_flip = 0;
 		}
 

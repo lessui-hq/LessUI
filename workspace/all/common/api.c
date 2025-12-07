@@ -44,8 +44,6 @@
 #include "defines.h"
 #include "gfx_text.h"
 #include "pad.h"
-// NOLINTNEXTLINE(bugprone-suspicious-include) - Intentionally bundled to avoid makefile changes
-#include "rate_meter.c"
 #include "utils.h"
 
 ///////////////////////////////
@@ -1635,15 +1633,15 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 #define ms SDL_GetTicks // Shorthand for timestamp
 
 // Rate control feedback gain (d parameter from Arntzen paper).
-// Controls response speed to buffer deviations. Paper recommends 0.2-0.5%.
-// Base/audio corrections handle static mismatch; d only handles jitter.
+// Controls how aggressively the algorithm corrects buffer deviations.
+// Higher d = faster response but more pitch variation.
+// Lower d = smoother but may not keep up with timing mismatches.
 // See docs/audio-rate-control.md for detailed analysis.
-#define SND_RATE_CONTROL_D 0.005f
+#define SND_RATE_CONTROL_D 0.01f // 1% - handles ~0.7% display/core mismatch + jitter
 
-// Buffer sizing constants
-#define SND_BASE_BUFFER_FRAMES 4 // Minimum buffer size in video frames (~67ms at 60fps)
-#define SND_MAX_BUFFER_FRAMES 8 // Maximum buffer size (hard limit)
-#define SND_SWING_SAFETY 1.5f // Safety margin for swing-based buffer increase
+// Buffer sizing: 4 video frames of audio (~67ms at 60fps)
+// Provides headroom for timing variance while keeping latency reasonable.
+#define SND_BUFFER_FRAMES 4
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1663,10 +1661,6 @@ static struct SND_Context {
 
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
-
-	// Rate meters for continuous measurement (replaces single display_hz/audio_hz values)
-	RateMeter display_meter; // Display refresh rate tracking
-	RateMeter audio_meter; // Audio consumption rate tracking
 
 	// Underrun tracking (for auto CPU scaling)
 	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
@@ -1780,62 +1774,6 @@ static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
 }
 
 /**
- * Calculates optimal buffer size based on measured swing.
- *
- * Higher swing in display/audio rates means more timing variance,
- * requiring more buffer headroom to prevent underruns.
- *
- * Formula:
- *   variance_pct = swing / median_hz
- *   extra_frames = ceil(variance_pct * base_frames * safety)
- *   total_frames = base + extra (capped at max)
- *
- * @return Optimal buffer size in video frames
- */
-static int SND_calculateOptimalBufferFrames(void) {
-	float display_hz = RateMeter_getRate(&snd.display_meter);
-	float display_swing = RateMeter_getSwing(&snd.display_meter);
-
-	// Start with base buffer
-	int frames = SND_BASE_BUFFER_FRAMES;
-
-	// If we have valid display measurements, calculate variance
-	if (display_hz > 0 && display_swing > 0) {
-		// Display swing as percentage of rate (e.g., 0.5 Hz / 60 Hz = 0.0083)
-		float variance_pct = display_swing / display_hz;
-
-		// Each 1% variance needs about 1 extra frame of headroom (with safety margin)
-		// variance_pct is a decimal (0.0083), so × 100 converts to percentage (0.83%)
-		float extra = variance_pct * SND_BASE_BUFFER_FRAMES * SND_SWING_SAFETY * 100.0f;
-		frames += (int)(extra + 0.5f); // Round up
-	}
-
-	// Clamp to max
-	if (frames > SND_MAX_BUFFER_FRAMES)
-		frames = SND_MAX_BUFFER_FRAMES;
-
-	return frames;
-}
-
-/**
- * Updates buffer size based on measured swing (called when meters stabilize).
- *
- * Increases buffer from base size if high timing variance is detected.
- * Only grows buffer, never shrinks (to avoid disruption during playback).
- */
-static void SND_updateBufferForSwing(void) {
-	int optimal = SND_calculateOptimalBufferFrames();
-
-	// Only grow, never shrink (avoid disruption)
-	if (optimal > snd.buffer_video_frames) {
-		LOG_info("Audio: increasing buffer from %d to %d frames (display swing=%.2f Hz)\n",
-		         snd.buffer_video_frames, optimal, RateMeter_getSwing(&snd.display_meter));
-		snd.buffer_video_frames = optimal;
-		SND_resizeBuffer();
-	}
-}
-
-/**
  * Calculates buffer fill level as a fraction (0.0 to 1.0).
  *
  * @return Fill level where 0.0 = empty, 1.0 = full
@@ -1909,21 +1847,10 @@ size_t SND_batchSamples(const SND_Frame* frames,
 
 	SDL_LockAudio();
 
-	// Calculate display rate correction (static offset for display/core mismatch)
-	// Use measured display rate from meter, otherwise assume display = core rate
-	float display_hz = RateMeter_getRate(&snd.display_meter);
-	float base_correction = (display_hz > 0) ? display_hz / (float)snd.frame_rate : 1.0f;
-
-	// Calculate audio clock correction (static offset for actual vs nominal consumption rate)
-	// Use measured audio rate from meter, otherwise assume audio clock is accurate
-	float audio_hz = RateMeter_getRate(&snd.audio_meter);
-	float audio_correction = (audio_hz > 0) ? (float)snd.sample_rate_out / audio_hz : 1.0f;
-
-	// Calculate dynamic rate adjustment for jitter (1.0 ± d based on buffer fill)
-	float rate_adjust = SND_calculateRateAdjust();
-
-	// Combined adjustment: display correction × audio correction × dynamic jitter
-	float total_adjust = base_correction * audio_correction * rate_adjust;
+	// Dynamic rate control per Arntzen paper: adjust resampling ratio based on buffer fill
+	// Buffer empty → produce more samples (fill up), buffer full → produce fewer (drain)
+	// The system naturally converges to a stable equilibrium point
+	float total_adjust = SND_calculateRateAdjust();
 
 	// Note: Debug logging moved to minarch's unified snapshot logging (SND_getSnapshot)
 
@@ -2005,10 +1932,6 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	memset(&snd, 0, sizeof(struct SND_Context));
 	snd.frame_rate = frame_rate;
 
-	// Initialize rate meters for continuous measurement
-	RateMeter_init(&snd.display_meter, RATE_METER_DISPLAY_WINDOW, RATE_METER_DISPLAY_STABILITY);
-	RateMeter_init(&snd.audio_meter, RATE_METER_AUDIO_WINDOW, RATE_METER_AUDIO_STABILITY);
-
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
 
@@ -2021,7 +1944,7 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_video_frames = 4; // Buffer 4 video frames of audio (~67ms at 60fps)
+	snd.buffer_video_frames = SND_BUFFER_FRAMES;
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
@@ -2104,14 +2027,10 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.samples_consumed = snd.samples_consumed;
 	snap.samples_requested = snd.samples_requested;
 
-	// Rate control parameters (from meters)
-	snap.display_hz = RateMeter_getRate(&snd.display_meter);
-	snap.audio_hz = RateMeter_getRate(&snd.audio_meter);
+	// Rate control parameters (simplified - just the dynamic adjustment)
 	snap.frame_rate = snd.frame_rate;
-	snap.base_correction = (snap.display_hz > 0) ? snap.display_hz / (float)snd.frame_rate : 1.0f;
-	snap.audio_correction = (snap.audio_hz > 0) ? (float)snd.sample_rate_out / snap.audio_hz : 1.0f;
 	snap.rate_adjust = SND_calculateRateAdjust();
-	snap.total_adjust = snap.base_correction * snap.audio_correction * snap.rate_adjust;
+	snap.total_adjust = snap.rate_adjust; // Now the same (no base/audio corrections)
 
 	// Resampler state
 	snap.sample_rate_in = snd.sample_rate_in;
@@ -2133,94 +2052,6 @@ SND_Snapshot SND_getSnapshot(void) {
 	SDL_UnlockAudio();
 
 	return snap;
-}
-
-/**
- * Adds a display rate sample for continuous measurement.
- *
- * Called every frame with the measured vsync interval converted to Hz.
- * The meter tracks a running median, min/max, and stability.
- * Values are used continuously - no "apply once" behavior.
- *
- * @param hz Display refresh rate in Hz for this frame
- */
-void SND_addDisplaySample(float hz) {
-	if (!snd.initialized)
-		return;
-
-	int was_stable = RateMeter_isStable(&snd.display_meter);
-	RateMeter_addSample(&snd.display_meter, hz);
-
-	// When meter first achieves stability, log and update buffer
-	if (!was_stable && RateMeter_isStable(&snd.display_meter)) {
-		float median = RateMeter_getRate(&snd.display_meter);
-		float swing = RateMeter_getSwing(&snd.display_meter);
-		float base_correction = median / (float)snd.frame_rate;
-		float mismatch_pct = ((median - (float)snd.frame_rate) / (float)snd.frame_rate) * 100.0f;
-		LOG_info("Display: meter stable at %.2f Hz (swing=%.2f Hz, core=%.2f Hz, correction=%.4f, "
-		         "%.2f%% mismatch)\n",
-		         median, swing, (float)snd.frame_rate, base_correction, mismatch_pct);
-		(void)swing;
-		(void)base_correction;
-		(void)mismatch_pct; // Used in LOG_info
-
-		// Adjust buffer size based on measured swing
-		SND_updateBufferForSwing();
-	}
-}
-
-/**
- * Adds an audio rate sample for continuous measurement.
- *
- * Called every frame with the measured audio consumption rate in Hz.
- * The meter tracks a running median, min/max, and stability.
- * Values are used continuously - no "apply once" behavior.
- *
- * @param hz Audio consumption rate in Hz for this measurement window
- */
-void SND_addAudioSample(float hz) {
-	if (!snd.initialized)
-		return;
-
-	int was_stable = RateMeter_isStable(&snd.audio_meter);
-	RateMeter_addSample(&snd.audio_meter, hz);
-
-	// Log when meter first achieves stability
-	if (!was_stable && RateMeter_isStable(&snd.audio_meter)) {
-		float median = RateMeter_getRate(&snd.audio_meter);
-		float swing = RateMeter_getSwing(&snd.audio_meter);
-		float audio_correction = (float)snd.sample_rate_out / median;
-		float drift_pct =
-		    ((median - (float)snd.sample_rate_out) / (float)snd.sample_rate_out) * 100.0f;
-		LOG_info("Audio: meter stable at %.2f Hz (swing=%.2f Hz, nominal=%d Hz, correction=%.4f, "
-		         "%+.2f%% drift)\n",
-		         median, swing, snd.sample_rate_out, audio_correction, drift_pct);
-		(void)swing;
-		(void)audio_correction;
-		(void)drift_pct; // Used in LOG_info
-	}
-}
-
-/**
- * Gets the current display rate swing (max - min).
- *
- * Used for dynamic buffer sizing - higher swing means more buffer headroom needed.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getDisplaySwing(void) {
-	return RateMeter_getSwing(&snd.display_meter);
-}
-
-/**
- * Gets the current audio rate swing (max - min).
- *
- * Used for dynamic buffer sizing - higher swing means more buffer headroom needed.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getAudioSwing(void) {
-	return RateMeter_getSwing(&snd.audio_meter);
 }
 
 /**
