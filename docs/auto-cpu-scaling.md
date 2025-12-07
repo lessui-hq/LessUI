@@ -32,7 +32,7 @@ On rg35xxplus, low buffer fill triggered max CPU even though CPU was only 50% lo
 **Why this happens:**
 - NES outputs 60.0988 Hz
 - rg35xxplus display runs at 59.711 Hz (-0.65% mismatch)
-- Rate control compensates with pitch shift (up to ±2%)
+- Rate control compensates with pitch shift (up to ±0.5%)
 - If mismatch exceeds rate control range, buffer drifts away from 50%
 - Buffer fill now reflects timing quality, not CPU performance
 
@@ -82,7 +82,7 @@ while (!quit) {
 - Produces audio at 59.71 fps instead of 60.10 fps
 - Creates -0.65% audio production deficit
 - Buffer drains regardless of CPU performance
-- Rate control (d=2%) fights deficit that shouldn't exist
+- Rate control fights deficit that shouldn't exist
 
 #### Current Architecture (Improved)
 
@@ -106,10 +106,10 @@ while (!quit) {
 - Still produces -0.65% less audio than expected
 - Buffer settles at ~17-30%, not the ideal 50%
 
-**The math:** With d=1% and 0.65% mismatch, equilibrium is:
+**The math:** With d=0.5% and 0.65% mismatch, equilibrium is:
 ```
-adjustment = 1.0 - (1.0 - 2*fill) * 0.01 = 0.9935
-fill = 0.175 (17.5%)
+adjustment = 1.0 - (1.0 - 2*fill) * 0.005 = 0.9935
+fill = 0.15 (15%)
 ```
 
 Buffer CANNOT settle at 50% when display ≠ core rate, no matter the buffer size.
@@ -160,7 +160,7 @@ while (!quit) {
 
 | Layer | Handles | Magnitude | Speed |
 |-------|---------|-----------|-------|
-| **Rate control** | Clock drift, jitter, oscillator tolerances | ±0.5% | Per-frame |
+| **Rate control (PI)** | Jitter + persistent drift | ±1% (proportional) + integral | Per-frame |
 | **CPU scaling** | Sustained performance gaps | 10-50%+ | Per-second |
 
 Rate control handles small timing variations. CPU scaling handles sustained performance problems that rate control can't fix.
@@ -198,12 +198,12 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 ### Phase 3: Emergency Escalation ✅
 - [x] Track actual underrun events in audio callback (`snd.underrun_count`)
 - [x] Expose `SND_getUnderrunCount()` and `SND_resetUnderrunCount()`
-- [x] On underrun: immediate boost to PERFORMANCE, reset counters
+- [x] On underrun: boost by max 2 steps, 4s cooldown before reducing
 
 ### Phase 4: Special State Handling ✅
 - [x] Disable auto-scaling during `fast_forward`
 - [x] Disable auto-scaling during `show_menu`
-- [x] Ignore first ~1 second after game start (`AUTO_CPU_STARTUP_GRACE = 60`)
+- [x] Ignore first ~5 seconds after game start (`AUTO_CPU_STARTUP_GRACE = 300`)
 - [x] Returns 0 stress if audio not initialized (safe fallback)
 
 ### Phase 5: Menu Integration ✅
@@ -339,11 +339,11 @@ if (underrun_occurred) {
 
 // In main loop:
 if (SND_getUnderrunCount() > last_underrun_count) {
-    // Emergency! Immediate boost to PERFORMANCE
-    cpu_level = MAX_LEVEL;
-    apply_cpu_level();
-    high_util_windows = 0;
-    low_util_windows = 0;
+    // Emergency! Boost by up to MAX_STEP (not straight to max)
+    new_idx = current_idx + AUTO_CPU_MAX_STEP;
+    if (new_idx > max_idx) new_idx = max_idx;
+    apply_frequency(new_idx);
+    panic_cooldown = 8;  // ~4 seconds before allowing reduction
 }
 ```
 
@@ -413,37 +413,33 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 The **d parameter** determines how much pitch adjustment the rate control algorithm can apply for jitter compensation. See [docs/audio-rate-control.md](audio-rate-control.md) for the full algorithm derivation.
 
-**Current implementation:**
+**Current implementation (PI Controller):**
 
 ```c
-// Rate control sensitivity (api.c)
-#define SND_RATE_CONTROL_D 0.005f  // ±0.5% - handles timing jitter
-
-// Base correction (api.c, calculated at init from SDL)
-float base_correction = display_hz / core_fps;  // e.g., 0.9935 for -0.65% mismatch
-
-// Resampler safety clamp (audio_resampler.h)
-#define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum (catches bugs)
+// Rate control gains (api.c)
+#define SND_RATE_CONTROL_D_DEFAULT 0.010f  // 1.0% - proportional gain
+#define SND_RATE_CONTROL_KI 0.00005f       // integral gain (drift correction)
+#define SND_ERROR_AVG_ALPHA 0.003f         // error smoothing (~333 frame average)
+#define SND_INTEGRAL_CLAMP 0.02f           // ±2% max drift correction
 ```
 
-**Why adaptive d + base correction:**
-- Display/core rate mismatch is **static** (handled via vsync measurement)
-- Timing jitter is **dynamic** (handled via rate control d=0.5%)
-- Adaptive d (2% → 0.5%) solves the bootstrap problem
-- d=2% keeps buffer stable during measurement phase
-- d=0.5% prevents oscillation after measurement complete
-- This separation maintains stable 50% fill on all devices
+**Why dual-timescale PI controller works:**
+- Error smoothing (α=0.003) filters jitter before it reaches the integral term
+- Proportional term (d=1.0%) provides immediate response to buffer level changes
+- Integral term operates on slower timescale, learning persistent clock offset
+- Integral clamped to ±2% handles hardware clock mismatch up to ±2%
+- P and I can't fight because they operate on different timescales
 
 ### Audio Buffer Size
 
-Our audio buffer holds **4 video frames** of audio (~67ms at 60fps):
+Our audio buffer holds **5 video frames** of audio (~83ms at 60fps):
 
 ```c
-snd.buffer_video_frames = 4;
+snd.buffer_video_frames = 5;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-With base correction + d=0.5%, the buffer converges to 50% fill on all devices, providing maximum headroom for timing jitter and ~33ms actual latency.
+With the PI controller, the buffer settles near 50-65% fill depending on device clock characteristics, providing headroom for jitter and ~42ms effective latency.
 
 ## Benchmark Methodology
 
@@ -492,16 +488,20 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 | Parameter | Current | Notes |
 |-----------|---------|-------|
-| Rate control d | 0.5% | Handles timing jitter (paper's recommendation) |
-| Base correction | SDL refresh_rate / core fps | Static display/core mismatch correction |
-| Resampler safety clamp | 5% | Prevents extreme pitch shifts from bugs |
-| Audio buffer | 4 frames (~67ms) | Effective latency ~33ms at 50% equilibrium |
+| Rate control d | 1.0% | Proportional gain - handles frame-to-frame jitter |
+| Rate control ki | 0.00005 | Integral gain - learns persistent clock offset |
+| Error smoothing α | 0.003 (~333 frames) | Separates P and I timescales |
+| Integral clamp | ±2% | Max drift correction (handles hardware variance) |
+| Audio buffer | 5 frames (~83ms) | Effective latency ~42ms at 50% fill |
 | Window size | 30 frames (~500ms) | Filters noise, responsive to changes |
 | Utilization high | 85% | Frame time >85% of budget = boost |
 | Utilization low | 55% | Frame time <55% of budget = reduce |
+| Target util | 70% | Target utilization after frequency change |
+| Max step (reduce/panic) | 2 | Max frequency steps down (boost unlimited) |
+| Min frequency | 400 MHz | Floor for frequency scaling |
 | Boost windows | 2 (~1s) | Fast response to performance issues |
 | Reduce windows | 4 (~2s) | Conservative to prevent oscillation |
-| Startup grace | 60 frames (~1s) | Avoids false positives during warmup |
+| Startup grace | 300 frames (~5s) | Starts at max freq, then scales |
 | Percentile | 90th | Ignores outliers (loading screens) |
 
 ### Display Rate Handling
@@ -514,9 +514,9 @@ Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode(
 | tg5040 | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 | miyoomini | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 
-**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing), but the integer value is close enough. Rate control (d=0.5%) handles the remaining jitter.
+**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The PI controller's integral term learns and corrects for any mismatch over time.
 
-**How it works:** Base correction is applied as a static multiplier to the resampler. Rate control then fine-tunes around this baseline to maintain 50% buffer fill.
+**How it works:** The PI controller adjusts the resampling ratio based on buffer fill. The proportional term (d) handles jitter, while the integral term slowly learns the persistent timing offset to maintain exactly 50% buffer fill.
 
 ### Debug HUD
 
@@ -570,7 +570,7 @@ After implementing the unified RateMeter system with dual clock correction (disp
    - Low quality: frame timing drops → auto scaler correctly reduces CPU
    - The system responds to actual emulation workload, not arbitrary core labels
 
-3. **No feedback loops** - Buffer fill is now influenced by adaptive d (2%→1%), base correction, audio correction, and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+3. **No feedback loops** - Buffer fill is influenced by the PI controller rate adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
 
 **The two-layer separation is optimal:**
 
@@ -587,13 +587,16 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 - Runtime frequency detection via `PLAT_getAvailableCPUFrequencies()`
 - Direct frequency setting via `PLAT_setCPUFrequency()`
 - Linear performance scaling for intelligent frequency selection
+- Minimum frequency floor (400 MHz) filters out unusably slow frequencies
 - Automatic fallback to 3-level mode if detection fails
 
 **Algorithm improvements:**
 - Performance scales linearly with frequency: `new_util = current_util × (current_freq / new_freq)`
-- Target 70% utilization in the "sweet spot"
-- Predict utilization at lower frequencies before stepping down
-- Safety checks prevent stepping into overload (>85% predicted util)
+- Target 70% utilization after frequency changes
+- **Boost**: Uses linear prediction, no step limit (aggressive is safe)
+- **Reduce**: Uses linear prediction, max 2 steps (conservative to avoid underruns)
+- **Panic**: Boost by max 2 steps on underrun, 4s cooldown
+- **Startup**: Begin at max frequency during 5s grace period
 
 **Preset mapping for manual modes:**
 - POWERSAVE: ~25% up from minimum frequency

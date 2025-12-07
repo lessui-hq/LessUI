@@ -919,7 +919,7 @@ void PLAT_setRumble(int strength) {
 ///////////////////////////////
 
 int PLAT_pickSampleRate(int requested, int max) {
-	return max;
+	return MIN(requested, max);
 }
 
 ///////////////////////////////

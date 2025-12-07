@@ -833,36 +833,10 @@ unsigned SND_getUnderrunCount(void);
 void SND_resetUnderrunCount(void);
 
 /**
- * Adds a display rate sample for continuous measurement.
- * Called every frame with vsync interval converted to Hz.
- *
- * @param hz Display refresh rate in Hz for this frame
+ * Signals start of a new video frame for audio rate control.
+ * Call once per frame before core.run() to limit integral updates.
  */
-void SND_addDisplaySample(float hz);
-
-/**
- * Adds an audio rate sample for continuous measurement.
- * Called periodically with measured consumption rate.
- *
- * @param hz Audio consumption rate in Hz
- */
-void SND_addAudioSample(float hz);
-
-/**
- * Gets the current display rate swing (max - min).
- * Used for dynamic buffer sizing.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getDisplaySwing(void);
-
-/**
- * Gets the current audio rate swing (max - min).
- * Used for dynamic buffer sizing.
- *
- * @return Swing in Hz, or 0 if insufficient samples
- */
-float SND_getAudioSwing(void);
+void SND_newFrame(void);
 
 /**
  * Shuts down the audio subsystem.
@@ -889,14 +863,14 @@ typedef struct {
 	uint64_t samples_consumed; // Total samples consumed by audio callback
 	uint64_t samples_requested; // Total samples requested by SDL callback
 
-	// Rate control parameters
-	float display_hz; // Measured display rate (0 if not measured)
-	float audio_hz; // Measured audio consumption rate (0 if not measured)
+	// Rate control parameters (PI controller based on Arntzen algorithm)
 	float frame_rate; // Core frame rate (e.g., 60.0988)
-	float base_correction; // Static display/core correction
-	float audio_correction; // Static audio clock drift correction
-	float rate_adjust; // Dynamic rate control adjustment
-	float total_adjust; // Combined adjustment (base * audio * rate)
+	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
+	float total_adjust; // Same as rate_adjust (no separate corrections)
+	float rate_integral; // PI controller integral term (drift correction)
+	float rate_control_d; // Proportional gain
+	float rate_control_ki; // Integral gain
+	float error_avg; // Smoothed error (for debugging integral behavior)
 
 	// Resampler state
 	int sample_rate_in; // Input sample rate (from core)
@@ -914,6 +888,12 @@ typedef struct {
 
 	// Error tracking
 	unsigned underrun_count; // Total underruns
+
+	// SDL callback timing diagnostics
+	uint64_t callback_count; // Total callbacks
+	float callback_avg_interval_ms; // Average ms between callbacks
+	unsigned callback_samples_min; // Min samples per callback
+	unsigned callback_samples_max; // Max samples per callback
 } SND_Snapshot;
 
 /**

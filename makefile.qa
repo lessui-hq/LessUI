@@ -188,7 +188,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/rate_meter_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -296,11 +296,6 @@ tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/commo
 # Build string comparison tests (natural sort, pure algorithm)
 tests/str_compare_test: tests/unit/all/common/test_str_compare.c workspace/all/common/str_compare.c $(TEST_UNITY)
 	@echo "Building string comparison tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
-
-# Build rate meter tests (audio/display rate measurement)
-tests/rate_meter_test: tests/unit/all/common/test_rate_meter.c workspace/all/common/rate_meter.c $(TEST_UNITY)
-	@echo "Building rate meter tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
