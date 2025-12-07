@@ -472,7 +472,8 @@ void PLAT_quitVideo(void) {
 
 	SDL_FreeSurface(vid.screen);
 
-	MI_SYS_Munmap(vid.buffer.vadd, ALIGN4K(VIDEO_BUFFER_SIZE));
+	int buffer_size = ALIGN4K(VIDEO_BUFFER_SIZE) * VIDEO_BUFFER_COUNT;
+	MI_SYS_Munmap(vid.buffer.vadd, ALIGN4K(buffer_size));
 	MI_SYS_MMA_Free(vid.buffer.padd);
 
 	SDL_Quit();
