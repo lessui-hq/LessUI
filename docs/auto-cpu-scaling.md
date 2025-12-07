@@ -417,31 +417,29 @@ The **d parameter** determines how much pitch adjustment the rate control algori
 
 ```c
 // Rate control gains (api.c)
-#define SND_RATE_CONTROL_D 0.005f        // 0.5% - proportional gain
-#define SND_RATE_CONTROL_KI 0.00005f     // integral gain (drift correction)
-#define SND_RATE_CONTROL_SMOOTH 0.9f     // error smoothing factor
-
-// Resampler safety clamp (audio_resampler.h)
-#define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum (catches bugs)
+#define SND_RATE_CONTROL_D_DEFAULT 0.010f  // 1.0% - proportional gain
+#define SND_RATE_CONTROL_KI 0.00005f       // integral gain (drift correction)
+#define SND_ERROR_AVG_ALPHA 0.003f         // error smoothing (~333 frame average)
+#define SND_INTEGRAL_CLAMP 0.02f           // ±2% max drift correction
 ```
 
-**Why smoothed PI controller works:**
-- Error smoothing filters jitter so proportional term doesn't chase every noisy reading
-- Proportional term (d) handles smoothed buffer deviations - tune per device class
-- Integral term uses quadratic weighting for faster convergence far from 50% - tune globally
-- Integral clamped to fixed ±1% handles persistent hardware mismatch
-- Buffer converges to exactly 50% regardless of display/audio timing differences
+**Why dual-timescale PI controller works:**
+- Error smoothing (α=0.003) filters jitter before it reaches the integral term
+- Proportional term (d=1.0%) provides immediate response to buffer level changes
+- Integral term operates on slower timescale, learning persistent clock offset
+- Integral clamped to ±2% handles hardware clock mismatch up to ±2%
+- P and I can't fight because they operate on different timescales
 
 ### Audio Buffer Size
 
-Our audio buffer holds **4 video frames** of audio (~67ms at 60fps):
+Our audio buffer holds **5 video frames** of audio (~83ms at 60fps):
 
 ```c
-snd.buffer_video_frames = 4;
+snd.buffer_video_frames = 5;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-With the PI controller, the buffer converges to exactly 50% fill on all devices regardless of hardware timing mismatch, providing maximum headroom for jitter and ~33ms actual latency.
+With the PI controller, the buffer settles near 50-65% fill depending on device clock characteristics, providing headroom for jitter and ~42ms effective latency.
 
 ## Benchmark Methodology
 
@@ -490,12 +488,11 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 | Parameter | Current | Notes |
 |-----------|---------|-------|
-| Rate control d | 0.5% | Proportional gain (tune per device class) |
-| Rate control ki | 0.00005 | Integral gain (tune globally) |
-| Error smoothing | 0.9 | Filters jitter from P term (fixed) |
-| Integral clamp | ±1% | Max drift correction (fixed) |
-| Resampler safety clamp | 5% | Prevents extreme pitch shifts from bugs |
-| Audio buffer | 4 frames (~67ms) | Effective latency ~33ms at 50% equilibrium |
+| Rate control d | 1.0% | Proportional gain - handles frame-to-frame jitter |
+| Rate control ki | 0.00005 | Integral gain - learns persistent clock offset |
+| Error smoothing α | 0.003 (~333 frames) | Separates P and I timescales |
+| Integral clamp | ±2% | Max drift correction (handles hardware variance) |
+| Audio buffer | 5 frames (~83ms) | Effective latency ~42ms at 50% fill |
 | Window size | 30 frames (~500ms) | Filters noise, responsive to changes |
 | Utilization high | 85% | Frame time >85% of budget = boost |
 | Utilization low | 55% | Frame time <55% of budget = reduce |
