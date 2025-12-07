@@ -48,7 +48,7 @@ static const SDL2_Config vid_config = {
     .rotate_cw = 0,
     .rotate_null_center = 0,
     // Display features
-    .has_hdmi = 0,
+    .has_hdmi = 1,
     .default_sharpness = SHARPNESS_SOFT,
 };
 
@@ -149,6 +149,11 @@ void PLAT_initInput(void) {
 	inputs[1] = open("/dev/input/event1", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	inputs[2] = open("/dev/input/event2", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	inputs[3] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+
+	for (int i = 0; i < INPUT_COUNT; i++) {
+		if (inputs[i] < 0)
+			LOG_warn("Failed to open /dev/input/event%d\n", i);
+	}
 }
 
 void PLAT_quitInput(void) {
@@ -371,10 +376,13 @@ char* PLAT_getModel(void) {
 	char buffer[256];
 	getFile("/proc/device-tree/model", buffer, 256);
 	char* tmp = strrchr(buffer, ' ');
-	if (tmp)
-		strcpy(model, tmp + 1);
-	else
-		strcpy(model, "RGB30");
+	if (tmp) {
+		strncpy(model, tmp + 1, sizeof(model) - 1);
+		model[sizeof(model) - 1] = '\0';
+	} else {
+		strncpy(model, "RGB30", sizeof(model) - 1);
+		model[sizeof(model) - 1] = '\0';
+	}
 	return model;
 }
 

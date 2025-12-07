@@ -101,6 +101,13 @@ void PLAT_initInput(void) {
 	inputs[0] = open("/dev/input/event0", O_RDONLY | O_NONBLOCK | O_CLOEXEC); // power
 	inputs[1] = open("/dev/input/event2", O_RDONLY | O_NONBLOCK | O_CLOEXEC); // gamepad
 	inputs[2] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC); // volume
+
+	if (inputs[0] < 0)
+		LOG_warn("Failed to open power input (event0)\n");
+	if (inputs[1] < 0)
+		LOG_warn("Failed to open gamepad input (event2)\n");
+	if (inputs[2] < 0)
+		LOG_warn("Failed to open volume input (event3)\n");
 }
 
 /**
@@ -215,7 +222,7 @@ void PLAT_pollInput(void) {
 				}
 			} else if (type == EV_ABS) {
 				// Analog stick events - left stick generates digital button presses
-				LOG_info("abs event: %i (%i)\n", code, value);
+				// LOG_info("abs event: %i (%i)\n", code, value);
 				if (code == RAW_LSX) {
 					pad.laxis.x = value;
 					PAD_setAnalog(BTN_ID_ANALOG_LEFT, BTN_ID_ANALOG_RIGHT, pad.laxis.x,

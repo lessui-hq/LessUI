@@ -74,8 +74,10 @@ static int inputs[INPUT_COUNT];
 void PLAT_initInput(void) {
 	char path[256];
 	for (int i = 0; i < INPUT_COUNT; i++) {
-		sprintf(path, "/dev/input/event%i", i);
+		snprintf(path, sizeof(path), "/dev/input/event%i", i);
 		inputs[i] = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+		if (inputs[i] < 0)
+			LOG_warn("Failed to open /dev/input/event%d\n", i);
 	}
 }
 /**
