@@ -160,7 +160,7 @@ while (!quit) {
 
 | Layer | Handles | Magnitude | Speed |
 |-------|---------|-----------|-------|
-| **Rate control** | Clock drift, jitter, oscillator tolerances | ±0.5% | Per-frame |
+| **Rate control (PI)** | Jitter + persistent drift | ±1% (proportional) + integral | Per-frame |
 | **CPU scaling** | Sustained performance gaps | 10-50%+ | Per-second |
 
 Rate control handles small timing variations. CPU scaling handles sustained performance problems that rate control can't fix.
@@ -413,25 +413,24 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 The **d parameter** determines how much pitch adjustment the rate control algorithm can apply for jitter compensation. See [docs/audio-rate-control.md](audio-rate-control.md) for the full algorithm derivation.
 
-**Current implementation:**
+**Current implementation (PI Controller):**
 
 ```c
-// Rate control sensitivity (api.c)
-#define SND_RATE_CONTROL_D 0.005f  // ±0.5% - handles timing jitter
-
-// Base correction (api.c, calculated at init from SDL)
-float base_correction = display_hz / core_fps;  // e.g., 0.9935 for -0.65% mismatch
+// Rate control gains (api.c)
+#define SND_RATE_CONTROL_D 0.005f        // 0.5% - proportional gain
+#define SND_RATE_CONTROL_KI 0.00005f     // integral gain (drift correction)
+#define SND_RATE_CONTROL_SMOOTH 0.9f     // error smoothing factor
 
 // Resampler safety clamp (audio_resampler.h)
 #define SND_RESAMPLER_MAX_DEVIATION 0.05f  // ±5% absolute maximum (catches bugs)
 ```
 
-**Why fixed d + base correction:**
-- Display/core rate mismatch is **static** (handled via base_correction from frame 1)
-- Timing jitter is **dynamic** (handled via rate control d=0.5%)
-- Base correction applies immediately using display_meter median
-- d=0.5% handles only jitter (paper recommends 0.2-0.5%)
-- This separation maintains stable 50% fill on all devices
+**Why smoothed PI controller works:**
+- Error smoothing filters jitter so proportional term doesn't chase every noisy reading
+- Proportional term (d) handles smoothed buffer deviations - tune per device class
+- Integral term uses quadratic weighting for faster convergence far from 50% - tune globally
+- Integral clamped to fixed ±1% handles persistent hardware mismatch
+- Buffer converges to exactly 50% regardless of display/audio timing differences
 
 ### Audio Buffer Size
 
@@ -442,7 +441,7 @@ snd.buffer_video_frames = 4;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-With base correction + d=0.5%, the buffer converges to 50% fill on all devices, providing maximum headroom for timing jitter and ~33ms actual latency.
+With the PI controller, the buffer converges to exactly 50% fill on all devices regardless of hardware timing mismatch, providing maximum headroom for jitter and ~33ms actual latency.
 
 ## Benchmark Methodology
 
@@ -491,8 +490,10 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 | Parameter | Current | Notes |
 |-----------|---------|-------|
-| Rate control d | 0.5% | Handles timing jitter (paper's recommendation) |
-| Base correction | SDL refresh_rate / core fps | Static display/core mismatch correction |
+| Rate control d | 0.5% | Proportional gain (tune per device class) |
+| Rate control ki | 0.00005 | Integral gain (tune globally) |
+| Error smoothing | 0.9 | Filters jitter from P term (fixed) |
+| Integral clamp | ±1% | Max drift correction (fixed) |
 | Resampler safety clamp | 5% | Prevents extreme pitch shifts from bugs |
 | Audio buffer | 4 frames (~67ms) | Effective latency ~33ms at 50% equilibrium |
 | Window size | 30 frames (~500ms) | Filters noise, responsive to changes |
@@ -516,9 +517,9 @@ Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode(
 | tg5040 | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 | miyoomini | 60 Hz | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 
-**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing), but the integer value is close enough. Rate control (d=0.5%) handles the remaining jitter.
+**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The PI controller's integral term learns and corrects for any mismatch over time.
 
-**How it works:** Base correction is applied as a static multiplier to the resampler. Rate control then fine-tunes around this baseline to maintain 50% buffer fill.
+**How it works:** The PI controller adjusts the resampling ratio based on buffer fill. The proportional term (d) handles jitter, while the integral term slowly learns the persistent timing offset to maintain exactly 50% buffer fill.
 
 ### Debug HUD
 
@@ -572,7 +573,7 @@ After implementing the unified RateMeter system with dual clock correction (disp
    - Low quality: frame timing drops → auto scaler correctly reduces CPU
    - The system responds to actual emulation workload, not arbitrary core labels
 
-3. **No feedback loops** - Buffer fill is influenced by rate control (d=0.5%), base correction, audio correction, and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+3. **No feedback loops** - Buffer fill is influenced by the PI controller rate adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
 
 **The two-layer separation is optimal:**
 

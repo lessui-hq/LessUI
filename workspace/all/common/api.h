@@ -857,10 +857,11 @@ typedef struct {
 	uint64_t samples_consumed; // Total samples consumed by audio callback
 	uint64_t samples_requested; // Total samples requested by SDL callback
 
-	// Rate control parameters (Arntzen algorithm)
+	// Rate control parameters (PI controller based on Arntzen algorithm)
 	float frame_rate; // Core frame rate (e.g., 60.0988)
 	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
 	float total_adjust; // Same as rate_adjust (no separate corrections)
+	float rate_integral; // PI controller integral term (drift correction)
 
 	// Resampler state
 	int sample_rate_in; // Input sample rate (from core)

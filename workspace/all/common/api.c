@@ -1632,12 +1632,18 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// Rate control feedback gain (d parameter from Arntzen paper).
-// Controls how aggressively the algorithm corrects buffer deviations.
-// Higher d = faster response but more pitch variation.
-// Lower d = smoother but may not keep up with timing mismatches.
-// See docs/audio-rate-control.md for detailed analysis.
-#define SND_RATE_CONTROL_D 0.01f // 1% - handles ~0.7% display/core mismatch + jitter
+// Rate control feedback gains (PI controller based on Arntzen paper).
+// See docs/audio-rate-control.md for tuning guidance.
+//
+// d (proportional): Smoothed response to buffer level. Higher = faster jitter response
+//                   but more audible pitch variation. Tune per device class if needed.
+// ki (integral): Drift correction rate. Higher = faster convergence to 50% but may
+//                overshoot. Tune once globally.
+// smoothing: Error filter strength. Higher = smoother but slower response.
+//            0.9 means new error contributes 10% each frame. Fixed.
+#define SND_RATE_CONTROL_D 0.005f // 0.5% - proportional gain
+#define SND_RATE_CONTROL_KI 0.00005f // integral gain (drift correction)
+#define SND_RATE_CONTROL_SMOOTH 0.9f // error smoothing factor
 
 // Buffer sizing: 4 video frames of audio (~67ms at 60fps)
 // Provides headroom for timing variance while keeping latency reasonable.
@@ -1674,6 +1680,11 @@ static struct SND_Context {
 	// Cumulative tracking for window-averaged comparisons
 	double cumulative_total_adjust; // Sum of total_adjust values applied
 	uint64_t total_adjust_count; // Number of total_adjust applications
+
+	// PI controller state (persistent across frames)
+	float rate_integral; // Integral term (accumulates drift correction)
+	float error_smooth; // Smoothed error (filters jitter from proportional term)
+	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
 } snd = {0};
 
 /**
@@ -1793,33 +1804,53 @@ static float SND_getBufferFillLevel(void) {
 }
 
 /**
- * Calculates dynamic rate adjustment based on buffer fill level.
+ * Calculates dynamic rate adjustment using a smoothed PI controller.
  *
- * Implements the Dynamic Rate Control algorithm from Hans-Kristian Arntzen's paper
- * "Dynamic Rate Control for Retro Game Emulators" (2012).
+ * Extends the Arntzen algorithm with:
+ * 1. Error smoothing to filter jitter from the proportional term
+ * 2. Integral term with quadratic weighting for persistent drift correction
  *
- * Paper's formula (multiplies sample count):
- *   samples_pushed = R' * [1 + (1 - 2*fill) * d]
+ * PI Controller with smoothing:
+ *   error = (1 - 2*fill)
+ *   error_smooth = smooth * error_smooth + (1-smooth) * error
+ *   integral += error_smooth * |error_smooth| * ki
+ *   adjustment = error_smooth * d + integral
  *
- * Our resampler divides by ratio_adjust (larger = fewer outputs), so we invert:
- *   ratio_adjust = 1 - (1 - 2*fill) * d
+ * Tuning guide:
+ *   d: Higher = faster jitter response, more pitch variation. Tune per device.
+ *   ki: Higher = faster drift convergence, may overshoot. Tune globally.
+ *   smooth: Higher = less twitchy, slower response. Fixed at 0.9.
  *
- * This produces equivalent behavior:
- *   - fill = 0 (empty): ratio_adjust = 1-d → more outputs → fills buffer
- *   - fill = 0.5 (half): ratio_adjust = 1.0 → equilibrium
- *   - fill = 1 (full): ratio_adjust = 1+d → fewer outputs → drains buffer
+ * Our resampler divides by ratio_adjust (larger = fewer outputs), so:
+ *   ratio_adjust = 1 - adjustment
  *
- * The d parameter (0.5%) controls response speed. Base/audio corrections handle
- * static clock drift; d only handles jitter. Paper recommends 0.2-0.5%.
- *
- * The algorithm converges exponentially to half-full buffer, providing
- * maximum headroom for timing jitter in both directions.
- *
- * @return Rate adjustment factor (1.0 ± 0.5%) for resampler step size
+ * @return Rate adjustment factor for resampler step size
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
-	return 1.0f - (1.0f - 2.0f * fill) * SND_RATE_CONTROL_D;
+
+	// Error: positive when buffer low, negative when high
+	float error = 1.0f - 2.0f * fill;
+
+	// Smooth the error to filter jitter from proportional term
+	snd.error_smooth =
+	    SND_RATE_CONTROL_SMOOTH * snd.error_smooth + (1.0f - SND_RATE_CONTROL_SMOOTH) * error;
+
+	// Integrate smoothed error with quadratic weighting: faster when far from 50%
+	snd.rate_integral += snd.error_smooth * fabsf(snd.error_smooth) * SND_RATE_CONTROL_KI;
+
+	// Clamp integral to prevent windup. Fixed at ±1% for persistent drift.
+	if (snd.rate_integral > 0.01f)
+		snd.rate_integral = 0.01f;
+	if (snd.rate_integral < -0.01f)
+		snd.rate_integral = -0.01f;
+
+	// PI output: smoothed proportional + integral
+	float adjustment = snd.error_smooth * SND_RATE_CONTROL_D + snd.rate_integral;
+
+	// Invert for our resampler convention (larger ratio = fewer outputs)
+	snd.last_rate_adjust = 1.0f - adjustment;
+	return snd.last_rate_adjust;
 }
 
 /**
@@ -2027,10 +2058,11 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.samples_consumed = snd.samples_consumed;
 	snap.samples_requested = snd.samples_requested;
 
-	// Rate control parameters (simplified - just the dynamic adjustment)
+	// Rate control parameters (PI controller - read last computed values to avoid side effects)
 	snap.frame_rate = snd.frame_rate;
-	snap.rate_adjust = SND_calculateRateAdjust();
-	snap.total_adjust = snap.rate_adjust; // Now the same (no base/audio corrections)
+	snap.rate_adjust = snd.last_rate_adjust;
+	snap.total_adjust = snd.last_rate_adjust;
+	snap.rate_integral = snd.rate_integral;
 
 	// Resampler state
 	snap.sample_rate_in = snd.sample_rate_in;

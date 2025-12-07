@@ -55,18 +55,47 @@ adjustment = 1 + (1 - 2×fill) × d
 - Buffer half (fill=0.5): adjustment = 1.0 → maintain equilibrium
 - Buffer full (fill=1): adjustment = 1-d → produce FEWER samples → drain buffer
 
-### Our Implementation (Inverted for Resampler Convention)
+### Our Implementation (PI Controller)
+
+We extend the Arntzen algorithm with a PI (Proportional-Integral) controller. This adds an integral term that slowly corrects for persistent hardware drift, allowing the buffer to settle at exactly 50% regardless of display/audio timing mismatch.
 
 Our resampler uses ratio_adjust to control step size. Larger steps = fewer output samples. So we invert the formula:
 
 ```c
-// When fill=0: adjustment = 1 - d  (smaller steps, more outputs, fills buffer)
-// When fill=0.5: adjustment = 1.0  (no change)
-// When fill=1: adjustment = 1 + d  (larger steps, fewer outputs, drains buffer)
-return 1.0f - (1.0f - 2.0f * fill) * d;
+// Error: positive when buffer low, negative when high
+float error = 1.0f - 2.0f * fill;
+
+// Smooth error to filter jitter from proportional term
+error_smooth = 0.9 * error_smooth + 0.1 * error;
+
+// Integrate with quadratic weighting: faster when far from 50%, gentler near equilibrium
+integral += error_smooth * fabsf(error_smooth) * ki;
+integral = clamp(integral, -0.01, 0.01);  // fixed ±1% for persistent drift
+
+// PI output: smoothed proportional + integral
+float adjustment = error_smooth * d + integral;
+
+// Invert for resampler convention
+return 1.0f - adjustment;
 ```
 
-This creates a self-correcting feedback loop that naturally converges to 50% buffer fill.
+| Term | Purpose |
+|------|---------|
+| `error_smooth` | Filters jitter so proportional term doesn't chase every noisy reading |
+| `error_smooth * d` | Smoothed response to buffer level |
+| `error_smooth * |error_smooth| * ki` | Quadratic integral: fast far from 50%, gentle near equilibrium |
+| `clamp ±1%` | Fixed limit for persistent drift correction, prevents windup |
+
+### Tuning Guide
+
+| Parameter | Default | Effect | When to Adjust |
+|-----------|---------|--------|----------------|
+| **d** | 0.5% | Proportional gain. Higher = faster jitter response but more audible pitch variation | Tune per device class if some devices are twitchy |
+| **ki** | 0.00005 | Integral gain. Higher = faster convergence to 50% but may overshoot | Tune once globally if buffer takes too long to settle |
+| **smooth** | 0.9 | Error filter. Higher = smoother but slower response | Fixed - rarely needs adjustment |
+| **clamp** | ±1% | Max integral correction for persistent drift | Fixed - covers handheld hardware variance |
+
+This creates a self-correcting feedback loop that naturally converges to 50% buffer fill, even when there's a persistent timing mismatch between display and audio clocks.
 
 ## Stability Analysis
 
@@ -191,9 +220,10 @@ With d=0.5% and dual correction handling static clock drift separately:
    - Zero memory allocation (uses ring buffer directly)
 
 3. **Dynamic Rate Control** (`api.c`)
-   - Calculates adjustment factor each audio batch
-   - Single formula using meter values directly
-   - Values continuously improve as meters gather more samples
+   - PI controller with proportional (d) and integral (ki) terms
+   - Proportional handles immediate jitter response
+   - Integral slowly learns and corrects persistent timing mismatch
+   - Integral clamped to ±d to prevent windup
 
 4. **Dynamic Buffer Sizing** (`api.c`)
    - Base buffer of 4 frames (~67ms)
@@ -205,7 +235,10 @@ With d=0.5% and dual correction handling static clock drift separately:
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Rate control d | 0.5% | Paper recommends 0.2-0.5%; handles jitter only |
+| Rate control d | 0.5% | Proportional gain (tune per device class) |
+| Rate control ki | 0.00005 | Integral gain (tune globally) |
+| Error smoothing | 0.9 | Filters jitter from proportional term (fixed) |
+| Integral clamp | ±1% | Max drift correction (fixed) |
 | Display meter window | 30 samples | ~0.5 sec at 60fps |
 | Display stability | spread < 1.0 Hz | Relaxed for handheld device jitter |
 | Display interval | Every frame | Per-frame vsync measurements |
