@@ -1,3 +1,4 @@
+#!/bin/sh
 # rg35xxplus initialization
 
 # CPU governor

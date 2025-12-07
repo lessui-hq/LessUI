@@ -1,3 +1,4 @@
+#!/bin/sh
 # miyoomini pre-init: LCD/backlight initialization
 
 if [ -z "$LCD_INIT" ]; then

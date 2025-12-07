@@ -1,3 +1,4 @@
+#!/bin/sh
 # rg35xx initialization
 
 # CPU setup

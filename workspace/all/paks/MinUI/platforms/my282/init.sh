@@ -1,3 +1,4 @@
+#!/bin/sh
 # my282 initialization
 
 # LED off

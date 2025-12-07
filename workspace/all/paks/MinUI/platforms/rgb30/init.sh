@@ -1,3 +1,4 @@
+#!/bin/sh
 # rgb30 initialization
 
 # CPU setup

@@ -1,3 +1,4 @@
+#!/bin/sh
 # magicmini initialization
 
 # CPU/GPU/DMC governors

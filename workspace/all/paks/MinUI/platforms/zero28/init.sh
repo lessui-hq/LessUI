@@ -1,3 +1,4 @@
+#!/bin/sh
 # zero28 initialization
 
 # Create standard directories

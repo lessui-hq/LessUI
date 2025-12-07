@@ -1,3 +1,4 @@
+#!/bin/sh
 # shellcheck shell=bash
 # Sourced by generated launch.sh
 # rg35xxplus late-init hook

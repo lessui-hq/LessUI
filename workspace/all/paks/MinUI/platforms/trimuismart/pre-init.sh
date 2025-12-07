@@ -1,3 +1,4 @@
+#!/bin/sh
 # trimuismart pre-init: SD card recovery check
 
 touch /mnt/writetest

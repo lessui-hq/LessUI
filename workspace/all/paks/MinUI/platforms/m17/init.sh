@@ -1,3 +1,4 @@
+#!/bin/sh
 # m17 initialization
 
 # Extra paths

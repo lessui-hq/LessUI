@@ -1,3 +1,4 @@
+#!/bin/sh
 # my355 initialization
 
 # Extra paths

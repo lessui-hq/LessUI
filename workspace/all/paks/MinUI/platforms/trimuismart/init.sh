@@ -1,3 +1,4 @@
+#!/bin/sh
 # trimuismart initialization
 
 # Extra paths

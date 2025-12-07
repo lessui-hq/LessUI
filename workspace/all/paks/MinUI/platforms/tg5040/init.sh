@@ -1,3 +1,4 @@
+#!/bin/sh
 # tg5040 initialization
 
 # Extra paths
