@@ -1632,22 +1632,24 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// Rate control feedback gains (PI controller based on Arntzen paper).
+// Rate control feedback gain (Arntzen paper: pure proportional control).
 // See docs/audio-rate-control.md for tuning guidance.
 //
-// d (proportional): Smoothed response to buffer level. Higher = faster jitter response
-//                   but more audible pitch variation. Tune per device class if needed.
-// ki (integral): Drift correction rate. Higher = faster convergence to 50% but may
-//                overshoot. Tune once globally.
-// smoothing: Error filter strength. Higher = smoother but slower response.
-//            0.9 means new error contributes 10% each frame. Fixed.
-#define SND_RATE_CONTROL_D 0.005f // 0.5% - proportional gain
-#define SND_RATE_CONTROL_KI 0.00005f // integral gain (drift correction)
-#define SND_RATE_CONTROL_SMOOTH 0.9f // error smoothing factor
+// d: Response to buffer level. Paper recommends 0.002-0.005.
+//    Higher = faster convergence but more audible pitch variation.
+#define SND_RATE_CONTROL_D_DEFAULT 0.010f // 1.0% - tuned for handheld timing variance
 
-// Buffer sizing: 4 video frames of audio (~67ms at 60fps)
+// Dual-timescale PI controller: integral operates on smoothed error to avoid fighting proportional
+// ki: Integral gain - very slow accumulation for persistent drift only
+// alpha: Error smoothing factor (~300 frame average, ~5 seconds at 60fps)
+// clamp: Max integral magnitude (handles up to ±2% persistent clock mismatch)
+#define SND_RATE_CONTROL_KI 0.00005f
+#define SND_ERROR_AVG_ALPHA 0.003f
+#define SND_INTEGRAL_CLAMP 0.02f
+
+// Buffer sizing: 5 video frames of audio (~83ms at 60fps)
 // Provides headroom for timing variance while keeping latency reasonable.
-#define SND_BUFFER_FRAMES 4
+#define SND_BUFFER_FRAMES 5
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1681,10 +1683,17 @@ static struct SND_Context {
 	double cumulative_total_adjust; // Sum of total_adjust values applied
 	uint64_t total_adjust_count; // Number of total_adjust applications
 
-	// PI controller state (persistent across frames)
-	float rate_integral; // Integral term (accumulates drift correction)
-	float error_smooth; // Smoothed error (filters jitter from proportional term)
+	// Rate control state (persistent across frames)
+	float rate_integral; // PI integral term (accumulates from smoothed error)
+	float error_avg; // Smoothed error for slow integral timescale
 	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
+
+	// SDL callback timing diagnostics
+	uint64_t callback_count; // Total callbacks
+	uint64_t callback_last_time_us; // Timestamp of last callback
+	uint64_t callback_interval_sum; // Sum of intervals (for average)
+	unsigned callback_samples_min; // Min samples requested
+	unsigned callback_samples_max; // Max samples requested
 } snd = {0};
 
 /**
@@ -1727,6 +1736,20 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 	// Track sample flow for diagnostics
 	snd.samples_requested += requested; // What SDL asked for
 	snd.samples_consumed += (requested - len); // What we actually provided
+
+	// Track callback timing
+	uint64_t now = getMicroseconds();
+	if (snd.callback_last_time_us > 0) {
+		snd.callback_interval_sum += (now - snd.callback_last_time_us);
+	}
+	snd.callback_last_time_us = now;
+	snd.callback_count++;
+
+	// Track min/max samples per callback
+	if (snd.callback_samples_min == 0 || (unsigned)requested < snd.callback_samples_min)
+		snd.callback_samples_min = requested;
+	if ((unsigned)requested > snd.callback_samples_max)
+		snd.callback_samples_max = requested;
 
 	// Handle underrun: repeat last frame or output silence
 	if (len > 0) {
@@ -1804,22 +1827,26 @@ static float SND_getBufferFillLevel(void) {
 }
 
 /**
- * Calculates dynamic rate adjustment using a smoothed PI controller.
+ * Calculates dynamic rate adjustment using a dual-timescale PI controller.
  *
- * Extends the Arntzen algorithm with:
- * 1. Error smoothing to filter jitter from the proportional term
- * 2. Integral term with quadratic weighting for persistent drift correction
+ * Extends the Arntzen algorithm with an integral term on a separate (slower)
+ * timescale to correct persistent hardware drift without fighting proportional.
  *
- * PI Controller with smoothing:
+ * Dual-timescale PI:
  *   error = (1 - 2*fill)
- *   error_smooth = smooth * error_smooth + (1-smooth) * error
- *   integral += error_smooth * |error_smooth| * ki
- *   adjustment = error_smooth * d + integral
+ *   p_term = error * d                              // Fast: frame-to-frame jitter
+ *   error_avg = α*error + (1-α)*error_avg           // Smooth error (~100 frames)
+ *   integral += error_avg * ki                      // Slow: learns persistent offset
+ *   adjustment = p_term + integral
+ *
+ * Key insight: Original PI failed because both terms operated on same timescale,
+ * causing them to fight. By smoothing error before integrating, the integral
+ * only sees persistent trends, not per-frame noise.
  *
  * Tuning guide:
- *   d: Higher = faster jitter response, more pitch variation. Tune per device.
- *   ki: Higher = faster drift convergence, may overshoot. Tune globally.
- *   smooth: Higher = less twitchy, slower response. Fixed at 0.9.
+ *   d: Higher = faster jitter response, more pitch variation (0.005-0.025)
+ *   ki: Integral gain, 100× slower than error averaging (0.00005)
+ *   α: Error smoothing factor, ~100 frame average (0.01)
  *
  * Our resampler divides by ratio_adjust (larger = fewer outputs), so:
  *   ratio_adjust = 1 - adjustment
@@ -1829,24 +1856,17 @@ static float SND_getBufferFillLevel(void) {
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
 
-	// Error: positive when buffer low, negative when high
+	// Arntzen error formula: positive when buffer low, negative when high
+	// Buffer low (fill<0.5) → produce more samples (adjustment > 0)
+	// Buffer high (fill>0.5) → produce fewer samples (adjustment < 0)
 	float error = 1.0f - 2.0f * fill;
 
-	// Smooth the error to filter jitter from proportional term
-	snd.error_smooth =
-	    SND_RATE_CONTROL_SMOOTH * snd.error_smooth + (1.0f - SND_RATE_CONTROL_SMOOTH) * error;
+	// Fast timescale (proportional): immediate response to buffer level changes
+	float p_term = error * SND_RATE_CONTROL_D_DEFAULT;
 
-	// Integrate smoothed error with quadratic weighting: faster when far from 50%
-	snd.rate_integral += snd.error_smooth * fabsf(snd.error_smooth) * SND_RATE_CONTROL_KI;
-
-	// Clamp integral to prevent windup. Fixed at ±1% for persistent drift.
-	if (snd.rate_integral > 0.01f)
-		snd.rate_integral = 0.01f;
-	if (snd.rate_integral < -0.01f)
-		snd.rate_integral = -0.01f;
-
-	// PI output: smoothed proportional + integral
-	float adjustment = snd.error_smooth * SND_RATE_CONTROL_D + snd.rate_integral;
+	// Slow timescale (integral): persistent offset learned in SND_newFrame()
+	// Integral is updated once per frame, not here (avoids N updates for N audio batches)
+	float adjustment = p_term + snd.rate_integral;
 
 	// Invert for our resampler convention (larger ratio = fewer outputs)
 	snd.last_rate_adjust = 1.0f - adjustment;
@@ -2031,6 +2051,38 @@ void SND_resetUnderrunCount(void) {
 }
 
 /**
+ * Signals start of a new video frame for audio rate control.
+ *
+ * Updates the PI integral term once per frame based on current buffer fill.
+ * Call once per frame before core.run() produces audio.
+ *
+ * This prevents the integral from accumulating N times when cores use
+ * per-sample audio callbacks (audio_sample_callback instead of batch).
+ * Some cores (e.g., 64-bit snes9x) call audio ~535 times per frame.
+ */
+void SND_newFrame(void) {
+	if (!snd.initialized)
+		return;
+
+	SDL_LockAudio();
+
+	float fill = SND_getBufferFillLevel();
+	float error = 1.0f - 2.0f * fill;
+
+	// Update smoothed error and integral (once per frame)
+	snd.error_avg = SND_ERROR_AVG_ALPHA * error + (1.0f - SND_ERROR_AVG_ALPHA) * snd.error_avg;
+	snd.rate_integral += snd.error_avg * SND_RATE_CONTROL_KI;
+
+	// Clamp integral to prevent windup (handles up to ±2% clock mismatch)
+	if (snd.rate_integral > SND_INTEGRAL_CLAMP)
+		snd.rate_integral = SND_INTEGRAL_CLAMP;
+	if (snd.rate_integral < -SND_INTEGRAL_CLAMP)
+		snd.rate_integral = -SND_INTEGRAL_CLAMP;
+
+	SDL_UnlockAudio();
+}
+
+/**
  * Captures an atomic snapshot of all audio state for diagnostics.
  *
  * All values are read while holding the audio lock to ensure consistency.
@@ -2063,6 +2115,9 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.rate_adjust = snd.last_rate_adjust;
 	snap.total_adjust = snd.last_rate_adjust;
 	snap.rate_integral = snd.rate_integral;
+	snap.rate_control_d = SND_RATE_CONTROL_D_DEFAULT;
+	snap.rate_control_ki = SND_RATE_CONTROL_KI;
+	snap.error_avg = snd.error_avg;
 
 	// Resampler state
 	snap.sample_rate_in = snd.sample_rate_in;
@@ -2080,6 +2135,17 @@ SND_Snapshot SND_getSnapshot(void) {
 
 	// Underrun tracking
 	snap.underrun_count = snd.underrun_count;
+
+	// SDL callback timing
+	snap.callback_count = snd.callback_count;
+	snap.callback_samples_min = snd.callback_samples_min;
+	snap.callback_samples_max = snd.callback_samples_max;
+	if (snd.callback_count > 1) {
+		snap.callback_avg_interval_ms =
+		    (float)snd.callback_interval_sum / (snd.callback_count - 1) / 1000.0f;
+	} else {
+		snap.callback_avg_interval_ms = 0;
+	}
 
 	SDL_UnlockAudio();
 

@@ -833,6 +833,12 @@ unsigned SND_getUnderrunCount(void);
 void SND_resetUnderrunCount(void);
 
 /**
+ * Signals start of a new video frame for audio rate control.
+ * Call once per frame before core.run() to limit integral updates.
+ */
+void SND_newFrame(void);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
@@ -862,6 +868,9 @@ typedef struct {
 	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
 	float total_adjust; // Same as rate_adjust (no separate corrections)
 	float rate_integral; // PI controller integral term (drift correction)
+	float rate_control_d; // Proportional gain
+	float rate_control_ki; // Integral gain
+	float error_avg; // Smoothed error (for debugging integral behavior)
 
 	// Resampler state
 	int sample_rate_in; // Input sample rate (from core)
@@ -879,6 +888,12 @@ typedef struct {
 
 	// Error tracking
 	unsigned underrun_count; // Total underruns
+
+	// SDL callback timing diagnostics
+	uint64_t callback_count; // Total callbacks
+	float callback_avg_interval_ms; // Average ms between callbacks
+	unsigned callback_samples_min; // Min samples per callback
+	unsigned callback_samples_max; // Max samples per callback
 } SND_Snapshot;
 
 /**

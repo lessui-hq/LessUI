@@ -71,7 +71,6 @@ static int quit = 0; // Set to 1 to exit main loop
 static int show_menu = 0; // Set to 1 to display in-game menu
 static int simple_mode = 0; // Simplified interface mode (fewer options)
 
-
 // Video geometry state for dynamic updates
 static struct {
 	unsigned rotation; // 0=0°, 1=90°, 2=180°, 3=270°
@@ -2030,6 +2029,7 @@ static void updateAutoCPU(void) {
 					auto_cpu_low_util_windows = 0;
 					LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
 					         current_freq, new_freq, util, predicted_util);
+					(void)predicted_util; // Used in LOG_info which may be compiled out
 				}
 			} else {
 				// In sweet spot - reset counters
@@ -2042,9 +2042,9 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% util=%u%% freq=%dkHz idx=%d/%d vsync=%.1fHz\n",
-				          snap.fill_pct, util, current_freq, current_idx, max_idx,
-				          current_vsync_hz);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
+				          current_idx, max_idx);
 				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 		} else {
@@ -2065,8 +2065,9 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% util=%u%% level=%d vsync=%.1fHz adj=%.4f\n",
-				          snap.fill_pct, util, current_level, current_vsync_hz, snap.total_adjust);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
+				          current_level);
 				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 
@@ -4623,8 +4624,13 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// you can squeeze more out of every console by turning prevent tearing off
 	// eg. PS@10 60/240
 
-	if (!data)
+	if (!data) {
+		// Core skipped rendering, but still flip to maintain vsync cadence.
+		// Without this, we skip vsync wait → 4ms frame → next frame waits 2 vblanks → 30ms
+		// This causes 20% audio buffer oscillation even with perfect rate control.
+		frame_ready_for_flip = 1;
 		return;
+	}
 
 	fps_ticks += 1;
 
@@ -7117,19 +7123,17 @@ int main(int argc, char* argv[]) {
 			core.audio_buffer_status(true, occupancy, occupancy < 25);
 		}
 
-		// Measure frame execution time for auto CPU scaling
-		// Only measure when in auto mode and not fast-forwarding
-		uint64_t frame_start = 0;
-		if (overclock == 3 && !fast_forward && !show_menu) {
-			frame_start = getMicroseconds();
-		}
+		// Update audio rate control integral (once per frame, before audio production)
+		SND_newFrame();
+
+		// Measure frame execution time for auto CPU scaling and CSV logging
+		uint64_t frame_start = getMicroseconds();
 
 		core.run();
 
 		// Store frame time for auto CPU scaling analysis
-		// Now this measures actual emulation time, not vsync wait
-		if (frame_start > 0) {
-			uint64_t frame_time = getMicroseconds() - frame_start;
+		uint64_t frame_time = getMicroseconds() - frame_start;
+		if (overclock == 3 && !fast_forward && !show_menu) {
 			auto_cpu_frame_times[auto_cpu_frame_time_index % AUTO_CPU_WINDOW_FRAMES] = frame_time;
 			auto_cpu_frame_time_index++;
 		}
