@@ -223,17 +223,17 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.height = FIXED_HEIGHT;
 	vid.pitch = FIXED_PITCH;
 
-	vid.screen_info.size = PAGE_SIZE;
+	vid.screen_info.size = VIDEO_BUFFER_SIZE;
 	ion_alloc(vid.ion_fd, &vid.screen_info);
 	vid.screen = SDL_CreateRGBSurfaceFrom(vid.screen_info.vadd, vid.width, vid.height, FIXED_DEPTH,
 	                                      vid.pitch, RGBA_MASK_565);
 
-	vid.buffer_info.size = PAGE_SIZE * PAGE_COUNT;
+	vid.buffer_info.size = VIDEO_BUFFER_SIZE * VIDEO_BUFFER_COUNT;
 	ion_alloc(vid.ion_fd, &vid.buffer_info);
 
-	vid.buffer =
-	    SDL_CreateRGBSurfaceFrom(vid.buffer_info.vadd + vid.page * PAGE_SIZE, PAGE_HEIGHT,
-	                             PAGE_WIDTH, FIXED_DEPTH, PAGE_HEIGHT * FIXED_BPP, RGBA_MASK_565);
+	vid.buffer = SDL_CreateRGBSurfaceFrom(vid.buffer_info.vadd + vid.page * VIDEO_BUFFER_SIZE,
+	                                      VIDEO_BUFFER_HEIGHT, VIDEO_BUFFER_WIDTH, FIXED_DEPTH,
+	                                      VIDEO_BUFFER_HEIGHT * FIXED_BPP, RGBA_MASK_565);
 
 	vid.buffer_config.channel = SCALER_CH;
 	vid.buffer_config.layer_id = SCALER_LAYER;
@@ -309,7 +309,7 @@ void PLAT_quitVideo(void) {
 void PLAT_clearVideo(SDL_Surface* IGNORED) {
 	if (!vid.cleared)
 		memset(vid.screen->pixels, 0, vid.pitch * vid.height);
-	memset(vid.buffer->pixels, 0, PAGE_SIZE);
+	memset(vid.buffer->pixels, 0, VIDEO_BUFFER_SIZE);
 }
 
 void PLAT_clearAll(void) {
@@ -458,8 +458,10 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 		rotate_16bpp(vid.screen->pixels, vid.buffer->pixels, vid.width, vid.height, vid.pitch,
 		             vid.height * FIXED_BPP);
 
-	vid.buffer_config.info.fb.addr[0] = (uintptr_t)vid.buffer_info.padd + vid.page * PAGE_SIZE;
-	vid.mem_map[OVL_V_TOP_LADD0 / 4] = (uintptr_t)vid.buffer_info.padd + vid.page * PAGE_SIZE;
+	vid.buffer_config.info.fb.addr[0] =
+	    (uintptr_t)vid.buffer_info.padd + vid.page * VIDEO_BUFFER_SIZE;
+	vid.mem_map[OVL_V_TOP_LADD0 / 4] =
+	    (uintptr_t)vid.buffer_info.padd + vid.page * VIDEO_BUFFER_SIZE;
 
 	if (vid.resized) {
 		vid.buffer_config.info.fb.size[0].width = vid.height;
@@ -472,7 +474,7 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	}
 
 	vid.page ^= 1;
-	vid.buffer->pixels = vid.buffer_info.vadd + vid.page * PAGE_SIZE;
+	vid.buffer->pixels = vid.buffer_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
 
 	if (sync)
 		PLAT_vsync(0);

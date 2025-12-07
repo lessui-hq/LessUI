@@ -180,41 +180,55 @@ extern UI_Layout ui;
 void UI_initLayout(int screen_width, int screen_height, float diagonal_inches);
 
 ///////////////////////////////
-// Video page buffer constants
+// Video Buffer Sizing (derived from screen dimensions)
 ///////////////////////////////
 
 /**
- * Double-buffered video system configuration.
+ * Video buffer sizing system.
  *
- * MinUI uses overscaled page buffers (FIXED_WIDTH * PAGE_SCALE) to support
- * various scaling operations. This allows UI elements to be drawn at high
- * resolution before scaling down to the physical screen.
+ * Buffer dimensions are derived from screen size and scaling constraints,
+ * not manually configured. This eliminates over-allocation while ensuring
+ * buffers are always large enough for worst-case scaling scenarios.
+ *
+ * When hardware scaling is used (fit=0), minarch renders content larger
+ * than the screen, then hardware scales it down. The buffer must hold
+ * this intermediate oversized frame.
+ *
+ * The maximum buffer size depends on:
+ * 1. Integer scale factor: MAX(ceil(screen_w/core_w), ceil(screen_h/core_h))
+ * 2. Aspect ratio correction: Can expand one dimension by up to 1.5x
+ *
+ * Example: GB 160x144 on 640x480 screen
+ *   - Scale 4x -> 640x576 (taller than screen)
+ *   - Aspect correction -> up to ~850x720
+ *   - Hardware scales down to 640x480 for display
  */
-#define PAGE_COUNT 2
-#ifndef PAGE_SCALE
-#define PAGE_SCALE 3 // Default 3x overscaling
-#endif
-#define PAGE_WIDTH (FIXED_WIDTH * PAGE_SCALE)
-#define PAGE_HEIGHT (FIXED_HEIGHT * PAGE_SCALE)
-#define PAGE_PITCH (PAGE_WIDTH * FIXED_BPP)
-#define PAGE_SIZE (PAGE_PITCH * PAGE_HEIGHT)
-
-///////////////////////////////
 
 /**
- * Platform-specific page buffer configuration.
+ * Aspect ratio correction factor.
  *
- * Optionally defined in platform.h for platforms requiring different
- * pixel formats (e.g., RGB888 instead of RGB565).
+ * When core aspect ratio differs from screen aspect ratio, one buffer
+ * dimension expands. Worst case is 16:9 content on 4:3 screen (or vice versa):
+ *   16:9 / 4:3 = 1.78 / 1.33 = 1.34x expansion
+ *
+ * We use 1.5 for safety margin to handle edge cases.
  */
-// TODO: these only seem to be used by a tmp.pak in trimui (model s)
-// used by minarch, optionally defined in platform.h
-#ifndef PLAT_PAGE_BPP
-#define PLAT_PAGE_BPP FIXED_BPP
-#endif
-#define PLAT_PAGE_DEPTH (PLAT_PAGE_BPP * 8)
-#define PLAT_PAGE_PITCH (PAGE_WIDTH * PLAT_PAGE_BPP)
-#define PLAT_PAGE_SIZE (PLAT_PAGE_PITCH * PAGE_HEIGHT)
+#define VIDEO_ASPECT_CORRECTION 1.5f
+
+/**
+ * Derived video buffer dimensions.
+ *
+ * Buffer is screen size * aspect correction factor, providing enough
+ * space for any scaling scenario without manual configuration.
+ */
+#define VIDEO_BUFFER_WIDTH ((int)(FIXED_WIDTH * VIDEO_ASPECT_CORRECTION + 0.5f))
+#define VIDEO_BUFFER_HEIGHT ((int)(FIXED_HEIGHT * VIDEO_ASPECT_CORRECTION + 0.5f))
+#define VIDEO_BUFFER_PITCH (VIDEO_BUFFER_WIDTH * FIXED_BPP)
+#define VIDEO_BUFFER_SIZE (VIDEO_BUFFER_PITCH * VIDEO_BUFFER_HEIGHT)
+
+/** Double-buffering for tear-free rendering */
+#define VIDEO_BUFFER_COUNT 2
+#define VIDEO_BUFFER_TOTAL (VIDEO_BUFFER_SIZE * VIDEO_BUFFER_COUNT)
 
 ///////////////////////////////
 // SDL pixel format masks

@@ -153,7 +153,7 @@ if (VARIANT_IS(VARIANT_TG5040_BRICK))
     SetRawBrightness(8);
 
 // Use in ternaries
-#define PAGE_SCALE (VARIANT_IS(VARIANT_MINI_PLUS_560P) ? 2 : 3)
+#define EDGE_PADDING (VARIANT_IS(VARIANT_MINI_PLUS) ? 10 : 5)
 
 // Use in return values
 int PLAT_supportsOverscan(void) {

@@ -355,11 +355,11 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.height = FIXED_HEIGHT;
 	vid.pitch = FIXED_PITCH;
 
-	vid.fb_info.size = PAGE_SIZE * PAGE_COUNT;
+	vid.fb_info.size = VIDEO_BUFFER_SIZE * VIDEO_BUFFER_COUNT;
 	ion_alloc(vid.fd_ion, &vid.fb_info);
 
-	vid.screen = SDL_CreateRGBSurfaceFrom(vid.fb_info.vadd + PAGE_SIZE, vid.width, vid.height,
-	                                      FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
+	vid.screen = SDL_CreateRGBSurfaceFrom(vid.fb_info.vadd + VIDEO_BUFFER_SIZE, vid.width,
+	                                      vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
 	memset(vid.screen->pixels, 0, vid.pitch * vid.height);
 
 	int vw = (vid.de_mem[DE_PATH_SIZE(0) / 4] & 0xFFFF) + 1;
@@ -370,7 +370,7 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.de_mem[DE_OVL_SR(0) / 4] = vid.de_mem[DE_OVL_SR(2) / 4] =
 	    ((0x2000 * vid.width / vw) & 0xFFFF) | ((0x2000 * vid.height / vh) << 16);
 	vid.de_mem[DE_OVL_STR(0) / 4] = vid.de_mem[DE_OVL_STR(2) / 4] = vid.pitch / 8;
-	vid.de_mem[DE_OVL_BA0(0) / 4] = (uintptr_t)(vid.fb_info.padd + PAGE_SIZE);
+	vid.de_mem[DE_OVL_BA0(0) / 4] = (uintptr_t)(vid.fb_info.padd + VIDEO_BUFFER_SIZE);
 
 	GFX_setNearestNeighbor(0);
 
@@ -391,7 +391,7 @@ void PLAT_quitVideo(void) {
 }
 
 void PLAT_clearVideo(SDL_Surface* screen) {
-	memset(screen->pixels, 0, PAGE_SIZE);
+	memset(screen->pixels, 0, VIDEO_BUFFER_SIZE);
 }
 
 void PLAT_clearAll(void) {
@@ -405,8 +405,9 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	vid.pitch = pitch;
 
 	SDL_FreeSurface(vid.screen);
-	vid.screen = SDL_CreateRGBSurfaceFrom(vid.fb_info.vadd + vid.page * PAGE_SIZE, vid.width,
-	                                      vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
+	vid.screen =
+	    SDL_CreateRGBSurfaceFrom(vid.fb_info.vadd + vid.page * VIDEO_BUFFER_SIZE, vid.width,
+	                             vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
 	memset(vid.screen->pixels, 0, vid.pitch * vid.height);
 
 	int vw = (vid.de_mem[DE_PATH_SIZE(0) / 4] & 0xFFFF) + 1;
@@ -417,7 +418,7 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	vid.de_mem[DE_OVL_SR(0) / 4] = vid.de_mem[DE_OVL_SR(2) / 4] =
 	    ((0x2000 * vid.width / vw) & 0xFFFF) | ((0x2000 * vid.height / vh) << 16);
 	vid.de_mem[DE_OVL_STR(0) / 4] = vid.de_mem[DE_OVL_STR(2) / 4] = vid.pitch / 8;
-	vid.de_mem[DE_OVL_BA0(0) / 4] = (uintptr_t)(vid.fb_info.padd + vid.page * PAGE_SIZE);
+	vid.de_mem[DE_OVL_BA0(0) / 4] = (uintptr_t)(vid.fb_info.padd + vid.page * VIDEO_BUFFER_SIZE);
 
 	return vid.screen;
 }
@@ -577,14 +578,14 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	}
 
 	vid.de_mem[DE_OVL_BA0(0) / 4] = vid.de_mem[DE_OVL_BA0(2) / 4] =
-	    (uintptr_t)(vid.fb_info.padd + vid.page * PAGE_SIZE);
+	    (uintptr_t)(vid.fb_info.padd + vid.page * VIDEO_BUFFER_SIZE);
 	DE_enableLayer(vid.de_mem);
 
 	if (sync)
 		PLAT_vsync(0);
 
 	vid.page ^= 1;
-	vid.screen->pixels = vid.fb_info.vadd + vid.page * PAGE_SIZE;
+	vid.screen->pixels = vid.fb_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
 
 	if (vid.cleared) {
 		PLAT_clearVideo(vid.screen);
@@ -636,7 +637,7 @@ SDL_Surface* PLAT_initOverlay(void) {
 
 	ovl.oinfo.mem_off = (uintptr_t)ovl.ov_info.padd - vid.finfo.smem_start;
 	ovl.oinfo.mem_size = size;
-	ovl.oinfo.screen_width = PAGE_WIDTH;
+	ovl.oinfo.screen_width = VIDEO_BUFFER_WIDTH;
 	ovl.oinfo.color_mode = OWL_DSS_COLOR_ARGB32;
 	ovl.oinfo.img_width = w;
 	ovl.oinfo.img_height = h;

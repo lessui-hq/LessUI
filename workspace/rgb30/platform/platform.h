@@ -166,7 +166,6 @@
 
 #define SDCARD_PATH "/storage/roms" // Path to SD card mount point
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
-#define SAMPLES 400 // Audio buffer size
 
 ///////////////////////////////
 // Keymon Configuration

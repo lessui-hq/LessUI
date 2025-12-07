@@ -220,9 +220,8 @@ The 560p variant uses different UI parameters:
 |-----------|-------------------|----------------|
 | `MAIN_ROW_COUNT` | 6 rows | 8 rows |
 | `PADDING` | 10px | 5px |
-| `PAGE_SCALE` | 3 | 2 (memory optimization) |
 
-These adjustments maximize visible content on the taller display while managing memory usage.
+These adjustments maximize visible content on the taller display.
 
 ## Included Tools
 

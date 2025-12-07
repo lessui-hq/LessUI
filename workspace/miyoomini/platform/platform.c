@@ -433,7 +433,7 @@ SDL_Surface* PLAT_initVideo(void) {
 
 	vid.video = SDL_SetVideoMode(FIXED_WIDTH, FIXED_HEIGHT, FIXED_DEPTH, SDL_SWSURFACE);
 
-	int buffer_size = ALIGN4K(PAGE_SIZE) * PAGE_COUNT;
+	int buffer_size = ALIGN4K(VIDEO_BUFFER_SIZE) * VIDEO_BUFFER_COUNT;
 	MI_SYS_MMA_Alloc(NULL, ALIGN4K(buffer_size), &vid.buffer.padd);
 	MI_SYS_Mmap(vid.buffer.padd, ALIGN4K(buffer_size), &vid.buffer.vadd, true);
 
@@ -445,9 +445,9 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.cleared = 0;
 
 	vid.screen =
-	    SDL_CreateRGBSurfaceFrom(vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE), vid.width,
+	    SDL_CreateRGBSurfaceFrom(vid.buffer.vadd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE), vid.width,
 	                             vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
-	vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE);
+	vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
 	memset(vid.screen->pixels, 0, vid.pitch * vid.height);
 
 	// Initialize effect state using shared effect_system
@@ -472,15 +472,17 @@ void PLAT_quitVideo(void) {
 
 	SDL_FreeSurface(vid.screen);
 
-	MI_SYS_Munmap(vid.buffer.vadd, ALIGN4K(PAGE_SIZE));
+	int buffer_size = ALIGN4K(VIDEO_BUFFER_SIZE) * VIDEO_BUFFER_COUNT;
+	MI_SYS_Munmap(vid.buffer.vadd, ALIGN4K(buffer_size));
 	MI_SYS_MMA_Free(vid.buffer.padd);
 
 	SDL_Quit();
 }
 
 void PLAT_clearVideo(SDL_Surface* screen) {
-	MI_SYS_FlushInvCache(vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE), ALIGN4K(PAGE_SIZE));
-	MI_SYS_MemsetPa(vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE), 0, PAGE_SIZE);
+	MI_SYS_FlushInvCache(vid.buffer.vadd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE),
+	                     ALIGN4K(VIDEO_BUFFER_SIZE));
+	MI_SYS_MemsetPa(vid.buffer.padd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE), 0, VIDEO_BUFFER_SIZE);
 	SDL_FillRect(screen, NULL, 0);
 }
 
@@ -503,9 +505,9 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 		SDL_FreeSurface(vid.screen);
 
 		vid.screen =
-		    SDL_CreateRGBSurfaceFrom(vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE), vid.width,
-		                             vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
-		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE);
+		    SDL_CreateRGBSurfaceFrom(vid.buffer.vadd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE),
+		                             vid.width, vid.height, FIXED_DEPTH, vid.pitch, RGBA_MASK_AUTO);
+		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
 		memset(vid.screen->pixels, 0, vid.pitch * vid.height);
 	}
 
@@ -690,8 +692,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 
 	if (!vid.direct) {
 		vid.page ^= 1;
-		vid.screen->pixels = vid.buffer.vadd + ALIGN4K(vid.page * PAGE_SIZE);
-		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * PAGE_SIZE);
+		vid.screen->pixels = vid.buffer.vadd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
+		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
 	}
 
 	if (vid.cleared) {
