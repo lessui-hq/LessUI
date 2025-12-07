@@ -16,7 +16,6 @@ REQUIRES_UNZIP60=other/unzip60
 REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 
 all: readmes
-	cd show && make
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_JSTEST) $(REQUIRES_UNZIP60) $(REQUIRES_COMMANDER)
 	mkdir -p other
@@ -26,7 +25,6 @@ early: $(REQUIRES_EVTEST) $(REQUIRES_JSTEST) $(REQUIRES_UNZIP60) $(REQUIRES_COMM
 	cd $(REQUIRES_UNZIP60) && make -f unix/Makefile.trimuismart unzip
 
 clean:
-	cd show && make clean
 	cd $(REQUIRES_COMMANDER) && make clean
 	cd $(REQUIRES_UNZIP60) && make -f unix/Makefile.trimuismart clean
 

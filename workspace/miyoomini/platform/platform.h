@@ -20,6 +20,7 @@
 ///////////////////////////////
 
 #define PLATFORM "miyoomini"
+#define PLATFORM_MIYOOMINI 1 // For conditional compilation (show.c uses direct framebuffer)
 
 ///////////////////////////////
 // Dependencies

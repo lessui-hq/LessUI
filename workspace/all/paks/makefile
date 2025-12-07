@@ -1,14 +1,19 @@
 # workspace/all/paks/makefile
 # Orchestrates all pak builds using a standard hook interface
 #
-# Each pak can implement these hooks (all optional):
+# Directory structure:
+#   Tools/     - Tool paks (Clock, Input, Wifi, etc.)
+#   Emus/      - Emulator paks (template-based)
+#   MinUI/     - System pak (template-based)
+#
+# Each tool pak can implement these hooks (all optional):
 #   setup   - Runs once before platform builds (download shared binaries)
 #   build   - Runs per-platform in Docker (compile platform-specific code)
 #   install - Runs per-platform outside Docker (construct pak in build dir)
 #   clean   - Clean build artifacts
 #
 # Paks implement hooks either:
-#   - In pak root makefile (e.g., File Transfer/makefile)
+#   - In pak root makefile (e.g., HTTP File Server/makefile)
 #   - In src/makefile (e.g., Clock/src/makefile)
 
 ###########################################################
@@ -17,6 +22,9 @@ ifeq (,$(PLATFORM))
 PLATFORM=$(UNION_PLATFORM)
 endif
 
+# Compute BUILD_DIR from DESTDIR (DESTDIR is build/SYSTEM/common/bin)
+BUILD_DIR := $(realpath $(DESTDIR)/../../..)
+
 .PHONY: setup build install clean all
 
 # Default target when called from workspace/makefile (per-platform build)
@@ -24,7 +32,12 @@ all: build
 
 # Setup hook - runs once before any platform builds
 setup:
-	@for pak_dir in */; do \
+	@# Run Emus setup (downloads libretro cores)
+	@$(MAKE) -C Emus setup "DESTDIR=$(DESTDIR)" "BUILD_DIR=$(BUILD_DIR)"
+	@# Run MinUI setup (generates launch.sh for all platforms)
+	@$(MAKE) -C MinUI setup "BUILD_DIR=$(BUILD_DIR)"
+	@# Run tool pak setup hooks
+	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
 			$(MAKE) -C "$$pak" setup "DESTDIR=$(DESTDIR)"; \
@@ -36,7 +49,7 @@ setup:
 # Build hook - runs per-platform in Docker
 # Uses shell loop to handle pak names with spaces (Make treats spaces as delimiters)
 build:
-	@for pak_dir in */; do \
+	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/src/makefile" ]; then \
 			$(MAKE) -C "$$pak/src" build "PLATFORM=$(PLATFORM)"; \
@@ -45,7 +58,7 @@ build:
 
 # Install hook - runs per-platform outside Docker (construct paks)
 install:
-	@for pak_dir in */; do \
+	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
 			$(MAKE) -C "$$pak" install "PLATFORM=$(PLATFORM)" "DESTDIR=$(DESTDIR)"; \
@@ -56,7 +69,7 @@ install:
 
 # Clean hook
 clean:
-	@for pak_dir in */; do \
+	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
 		if [ -f "$$pak/makefile" ]; then \
 			$(MAKE) -C "$$pak" clean; \

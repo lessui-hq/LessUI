@@ -159,5 +159,31 @@
 #define HAS_NEON // May have NEON SIMD support (uncertain)
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+// m17 uses SELECT/START instead of MENU button (like trimuismart)
+#define KEYMON_USE_SELECT_START 1
+#define KEYMON_BUTTON_SELECT 54
+#define KEYMON_BUTTON_START 28
+#define KEYMON_BUTTON_L1 38
+#define KEYMON_BUTTON_R1 19
+
+// m17 has hardware volume buttons that need quirk handling
+// (separate from the R1/L1 brightness/volume combos)
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+#define KEYMON_HAS_VOLUME_QUIRK 1
+
+#define KEYMON_HAS_HDMI 1
+#define KEYMON_HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"
+
+#define KEYMON_HAS_JACK 1
+#define KEYMON_JACK_STATE_PATH "/sys/devices/virtual/switch/h2w/state"
+
+// Uses 4 input devices
+#define KEYMON_INPUT_COUNT 4
+
+///////////////////////////////
 
 #endif

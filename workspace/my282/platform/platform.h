@@ -157,5 +157,22 @@
 #define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 1
+#define KEYMON_BUTTON_MENU_ALT -1
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 0
+#define KEYMON_HAS_JACK 0
+
+// Uses event0 and event3 (not sequential)
+#define KEYMON_INPUT_COUNT 2
+#define KEYMON_INPUT_DEVICE_0 "/dev/input/event0"
+#define KEYMON_INPUT_DEVICE_1 "/dev/input/event3"
+
+///////////////////////////////
 
 #endif

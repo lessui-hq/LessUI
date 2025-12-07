@@ -1,12 +1,12 @@
 $(PLATFORM):
 	# $@
-	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin
+	# show.elf is now installed by utils install hook
 	# installer
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
 	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
 	rsync -a ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
 	mkdir -p ./build/BOOT/common/$@/
-	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
 	rsync -a ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
 	# boot assets (standard and brick variants)
 	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png

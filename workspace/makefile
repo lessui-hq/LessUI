@@ -11,7 +11,8 @@ endif
 ###########################################################
 
 # Components that can run in parallel after libs
-COMPONENTS = keymon minui minarch paks utils syncsettings platform-late
+# keymon is now built in workspace/all/utils/keymon (unified implementation)
+COMPONENTS = minui minarch paks utils syncsettings platform-late
 
 .PHONY: all libs $(COMPONENTS)
 
@@ -24,8 +25,6 @@ libs:
 
 $(COMPONENTS): libs
 
-keymon:
-	$(MAKE) -C ./$(PLATFORM)/keymon
 minui:
 	$(MAKE) -C ./all/minui/
 minarch:
@@ -41,7 +40,6 @@ platform-late:
 
 clean:
 	cd ./$(PLATFORM)/libmsettings && make clean
-	cd ./$(PLATFORM)/keymon && make clean
 	cd ./all/minui/ && make clean
 	cd ./all/minarch/ && make clean
 	cd ./all/paks/ && make clean

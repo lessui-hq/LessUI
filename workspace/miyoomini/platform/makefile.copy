@@ -4,7 +4,6 @@ $(PLATFORM):
 	cp ./workspace/$@/blank/blank.elf ./build/SYSTEM/$@/bin/
 	cp ./workspace/$@/batmon/batmon.elf ./build/SYSTEM/$@/bin/
 	cp ./workspace/$@/lumon/lumon.elf ./build/SYSTEM/$@/bin/
-	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin
 	rsync -a ./workspace/$@/other/sdl/build/.libs/libSDL-1.2.so.0.11.5 ./build/SYSTEM/$@/lib/libSDL-1.2.so.0
 	rsync -a ./workspace/$@/other/latency_reduction/as_preload.so ./build/SYSTEM/$@/lib/
 	rsync -a ./workspace/$@/other/latency_reduction/audioserver.mod ./build/SYSTEM/$@/bin/
@@ -12,7 +11,8 @@ $(PLATFORM):
 	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
 	mkdir -p ./build/BOOT/common/$@/
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
-	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	# show.elf is now installed by utils install hook, just copy to BOOT
+	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
 	# boot assets
 	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
 	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png

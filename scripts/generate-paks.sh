@@ -28,8 +28,8 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-# Load platform metadata
-PLATFORMS_JSON="$TEMPLATE_DIR/platforms.json"
+# Load platform metadata from shared config
+PLATFORMS_JSON="$PROJECT_ROOT/workspace/all/paks/config/platforms.json"
 CORES_JSON="$TEMPLATE_DIR/cores.json"
 
 if [ ! -f "$PLATFORMS_JSON" ]; then

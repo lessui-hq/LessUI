@@ -138,18 +138,18 @@ build:
 
 # Copy platform binaries to build directory
 system:
-	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
-
-	# populate system
-	cp ./workspace/$(PLATFORM)/keymon/keymon.elf ./build/SYSTEM/$(PLATFORM)/bin/
+	# populate system (binaries that makefile.copy may reference)
+	# keymon.elf and show.elf are now installed by utils install hook (unified implementation)
 	cp ./workspace/$(PLATFORM)/libmsettings/libmsettings.so ./build/SYSTEM/$(PLATFORM)/lib
 	cp ./workspace/all/minui/build/$(PLATFORM)/minui.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/minarch.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
-	# Install utils (calls install hook for each util)
+	# Install utils (calls install hook for each util - includes keymon.elf and show.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
-	# Construct tool paks from workspace/all/paks/
-	@for pak_dir in ./workspace/all/paks/*/; do \
+	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
+	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
+	# Construct tool paks from workspace/all/paks/Tools/
+	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
 		pak_name=$$(basename "$$pak_dir"); \
 		[ -f "$$pak_dir/pak.json" ] || continue; \
@@ -215,7 +215,7 @@ clean:
 	# Clean workspace/all component build directories
 	rm -rf workspace/all/minui/build
 	rm -rf workspace/all/minarch/build
-	rm -rf workspace/all/paks/*/build
+	rm -rf workspace/all/paks/Tools/*/build
 	rm -rf workspace/all/utils/*/build
 	rm -rf workspace/all/syncsettings/build
 	# Clean platform-specific boot outputs
@@ -274,8 +274,8 @@ setup: name
 	@$(MAKE) -C ./workspace/all/utils setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
 	@$(MAKE) -C ./workspace/all/paks setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
 
-	# Generate platform-specific paks from templates
-	@echo "Generating paks from templates..."
+	# Generate emulator paks from templates
+	@echo "Generating emulator paks..."
 	@./scripts/generate-paks.sh all
 
 # Platform-specific packaging for Miyoo/Trimui family

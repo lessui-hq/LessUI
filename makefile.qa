@@ -326,7 +326,7 @@ FORMAT_PATHS = workspace/all/minui/*.c \
                workspace/all/minarch/*.c \
                workspace/all/common/*.c \
                workspace/all/common/*.h \
-               workspace/all/paks/*/src/*.c \
+               workspace/all/paks/Tools/*/src/*.c \
                workspace/all/syncsettings/*.c \
                workspace/*/platform/platform.c \
                workspace/*/platform/platform.h \

@@ -13,8 +13,8 @@ endif
 REQUIRES_COMMANDER=other/DinguxCommander
 REQUIRES_UNZIP60=other/unzip60
 
+# show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
-	cd show && make
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_UNZIP60)
 	mkdir -p other
@@ -22,7 +22,6 @@ early: $(REQUIRES_COMMANDER) $(REQUIRES_UNZIP60)
 	cd other/unzip60 && make -f unix/Makefile.trimuismart unzip
 
 clean:
-	cd show && make clean
 	cd other/DinguxCommander && make clean
 	cd other/unzip60 && make -f unix/Makefile.trimuismart clean
 	

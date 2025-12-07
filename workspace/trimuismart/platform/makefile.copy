@@ -1,10 +1,10 @@
 $(PLATFORM):
 	# $@
-	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin
+	# show.elf is now installed by utils install hook
 	# installer
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
 	mkdir -p ./build/BOOT/common/$@/
-	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
 	rsync -a ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
 	rsync -a ./build/SYSTEM/$@/bin/leds_off ./build/BOOT/common/$@/
 	# boot assets

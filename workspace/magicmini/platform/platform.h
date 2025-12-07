@@ -159,5 +159,22 @@
 #define SAMPLES 400 // Audio buffer size (helps reduce fceumm audio underruns)
 
 ///////////////////////////////
+// Keymon Configuration
+///////////////////////////////
+
+#define KEYMON_BUTTON_MENU 704
+#define KEYMON_BUTTON_MENU_ALT -1
+#define KEYMON_BUTTON_PLUS 115
+#define KEYMON_BUTTON_MINUS 114
+
+#define KEYMON_HAS_HDMI 0
+#define KEYMON_HAS_JACK 0
+
+// Uses event2 and event3 (not sequential from 0)
+#define KEYMON_INPUT_COUNT 2
+#define KEYMON_INPUT_DEVICE_0 "/dev/input/event2"
+#define KEYMON_INPUT_DEVICE_1 "/dev/input/event3"
+
+///////////////////////////////
 
 #endif

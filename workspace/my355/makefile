@@ -17,8 +17,8 @@ REQUIRES_MKBOOTIMG=other/mkbootimg
 REQUIRES_RSCEGO=other/rsce-go
 REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 
+# show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
-	cd show && make
 	cd other/squashfs && make
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_MKBOOTIMG) $(REQUIRES_RSCEGO) $(REQUIRES_COMMANDER)
@@ -29,7 +29,6 @@ early: $(REQUIRES_EVTEST) $(REQUIRES_MKBOOTIMG) $(REQUIRES_RSCEGO) $(REQUIRES_CO
 	cd $(REQUIRES_RSCEGO) && go build -o rsce_tool
 	
 clean:
-	cd show && make clean
 	cd $(REQUIRES_COMMANDER) && make clean
 
 ###########################################################
