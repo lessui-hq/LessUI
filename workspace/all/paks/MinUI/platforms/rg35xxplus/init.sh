@@ -1,16 +1,14 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# rg35xxplus post-env hook
-# Model detection, HDMI export, system setup
+# rg35xxplus initialization
 
+# CPU governor
 systemctl disable ondemand
+echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 echo 0 > /sys/class/power_supply/axp2202-battery/work_led
 
 # Detect model
 RGXX_MODEL=$(strings /mnt/vendor/bin/dmenu.bin | grep ^RG)
 export RGXX_MODEL
 
-# Set device type based on model
 case "$RGXX_MODEL" in
 	RGcubexx)
 		export DEVICE="cube"
@@ -20,5 +18,17 @@ case "$RGXX_MODEL" in
 		;;
 esac
 
-# Export HDMI path for loop hook
+# HDMI export path (used by loop hooks)
 export HDMI_EXPORT_PATH="/tmp/hdmi_export.sh"
+
+# HDMI loop hooks
+pre_minui_hook() {
+	. "$HDMI_EXPORT_PATH"
+}
+
+pre_pak_hook() {
+	. "$HDMI_EXPORT_PATH"
+}
+
+# Start keymon
+keymon.elf &

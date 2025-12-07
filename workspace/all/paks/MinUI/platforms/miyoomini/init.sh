@@ -1,7 +1,17 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# miyoomini post-env hook
-# Device detection, audioserver, lumon, batmon
+# miyoomini initialization
+
+# CPU governor
+echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+# CPU speeds for minarch
+export CPU_SPEED_MENU=504000
+export CPU_SPEED_GAME=1296000
+export CPU_SPEED_PERF=1488000
+
+cpu_restore() {
+	overclock.elf $CPU_SPEED_PERF
+}
+cpu_restore
 
 # Detect Mini Plus
 if [ -f /customer/app/axp_test ]; then
@@ -19,11 +29,6 @@ export MY_MODEL
 MIYOO_VERSION=$(/etc/fw_printenv miyoo_version)
 export MIYOO_VERSION=${MIYOO_VERSION#miyoo_version=}
 
-# Export CPU speed variables for minarch
-export CPU_SPEED_MENU
-export CPU_SPEED_GAME
-export CPU_SPEED_PERF
-
 # Clean up update log
 rm -f "$SDCARD_PATH/update.log"
 
@@ -38,18 +43,25 @@ else
 	fi
 fi
 
-# LCD luma and saturation adjustment
+# LCD luma/saturation adjustment
 lumon.elf &
 
 # Battery monitor (only when charging)
 if $IS_PLUS; then
 	CHARGING=$(/customer/app/axp_test | awk -F'[,: {}]+' '{print $7}')
-	if [ "$CHARGING" = "3" ]; then
-		batmon.elf
-	fi
+	[ "$CHARGING" = "3" ] && batmon.elf
 else
 	CHARGING=$(cat /sys/devices/gpiochip0/gpio/gpio59/value)
-	if [ "$CHARGING" = "1" ]; then
-		batmon.elf
-	fi
+	[ "$CHARGING" = "1" ] && batmon.elf
+fi
+
+# Start keymon
+keymon.elf &
+
+# Datetime restore
+if [ -f "$DATETIME_PATH" ] && [ ! -f "$USERDATA_PATH/enable-rtc" ]; then
+	DATETIME=$(cat "$DATETIME_PATH")
+	date +'%F %T' -s "$DATETIME"
+	DATETIME=$(date +'%s')
+	date -u -s "@$DATETIME"
 fi

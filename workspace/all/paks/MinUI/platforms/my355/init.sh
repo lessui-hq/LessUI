@@ -1,7 +1,18 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# my355 post-env hook
-# GPIO setup, input daemon, lid disable
+# my355 initialization
+
+# Extra paths
+export PATH="/usr/miyoo/bin:/usr/miyoo/sbin:$PATH"
+export LD_LIBRARY_PATH="/usr/miyoo/lib:$LD_LIBRARY_PATH"
+
+# CPU setup
+echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+CPU_PATH=/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed
+CPU_SPEED_PERF=1992000
+
+cpu_restore() {
+	echo $CPU_SPEED_PERF > $CPU_PATH
+}
+cpu_restore
 
 # Headphone jack GPIO
 echo 150 > /sys/class/gpio/export
@@ -24,3 +35,6 @@ miyoo_inputd &
 
 # Disable system-level lid handling
 mv /dev/input/event1 /dev/input/event1.disabled
+
+# Start keymon
+keymon.elf > "$LOGS_PATH/keymon.log" 2>&1 &

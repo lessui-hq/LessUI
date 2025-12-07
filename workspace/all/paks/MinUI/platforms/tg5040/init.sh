@@ -1,7 +1,8 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# tg5040 post-env hook
-# Model detection, GPIO setup, LED, USB, audio
+# tg5040 initialization
+
+# Extra paths
+export PATH="/usr/trimui/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/trimui/lib:$LD_LIBRARY_PATH"
 
 # Detect model
 TRIMUI_MODEL=$(strings /usr/trimui/bin/MainUI | grep ^Trimui)
@@ -56,9 +57,22 @@ trimui_inputd &
 # Start stock hardware daemon
 hardwareservice &
 
+# CPU setup
+echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
+CPU_SPEED_PERF=2000000
+
+cpu_restore() {
+	echo $CPU_SPEED_PERF > $CPU_PATH
+}
+cpu_restore
+
 # Disable network
 killall MtpDaemon
 killall wpa_supplicant
 killall udhcpc
 rfkill block bluetooth
 rfkill block wifi
+
+# Start keymon
+keymon.elf &

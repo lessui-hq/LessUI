@@ -35,9 +35,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "platform.h"
 #include "keymon_config.h"
 #include "log.h"
-#include "platform.h"
 #include <msettings.h>
 
 #if KEYMON_HAS_HDMI || KEYMON_HAS_JACK || defined(KEYMON_HAS_MUTE)

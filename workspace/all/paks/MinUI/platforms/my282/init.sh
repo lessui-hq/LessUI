@@ -1,18 +1,13 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# my282 post-env hook
-# LED off, reclock function, wifi kill loop
+# my282 initialization
 
 # LED off
 echo 0 > /sys/class/leds/led1/brightness
 
-# Define reclock function for CPU speed control
-reclock() {
+# CPU speed control via reclock
+cpu_restore() {
 	overclock.elf userspace 2 1344 384 1080 0
 }
-
-# Initial reclock
-reclock
+cpu_restore
 
 # Clean up tee and update log
 killall -9 tee
@@ -25,3 +20,6 @@ while :; do
 	ifconfig wlan0 down
 	sleep 2
 done &
+
+# Start keymon
+keymon.elf &

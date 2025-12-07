@@ -1,7 +1,4 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# trimuismart pre-init hook
-# SD card recovery check
+# trimuismart pre-init: SD card recovery check
 
 touch /mnt/writetest
 sync

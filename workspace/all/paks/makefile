@@ -3,8 +3,8 @@
 #
 # Directory structure:
 #   Tools/     - Tool paks (Clock, Input, Wifi, etc.)
-#   Emus/      - Emulator paks (template-based, handled by generate-paks.sh)
-#   MinUI/     - System pak (template-based, handled by generate-minui-pak.sh)
+#   Emus/      - Emulator paks (template-based)
+#   MinUI/     - System pak (template-based)
 #
 # Each tool pak can implement these hooks (all optional):
 #   setup   - Runs once before platform builds (download shared binaries)
@@ -22,6 +22,9 @@ ifeq (,$(PLATFORM))
 PLATFORM=$(UNION_PLATFORM)
 endif
 
+# Compute BUILD_DIR from DESTDIR (DESTDIR is build/SYSTEM/common/bin)
+BUILD_DIR := $(realpath $(DESTDIR)/../../..)
+
 .PHONY: setup build install clean all
 
 # Default target when called from workspace/makefile (per-platform build)
@@ -30,7 +33,9 @@ all: build
 # Setup hook - runs once before any platform builds
 setup:
 	@# Run Emus setup (downloads libretro cores)
-	@$(MAKE) -C Emus setup "DESTDIR=$(DESTDIR)"
+	@$(MAKE) -C Emus setup "DESTDIR=$(DESTDIR)" "BUILD_DIR=$(BUILD_DIR)"
+	@# Run MinUI setup (generates launch.sh for all platforms)
+	@$(MAKE) -C MinUI setup "BUILD_DIR=$(BUILD_DIR)"
 	@# Run tool pak setup hooks
 	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \

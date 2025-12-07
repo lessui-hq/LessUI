@@ -274,10 +274,9 @@ setup: name
 	@$(MAKE) -C ./workspace/all/utils setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
 	@$(MAKE) -C ./workspace/all/paks setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
 
-	# Generate platform-specific paks from templates
-	@echo "Generating paks from templates..."
+	# Generate emulator paks from templates
+	@echo "Generating emulator paks..."
 	@./scripts/generate-paks.sh all
-	@./scripts/generate-minui-pak.sh all
 
 # Platform-specific packaging for Miyoo/Trimui family
 special:

@@ -1,7 +1,4 @@
-# shellcheck shell=bash
-# Sourced by generated launch.sh
-# miyoomini pre-init hook
-# LCD/backlight initialization
+# miyoomini pre-init: LCD/backlight initialization
 
 if [ -z "$LCD_INIT" ]; then
 	# an update may have already initialized the LCD
