@@ -178,7 +178,6 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define SDCARD_PATH "/mnt/SDCARD" // Path to SD card mount point
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 // #define HAS_NEON                // NEON support commented out (not available on this SoC)
-#define SAMPLES 400 // Audio buffer size (helps reduce fceumm audio underruns)
 
 ///////////////////////////////
 

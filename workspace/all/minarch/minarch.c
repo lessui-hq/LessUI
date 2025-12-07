@@ -4554,7 +4554,25 @@ static void selectScaler(int src_w, int src_h, int src_p) {
 		}
 	}
 
-	// TODO: need to sanity check scale and demands on the buffer
+	// Bounds check: ensure scaled output fits in video buffer
+	// VIDEO_BUFFER_WIDTH/HEIGHT are derived from screen size * 1.5 aspect correction
+	if (dst_w > VIDEO_BUFFER_WIDTH || dst_h > VIDEO_BUFFER_HEIGHT) {
+		LOG_warn("Scaler output %dx%d exceeds buffer %dx%d, capping", dst_w, dst_h,
+		         VIDEO_BUFFER_WIDTH, VIDEO_BUFFER_HEIGHT);
+
+		// Calculate scale factor to fit within buffer
+		float cap_w = (float)VIDEO_BUFFER_WIDTH / dst_w;
+		float cap_h = (float)VIDEO_BUFFER_HEIGHT / dst_h;
+		float cap = (cap_w < cap_h) ? cap_w : cap_h;
+
+		dst_w = (int)(dst_w * cap);
+		dst_h = (int)(dst_h * cap);
+		dst_p = dst_w * FIXED_BPP;
+
+		// Adjust dst offsets proportionally
+		dst_x = (int)(dst_x * cap);
+		dst_y = (int)(dst_y * cap);
+	}
 
 	// LOG_info("aspect: %ix%i (%f)", aspect_w,aspect_h,core.aspect_ratio);
 

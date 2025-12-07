@@ -153,9 +153,6 @@
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
 
-// Page buffer overscaling (560p uses less to save memory)
-#define PAGE_SCALE (VARIANT_IS(VARIANT_MINI_PLUS_560P) ? 2 : 3)
-
 ///////////////////////////////
 // Platform-Specific Paths and Settings
 ///////////////////////////////

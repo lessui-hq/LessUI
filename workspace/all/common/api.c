@@ -1626,9 +1626,7 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define MAX_SAMPLE_RATE 48000
 #define BATCH_SIZE 100 // Max frames to batch per write
-#ifndef SAMPLES
-#define SAMPLES 512 // SDL audio buffer size (default)
-#endif
+// SAMPLES defined in defines.h (default 512)
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 

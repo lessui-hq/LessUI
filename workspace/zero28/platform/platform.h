@@ -169,7 +169,6 @@
 
 #define SDCARD_PATH "/mnt/SDCARD" // Path to SD card mount point
 #define MUTE_VOLUME_RAW 63 // Volume scale is inverted: 63 = mute, 0 = max volume
-#define SAMPLES 400 // Audio buffer size (helps reduce fceumm audio underruns)
 
 ///////////////////////////////
 // Keymon Configuration
