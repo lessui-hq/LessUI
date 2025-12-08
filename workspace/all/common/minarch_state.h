@@ -11,8 +11,8 @@
 #ifndef __MINARCH_STATE_H__
 #define __MINARCH_STATE_H__
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /**
  * Special slot for auto-resume functionality.
@@ -23,13 +23,13 @@
  * Result codes for state operations.
  */
 typedef enum {
-	MINARCH_STATE_OK = 0,           // Success
-	MINARCH_STATE_NO_SUPPORT,       // Core doesn't support save states
-	MINARCH_STATE_FILE_NOT_FOUND,   // State file doesn't exist
-	MINARCH_STATE_FILE_ERROR,       // File I/O error
-	MINARCH_STATE_ALLOC_ERROR,      // Memory allocation failed
-	MINARCH_STATE_SERIALIZE_ERROR,  // Core serialize/unserialize failed
-	MINARCH_STATE_SIZE_MISMATCH     // File size doesn't match expected size
+	MINARCH_STATE_OK = 0, // Success
+	MINARCH_STATE_NO_SUPPORT, // Core doesn't support save states
+	MINARCH_STATE_FILE_NOT_FOUND, // State file doesn't exist
+	MINARCH_STATE_FILE_ERROR, // File I/O error
+	MINARCH_STATE_ALLOC_ERROR, // Memory allocation failed
+	MINARCH_STATE_SERIALIZE_ERROR, // Core serialize/unserialize failed
+	MINARCH_STATE_SIZE_MISMATCH // File size doesn't match expected size
 } MinArchStateResult;
 
 /**

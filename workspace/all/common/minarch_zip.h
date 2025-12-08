@@ -10,8 +10,8 @@
 #ifndef __MINARCH_ZIP_H__
 #define __MINARCH_ZIP_H__
 
-#include <stdio.h>
 #include <stddef.h>
+#include <stdio.h>
 
 /**
  * Chunk size for ZIP extraction operations.

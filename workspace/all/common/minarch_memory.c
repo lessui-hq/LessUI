@@ -8,8 +8,8 @@
  */
 
 #include "minarch_memory.h"
-#include <stdio.h>
 #include <errno.h>
+#include <stdio.h>
 
 MinArchMemoryResult MinArch_readMemory(const char* filepath, unsigned memory_type,
                                        MinArchGetMemorySizeFn get_size,

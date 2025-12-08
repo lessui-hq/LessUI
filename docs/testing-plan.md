@@ -4,7 +4,7 @@
 
 **Starting State (2025-12-07):** 491 tests, ~30% coverage of extracted modules, <5% coverage of minui.c/minarch.c
 
-**Current State (2025-12-07):** 784 tests, ~65% coverage of extracted modules, ~25% coverage of minui.c/minarch.c
+**Current State (2025-12-07):** 905 tests, ~75% coverage of extracted modules, ~35% coverage of minui.c/minarch.c
 
 **Target State:** 700+ tests, 80%+ coverage of testable code ✅ **ACHIEVED**
 
@@ -17,10 +17,10 @@
 | **Phase 1: Quick Wins** | ✅ Complete | 98 | 589 | 2025-12-07 |
 | **Phase 2: Config & Options** | ✅ Complete | 118 | 707 | 2025-12-07 |
 | **Phase 3: Save & File I/O** | ✅ Complete | 77 | 784 | 2025-12-07 |
-| Phase 4: State & CPU | ⏳ Planned | 90 | 874 | - |
-| Phase 5: Integration | ⏳ Planned | 40 | 914 | - |
+| **Phase 4: State & CPU** | ✅ Complete | 121 | 905 | 2025-12-07 |
+| Phase 5: Integration | ⏳ Planned | 40 | 945 | - |
 
-**Progress: 293 new tests added (82% of 358-test goal) - Target of 700 tests exceeded!**
+**Progress: 414 new tests added (116% of 358-test goal) - Target of 700 tests exceeded!**
 
 ### Completed Work Details
 
@@ -41,9 +41,15 @@
 - ✅ `minarch_state.c` - 16 tests (Save state read/write, auto-save, resume)
 - ✅ `minui_launcher.c` - 32 tests (String replacement, quote escaping, command construction)
 
+**Phase 4 - State & CPU (121 tests)**
+- ✅ `minarch_cpu.c` - 42 tests (Auto CPU scaling algorithm, frequency detection, utilization monitoring)
+- ✅ `minarch_input.c` - 24 tests (Input state queries, button mapping, descriptor processing)
+- ✅ `minui_state.c` - 27 tests (Path decomposition, collation detection, resume paths)
+- ✅ `minui_root.c` - 28 tests (Alias parsing, deduplication, entry sorting)
+
 **Files Created:**
-- 11 new source modules (`workspace/all/common/minarch_*.c`, `minui_*.c`, `directory_index.c`)
-- 11 new test suites (`tests/unit/all/common/test_*.c`)
+- 15 new source modules (`workspace/all/common/minarch_*.c`, `minui_*.c`, `directory_index.c`)
+- 15 new test suites (`tests/unit/all/common/test_*.c`)
 - Libretro mock infrastructure (`tests/support/libretro_mocks.{h,c}`)
 - All integrated into `makefile.qa`
 
@@ -59,12 +65,13 @@ This plan identifies **~350 new tests** that can be added through strategic extr
 
 ## Current Coverage Analysis
 
-### Well-Tested Modules (784 tests)
+### Well-Tested Modules (905 tests)
 
 | Module | Tests | Status |
 |--------|-------|--------|
 | utils.c (split into 6 modules) | 123 | Complete |
 | effect_system.c | 43 | Complete |
+| minarch_cpu.c | 42 | Complete |
 | minarch_utils.c | 41 | Complete |
 | nointro_parser.c | 39 | Complete |
 | directory_index.c | 38 | Complete |
@@ -74,7 +81,10 @@ This plan identifies **~350 new tests** that can be added through strategic extr
 | gfx_text.c | 32 | Complete |
 | collections.c | 30 | Complete |
 | str_compare.c | 28 | Complete |
+| minui_root.c | 28 | Complete |
+| minui_state.c | 27 | Complete |
 | minui_entry.c | 25 | Complete |
+| minarch_input.c | 24 | Complete |
 | map_parser.c | 22 | Complete |
 | m3u_parser.c | 20 | Complete |
 | audio_resampler.c | 20 | Complete |

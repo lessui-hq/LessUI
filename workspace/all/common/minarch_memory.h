@@ -16,19 +16,19 @@
 /**
  * Memory type constants (matches libretro RETRO_MEMORY_* values).
  */
-#define MINARCH_MEMORY_SAVE_RAM  0
-#define MINARCH_MEMORY_RTC       1
+#define MINARCH_MEMORY_SAVE_RAM 0
+#define MINARCH_MEMORY_RTC 1
 
 /**
  * Result codes for memory operations.
  */
 typedef enum {
-	MINARCH_MEM_OK = 0,          // Success
-	MINARCH_MEM_NO_SUPPORT,      // Core doesn't support this memory type
-	MINARCH_MEM_FILE_NOT_FOUND,  // File doesn't exist (read only)
-	MINARCH_MEM_FILE_ERROR,      // File I/O error
-	MINARCH_MEM_NULL_POINTER,    // Core returned NULL memory pointer
-	MINARCH_MEM_SIZE_MISMATCH    // File size doesn't match expected size
+	MINARCH_MEM_OK = 0, // Success
+	MINARCH_MEM_NO_SUPPORT, // Core doesn't support this memory type
+	MINARCH_MEM_FILE_NOT_FOUND, // File doesn't exist (read only)
+	MINARCH_MEM_FILE_ERROR, // File I/O error
+	MINARCH_MEM_NULL_POINTER, // Core returned NULL memory pointer
+	MINARCH_MEM_SIZE_MISMATCH // File size doesn't match expected size
 } MinArchMemoryResult;
 
 /**
