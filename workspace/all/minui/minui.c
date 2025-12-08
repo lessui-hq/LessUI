@@ -45,6 +45,7 @@
 #include "defines.h"
 #include "directory_index.h"
 #include "minui_entry.h"
+#include "minui_file_utils.h"
 #include "minui_launcher.h"
 #include "minui_m3u.h"
 #include "minui_map.h"
@@ -365,30 +366,7 @@ static void cache_clear(CacheItem* cache, int* size) {
 	*size = 0;
 }
 
-/**
- * Build thumbnail path for an entry.
- * Thumbnails are stored as: <dir>/.res/<filename>.png
- *
- * @param entry_path Full path to the entry
- * @param out_path Output buffer for thumbnail path (MAX_PATH)
- * @return 1 if path was built successfully, 0 if entry_path is invalid
- */
-static int build_thumb_path(const char* entry_path, char* out_path) {
-	out_path[0] = '\0';
-	if (!entry_path)
-		return 0;
-
-	const char* last_slash = strrchr(entry_path, '/');
-	if (!last_slash || last_slash[1] == '\0')
-		return 0;
-
-	int dir_len = (int)(last_slash - entry_path);
-	if (dir_len <= 0 || dir_len >= MAX_PATH - 32)
-		return 0;
-
-	snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
-	return 1;
-}
+// build_thumb_path moved to minui_file_utils.c as MinUI_buildThumbPath
 
 ///////////////////////////////
 // Note: Entry, IntArray and related functions moved to
@@ -2148,7 +2126,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				// Build and check thumbnail path
 				char thumb_path[MAX_PATH];
-				if (build_thumb_path(current_entry->path, thumb_path))
+				if (MinUI_buildThumbPath(current_entry->path, thumb_path))
 					thumb_exists = exists(thumb_path);
 
 				if (!thumb_exists) {
@@ -2173,7 +2151,7 @@ int main(int argc, char* argv[]) {
 						int has_hint = 0;
 						if (hint_index >= 0 && hint_index < total) {
 							Entry* hint_entry = top->entries->items[hint_index];
-							has_hint = build_thumb_path(hint_entry->path, hint_path);
+							has_hint = MinUI_buildThumbPath(hint_entry->path, hint_path);
 						}
 
 						LOG_debug("thumb: idx=%d MISS -> requesting (hint=%d)", current_selected,

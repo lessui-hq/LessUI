@@ -46,3 +46,57 @@ const char* MinArch_getOptionDisplayName(const char* key, const char* default_na
 	// No mapping found, return default
 	return default_name;
 }
+
+int MinArch_getConfigValue(const char* cfg, const char* key, char* out_value, int* lock) {
+	if (!cfg || !key || !out_value) {
+		return 0;
+	}
+
+	const char* tmp = cfg;
+	while ((tmp = strstr(tmp, key))) {
+		// Check for lock prefix (-key = value)
+		if (lock != NULL && tmp > cfg && *(tmp - 1) == '-') {
+			*lock = 1;
+		}
+		tmp += strlen(key);
+		// Must match " = " pattern exactly
+		if (strncmp(tmp, " = ", 3) == 0) {
+			break; // Found valid match
+		}
+	}
+
+	if (!tmp) {
+		return 0;
+	}
+
+	// Skip past " = "
+	tmp += 3;
+
+	// Copy value up to newline (max 255 chars + null)
+	strncpy(out_value, tmp, 256);
+	out_value[255] = '\0';
+
+	// Trim at newline
+	char* nl = strchr(out_value, '\n');
+	if (!nl) {
+		nl = strchr(out_value, '\r');
+	}
+	if (nl) {
+		*nl = '\0';
+	}
+
+	return 1;
+}
+
+const char* MinArch_getConfigStateDesc(MinArchConfigState state) {
+	switch (state) {
+	case MINARCH_CONFIG_NONE:
+		return "Using defaults.";
+	case MINARCH_CONFIG_CONSOLE:
+		return "Using console config.";
+	case MINARCH_CONFIG_GAME:
+		return "Using game config.";
+	default:
+		return NULL;
+	}
+}

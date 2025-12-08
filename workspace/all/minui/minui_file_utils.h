@@ -77,4 +77,18 @@ int MinUI_hasM3u(char* rom_path, char* m3u_path);
  */
 int MinUI_hasNonHiddenFiles(const char* dir_path);
 
+/**
+ * Builds a thumbnail resource path for an entry.
+ *
+ * Converts an entry path to its corresponding thumbnail path in the .res folder.
+ * Example: /Roms/GB/Tetris.gb → /Roms/GB/.res/Tetris.gb.png
+ *
+ * @param entry_path Full path to the entry (ROM, folder, etc.)
+ * @param out_path Output buffer for thumbnail path (min MAX_PATH bytes)
+ * @return 1 if path was built successfully, 0 on failure (null input, no slash, path too long)
+ *
+ * @note out_path is set to empty string on failure
+ */
+int MinUI_buildThumbPath(const char* entry_path, char* out_path);
+
 #endif // __MINUI_FILE_UTILS_H__

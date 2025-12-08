@@ -1,16 +1,18 @@
 /**
  * test_minarch_config.c - Unit tests for MinArch configuration utilities
  *
- * Tests configuration file path generation and option name mapping.
- * These are pure functions with no external dependencies.
+ * Tests configuration file path generation, option name mapping, and
+ * config value parsing. These are pure functions with no external dependencies.
  *
  * Test coverage:
  * - MinArch_getConfigPath - Config file path generation
  * - MinArch_getOptionDisplayName - Option key to display name mapping
+ * - MinArch_getConfigValue - Config string parsing with key=value pairs
  */
 
 #include "../../support/unity/unity.h"
 #include "minarch_config.h"
+#include <stdlib.h>
 #include <string.h>
 
 void setUp(void) {
@@ -168,6 +170,153 @@ void test_option_name_mapping_workflow(void) {
 }
 
 ///////////////////////////////
+// MinArch_getConfigValue tests
+///////////////////////////////
+
+void test_getConfigValue_simple_key_value(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("scaling = native\n", "scaling", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("native", value);
+}
+
+void test_getConfigValue_multiple_keys(void) {
+	const char* cfg = "scaling = native\nvsync = on\nfilter = sharp\n";
+	char value[256];
+
+	TEST_ASSERT_EQUAL(1, MinArch_getConfigValue(cfg, "scaling", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("native", value);
+
+	TEST_ASSERT_EQUAL(1, MinArch_getConfigValue(cfg, "vsync", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("on", value);
+
+	TEST_ASSERT_EQUAL(1, MinArch_getConfigValue(cfg, "filter", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("sharp", value);
+}
+
+void test_getConfigValue_key_not_found(void) {
+	char value[256];
+	strcpy(value, "unchanged");
+	int result = MinArch_getConfigValue("scaling = native\n", "missing", value, NULL);
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_EQUAL_STRING("unchanged", value);
+}
+
+void test_getConfigValue_locked_value(void) {
+	char value[256];
+	int lock = 0;
+	int result = MinArch_getConfigValue("-vsync = on\n", "vsync", value, &lock);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("on", value);
+	TEST_ASSERT_EQUAL(1, lock);
+}
+
+void test_getConfigValue_unlocked_value(void) {
+	char value[256];
+	int lock = 0;
+	int result = MinArch_getConfigValue("vsync = on\n", "vsync", value, &lock);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("on", value);
+	TEST_ASSERT_EQUAL(0, lock);
+}
+
+void test_getConfigValue_lock_null_ignored(void) {
+	char value[256];
+	// Should not crash when lock is NULL even with locked value
+	int result = MinArch_getConfigValue("-vsync = on\n", "vsync", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("on", value);
+}
+
+void test_getConfigValue_value_with_spaces(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("message = Hello World\n", "message", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("Hello World", value);
+}
+
+void test_getConfigValue_carriage_return(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("key = value\r\n", "key", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("value", value);
+}
+
+void test_getConfigValue_no_newline_at_end(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("key = value", "key", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("value", value);
+}
+
+void test_getConfigValue_partial_key_match_rejected(void) {
+	char value[256];
+	// "scale" should not match "scaling = native"
+	int result = MinArch_getConfigValue("scaling = native\n", "scale", value, NULL);
+	TEST_ASSERT_EQUAL(0, result);
+}
+
+void test_getConfigValue_key_substring_in_value(void) {
+	// Key appears in value but should find correct match
+	char value[256];
+	int result = MinArch_getConfigValue("key = key_value\n", "key", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("key_value", value);
+}
+
+void test_getConfigValue_null_cfg_returns_zero(void) {
+	char value[256];
+	int result = MinArch_getConfigValue(NULL, "key", value, NULL);
+	TEST_ASSERT_EQUAL(0, result);
+}
+
+void test_getConfigValue_null_key_returns_zero(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("key = value\n", NULL, value, NULL);
+	TEST_ASSERT_EQUAL(0, result);
+}
+
+void test_getConfigValue_empty_value(void) {
+	char value[256];
+	strcpy(value, "old");
+	int result = MinArch_getConfigValue("key = \n", "key", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("", value);
+}
+
+void test_getConfigValue_numeric_value(void) {
+	char value[256];
+	int result = MinArch_getConfigValue("volume = 75\n", "volume", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("75", value);
+	TEST_ASSERT_EQUAL(75, atoi(value));
+}
+
+///////////////////////////////
+// MinArch_getConfigStateDesc tests
+///////////////////////////////
+
+void test_getConfigStateDesc_none(void) {
+	const char* result = MinArch_getConfigStateDesc(MINARCH_CONFIG_NONE);
+	TEST_ASSERT_EQUAL_STRING("Using defaults.", result);
+}
+
+void test_getConfigStateDesc_console(void) {
+	const char* result = MinArch_getConfigStateDesc(MINARCH_CONFIG_CONSOLE);
+	TEST_ASSERT_EQUAL_STRING("Using console config.", result);
+}
+
+void test_getConfigStateDesc_game(void) {
+	const char* result = MinArch_getConfigStateDesc(MINARCH_CONFIG_GAME);
+	TEST_ASSERT_EQUAL_STRING("Using game config.", result);
+}
+
+void test_getConfigStateDesc_invalid_returns_null(void) {
+	const char* result = MinArch_getConfigStateDesc(99);
+	TEST_ASSERT_NULL(result);
+}
+
+///////////////////////////////
 // Main
 ///////////////////////////////
 
@@ -198,6 +347,29 @@ int main(void) {
 	// Integration
 	RUN_TEST(test_config_path_workflow);
 	RUN_TEST(test_option_name_mapping_workflow);
+
+	// MinArch_getConfigValue
+	RUN_TEST(test_getConfigValue_simple_key_value);
+	RUN_TEST(test_getConfigValue_multiple_keys);
+	RUN_TEST(test_getConfigValue_key_not_found);
+	RUN_TEST(test_getConfigValue_locked_value);
+	RUN_TEST(test_getConfigValue_unlocked_value);
+	RUN_TEST(test_getConfigValue_lock_null_ignored);
+	RUN_TEST(test_getConfigValue_value_with_spaces);
+	RUN_TEST(test_getConfigValue_carriage_return);
+	RUN_TEST(test_getConfigValue_no_newline_at_end);
+	RUN_TEST(test_getConfigValue_partial_key_match_rejected);
+	RUN_TEST(test_getConfigValue_key_substring_in_value);
+	RUN_TEST(test_getConfigValue_null_cfg_returns_zero);
+	RUN_TEST(test_getConfigValue_null_key_returns_zero);
+	RUN_TEST(test_getConfigValue_empty_value);
+	RUN_TEST(test_getConfigValue_numeric_value);
+
+	// MinArch_getConfigStateDesc
+	RUN_TEST(test_getConfigStateDesc_none);
+	RUN_TEST(test_getConfigStateDesc_console);
+	RUN_TEST(test_getConfigStateDesc_game);
+	RUN_TEST(test_getConfigStateDesc_invalid_returns_null);
 
 	return UNITY_END();
 }

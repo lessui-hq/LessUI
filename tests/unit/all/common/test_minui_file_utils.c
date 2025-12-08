@@ -234,6 +234,76 @@ void test_hasM3u_shallow_path(void) {
 }
 
 ///////////////////////////////
+// buildThumbPath Tests
+///////////////////////////////
+
+void test_buildThumbPath_simple_rom(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/Roms/GB/Tetris.gb", out_path);
+
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("/Roms/GB/.res/Tetris.gb.png", out_path);
+}
+
+void test_buildThumbPath_nested_directory(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/mnt/SDCARD/Roms/SNES/Super Mario World.sfc", out_path);
+
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/SNES/.res/Super Mario World.sfc.png", out_path);
+}
+
+void test_buildThumbPath_folder_entry(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/Roms/PS1/Final Fantasy VII", out_path);
+
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("/Roms/PS1/.res/Final Fantasy VII.png", out_path);
+}
+
+void test_buildThumbPath_null_input(void) {
+	char out_path[512];
+	strcpy(out_path, "unchanged");
+	int result = MinUI_buildThumbPath(NULL, out_path);
+
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_EQUAL_STRING("", out_path);
+}
+
+void test_buildThumbPath_no_slash(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("NoSlashes.gb", out_path);
+
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_EQUAL_STRING("", out_path);
+}
+
+void test_buildThumbPath_trailing_slash(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/Roms/GB/", out_path);
+
+	// Trailing slash means no filename
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_EQUAL_STRING("", out_path);
+}
+
+void test_buildThumbPath_root_file(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/game.rom", out_path);
+
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("/.res/game.rom.png", out_path);
+}
+
+void test_buildThumbPath_special_characters(void) {
+	char out_path[512];
+	int result = MinUI_buildThumbPath("/Roms/GBA/Pokemon - Fire Red (USA).gba", out_path);
+
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("/Roms/GBA/.res/Pokemon - Fire Red (USA).gba.png", out_path);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -267,6 +337,16 @@ int main(void) {
 	// Edge cases
 	RUN_TEST(test_hasCue_path_without_slash);
 	RUN_TEST(test_hasM3u_shallow_path);
+
+	// buildThumbPath tests
+	RUN_TEST(test_buildThumbPath_simple_rom);
+	RUN_TEST(test_buildThumbPath_nested_directory);
+	RUN_TEST(test_buildThumbPath_folder_entry);
+	RUN_TEST(test_buildThumbPath_null_input);
+	RUN_TEST(test_buildThumbPath_no_slash);
+	RUN_TEST(test_buildThumbPath_trailing_slash);
+	RUN_TEST(test_buildThumbPath_root_file);
+	RUN_TEST(test_buildThumbPath_special_characters);
 
 	return UNITY_END();
 }

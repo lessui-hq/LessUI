@@ -55,6 +55,7 @@
 #include "api.h"
 #include "defines.h"
 #include "libretro.h"
+#include "minarch_config.h"
 #include "minarch_cpu.h"
 #include "minarch_input.h"
 #include "minarch_memory.h"
@@ -1053,11 +1054,10 @@ static char* gamepad_values[] = {
     NULL,
 };
 
-enum {
-	CONFIG_NONE,
-	CONFIG_CONSOLE,
-	CONFIG_GAME,
-};
+// Config state enum aliases (actual enum in minarch_config.h)
+#define CONFIG_NONE MINARCH_CONFIG_NONE
+#define CONFIG_CONSOLE MINARCH_CONFIG_CONSOLE
+#define CONFIG_GAME MINARCH_CONFIG_GAME
 
 static inline char* getScreenScalingDesc(void) {
 	if (GFX_supportsOverscan()) {
@@ -1278,31 +1278,7 @@ static struct Config {
     .loaded = 0,
     .initialized = 0,
 };
-static int Config_getValue(char* cfg, const char* key, char* out_value,
-                           int* lock) { // gets value from string
-	char* tmp = cfg;
-	while ((tmp = strstr(tmp, key))) {
-		if (lock != NULL && tmp > cfg && *(tmp - 1) == '-')
-			*lock = 1; // prefixed with a `-` means lock
-		tmp += strlen(key);
-		if (!strncmp(tmp, " = ", 3))
-			break; // matched
-	};
-	if (!tmp)
-		return 0;
-	tmp += 3;
-
-	strncpy(out_value, tmp, 256);
-	out_value[256 - 1] = '\0';
-	tmp = strchr(out_value, '\n');
-	if (!tmp)
-		tmp = strchr(out_value, '\r');
-	if (tmp)
-		*tmp = '\0';
-
-	// LOG_info("\t%s = %s (%s)", key, out_value, (lock && *lock) ? "hidden":"shown");
-	return 1;
-}
+// Config_getValue moved to minarch_config.c as MinArch_getConfigValue
 
 ///////////////////////////////////////
 // Auto CPU Scaling
@@ -2035,13 +2011,13 @@ static void Config_readOptionsString(char* cfg) {
 	char value[256];
 	for (int i = 0; config.frontend.options[i].key; i++) {
 		Option* option = &config.frontend.options[i];
-		if (!Config_getValue(cfg, option->key, value, &option->lock))
+		if (!MinArch_getConfigValue(cfg, option->key, value, &option->lock))
 			continue;
 		OptionList_setOptionValue(&config.frontend, option->key, value);
 		Config_syncFrontend(option->key, option->value);
 	}
 
-	if (has_custom_controllers && Config_getValue(cfg, "minarch_gamepad_type", value, NULL)) {
+	if (has_custom_controllers && MinArch_getConfigValue(cfg, "minarch_gamepad_type", value, NULL)) {
 		gamepad_type = strtol(value, NULL, 0);
 		int device = strtol(gamepad_values[gamepad_type], NULL, 0);
 		core.set_controller_port_device(0, device);
@@ -2049,7 +2025,7 @@ static void Config_readOptionsString(char* cfg) {
 
 	for (int i = 0; config.core.options[i].key; i++) {
 		Option* option = &config.core.options[i];
-		if (!Config_getValue(cfg, option->key, value, &option->lock))
+		if (!MinArch_getConfigValue(cfg, option->key, value, &option->lock))
 			continue;
 		OptionList_setOptionValue(&config.core, option->key, value);
 	}
@@ -2068,7 +2044,7 @@ static void Config_readControlsString(char* cfg) {
 		sprintf(key, "bind %s", mapping->name);
 		sprintf(value, "NONE");
 
-		if (!Config_getValue(cfg, key, value, NULL))
+		if (!MinArch_getConfigValue(cfg, key, value, NULL))
 			continue;
 		if ((tmp = strrchr(value, ':')))
 			*tmp = '\0'; // this is a binding artifact in default.cfg, ignore
@@ -2097,7 +2073,7 @@ static void Config_readControlsString(char* cfg) {
 		sprintf(key, "bind %s", mapping->name);
 		sprintf(value, "NONE");
 
-		if (!Config_getValue(cfg, key, value, NULL))
+		if (!MinArch_getConfigValue(cfg, key, value, NULL))
 			continue;
 
 		int id = -1;
@@ -5351,18 +5327,7 @@ static MenuList OptionShortcuts_menu = {
     .on_confirm = OptionShortcuts_bind,
     .on_change = OptionShortcuts_unbind};
 static char* getSaveDesc(void) {
-	switch (config.loaded) {
-	case CONFIG_NONE:
-		return "Using defaults.";
-		break;
-	case CONFIG_CONSOLE:
-		return "Using console config.";
-		break;
-	case CONFIG_GAME:
-		return "Using game config.";
-		break;
-	}
-	return NULL;
+	return (char*)MinArch_getConfigStateDesc(config.loaded);
 }
 static int OptionShortcuts_openMenu(MenuList* list, int i) {
 	if (OptionShortcuts_menu.items == NULL) {

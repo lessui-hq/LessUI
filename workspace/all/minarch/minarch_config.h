@@ -49,4 +49,54 @@ void MinArch_getConfigPath(char* output, const char* config_dir, const char* gam
  */
 const char* MinArch_getOptionDisplayName(const char* key, const char* default_name);
 
+/**
+ * Extracts a value from a configuration string.
+ *
+ * Searches for lines matching "key = value" pattern and extracts the value.
+ * Optionally detects "locked" values marked with a `-` prefix before the key.
+ *
+ * Config format:
+ * - Normal: "key = value\n"
+ * - Locked: "-key = value\n" (sets *lock to 1 if lock pointer provided)
+ *
+ * @param cfg Configuration string to search
+ * @param key Key to find (will match "key = " pattern)
+ * @param out_value Output buffer for value (256 bytes max)
+ * @param lock Optional pointer to receive lock status (1 if locked, unchanged otherwise)
+ * @return 1 if key found, 0 if not found
+ *
+ * @example
+ *   char value[256];
+ *   int locked = 0;
+ *   MinArch_getConfigValue("scaling = native\n-vsync = on\n", "vsync", value, &locked);
+ *   // value = "on", locked = 1
+ */
+int MinArch_getConfigValue(const char* cfg, const char* key, char* out_value, int* lock);
+
+/**
+ * Configuration load state enum.
+ *
+ * Tracks which configuration level is currently loaded:
+ * - MINARCH_CONFIG_NONE: Using built-in defaults
+ * - MINARCH_CONFIG_CONSOLE: Using console-level config (e.g., /userdata/GB/minarch.cfg)
+ * - MINARCH_CONFIG_GAME: Using game-specific config (e.g., /userdata/GB/Tetris.cfg)
+ */
+typedef enum {
+	MINARCH_CONFIG_NONE = 0,
+	MINARCH_CONFIG_CONSOLE = 1,
+	MINARCH_CONFIG_GAME = 2
+} MinArchConfigState;
+
+/**
+ * Returns a human-readable description of the current config state.
+ *
+ * @param state Current configuration load state
+ * @return Description string (static, do not free)
+ *
+ * @example
+ *   MinArch_getConfigStateDesc(MINARCH_CONFIG_CONSOLE)
+ *   // Returns: "Using console config."
+ */
+const char* MinArch_getConfigStateDesc(MinArchConfigState state);
+
 #endif /* MINARCH_CONFIG_H */

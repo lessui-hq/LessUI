@@ -5,6 +5,7 @@
  */
 
 #include "minui_file_utils.h"
+#include "defines.h"
 #include "utils.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -103,6 +104,34 @@ int MinUI_hasM3u(char* rom_path, char* m3u_path) {
 	strcpy(tmp, ".m3u");
 
 	return exists(m3u_path);
+}
+
+/**
+ * Builds a thumbnail resource path for an entry.
+ *
+ * @param entry_path Full path to the entry
+ * @param out_path Output buffer for thumbnail path (min MAX_PATH bytes)
+ * @return 1 if path was built successfully, 0 on failure
+ */
+int MinUI_buildThumbPath(const char* entry_path, char* out_path) {
+	out_path[0] = '\0';
+
+	if (!entry_path) {
+		return 0;
+	}
+
+	const char* last_slash = strrchr(entry_path, '/');
+	if (!last_slash || last_slash[1] == '\0') {
+		return 0;
+	}
+
+	int dir_len = (int)(last_slash - entry_path);
+	if (dir_len <= 0 || dir_len >= MAX_PATH - 32) {
+		return 0;
+	}
+
+	snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
+	return 1;
 }
 
 /**
