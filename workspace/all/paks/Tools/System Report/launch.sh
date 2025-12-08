@@ -91,12 +91,17 @@ run_report() {
         fi
 
         if kill -0 "$REPORT_PID" 2>/dev/null; then
-            shui progress "Generating report..." --value 75 --subtext "Hardware paths"
+            shui progress "Generating report..." --value 70 --subtext "Hardware paths"
             sleep 2
         fi
 
         if kill -0 "$REPORT_PID" 2>/dev/null; then
-            shui progress "Generating report..." --value 85 --subtext "Network and environment"
+            shui progress "Generating report..." --value 80 --subtext "Power management detection"
+            sleep 2
+        fi
+
+        if kill -0 "$REPORT_PID" 2>/dev/null; then
+            shui progress "Generating report..." --value 88 --subtext "Network and environment"
             sleep 2
         fi
 

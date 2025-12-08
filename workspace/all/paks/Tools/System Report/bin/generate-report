@@ -1697,6 +1697,300 @@ fn_environment() {
 }
 
 ###############################################################################
+# Power Management
+###############################################################################
+
+fn_power_management() {
+    log_h1 "POWER MANAGEMENT"
+
+    log_h2 "Sleep States"
+
+    # Check what sleep states the kernel supports
+    if [ -f /sys/power/state ]; then
+        STATES=$(cat /sys/power/state 2>/dev/null)
+        log_ok "Supported states: \`$STATES\`"
+
+        echo ""
+        echo "| State | Description | Supported |"
+        echo "|-------|-------------|-----------|"
+
+        if echo "$STATES" | grep -qw "mem"; then
+            echo "| mem | Suspend-to-RAM (deep sleep) | ✓ |"
+        else
+            echo "| mem | Suspend-to-RAM (deep sleep) | ✗ |"
+        fi
+
+        if echo "$STATES" | grep -qw "standby"; then
+            echo "| standby | Power-On Suspend (light sleep) | ✓ |"
+        else
+            echo "| standby | Power-On Suspend (light sleep) | ✗ |"
+        fi
+
+        if echo "$STATES" | grep -qw "freeze"; then
+            echo "| freeze | Suspend-to-Idle (s2idle) | ✓ |"
+        else
+            echo "| freeze | Suspend-to-Idle (s2idle) | ✗ |"
+        fi
+
+        if echo "$STATES" | grep -qw "disk"; then
+            echo "| disk | Suspend-to-Disk (hibernate) | ✓ |"
+        else
+            echo "| disk | Suspend-to-Disk (hibernate) | ✗ |"
+        fi
+    else
+        log_warn "/sys/power/state not found - kernel power management not available"
+    fi
+
+    # Memory sleep modes (kernel 4.x+)
+    log_h2 "Memory Sleep Configuration"
+    if [ -f /sys/power/mem_sleep ]; then
+        MEM_SLEEP=$(cat /sys/power/mem_sleep 2>/dev/null)
+        log_info "mem_sleep modes: \`$MEM_SLEEP\`"
+        log_info "(bracketed value is currently active)"
+    else
+        log_info "/sys/power/mem_sleep not available"
+    fi
+
+    # PM debug/test mode
+    if [ -f /sys/power/pm_test ]; then
+        PM_TEST=$(cat /sys/power/pm_test 2>/dev/null)
+        log_info "pm_test modes: \`$PM_TEST\`"
+    fi
+
+    log_h2 "Suspend Write Test"
+    log_info "Testing if we can write to /sys/power/state..."
+
+    if [ -f /sys/power/state ]; then
+        # Test if file is writable (don't actually suspend!)
+        if [ -w /sys/power/state ]; then
+            log_ok "/sys/power/state is writable - suspend should work"
+        else
+            log_fail "/sys/power/state is NOT writable - suspend will fail"
+            log_info "May need root privileges or kernel support"
+        fi
+    fi
+
+    log_h2 "Wakeup Sources"
+    log_info "Devices that can wake the system from suspend:"
+
+    # Check wakeup-capable devices
+    found_wakeup=0
+    echo ""
+    echo "| Device | Wakeup Enabled | Count |"
+    echo "|--------|----------------|-------|"
+
+    for wakeup in /sys/devices/*/power/wakeup /sys/devices/*/*/power/wakeup /sys/devices/*/*/*/power/wakeup; do
+        if [ -f "$wakeup" ]; then
+            enabled=$(cat "$wakeup" 2>/dev/null)
+            if [ "$enabled" = "enabled" ]; then
+                found_wakeup=$((found_wakeup + 1))
+                devpath=$(dirname "$(dirname "$wakeup")")
+                devname=$(basename "$devpath")
+
+                # Get wakeup count if available
+                countfile="$(dirname "$wakeup")/wakeup_count"
+                if [ -f "$countfile" ]; then
+                    count=$(cat "$countfile" 2>/dev/null || echo "N/A")
+                else
+                    count="-"
+                fi
+
+                # Limit output to most relevant devices
+                if [ "$found_wakeup" -le 20 ]; then
+                    echo "| $devname | ✓ enabled | $count |"
+                fi
+            fi
+        fi
+    done 2>/dev/null
+
+    if [ "$found_wakeup" = "0" ]; then
+        echo "| *No wakeup sources found* | - | - |"
+    elif [ "$found_wakeup" -gt 20 ]; then
+        echo "| ... | ($found_wakeup total) | ... |"
+    fi
+
+    # RTC wakeup (for alarm-based wake)
+    log_h2 "RTC Wakeup (Alarm Wake)"
+    for rtc in /sys/class/rtc/rtc*; do
+        if [ -d "$rtc" ]; then
+            rtcname=$(basename "$rtc")
+            wakealarm=""
+            wakeup_enabled=""
+
+            if [ -f "$rtc/wakealarm" ]; then
+                wakealarm=$(cat "$rtc/wakealarm" 2>/dev/null)
+                [ -z "$wakealarm" ] && wakealarm="not set"
+            fi
+
+            if [ -f "$rtc/device/power/wakeup" ]; then
+                wakeup_enabled=$(cat "$rtc/device/power/wakeup" 2>/dev/null)
+            fi
+
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| RTC | $rtcname |"
+            echo "| Wake alarm | \`$wakealarm\` |"
+            echo "| Wakeup enabled | $wakeup_enabled |"
+        fi
+    done 2>/dev/null
+
+    # PM runtime status
+    log_h2 "PM Runtime Status"
+    log_info "Runtime power management allows devices to suspend independently."
+
+    pm_runtime_enabled=0
+    pm_runtime_suspended=0
+
+    for status in /sys/devices/*/power/runtime_status /sys/devices/*/*/power/runtime_status; do
+        if [ -f "$status" ]; then
+            state=$(cat "$status" 2>/dev/null)
+            pm_runtime_enabled=$((pm_runtime_enabled + 1))
+            if [ "$state" = "suspended" ]; then
+                pm_runtime_suspended=$((pm_runtime_suspended + 1))
+            fi
+        fi
+    done 2>/dev/null
+
+    echo ""
+    echo "| Metric | Value |"
+    echo "|--------|-------|"
+    echo "| Devices with PM runtime | $pm_runtime_enabled |"
+    echo "| Currently suspended | $pm_runtime_suspended |"
+
+    # Suspend statistics (if available)
+    log_h2 "Suspend Statistics"
+    if [ -d /sys/power ]; then
+        echo "| Statistic | Value |"
+        echo "|-----------|-------|"
+
+        for stat in suspend_stats/success suspend_stats/fail pm_async pm_freeze_timeout; do
+            if [ -f "/sys/power/$stat" ]; then
+                val=$(cat "/sys/power/$stat" 2>/dev/null || echo "N/A")
+                echo "| $stat | \`$val\` |"
+            fi
+        done
+
+        # Show last failed step if available
+        if [ -f /sys/power/suspend_stats/last_failed_step ]; then
+            failed_step=$(cat /sys/power/suspend_stats/last_failed_step 2>/dev/null)
+            if [ -n "$failed_step" ] && [ "$failed_step" != "none" ]; then
+                log_warn "Last failed suspend step: $failed_step"
+            fi
+        fi
+    fi
+
+    # CPU idle states (C-states)
+    log_h2 "CPU Idle States"
+    if [ -d /sys/devices/system/cpu/cpu0/cpuidle ]; then
+        log_ok "cpuidle driver present"
+
+        echo ""
+        echo "| State | Name | Latency (µs) | Residency (µs) | Usage |"
+        echo "|-------|------|--------------|----------------|-------|"
+
+        for state in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
+            if [ -d "$state" ]; then
+                name=$(cat "$state/name" 2>/dev/null || echo "?")
+                latency=$(cat "$state/latency" 2>/dev/null || echo "?")
+                residency=$(cat "$state/residency" 2>/dev/null || echo "?")
+                usage=$(cat "$state/usage" 2>/dev/null || echo "?")
+                sname=$(basename "$state")
+                echo "| $sname | $name | $latency | $residency | $usage |"
+            fi
+        done 2>/dev/null
+
+        # Show current driver
+        if [ -f /sys/devices/system/cpu/cpuidle/current_driver ]; then
+            driver=$(cat /sys/devices/system/cpu/cpuidle/current_driver 2>/dev/null)
+            log_info "cpuidle driver: \`$driver\`"
+        fi
+    else
+        log_info "cpuidle not available"
+    fi
+
+    # Kernel config hints
+    log_h2 "Kernel Power Config"
+    if [ -f /proc/config.gz ]; then
+        log_info "Checking kernel config for power management options..."
+
+        echo ""
+        echo "| Config | Status |"
+        echo "|--------|--------|"
+
+        for cfg in CONFIG_SUSPEND CONFIG_PM_SLEEP CONFIG_PM_WAKELOCKS CONFIG_HIBERNATION \
+                   CONFIG_PM_AUTOSLEEP CONFIG_PM_DEBUG CONFIG_CPU_IDLE; do
+            if zcat /proc/config.gz 2>/dev/null | grep -q "^$cfg=y"; then
+                echo "| $cfg | ✓ enabled |"
+            elif zcat /proc/config.gz 2>/dev/null | grep -q "^$cfg=m"; then
+                echo "| $cfg | ○ module |"
+            elif zcat /proc/config.gz 2>/dev/null | grep -q "^# $cfg is not set"; then
+                echo "| $cfg | ✗ disabled |"
+            fi
+        done
+    else
+        log_info "/proc/config.gz not available - cannot check kernel config"
+    fi
+
+    # Summary
+    log_h2 "Power Management Summary"
+
+    has_suspend="no"
+    has_deep_sleep="no"
+    has_wakeup="no"
+    writable="no"
+
+    if [ -f /sys/power/state ]; then
+        has_suspend="yes"
+        if cat /sys/power/state 2>/dev/null | grep -qw "mem"; then
+            has_deep_sleep="yes"
+        fi
+        if [ -w /sys/power/state ]; then
+            writable="yes"
+        fi
+    fi
+
+    if [ "$found_wakeup" -gt 0 ]; then
+        has_wakeup="yes"
+    fi
+
+    echo ""
+    echo "| Capability | Status |"
+    echo "|------------|--------|"
+    if [ "$has_suspend" = "yes" ]; then
+        echo "| Power state interface | ✓ Present |"
+    else
+        echo "| Power state interface | ✗ Missing |"
+    fi
+    if [ "$has_deep_sleep" = "yes" ]; then
+        echo "| Suspend-to-RAM (mem) | ✓ Supported |"
+    else
+        echo "| Suspend-to-RAM (mem) | ✗ Not available |"
+    fi
+    if [ "$writable" = "yes" ]; then
+        echo "| Write access | ✓ Writable |"
+    else
+        echo "| Write access | ✗ Permission denied |"
+    fi
+    if [ "$has_wakeup" = "yes" ]; then
+        echo "| Wakeup sources | ✓ $found_wakeup devices |"
+    else
+        echo "| Wakeup sources | ⚠ None configured |"
+    fi
+
+    # Final verdict
+    echo ""
+    if [ "$has_deep_sleep" = "yes" ] && [ "$writable" = "yes" ] && [ "$has_wakeup" = "yes" ]; then
+        log_ok "**Deep sleep should work** - all requirements met"
+    elif [ "$has_deep_sleep" = "yes" ] && [ "$writable" = "yes" ]; then
+        log_warn "Deep sleep available but no wakeup sources detected"
+    elif [ "$has_deep_sleep" = "yes" ]; then
+        log_warn "Deep sleep supported but /sys/power/state not writable"
+    else
+        log_warn "Deep sleep (suspend-to-RAM) not available on this kernel"
+    fi
+}
+
+###############################################################################
 # Network (brief)
 ###############################################################################
 
@@ -1789,6 +2083,7 @@ main() {
     fn_pwm
     fn_buses
     fn_special_hardware
+    fn_power_management
 
     # Environment and config
     fn_environment
