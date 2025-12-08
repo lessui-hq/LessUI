@@ -38,14 +38,17 @@ typedef struct {
 
 /**
  * Button mapping entry.
+ *
+ * Maps a libretro button to a device button, with optional modifier support.
+ * Field names and types match production ButtonMapping in minarch.c.
  */
-typedef struct {
-	const char* name; // Display name
-	int retro_id; // Libretro button ID
-	int local_id; // Device-specific button ID
-	int modifier; // Modifier key requirement
-	int default_id; // Default local ID (for reset)
-	int ignore; // True if button not available in core
+typedef struct MinArchButtonMapping {
+	char* name; // Display name for UI (may be dynamically allocated)
+	int retro_id; // Libretro button ID (RETRO_DEVICE_ID_JOYPAD_*)
+	int local_id; // Device button ID (BTN_ID_*)
+	int modifier; // Requires MENU held when true
+	int default_id; // Default local_id for reset
+	int ignore; // Button not available in core
 } MinArchButtonMapping;
 
 /**

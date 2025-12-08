@@ -8,6 +8,7 @@
 #include "directory_index.h"
 #include "utils.h"
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,7 +45,7 @@ int DirectoryIndex_applyAliases(Array* entries, Hash* map) {
 	int resort = 0;
 	for (int i = 0; i < entries->count; i++) {
 		Entry* entry = entries->items[i];
-		const char* filename = strrchr(entry->path, '/');
+		char* filename = strrchr(entry->path, '/');
 		if (!filename)
 			continue;
 		filename++; // Skip the '/'

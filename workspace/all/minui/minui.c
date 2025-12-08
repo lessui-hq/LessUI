@@ -45,6 +45,7 @@
 #include "defines.h"
 #include "directory_index.h"
 #include "minui_entry.h"
+#include "minui_launcher.h"
 #include "str_compare.h"
 #include "utils.h"
 
@@ -413,48 +414,6 @@ typedef struct Directory {
 } Directory;
 
 /**
- * Gets the alphabetical index for a sort key.
- *
- * Used to group entries by first letter for L1/R1 shoulder button navigation.
- * Should be called with entry->sort_key (not entry->name) to match sort order.
- *
- * @param sort_key Sort key string (articles already stripped)
- * @return 0 for non-alphabetic, 1-26 for A-Z (case-insensitive)
- */
-static int getIndexChar(char* sort_key) {
-	char i = 0;
-	char c = tolower(sort_key[0]);
-	if (c >= 'a' && c <= 'z')
-		i = (c - 'a') + 1;
-	return i;
-}
-
-/**
- * Generates a unique name for an entry when duplicates exist.
- *
- * Appends the emulator name in parentheses to disambiguate entries
- * with identical display names but from different systems.
- *
- * Example: "Tetris" becomes "Tetris (GB)" or "Tetris (NES)"
- *
- * @param entry Entry to generate unique name for
- * @param out_name Output buffer for unique name (min 256 bytes)
- */
-static void getUniqueName(Entry* entry, char* out_name) {
-	char emu_tag[256];
-	getEmuName(entry->path, emu_tag);
-
-	char* tmp;
-	strcpy(out_name, entry->name);
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, " (");
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, emu_tag);
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, ")");
-}
-
-/**
  * Indexes a directory's entries and applies name aliasing.
  *
  * This function performs several important tasks:
@@ -509,114 +468,16 @@ static void Directory_index(Directory* self) {
 				}
 			}
 			fclose(file);
-
-			// Apply aliases from map
-			int resort = 0;
-			int filter = 0;
-			for (int i = 0; i < self->entries->count; i++) {
-				Entry* entry = self->entries->items[i];
-				char* filename = strrchr(entry->path, '/') + 1;
-				char* alias = Hash_get(map, filename);
-				if (alias) {
-					if (!Entry_setName(entry, alias))
-						continue;
-					resort = 1;
-					// Check if any alias starts with '.' (hidden)
-					if (!filter && hide(entry->name))
-						filter = 1;
-				}
-			}
-
-			// Remove hidden entries (those with aliases starting with '.')
-			if (filter) {
-				Array* entries = Array_new();
-				if (!entries) {
-					Hash_free(map);
-					return;
-				}
-				for (int i = 0; i < self->entries->count; i++) {
-					Entry* entry = self->entries->items[i];
-					if (hide(entry->name)) {
-						Entry_free(entry);
-					} else {
-						Array_push(entries, entry);
-					}
-				}
-				// Not EntryArray_free - entries were moved, not freed
-				Array_free(self->entries);
-				self->entries = entries;
-			}
-			if (resort)
-				EntryArray_sort(self->entries);
 		}
 	}
 
-	// Detect duplicates and build alphabetical index
-	// Note: aliases were already applied above, no need to re-apply here
-	Entry* prior = NULL;
-	int alpha = -1;
-	int index = 0;
-	for (int i = 0; i < self->entries->count; i++) {
-		Entry* entry = self->entries->items[i];
-
-		// Detect duplicate display names
-		if (prior != NULL && exactMatch(prior->name, entry->name)) {
-			if (prior->unique)
-				free(prior->unique);
-			if (entry->unique)
-				free(entry->unique);
-
-			char* prior_filename = strrchr(prior->path, '/') + 1;
-			char* entry_filename = strrchr(entry->path, '/') + 1;
-
-			// If filenames differ, use them to disambiguate
-			if (exactMatch(prior_filename, entry_filename)) {
-				// Same filename (cross-platform ROM) - use emulator name
-				char prior_unique[256];
-				char entry_unique[256];
-				getUniqueName(prior, prior_unique);
-				getUniqueName(entry, entry_unique);
-
-				char* prior_str = strdup(prior_unique);
-				char* entry_str = strdup(entry_unique);
-				if (prior_str && entry_str) {
-					prior->unique = prior_str;
-					entry->unique = entry_str;
-				} else {
-					free(prior_str);
-					free(entry_str);
-					prior->unique = NULL;
-					entry->unique = NULL;
-				}
-			} else {
-				// Different filenames - show them
-				char* prior_str = strdup(prior_filename);
-				char* entry_str = strdup(entry_filename);
-				if (prior_str && entry_str) {
-					prior->unique = prior_str;
-					entry->unique = entry_str;
-				} else {
-					free(prior_str);
-					free(entry_str);
-					prior->unique = NULL;
-					entry->unique = NULL;
-				}
-			}
-		}
-
-		// Build alphabetical index for L1/R1 navigation
-		// Uses sort_key which has articles stripped, matching sort order
-		if (!skip_index) {
-			int a = getIndexChar(entry->sort_key);
-			if (a != alpha) {
-				index = self->alphas->count;
-				IntArray_push(self->alphas, i);
-				alpha = a;
-			}
-			entry->alpha = index;
-		}
-
-		prior = entry;
+	// Use DirectoryIndex module for aliasing, filtering, duplicate detection, and alpha index
+	Array* indexed = DirectoryIndex_index(self->entries, self->alphas, map, skip_index);
+	if (indexed != self->entries) {
+		// Entries were filtered - update our reference
+		// Don't use EntryArray_free on old array since entries were moved, not copied
+		Array_free(self->entries);
+		self->entries = indexed;
 	}
 
 	if (map)
@@ -1568,66 +1429,6 @@ static void queueNext(char* cmd) {
 	quit = 1;
 }
 
-/**
- * Replaces all occurrences of a substring in a string.
- *
- * Modifies the string in place. Handles overlapping replacements
- * by recursing after each replacement.
- *
- * @param line String to modify (modified in place)
- * @param search Substring to find
- * @param replace Replacement string
- * @return Number of replacements made
- *
- * @note Based on https://stackoverflow.com/a/31775567/145965
- */
-static int replaceString(char* line, const char* search, const char* replace) {
-	char* sp; // start of pattern
-	if ((sp = strstr(line, search)) == NULL) {
-		return 0;
-	}
-	int count = 1;
-	int sLen = strlen(search);
-	int rLen = strlen(replace);
-	if (sLen > rLen) {
-		// move from right to left
-		char* src = sp + sLen;
-		char* dst = sp + rLen;
-		while ((*dst = *src) != '\0') {
-			dst++;
-			src++;
-		}
-	} else if (sLen < rLen) {
-		// move from left to right
-		int tLen = strlen(sp) - sLen;
-		char* stop = sp + rLen;
-		char* src = sp + sLen + tLen;
-		char* dst = sp + rLen + tLen;
-		while (dst >= stop) {
-			*dst = *src;
-			dst--;
-			src--;
-		}
-	}
-	memcpy(sp, replace, rLen);
-	count += replaceString(sp + rLen, search, replace);
-	return count;
-}
-
-/**
- * Escapes single quotes in a string for shell command safety.
- *
- * Replaces ' with '\'' which safely handles quotes in bash strings.
- * Example: "it's" becomes "it'\''s"
- *
- * @param str String to escape (modified in place)
- * @return The modified string (same pointer as input)
- */
-static char* escapeSingleQuotes(char* str) {
-	replaceString(str, "'", "'\\''");
-	return str;
-}
-
 ///////////////////////////////
 // Resume state checking
 ///////////////////////////////
@@ -1721,8 +1522,8 @@ static int autoResume(void) {
 	// putFile(LAST_PATH, FAUX_RECENT_PATH); // saveLast() will crash here because top is NULL
 
 	char cmd[MAX_PATH * 2];
-	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
-	         escapeSingleQuotes(sd_path));
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", MinUI_escapeSingleQuotes(emu_path),
+	         MinUI_escapeSingleQuotes(sd_path));
 	putInt(RESUME_SLOT_PATH, AUTO_RESUME_SLOT);
 	queueNext(cmd);
 	return 1;
@@ -1748,7 +1549,7 @@ static void openPak(char* path) {
 	saveLast(path);
 
 	char cmd[256];
-	sprintf(cmd, "'%s/launch.sh'", escapeSingleQuotes(path));
+	sprintf(cmd, "'%s/launch.sh'", MinUI_escapeSingleQuotes(path));
 	queueNext(cmd);
 }
 
@@ -1824,14 +1625,14 @@ static void openRom(char* path, char* last) {
 	char emu_path[MAX_PATH];
 	getEmuPath(emu_name, emu_path);
 
-	// NOTE: escapeSingleQuotes() modifies the passed string
+	// NOTE: MinUI_escapeSingleQuotes() modifies the passed string
 	// so we need to save the path before we call that
 	addRecent(recent_path, recent_alias); // yiiikes
 	saveLast(last == NULL ? sd_path : last);
 
 	char cmd[MAX_PATH * 2];
-	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
-	         escapeSingleQuotes(sd_path));
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", MinUI_escapeSingleQuotes(emu_path),
+	         MinUI_escapeSingleQuotes(sd_path));
 	queueNext(cmd);
 }
 /**

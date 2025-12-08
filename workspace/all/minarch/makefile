@@ -24,6 +24,8 @@ INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../../$(PLATFORM)/platf
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
          ../common/gfx_text.c ../common/minui_file_utils.c ../common/platform_variant.c \
+         ../common/minarch_zip.c ../common/minarch_memory.c ../common/minarch_state.c \
+         ../common/minarch_paths.c ../common/minarch_cpu.c ../common/minarch_input.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules

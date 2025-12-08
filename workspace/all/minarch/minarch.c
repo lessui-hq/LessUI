@@ -55,6 +55,11 @@
 #include "api.h"
 #include "defines.h"
 #include "libretro.h"
+#include "minarch_cpu.h"
+#include "minarch_input.h"
+#include "minarch_memory.h"
+#include "minarch_state.h"
+#include "minarch_zip.h"
 #include "minui_file_utils.h"
 #include "scaler.h"
 #include "utils.h"
@@ -139,60 +144,15 @@ static int overclock = 3; // CPU speed (0=powersave, 1=normal, 2=performance, 3=
 
 // Auto CPU Scaling State (when overclock == 3)
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
-// This directly measures CPU performance, unlike audio buffer fill which is
-// contaminated by display/audio timing mismatches.
-//
-// Granular frequency scaling: Instead of 3 fixed levels, we use all available
-// CPU frequencies detected from the system. Performance scales linearly with
-// frequency, allowing smooth transitions and better power efficiency.
-
-// Detected frequency array (populated at startup from PLAT_getAvailableCPUFrequencies)
-static int
-    auto_cpu_frequencies[CPU_MAX_FREQUENCIES]; // Available frequencies in kHz (sorted low→high)
-static int auto_cpu_freq_count = 0; // Number of frequencies detected
-static int auto_cpu_target_index = 0; // Target frequency index (main thread)
-static int auto_cpu_current_index = 0; // Actually applied frequency index (CPU thread)
-
-// Preset indices for manual modes (POWERSAVE/NORMAL/PERFORMANCE)
-// Set during frequency detection to map presets to nearest available frequencies
-static int auto_cpu_preset_indices[3] = {0, 0, 0}; // [POWERSAVE, NORMAL, PERFORMANCE]
-
-// Legacy level tracking (for fallback when no frequencies detected)
-static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
-static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
-static int auto_cpu_use_granular = 0; // 1 if granular mode available, 0 for 3-level fallback
-
-// Monitoring state
-static int auto_cpu_frame_count = 0; // Frames in current window
-static int auto_cpu_high_util_windows =
-    0; // Consecutive windows with high utilization (needs boost)
-static int auto_cpu_low_util_windows = 0; // Consecutive windows with low utilization (can reduce)
-static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
-static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
-static int auto_cpu_panic_cooldown = 0; // Windows to wait after panic before reducing
-
-// Frame timing data for percentile calculation
-static uint64_t auto_cpu_frame_times[64]; // Ring buffer of frame execution times (microseconds)
-static int auto_cpu_frame_time_index = 0; // Current position in ring buffer
-static uint64_t auto_cpu_frame_budget_us = 16667; // Target frame time (updated from core.fps)
+// State and config are managed via minarch_cpu.h structs for testability.
+static AutoCPUState auto_cpu_state;
+static AutoCPUConfig auto_cpu_config;
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
 // Background thread for applying CPU changes without blocking main loop
 static pthread_t auto_cpu_thread;
 static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
-
-// Auto CPU Scaling Tuning Constants
-// Frame timing thresholds (based on 90th percentile utilization)
-#define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define AUTO_CPU_UTIL_HIGH 85 // Utilization above 85% = needs boost (15% headroom for jitter)
-#define AUTO_CPU_UTIL_LOW 55 // Utilization below 55% = can reduce (conservative)
-#define AUTO_CPU_BOOST_WINDOWS 2 // Boost after ~1s of high utilization
-#define AUTO_CPU_REDUCE_WINDOWS 4 // Reduce after ~2s of low utilization (conservative)
-#define AUTO_CPU_STARTUP_GRACE 300 // Ignore first N frames (~5 sec at 60fps)
-#define AUTO_CPU_MIN_FREQ_KHZ 400000 // Minimum frequency to consider (400 MHz)
-#define AUTO_CPU_TARGET_UTIL 70 // Target utilization after frequency change
-#define AUTO_CPU_MAX_STEP 2 // Maximum frequency steps per change (prevents oscillation)
 
 // Input Settings
 static int has_custom_controllers = 0; // Custom controller mappings defined
@@ -300,100 +260,8 @@ static struct Core {
 	((uint32_t)(((uint8_t*)(buf))[3] << 24 | ((uint8_t*)(buf))[2] << 16 |                          \
 	            ((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
 
+// ZIP extraction function pointer type for selecting copy vs inflate
 typedef int (*Zip_extract_t)(FILE* zip, FILE* dst, size_t size);
-
-/**
- * Extracts an uncompressed file from a ZIP archive.
- *
- * Used for ZIP files with compression method 0 (store).
- * Reads in chunks for memory efficiency.
- *
- * @param zip Source ZIP file (positioned at data start)
- * @param dst Destination file for extracted data
- * @param size Number of bytes to extract
- * @return 0 on success, -1 on error
- */
-static int Zip_copy(FILE* zip, FILE* dst, size_t size) {
-	uint8_t chunk[ZIP_CHUNK_SIZE];
-	while (size) {
-		size_t sz = MIN(size, ZIP_CHUNK_SIZE);
-		if (sz != fread(chunk, 1, sz, zip))
-			return -1;
-		if (sz != fwrite(chunk, 1, sz, dst))
-			return -1;
-		size -= sz;
-	}
-	return 0;
-}
-
-/**
- * Extracts and decompresses a deflate-compressed file from a ZIP archive.
- *
- * Used for ZIP files with compression method 8 (deflate).
- * Uses zlib for decompression.
- *
- * @param zip Source ZIP file (positioned at compressed data start)
- * @param dst Destination file for decompressed data
- * @param size Number of compressed bytes to read
- * @return Z_OK on success, Z_* error code on failure
- */
-static int Zip_inflate(FILE* zip, FILE* dst, size_t size) {
-	z_stream stream = {0};
-	size_t have = 0;
-	uint8_t in[ZIP_CHUNK_SIZE];
-	uint8_t out[ZIP_CHUNK_SIZE];
-	int ret = -1;
-
-	ret = inflateInit2(&stream, -MAX_WBITS);
-	if (ret != Z_OK)
-		return ret;
-
-	do {
-		size_t insize = MIN(size, ZIP_CHUNK_SIZE);
-
-		stream.avail_in = fread(in, 1, insize, zip);
-		if (ferror(zip)) {
-			(void)inflateEnd(&stream);
-			return Z_ERRNO;
-		}
-
-		if (!stream.avail_in)
-			break;
-		stream.next_in = in;
-
-		do {
-			stream.avail_out = ZIP_CHUNK_SIZE;
-			stream.next_out = out;
-
-			ret = inflate(&stream, Z_NO_FLUSH);
-			switch (ret) {
-			case Z_NEED_DICT:
-				ret = Z_DATA_ERROR;
-				/* fall through */
-			case Z_DATA_ERROR:
-			case Z_MEM_ERROR:
-				(void)inflateEnd(&stream);
-				return ret;
-			}
-
-			have = ZIP_CHUNK_SIZE - stream.avail_out;
-			if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
-				(void)inflateEnd(&stream);
-				return Z_ERRNO;
-			}
-		} while (stream.avail_out == 0);
-
-		size -= insize;
-	} while (size && ret != Z_STREAM_END);
-
-	(void)inflateEnd(&stream);
-
-	if (!size || ret == Z_STREAM_END) {
-		return Z_OK;
-	} else {
-		return Z_DATA_ERROR;
-	}
-}
 
 ///////////////////////////////////////
 // Game Management
@@ -522,10 +390,10 @@ static void Game_open(char* path) {
 				Zip_extract_t extract = NULL;
 				switch (ZIP_LE_READ16(&header[8])) {
 				case 0:
-					extract = Zip_copy;
+					extract = MinArch_zipCopy;
 					break;
 				case 8:
-					extract = Zip_inflate;
+					extract = MinArch_zipInflate;
 					break;
 				}
 
@@ -671,25 +539,16 @@ static void SRAM_getPath(char* filename) {
  * @note Silently skips if core doesn't support SRAM or file doesn't exist
  */
 static void SRAM_read(void) {
-	size_t sram_size = core.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-	if (!sram_size)
-		return;
-
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
 	LOG_debug("sav path (read): %s", filename);
 
-	FILE* sram_file = fopen(filename, "r");
-	if (!sram_file)
-		return;
-
-	void* sram = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-
-	if (!sram || !fread(sram, 1, sram_size, sram_file)) {
-		LOG_error("Error reading SRAM data");
+	MinArchMemoryResult result =
+	    MinArch_readSRAM(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_FILE_NOT_FOUND &&
+	    result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error reading SRAM: %s", MinArch_memoryResultString(result));
 	}
-
-	fclose(sram_file);
 }
 
 /**
@@ -702,27 +561,15 @@ static void SRAM_read(void) {
  * @note Silently skips if core doesn't support SRAM
  */
 static void SRAM_write(void) {
-	size_t sram_size = core.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-	if (!sram_size)
-		return;
-
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
 	LOG_debug("sav path (write): %s", filename);
 
-	FILE* sram_file = fopen(filename, "w");
-	if (!sram_file) {
-		LOG_error("Error opening SRAM file: %s", strerror(errno));
-		return;
+	MinArchMemoryResult result =
+	    MinArch_writeSRAM(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error writing SRAM: %s", MinArch_memoryResultString(result));
 	}
-
-	void* sram = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-
-	if (!sram || sram_size != fwrite(sram, 1, sram_size, sram_file)) {
-		LOG_error("Error writing SRAM data to file");
-	}
-
-	fclose(sram_file);
 
 	sync();
 }
@@ -743,25 +590,16 @@ static void RTC_getPath(char* filename) {
  * @note Silently skips if core doesn't support RTC or file doesn't exist
  */
 static void RTC_read(void) {
-	size_t rtc_size = core.get_memory_size(RETRO_MEMORY_RTC);
-	if (!rtc_size)
-		return;
-
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
 	LOG_debug("rtc path (read): %s", filename);
 
-	FILE* rtc_file = fopen(filename, "r");
-	if (!rtc_file)
-		return;
-
-	void* rtc = core.get_memory_data(RETRO_MEMORY_RTC);
-
-	if (!rtc || !fread(rtc, 1, rtc_size, rtc_file)) {
-		LOG_error("Error reading RTC data");
+	MinArchMemoryResult result =
+	    MinArch_readRTC(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_FILE_NOT_FOUND &&
+	    result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error reading RTC: %s", MinArch_memoryResultString(result));
 	}
-
-	fclose(rtc_file);
 }
 
 /**
@@ -770,27 +608,15 @@ static void RTC_read(void) {
  * @note Silently skips if core doesn't support RTC
  */
 static void RTC_write(void) {
-	size_t rtc_size = core.get_memory_size(RETRO_MEMORY_RTC);
-	if (!rtc_size)
-		return;
-
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	LOG_debug("rtc path (write) size(%zu): %s", rtc_size, filename);
+	LOG_debug("rtc path (write): %s", filename);
 
-	FILE* rtc_file = fopen(filename, "w");
-	if (!rtc_file) {
-		LOG_error("Error opening RTC file: %s", strerror(errno));
-		return;
+	MinArchMemoryResult result =
+	    MinArch_writeRTC(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error writing RTC: %s", MinArch_memoryResultString(result));
 	}
-
-	void* rtc = core.get_memory_data(RETRO_MEMORY_RTC);
-
-	if (!rtc || rtc_size != fwrite(rtc, 1, rtc_size, rtc_file)) {
-		LOG_error("Error writing RTC data to file");
-	}
-
-	fclose(rtc_file);
 
 	sync();
 }
@@ -823,48 +649,24 @@ static void State_getPath(char* filename) {
  * @note Uses gzopen for compressed state files
  */
 static void State_read(void) {
-	size_t state_size = core.serialize_size();
-	if (!state_size)
-		return;
-
 	int was_ff = fast_forward;
 	fast_forward = 0;
-
-	FILE* state_file = NULL;
-	void* state = calloc(1, state_size);
-	if (!state) {
-		LOG_error("Couldn't allocate memory for state");
-		goto error;
-	}
 
 	char filename[MAX_PATH];
 	State_getPath(filename);
 
-	state_file = fopen(filename, "r");
-	if (!state_file) {
-		if (state_slot != 8) { // st8 is a default state in MiniUI and may not exist, that's okay
-			LOG_error("Error opening state file: %s (%s)", filename, strerror(errno));
+	MinArchStateCore state_core = {.serialize_size = core.serialize_size,
+	                               .serialize = core.serialize,
+	                               .unserialize = core.unserialize};
+
+	MinArchStateResult result = MinArch_readState(filename, &state_core);
+
+	if (result != MINARCH_STATE_OK && result != MINARCH_STATE_NO_SUPPORT) {
+		// slot 8 is a default state in MiniUI and may not exist, that's okay
+		if (result != MINARCH_STATE_FILE_NOT_FOUND || state_slot != 8) {
+			LOG_error("Error reading state: %s (%s)", filename, MinArch_stateResultString(result));
 		}
-		goto error;
 	}
-
-	// some cores report the wrong serialize size initially for some games, eg. mgba: Wario Land 4
-	// so we allow a size mismatch as long as the actual size fits in the buffer we've allocated
-	if (state_size < fread(state, 1, state_size, state_file)) {
-		LOG_error("Error reading state data from file: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
-
-	if (!core.unserialize(state, state_size)) {
-		LOG_error("Error restoring save state: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
-
-error:
-	if (state)
-		free(state);
-	if (state_file)
-		fclose(state_file);
 
 	fast_forward = was_ff;
 }
@@ -879,44 +681,21 @@ error:
  * @note Silently fails if core doesn't support states or allocation fails
  */
 static void State_write(void) {
-	size_t state_size = core.serialize_size();
-	if (!state_size)
-		return;
-
 	int was_ff = fast_forward;
 	fast_forward = 0;
-
-	FILE* state_file = NULL;
-	void* state = calloc(1, state_size);
-	if (!state) {
-		LOG_error("Couldn't allocate memory for state");
-		goto error;
-	}
 
 	char filename[MAX_PATH];
 	State_getPath(filename);
 
-	state_file = fopen(filename, "w");
-	if (!state_file) {
-		LOG_error("Error opening state file: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
+	MinArchStateCore state_core = {.serialize_size = core.serialize_size,
+	                               .serialize = core.serialize,
+	                               .unserialize = core.unserialize};
 
-	if (!core.serialize(state, state_size)) {
-		LOG_error("Error creating save state: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
+	MinArchStateResult result = MinArch_writeState(filename, &state_core);
 
-	if (state_size != fwrite(state, 1, state_size, state_file)) {
-		LOG_error("Error writing state data to file: %s (%s)", filename, strerror(errno));
-		goto error;
+	if (result != MINARCH_STATE_OK && result != MINARCH_STATE_NO_SUPPORT) {
+		LOG_error("Error writing state: %s (%s)", filename, MinArch_stateResultString(result));
 	}
-
-error:
-	if (state)
-		free(state);
-	if (state_file)
-		fclose(state_file);
 
 	sync();
 
@@ -1020,214 +799,213 @@ enum {
 #define RETRO_BUTTON_COUNT                                                                         \
 	16 // allow L3/R3 to be remapped by user if desired, eg. Virtual Boy uses extra buttons for right d-pad
 
-typedef struct ButtonMapping {
-	char* name;
-	int retro;
-	int local; // TODO: dislike this name...
-	int mod;
-	int default_;
-	int ignore;
-} ButtonMapping;
+// ButtonMapping is an alias for MinArchButtonMapping from minarch_input.h
+typedef MinArchButtonMapping ButtonMapping;
 
 static ButtonMapping default_button_mapping[] =
     { // used if pak.cfg doesn't exist or doesn't have bindings
         {.name = "Up",
-         .retro = RETRO_DEVICE_ID_JOYPAD_UP,
-         .local = BTN_ID_DPAD_UP,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_UP,
+         .local_id = BTN_ID_DPAD_UP,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Down",
-         .retro = RETRO_DEVICE_ID_JOYPAD_DOWN,
-         .local = BTN_ID_DPAD_DOWN,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_DOWN,
+         .local_id = BTN_ID_DPAD_DOWN,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Left",
-         .retro = RETRO_DEVICE_ID_JOYPAD_LEFT,
-         .local = BTN_ID_DPAD_LEFT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_LEFT,
+         .local_id = BTN_ID_DPAD_LEFT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Right",
-         .retro = RETRO_DEVICE_ID_JOYPAD_RIGHT,
-         .local = BTN_ID_DPAD_RIGHT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_RIGHT,
+         .local_id = BTN_ID_DPAD_RIGHT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "A Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_A,
-         .local = BTN_ID_A,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_A,
+         .local_id = BTN_ID_A,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "B Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_B,
-         .local = BTN_ID_B,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_B,
+         .local_id = BTN_ID_B,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "X Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_X,
-         .local = BTN_ID_X,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_X,
+         .local_id = BTN_ID_X,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Y Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_Y,
-         .local = BTN_ID_Y,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_Y,
+         .local_id = BTN_ID_Y,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Start",
-         .retro = RETRO_DEVICE_ID_JOYPAD_START,
-         .local = BTN_ID_START,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_START,
+         .local_id = BTN_ID_START,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Select",
-         .retro = RETRO_DEVICE_ID_JOYPAD_SELECT,
-         .local = BTN_ID_SELECT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_SELECT,
+         .local_id = BTN_ID_SELECT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L1 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L,
-         .local = BTN_ID_L1,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L,
+         .local_id = BTN_ID_L1,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R1 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R,
-         .local = BTN_ID_R1,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R,
+         .local_id = BTN_ID_R1,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L2 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L2,
-         .local = BTN_ID_L2,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L2,
+         .local_id = BTN_ID_L2,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R2 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R2,
-         .local = BTN_ID_R2,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R2,
+         .local_id = BTN_ID_R2,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L3 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L3,
-         .local = BTN_ID_L3,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L3,
+         .local_id = BTN_ID_L3,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R3 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R3,
-         .local = BTN_ID_R3,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R3,
+         .local_id = BTN_ID_R3,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
-        {.name = NULL, .retro = 0, .local = 0, .mod = 0, .default_ = 0, .ignore = 0}};
+        {.name = NULL, .retro_id = 0, .local_id = 0, .modifier = 0, .default_id = 0, .ignore = 0}};
 static ButtonMapping button_label_mapping[] =
     { // used to lookup the retro_id and local btn_id from button name
-        {.name = "NONE", .retro = -1, .local = BTN_ID_NONE, .mod = 0, .default_ = 0, .ignore = 0},
+        {.name = "NONE",
+         .retro_id = -1,
+         .local_id = BTN_ID_NONE,
+         .modifier = 0,
+         .default_id = 0,
+         .ignore = 0},
         {.name = "UP",
-         .retro = RETRO_DEVICE_ID_JOYPAD_UP,
-         .local = BTN_ID_DPAD_UP,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_UP,
+         .local_id = BTN_ID_DPAD_UP,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "DOWN",
-         .retro = RETRO_DEVICE_ID_JOYPAD_DOWN,
-         .local = BTN_ID_DPAD_DOWN,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_DOWN,
+         .local_id = BTN_ID_DPAD_DOWN,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "LEFT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_LEFT,
-         .local = BTN_ID_DPAD_LEFT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_LEFT,
+         .local_id = BTN_ID_DPAD_LEFT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "RIGHT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_RIGHT,
-         .local = BTN_ID_DPAD_RIGHT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_RIGHT,
+         .local_id = BTN_ID_DPAD_RIGHT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "A",
-         .retro = RETRO_DEVICE_ID_JOYPAD_A,
-         .local = BTN_ID_A,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_A,
+         .local_id = BTN_ID_A,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "B",
-         .retro = RETRO_DEVICE_ID_JOYPAD_B,
-         .local = BTN_ID_B,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_B,
+         .local_id = BTN_ID_B,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "X",
-         .retro = RETRO_DEVICE_ID_JOYPAD_X,
-         .local = BTN_ID_X,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_X,
+         .local_id = BTN_ID_X,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "Y",
-         .retro = RETRO_DEVICE_ID_JOYPAD_Y,
-         .local = BTN_ID_Y,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_Y,
+         .local_id = BTN_ID_Y,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "START",
-         .retro = RETRO_DEVICE_ID_JOYPAD_START,
-         .local = BTN_ID_START,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_START,
+         .local_id = BTN_ID_START,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "SELECT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_SELECT,
-         .local = BTN_ID_SELECT,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_SELECT,
+         .local_id = BTN_ID_SELECT,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L1",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L,
-         .local = BTN_ID_L1,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L,
+         .local_id = BTN_ID_L1,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R1",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R,
-         .local = BTN_ID_R1,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R,
+         .local_id = BTN_ID_R1,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L2",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L2,
-         .local = BTN_ID_L2,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L2,
+         .local_id = BTN_ID_L2,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R2",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R2,
-         .local = BTN_ID_R2,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R2,
+         .local_id = BTN_ID_R2,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "L3",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L3,
-         .local = BTN_ID_L3,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_L3,
+         .local_id = BTN_ID_L3,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
         {.name = "R3",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R3,
-         .local = BTN_ID_R3,
-         .mod = 0,
-         .default_ = 0,
+         .retro_id = RETRO_DEVICE_ID_JOYPAD_R3,
+         .local_id = BTN_ID_R3,
+         .modifier = 0,
+         .default_id = 0,
          .ignore = 0},
-        {.name = NULL, .retro = 0, .local = 0, .mod = 0, .default_ = 0, .ignore = 0}};
+        {.name = NULL, .retro_id = 0, .local_id = 0, .modifier = 0, .default_id = 0, .ignore = 0}};
 static ButtonMapping core_button_mapping[RETRO_BUTTON_COUNT + 1] = {0};
 
 static const char* device_button_names[LOCAL_BUTTON_COUNT] = {
@@ -1444,58 +1222,58 @@ static struct Config {
         },
     .controls = default_button_mapping,
     .shortcuts = (ButtonMapping[]){[SHORTCUT_SAVE_STATE] = {.name = "Save State",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
+                                                            .retro_id = -1,
+                                                            .local_id = BTN_ID_NONE,
+                                                            .modifier = 0,
+                                                            .default_id = 0,
                                                             .ignore = 0},
                                    [SHORTCUT_LOAD_STATE] = {.name = "Load State",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
+                                                            .retro_id = -1,
+                                                            .local_id = BTN_ID_NONE,
+                                                            .modifier = 0,
+                                                            .default_id = 0,
                                                             .ignore = 0},
                                    [SHORTCUT_RESET_GAME] = {.name = "Reset Game",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
+                                                            .retro_id = -1,
+                                                            .local_id = BTN_ID_NONE,
+                                                            .modifier = 0,
+                                                            .default_id = 0,
                                                             .ignore = 0},
                                    [SHORTCUT_SAVE_QUIT] = {.name = "Save & Quit",
-                                                           .retro = -1,
-                                                           .local = BTN_ID_NONE,
-                                                           .mod = 0,
-                                                           .default_ = 0,
+                                                           .retro_id = -1,
+                                                           .local_id = BTN_ID_NONE,
+                                                           .modifier = 0,
+                                                           .default_id = 0,
                                                            .ignore = 0},
                                    [SHORTCUT_CYCLE_SCALE] = {.name = "Cycle Scaling",
-                                                             .retro = -1,
-                                                             .local = BTN_ID_NONE,
-                                                             .mod = 0,
-                                                             .default_ = 0,
+                                                             .retro_id = -1,
+                                                             .local_id = BTN_ID_NONE,
+                                                             .modifier = 0,
+                                                             .default_id = 0,
                                                              .ignore = 0},
                                    [SHORTCUT_CYCLE_EFFECT] = {.name = "Cycle Effect",
-                                                              .retro = -1,
-                                                              .local = BTN_ID_NONE,
-                                                              .mod = 0,
-                                                              .default_ = 0,
+                                                              .retro_id = -1,
+                                                              .local_id = BTN_ID_NONE,
+                                                              .modifier = 0,
+                                                              .default_id = 0,
                                                               .ignore = 0},
                                    [SHORTCUT_TOGGLE_FF] = {.name = "Toggle FF",
-                                                           .retro = -1,
-                                                           .local = BTN_ID_NONE,
-                                                           .mod = 0,
-                                                           .default_ = 0,
+                                                           .retro_id = -1,
+                                                           .local_id = BTN_ID_NONE,
+                                                           .modifier = 0,
+                                                           .default_id = 0,
                                                            .ignore = 0},
                                    [SHORTCUT_HOLD_FF] = {.name = "Hold FF",
-                                                         .retro = -1,
-                                                         .local = BTN_ID_NONE,
-                                                         .mod = 0,
-                                                         .default_ = 0,
+                                                         .retro_id = -1,
+                                                         .local_id = BTN_ID_NONE,
+                                                         .modifier = 0,
+                                                         .default_id = 0,
                                                          .ignore = 0},
                                    {.name = NULL,
-                                    .retro = 0,
-                                    .local = 0,
-                                    .mod = 0,
-                                    .default_ = 0,
+                                    .retro_id = 0,
+                                    .local_id = 0,
+                                    .modifier = 0,
+                                    .default_id = 0,
                                     .ignore = 0}},
     .loaded = 0,
     .initialized = 0,
@@ -1549,25 +1327,26 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
  * Thread safety: Uses auto_cpu_mutex to protect shared state.
  */
 static void* auto_cpu_scaling_thread(void* arg) {
-	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n", auto_cpu_use_granular,
-	          auto_cpu_freq_count);
+	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n",
+	          auto_cpu_state.use_granular, auto_cpu_state.freq_count);
 
 	while (auto_cpu_thread_running) {
-		if (auto_cpu_use_granular) {
+		if (auto_cpu_state.use_granular) {
 			// Granular frequency mode
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int target_idx = auto_cpu_target_index;
-			int current_idx = auto_cpu_current_index;
+			int target_idx = auto_cpu_state.target_index;
+			int current_idx = auto_cpu_state.current_index;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
-			if (target_idx != current_idx && target_idx >= 0 && target_idx < auto_cpu_freq_count) {
-				int freq_khz = auto_cpu_frequencies[target_idx];
+			if (target_idx != current_idx && target_idx >= 0 &&
+			    target_idx < auto_cpu_state.freq_count) {
+				int freq_khz = auto_cpu_state.frequencies[target_idx];
 				LOG_info("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
-				         auto_cpu_freq_count - 1);
+				         auto_cpu_state.freq_count - 1);
 
 				if (PLAT_setCPUFrequency(freq_khz) == 0) {
 					pthread_mutex_lock(&auto_cpu_mutex);
-					auto_cpu_current_index = target_idx;
+					auto_cpu_state.current_index = target_idx;
 					pthread_mutex_unlock(&auto_cpu_mutex);
 				} else {
 					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
@@ -1576,8 +1355,8 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		} else {
 			// Fallback to 3-level mode
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int target = auto_cpu_target_level;
-			int current = auto_cpu_current_level;
+			int target = auto_cpu_state.target_level;
+			int current = auto_cpu_state.current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
 			if (target != current) {
@@ -1607,7 +1386,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);
-				auto_cpu_current_level = target;
+				auto_cpu_state.current_level = target;
 				pthread_mutex_unlock(&auto_cpu_mutex);
 			}
 		}
@@ -1664,23 +1443,23 @@ static void auto_cpu_stopThread(void) {
  */
 static void auto_cpu_setTargetLevel(int level) {
 	pthread_mutex_lock(&auto_cpu_mutex);
-	auto_cpu_target_level = level;
+	auto_cpu_state.target_level = level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
 
 /**
  * Requests a CPU frequency index change (non-blocking, granular mode).
  *
- * @param index Target index into auto_cpu_frequencies array
+ * @param index Target index into auto_cpu_state.frequencies array
  */
 static void auto_cpu_setTargetIndex(int index) {
 	if (index < 0)
 		index = 0;
-	if (index >= auto_cpu_freq_count)
-		index = auto_cpu_freq_count - 1;
+	if (index >= auto_cpu_state.freq_count)
+		index = auto_cpu_state.freq_count - 1;
 
 	pthread_mutex_lock(&auto_cpu_mutex);
-	auto_cpu_target_index = index;
+	auto_cpu_state.target_index = index;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
 
@@ -1689,7 +1468,7 @@ static void auto_cpu_setTargetIndex(int index) {
  */
 static int auto_cpu_getCurrentIndex(void) {
 	pthread_mutex_lock(&auto_cpu_mutex);
-	int idx = auto_cpu_current_index;
+	int idx = auto_cpu_state.current_index;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 	return idx;
 }
@@ -1699,30 +1478,19 @@ static int auto_cpu_getCurrentIndex(void) {
  */
 static int auto_cpu_getCurrentFrequency(void) {
 	int idx = auto_cpu_getCurrentIndex();
-	if (idx >= 0 && idx < auto_cpu_freq_count) {
-		return auto_cpu_frequencies[idx];
+	if (idx >= 0 && idx < auto_cpu_state.freq_count) {
+		return auto_cpu_state.frequencies[idx];
 	}
 	return 0;
 }
 
 /**
  * Finds the index of the nearest frequency to the target.
+ * Wrapper around module function for convenience.
  */
 static int auto_cpu_findNearestIndex(int target_khz) {
-	if (auto_cpu_freq_count <= 0)
-		return 0;
-
-	int best_idx = 0;
-	int best_diff = abs(auto_cpu_frequencies[0] - target_khz);
-
-	for (int i = 1; i < auto_cpu_freq_count; i++) {
-		int diff = abs(auto_cpu_frequencies[i] - target_khz);
-		if (diff < best_diff) {
-			best_diff = diff;
-			best_idx = i;
-		}
-	}
-	return best_idx;
+	return AutoCPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count,
+	                                target_khz);
 }
 
 /**
@@ -1737,70 +1505,74 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
-	int raw_count = PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+	int raw_count =
+	    PLAT_getAvailableCPUFrequencies(auto_cpu_state.frequencies, CPU_MAX_FREQUENCIES);
 
 	// Filter out frequencies below minimum threshold
-	auto_cpu_freq_count = 0;
+	auto_cpu_state.freq_count = 0;
 	for (int i = 0; i < raw_count; i++) {
-		if (auto_cpu_frequencies[i] >= AUTO_CPU_MIN_FREQ_KHZ) {
-			auto_cpu_frequencies[auto_cpu_freq_count++] = auto_cpu_frequencies[i];
+		if (auto_cpu_state.frequencies[i] >= auto_cpu_config.min_freq_khz) {
+			auto_cpu_state.frequencies[auto_cpu_state.freq_count++] = auto_cpu_state.frequencies[i];
 		}
 	}
 
-	if (auto_cpu_freq_count >= 2) {
-		auto_cpu_use_granular = 1;
+	if (auto_cpu_state.freq_count >= 2) {
+		auto_cpu_state.use_granular = 1;
 
 		// Calculate preset indices based on frequency percentages of max
-		int max_freq = auto_cpu_frequencies[auto_cpu_freq_count - 1];
+		int max_freq = auto_cpu_state.frequencies[auto_cpu_state.freq_count - 1];
 
 		// POWERSAVE: 55% of max
 		int ps_target = max_freq * 55 / 100;
-		auto_cpu_preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
+		auto_cpu_state.preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
 
 		// NORMAL: 80% of max
 		int normal_target = max_freq * 80 / 100;
-		auto_cpu_preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
+		auto_cpu_state.preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
 
 		// PERFORMANCE: max frequency
-		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
+		auto_cpu_state.preset_indices[2] = auto_cpu_state.freq_count - 1;
 
 		LOG_info("Auto CPU: %d frequencies available (%d - %d kHz), filtered from %d\n",
-		         auto_cpu_freq_count, auto_cpu_frequencies[0], max_freq, raw_count);
+		         auto_cpu_state.freq_count, auto_cpu_state.frequencies[0], max_freq, raw_count);
 		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
-		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
-		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
-		         auto_cpu_preset_indices[2], auto_cpu_frequencies[auto_cpu_preset_indices[2]]);
+		         auto_cpu_state.preset_indices[0],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[0]],
+		         auto_cpu_state.preset_indices[1],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[1]],
+		         auto_cpu_state.preset_indices[2],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[2]]);
 
 		// Log all frequencies for debugging
 		LOG_debug("Auto CPU: frequency table:\n");
-		for (int i = 0; i < auto_cpu_freq_count; i++) {
-			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_frequencies[i]);
+		for (int i = 0; i < auto_cpu_state.freq_count; i++) {
+			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_state.frequencies[i]);
 		}
 	} else {
-		auto_cpu_use_granular = 0;
+		auto_cpu_state.use_granular = 0;
 		LOG_info("Auto CPU: %d frequencies after filtering (raw: %d), using 3-level fallback\n",
-		         auto_cpu_freq_count, raw_count);
+		         auto_cpu_state.freq_count, raw_count);
 	}
 }
 
 static void resetAutoCPUState(void) {
-	auto_cpu_frame_count = 0;
-	auto_cpu_high_util_windows = 0;
-	auto_cpu_low_util_windows = 0;
-	auto_cpu_last_underrun = SND_getUnderrunCount();
-	auto_cpu_startup_frames = 0;
-	auto_cpu_frame_time_index = 0;
-	auto_cpu_panic_cooldown = 0;
+	auto_cpu_state.frame_count = 0;
+	auto_cpu_state.high_util_windows = 0;
+	auto_cpu_state.low_util_windows = 0;
+	auto_cpu_state.last_underrun = SND_getUnderrunCount();
+	auto_cpu_state.startup_frames = 0;
+	auto_cpu_state.frame_time_index = 0;
+	auto_cpu_state.panic_cooldown = 0;
 
 	// Calculate frame budget from core's declared FPS
 	if (core.fps > 0) {
-		auto_cpu_frame_budget_us = (uint64_t)(1000000.0 / core.fps);
+		auto_cpu_state.frame_budget_us = (uint64_t)(1000000.0 / core.fps);
 	} else {
-		auto_cpu_frame_budget_us = 16667; // Default to 60fps
+		auto_cpu_state.frame_budget_us = 16667; // Default to 60fps
 	}
 
 	// Clear frame time buffer
-	memset(auto_cpu_frame_times, 0, sizeof(auto_cpu_frame_times));
+	memset(auto_cpu_state.frame_times, 0, sizeof(auto_cpu_state.frame_times));
 
 	// Detect available frequencies (only once, on first auto mode entry)
 	static int frequencies_detected = 0;
@@ -1812,11 +1584,12 @@ static void resetAutoCPUState(void) {
 	// Note: target/current frequency set by setOverclock() after this call
 
 	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
-	         (unsigned long long)auto_cpu_frame_budget_us, core.fps, auto_cpu_use_granular);
+	         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+	         auto_cpu_state.use_granular);
 	LOG_debug(
 	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
-	    AUTO_CPU_UTIL_HIGH, AUTO_CPU_UTIL_LOW, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
-	    AUTO_CPU_STARTUP_GRACE);
+	    auto_cpu_config.util_high, auto_cpu_config.util_low, auto_cpu_config.boost_windows,
+	    auto_cpu_config.reduce_windows, auto_cpu_config.startup_grace);
 }
 
 static void setOverclock(int i) {
@@ -1840,19 +1613,20 @@ static void setOverclock(int i) {
 		resetAutoCPUState();
 		// Start at max frequency to avoid startup stutter during grace period
 		// Background thread will scale down as needed after grace period
-		if (auto_cpu_use_granular) {
-			int start_idx = auto_cpu_preset_indices[2]; // PERFORMANCE - start high
-			int start_freq = auto_cpu_frequencies[start_idx];
+		if (auto_cpu_state.use_granular) {
+			int start_idx = auto_cpu_state.preset_indices[2]; // PERFORMANCE - start high
+			int start_freq = auto_cpu_state.frequencies[start_idx];
 			PLAT_setCPUFrequency(start_freq);
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_target_index = start_idx; // Set target so thread doesn't immediately change
-			auto_cpu_current_index = start_idx; // Mark as applied
+			auto_cpu_state.target_index =
+			    start_idx; // Set target so thread doesn't immediately change
+			auto_cpu_state.current_index = start_idx; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		} else {
 			PWR_setCPUSpeed(CPU_SPEED_PERFORMANCE);
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_target_level = 2; // Set target so thread doesn't immediately change
-			auto_cpu_current_level = 2; // Mark as applied
+			auto_cpu_state.target_level = 2; // Set target so thread doesn't immediately change
+			auto_cpu_state.current_level = 2; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		}
 		auto_cpu_startThread();
@@ -1886,9 +1660,9 @@ static void updateAutoCPU(void) {
 		return;
 
 	// Startup grace period - don't scale during initial warmup
-	if (auto_cpu_startup_frames < AUTO_CPU_STARTUP_GRACE) {
-		auto_cpu_startup_frames++;
-		if (auto_cpu_startup_frames == AUTO_CPU_STARTUP_GRACE) {
+	if (auto_cpu_state.startup_frames < auto_cpu_config.startup_grace) {
+		auto_cpu_state.startup_frames++;
+		if (auto_cpu_state.startup_frames == auto_cpu_config.startup_grace) {
 			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
 		}
 		return;
@@ -1896,92 +1670,93 @@ static void updateAutoCPU(void) {
 
 	// Get current state (thread-safe read)
 	pthread_mutex_lock(&auto_cpu_mutex);
-	int current_idx = auto_cpu_target_index;
-	int current_level = auto_cpu_target_level;
+	int current_idx = auto_cpu_state.target_index;
+	int current_level = auto_cpu_state.target_level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
 	// Emergency: check for actual underruns (panic path)
 	unsigned underruns = SND_getUnderrunCount();
-	int max_idx = auto_cpu_freq_count - 1;
-	int at_max = auto_cpu_use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+	int max_idx = auto_cpu_state.freq_count - 1;
+	int at_max = auto_cpu_state.use_granular ? (current_idx >= max_idx) : (current_level >= 2);
 
-	if (underruns > auto_cpu_last_underrun && !at_max) {
+	if (underruns > auto_cpu_state.last_underrun && !at_max) {
 		// Underrun detected - boost by up to MAX_STEP (not straight to max)
-		if (auto_cpu_use_granular) {
-			int new_idx = current_idx + AUTO_CPU_MAX_STEP;
+		if (auto_cpu_state.use_granular) {
+			int new_idx = current_idx + auto_cpu_config.max_step;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
 			auto_cpu_setTargetIndex(new_idx);
 			LOG_warn("Auto CPU: PANIC - underrun, boosting %d→%d kHz\n",
-			         auto_cpu_frequencies[current_idx], auto_cpu_frequencies[new_idx]);
+			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx]);
 		} else {
-			int new_level = current_level + AUTO_CPU_MAX_STEP;
+			int new_level = current_level + auto_cpu_config.max_step;
 			if (new_level > 2)
 				new_level = 2;
 			auto_cpu_setTargetLevel(new_level);
 			LOG_warn("Auto CPU: PANIC - underrun, boosting to level %d\n", new_level);
 		}
-		auto_cpu_high_util_windows = 0;
-		auto_cpu_low_util_windows = 0;
+		auto_cpu_state.high_util_windows = 0;
+		auto_cpu_state.low_util_windows = 0;
 		// Cooldown: wait 8 windows (~4 seconds) before allowing reduction
-		auto_cpu_panic_cooldown = 8;
+		auto_cpu_state.panic_cooldown = 8;
 		SND_resetUnderrunCount();
-		auto_cpu_last_underrun = 0;
+		auto_cpu_state.last_underrun = 0;
 		return;
 	}
 	// Update underrun tracking (even if at max level)
-	if (underruns > auto_cpu_last_underrun) {
-		auto_cpu_last_underrun = underruns;
+	if (underruns > auto_cpu_state.last_underrun) {
+		auto_cpu_state.last_underrun = underruns;
 	}
 
 	// Count frames in current window
-	auto_cpu_frame_count++;
+	auto_cpu_state.frame_count++;
 
 	// Check if window is complete
-	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
+	if (auto_cpu_state.frame_count >= auto_cpu_config.window_frames) {
 		// Calculate 90th percentile frame time (ignores outliers like loading screens)
-		int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
-		                  ? auto_cpu_frame_time_index
-		                  : AUTO_CPU_WINDOW_FRAMES;
+		int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+		                  ? auto_cpu_state.frame_time_index
+		                  : auto_cpu_config.window_frames;
 		if (samples < 5) {
 			// Not enough samples yet - reset and wait
-			auto_cpu_frame_count = 0;
+			auto_cpu_state.frame_count = 0;
 			return;
 		}
 
-		uint64_t p90_time = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
+		uint64_t p90_time = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
 
 		// Calculate utilization as percentage of frame budget
 		unsigned util = 0;
-		if (auto_cpu_frame_budget_us > 0) {
-			util = (unsigned)((p90_time * 100) / auto_cpu_frame_budget_us);
+		if (auto_cpu_state.frame_budget_us > 0) {
+			util = (unsigned)((p90_time * 100) / auto_cpu_state.frame_budget_us);
 			if (util > 200)
 				util = 200; // Cap at 200% for sanity
 		}
 
-		if (auto_cpu_use_granular) {
+		if (auto_cpu_state.use_granular) {
 			// Granular mode: use linear performance scaling to find optimal frequency
 			// Performance scales linearly with frequency, so:
 			// new_util = current_util * (current_freq / new_freq)
 
-			int current_freq = auto_cpu_frequencies[current_idx];
+			int current_freq = auto_cpu_state.frequencies[current_idx];
 
 			// Decrement panic cooldown each window
-			if (auto_cpu_panic_cooldown > 0) {
-				auto_cpu_panic_cooldown--;
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > AUTO_CPU_UTIL_HIGH) {
+			if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
-				auto_cpu_high_util_windows++;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
 
-				if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_idx < max_idx) {
+				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+				    current_idx < max_idx) {
 					// Find next frequency that would bring util to target (sweet spot)
 					// Using: new_util = util * (current_freq / new_freq)
 					// So: new_freq = current_freq * util / target_util
 					// No step limit - linear scaling prediction is accurate, boost aggressively
-					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
+					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go higher
@@ -1991,24 +1766,26 @@ static void updateAutoCPU(void) {
 						new_idx = max_idx;
 
 					auto_cpu_setTargetIndex(new_idx);
-					auto_cpu_high_util_windows = 0;
+					auto_cpu_state.high_util_windows = 0;
 					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
-					         auto_cpu_frequencies[new_idx], util, AUTO_CPU_TARGET_UTIL);
+					         auto_cpu_state.frequencies[new_idx], util,
+					         auto_cpu_config.target_util);
 				}
-			} else if (util < AUTO_CPU_UTIL_LOW) {
+			} else if (util < auto_cpu_config.util_low) {
 				// Can reduce power - step down
-				auto_cpu_low_util_windows++;
-				auto_cpu_high_util_windows = 0;
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
 
 				// Only reduce if: enough consecutive low windows AND panic cooldown expired
-				int reduce_ok = (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS) &&
-				                (auto_cpu_panic_cooldown == 0) && (current_idx > 0);
+				int reduce_ok =
+				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
+				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0);
 
 				if (reduce_ok) {
 					// Find frequency that would bring util up to target (sweet spot)
 					// new_util = util * (current_freq / new_freq)
 					// new_freq = current_freq * util / target_util
-					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
+					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go lower
@@ -2018,23 +1795,23 @@ static void updateAutoCPU(void) {
 						new_idx = 0;
 
 					// Limit reduction to MAX_STEP indices at once
-					if (current_idx - new_idx > AUTO_CPU_MAX_STEP) {
-						new_idx = current_idx - AUTO_CPU_MAX_STEP;
+					if (current_idx - new_idx > auto_cpu_config.max_step) {
+						new_idx = current_idx - auto_cpu_config.max_step;
 					}
 
-					int new_freq = auto_cpu_frequencies[new_idx];
+					int new_freq = auto_cpu_state.frequencies[new_idx];
 					int predicted_util = util * current_freq / new_freq;
 
 					auto_cpu_setTargetIndex(new_idx);
-					auto_cpu_low_util_windows = 0;
+					auto_cpu_state.low_util_windows = 0;
 					LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
 					         current_freq, new_freq, util, predicted_util);
 					(void)predicted_util; // Used in LOG_info which may be compiled out
 				}
 			} else {
 				// In sweet spot - reset counters
-				auto_cpu_high_util_windows = 0;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 			}
 
 			// Sampled debug logging (every 4th window = ~2 seconds)
@@ -2049,15 +1826,15 @@ static void updateAutoCPU(void) {
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
-			if (util > AUTO_CPU_UTIL_HIGH) {
-				auto_cpu_high_util_windows++;
-				auto_cpu_low_util_windows = 0;
-			} else if (util < AUTO_CPU_UTIL_LOW) {
-				auto_cpu_low_util_windows++;
-				auto_cpu_high_util_windows = 0;
+			if (util > auto_cpu_config.util_high) {
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
+			} else if (util < auto_cpu_config.util_low) {
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
 			} else {
-				auto_cpu_high_util_windows = 0;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 			}
 
 			// Sampled debug logging
@@ -2072,24 +1849,26 @@ static void updateAutoCPU(void) {
 			}
 
 			// Boost if sustained high utilization
-			if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_level < 2) {
+			if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+			    current_level < 2) {
 				int new_level = current_level + 1;
 				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_high_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
 				LOG_info("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
 			}
 
 			// Reduce if sustained low utilization
-			if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_level > 0) {
+			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
+			    current_level > 0) {
 				int new_level = current_level - 1;
 				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 				LOG_info("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
 			}
 		}
 
 		// Reset window counter (frame times stay in ring buffer)
-		auto_cpu_frame_count = 0;
+		auto_cpu_state.frame_count = 0;
 	}
 }
 
@@ -2204,23 +1983,18 @@ static void Config_init(void) {
 		tmp2 = strrchr(button_id, ':');
 		int remap = 0;
 		if (tmp2) {
-			for (int j = 0; button_label_mapping[j].name; j++) {
-				ButtonMapping* button = &button_label_mapping[j];
-				if (!strcmp(tmp2 + 1, button->name)) {
-					retro_id = button->retro;
-					break;
-				}
-			}
+			const MinArchButtonMapping* found =
+			    MinArchInput_findMappingByName(button_label_mapping, tmp2 + 1);
+			if (found)
+				retro_id = found->retro_id;
 			*tmp2 = '\0';
 		}
-		for (int j = 0; button_label_mapping[j].name; j++) {
-			ButtonMapping* button = &button_label_mapping[j];
-			if (!strcmp(button_id, button->name)) {
-				local_id = button->local;
-				if (retro_id == -1)
-					retro_id = button->retro;
-				break;
-			}
+		const MinArchButtonMapping* found =
+		    MinArchInput_findMappingByName(button_label_mapping, button_id);
+		if (found) {
+			local_id = found->local_id;
+			if (retro_id == -1)
+				retro_id = found->retro_id;
 		}
 
 		tmp += strlen(button_id); // prepare to continue search
@@ -2239,8 +2013,8 @@ static void Config_init(void) {
 		strcpy(tmp2, button_name);
 		ButtonMapping* button = &core_button_mapping[i++];
 		button->name = tmp2;
-		button->retro = retro_id;
-		button->local = local_id;
+		button->retro_id = retro_id;
+		button->local_id = local_id;
 	};
 
 	config.initialized = 1;
@@ -2314,8 +2088,8 @@ static void Config_readControlsString(char* cfg) {
 			mod = 1;
 		}
 
-		mapping->local = id;
-		mapping->mod = mod;
+		mapping->local_id = id;
+		mapping->modifier = mod;
 	}
 
 	for (int i = 0; config.shortcuts[i].name; i++) {
@@ -2341,8 +2115,8 @@ static void Config_readControlsString(char* cfg) {
 		}
 		// LOG_info("shortcut %s:%s (%i:%i)", key,value, id, mod);
 
-		mapping->local = id;
-		mapping->mod = mod;
+		mapping->local_id = id;
+		mapping->modifier = mod;
 	}
 }
 static void Config_load(void) {
@@ -2467,15 +2241,15 @@ static void Config_write(int override) {
 
 	for (int i = 0; config.controls[i].name; i++) {
 		ButtonMapping* mapping = &config.controls[i];
-		int j = mapping->local + 1;
-		if (mapping->mod)
+		int j = mapping->local_id + 1;
+		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
 		fprintf(file, "bind %s = %s\n", mapping->name, button_labels[j]);
 	}
 	for (int i = 0; config.shortcuts[i].name; i++) {
 		ButtonMapping* mapping = &config.shortcuts[i];
-		int j = mapping->local + 1;
-		if (mapping->mod)
+		int j = mapping->local_id + 1;
+		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
 		fprintf(file, "bind %s = %s\n", mapping->name, button_labels[j]);
 	}
@@ -2520,13 +2294,13 @@ static void Config_restore(void) {
 
 	for (int i = 0; config.controls[i].name; i++) {
 		ButtonMapping* mapping = &config.controls[i];
-		mapping->local = mapping->default_;
-		mapping->mod = 0;
+		mapping->local_id = mapping->default_id;
+		mapping->modifier = 0;
 	}
 	for (int i = 0; config.shortcuts[i].name; i++) {
 		ButtonMapping* mapping = &config.shortcuts[i];
-		mapping->local = BTN_ID_NONE;
-		mapping->mod = 0;
+		mapping->local_id = BTN_ID_NONE;
+		mapping->modifier = 0;
 	}
 
 	Config_load();
@@ -2886,18 +2660,18 @@ static void input_poll_callback(void) {
 	    0; // this logic only works because TOGGLE_FF is before HOLD_FF in the menu...
 	for (int i = 0; i < SHORTCUT_COUNT; i++) {
 		ButtonMapping* mapping = &config.shortcuts[i];
-		int btn = 1 << mapping->local;
+		int btn = 1 << mapping->local_id;
 		if (btn == BTN_NONE)
 			continue; // not bound
-		if (!mapping->mod || PAD_isPressed(BTN_MENU)) {
+		if (!mapping->modifier || PAD_isPressed(BTN_MENU)) {
 			if (i == SHORTCUT_TOGGLE_FF) {
 				if (PAD_justPressed(btn)) {
 					toggled_ff_on = setFastForward(!fast_forward);
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1;
 					break;
 				} else if (PAD_justReleased(btn)) {
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1;
 					break;
 				}
@@ -2906,7 +2680,7 @@ static void input_poll_callback(void) {
 				// if it was initially turned on with the toggle button
 				if (PAD_justPressed(btn) || (!toggled_ff_on && PAD_justReleased(btn))) {
 					fast_forward = setFastForward(PAD_isPressed(btn));
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1; // very unlikely but just in case
 				}
 			} else if (PAD_justPressed(btn)) {
@@ -2942,7 +2716,7 @@ static void input_poll_callback(void) {
 					break;
 				}
 
-				if (mapping->mod)
+				if (mapping->modifier)
 					ignore_menu = 1;
 			}
 		}
@@ -2964,7 +2738,7 @@ static void input_poll_callback(void) {
 	buttons = 0;
 	for (int i = 0; config.controls[i].name; i++) {
 		ButtonMapping* mapping = &config.controls[i];
-		int btn = 1 << mapping->local;
+		int btn = 1 << mapping->local_id;
 		if (btn == BTN_NONE)
 			continue; // present buttons can still be unbound
 		if (gamepad_type == 0) {
@@ -2983,9 +2757,9 @@ static void input_poll_callback(void) {
 				break;
 			}
 		}
-		if (PAD_isPressed(btn) && (!mapping->mod || PAD_isPressed(BTN_MENU))) {
-			buttons |= 1 << mapping->retro;
-			if (mapping->mod)
+		if (PAD_isPressed(btn) && (!mapping->modifier || PAD_isPressed(BTN_MENU))) {
+			buttons |= 1 << mapping->retro_id;
+			if (mapping->modifier)
 				ignore_menu = 1;
 		}
 		//  && !PWR_ignoreSettingInput(btn, show_setting)
@@ -3053,26 +2827,28 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	for (int i = 0; default_button_mapping[i].name; i++) {
 		ButtonMapping* mapping = &default_button_mapping[i];
-		LOG_debug("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro], mapping->name,
-		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]));
-		if (core_button_names[mapping->retro])
-			mapping->name = (char*)core_button_names[mapping->retro];
+		LOG_debug(
+		    "DEFAULT %s (%s): <%s>", core_button_names[mapping->retro_id], mapping->name,
+		    (mapping->local_id == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local_id]));
+		if (core_button_names[mapping->retro_id])
+			mapping->name = (char*)core_button_names[mapping->retro_id];
 	}
 
 	LOG_debug("---------------------------------");
 
 	for (int i = 0; config.controls[i].name; i++) {
 		ButtonMapping* mapping = &config.controls[i];
-		mapping->default_ = mapping->local;
+		mapping->default_id = mapping->local_id;
 
 		// ignore mappings that aren't available in this core
-		if (core_mapped && !present[mapping->retro]) {
+		if (core_mapped && !present[mapping->retro_id]) {
 			mapping->ignore = 1;
 			continue;
 		}
-		LOG_debug("%s: <%s> (%i:%i)", mapping->name,
-		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]),
-		          mapping->local, mapping->retro);
+		LOG_debug(
+		    "%s: <%s> (%i:%i)", mapping->name,
+		    (mapping->local_id == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local_id]),
+		    mapping->local_id, mapping->retro_id);
 	}
 
 	LOG_debug("---------------------------------");
@@ -4768,25 +4544,26 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		if (overclock == 3) {
 			// Auto CPU mode: show frequency/level, utilization, and buffer fill
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int current_idx = auto_cpu_current_index;
-			int level = auto_cpu_current_level;
+			int current_idx = auto_cpu_state.current_index;
+			int level = auto_cpu_state.current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
 			// Calculate current utilization from most recent frame times
 			unsigned util = 0;
-			int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
-			                  ? auto_cpu_frame_time_index
-			                  : AUTO_CPU_WINDOW_FRAMES;
-			if (samples >= 5 && auto_cpu_frame_budget_us > 0) {
-				uint64_t p90 = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
-				util = (unsigned)((p90 * 100) / auto_cpu_frame_budget_us);
+			int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+			                  ? auto_cpu_state.frame_time_index
+			                  : auto_cpu_config.window_frames;
+			if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
+				uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
+				util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
 				if (util > 200)
 					util = 200;
 			}
 
-			if (auto_cpu_use_granular && current_idx >= 0 && current_idx < auto_cpu_freq_count) {
+			if (auto_cpu_state.use_granular && current_idx >= 0 &&
+			    current_idx < auto_cpu_state.freq_count) {
 				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
-				int freq_mhz = auto_cpu_frequencies[current_idx] / 1000;
+				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
 				sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
 			} else {
 				// Fallback mode: show level
@@ -5422,12 +5199,12 @@ int OptionControls_bind(MenuList* list, int i) {
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
 			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
-				button->local = id - 1;
+				button->local_id = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
 					item->value += LOCAL_BUTTON_COUNT;
-					button->mod = 1;
+					button->modifier = 1;
 				} else {
-					button->mod = 0;
+					button->modifier = 0;
 				}
 				bound = 1;
 				break;
@@ -5444,8 +5221,8 @@ static int OptionControls_unbind(MenuList* list, int i) {
 		return MENU_CALLBACK_NOP;
 
 	ButtonMapping* button = &config.controls[item->id];
-	button->local = -1;
-	button->mod = 0;
+	button->local_id = -1;
+	button->modifier = 0;
 	return MENU_CALLBACK_NOP;
 }
 static int OptionControls_optionChanged(MenuList* list, int i) {
@@ -5493,14 +5270,14 @@ static int OptionControls_openMenu(MenuList* list, int i) {
 			if (button->ignore)
 				continue;
 
-			LOG_info("\t%s (%i:%i)", button->name, button->local, button->retro);
+			LOG_info("\t%s (%i:%i)", button->name, button->local_id, button->retro_id);
 
 			MenuItem* item = &OptionControls_menu.items[k++];
 			item->id = j;
 			item->name = button->name;
 			item->desc = NULL;
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 			item->values = button_labels;
 		}
@@ -5519,8 +5296,8 @@ static int OptionControls_openMenu(MenuList* list, int i) {
 				continue;
 
 			MenuItem* item = &OptionControls_menu.items[k++];
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 		}
 	}
@@ -5540,12 +5317,12 @@ static int OptionShortcuts_bind(MenuList* list, int i) {
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
 			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
-				button->local = id - 1;
+				button->local_id = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
 					item->value += LOCAL_BUTTON_COUNT;
-					button->mod = 1;
+					button->modifier = 1;
 				} else {
-					button->mod = 0;
+					button->modifier = 0;
 				}
 				bound = 1;
 				break;
@@ -5559,8 +5336,8 @@ static int OptionShortcuts_bind(MenuList* list, int i) {
 static int OptionShortcuts_unbind(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
 	ButtonMapping* button = &config.shortcuts[item->id];
-	button->local = -1;
-	button->mod = 0;
+	button->local_id = -1;
+	button->modifier = 0;
 	return MENU_CALLBACK_NOP;
 }
 static MenuList OptionShortcuts_menu = {
@@ -5597,8 +5374,8 @@ static int OptionShortcuts_openMenu(MenuList* list, int i) {
 			item->id = j;
 			item->name = button->name;
 			item->desc = NULL;
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 			item->values = button_labels;
 		}
@@ -5607,8 +5384,8 @@ static int OptionShortcuts_openMenu(MenuList* list, int i) {
 		for (int j = 0; config.shortcuts[j].name; j++) {
 			ButtonMapping* button = &config.shortcuts[j];
 			MenuItem* item = &OptionShortcuts_menu.items[j];
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 		}
 	}
@@ -7034,6 +6811,10 @@ static void limitFF(void) {
 int main(int argc, char* argv[]) {
 	LOG_info("MinArch");
 
+	// Initialize auto CPU scaling config with defaults
+	AutoCPU_initConfig(&auto_cpu_config);
+	AutoCPU_initState(&auto_cpu_state);
+
 	setOverclock(overclock); // default to normal
 	// force a stack overflow to ensure asan is linked and actually working
 	// char tmp[2];
@@ -7156,8 +6937,10 @@ int main(int argc, char* argv[]) {
 		// Store frame time for auto CPU scaling analysis
 		uint64_t frame_time = getMicroseconds() - frame_start;
 		if (overclock == 3 && !fast_forward && !show_menu) {
-			auto_cpu_frame_times[auto_cpu_frame_time_index % AUTO_CPU_WINDOW_FRAMES] = frame_time;
-			auto_cpu_frame_time_index++;
+			auto_cpu_state
+			    .frame_times[auto_cpu_state.frame_time_index % AUTO_CPU_FRAME_BUFFER_SIZE] =
+			    frame_time;
+			auto_cpu_state.frame_time_index++;
 		}
 
 		// Flip to display - vsync happens HERE, after core.run() completes
