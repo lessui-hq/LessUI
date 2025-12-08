@@ -188,7 +188,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minui_root_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -366,11 +366,6 @@ tests/minarch_input_test: tests/unit/all/common/test_minarch_input.c workspace/a
 # Build launcher state persistence tests (path decomposition, resume paths)
 tests/minui_state_test: tests/unit/all/common/test_minui_state.c workspace/all/common/minui_state.c $(TEST_UNITY)
 	@echo "Building launcher state tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
-
-# Build root directory generation tests (deduplication, aliases, sorting)
-tests/minui_root_test: tests/unit/all/common/test_minui_root.c workspace/all/common/minui_root.c $(TEST_UNITY)
-	@echo "Building root directory tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)

@@ -46,6 +46,7 @@
 #include "directory_index.h"
 #include "minui_entry.h"
 #include "minui_launcher.h"
+#include "minui_state.h"
 #include "str_compare.h"
 #include "utils.h"
 
@@ -1812,14 +1813,12 @@ static void loadLast(void) {
 		if (!exactMatch(
 		        path,
 		        ROMS_PATH)) { // romsDir is effectively root as far as restoring state after a game
-			char collated_path[256];
+			// Extract collation prefix if this is a collated console dir (e.g., "Game Boy (USA)")
+			// This allows matching against other regions like "Game Boy (Japan)"
+			char collated_path[MINUI_STATE_MAX_PATH];
 			collated_path[0] = '\0';
-			if (suffixMatch(")", path) && isConsoleDir(path)) {
-				strcpy(collated_path, path);
-				tmp = strrchr(collated_path, '(');
-				if (tmp)
-					tmp[1] =
-					    '\0'; // 1 because we want to keep the opening parenthesis to avoid collating "Game Boy Color" and "Game Boy Advance" into "Game Boy"
+			if (isConsoleDir(path)) {
+				MinUIState_getCollationPrefix(path, collated_path);
 			}
 
 			for (int i = 0; i < top->entries->count; i++) {
