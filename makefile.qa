@@ -188,7 +188,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -332,6 +332,26 @@ tests/minui_entry_test: tests/unit/all/common/test_minui_entry.c workspace/all/c
 tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/common/directory_index.c workspace/all/common/minui_entry.c workspace/all/common/collections.c workspace/all/common/str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building directory indexing tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build ZIP extraction tests (pure file I/O functions, uses zlib)
+tests/minarch_zip_test: tests/unit/all/common/test_minarch_zip.c workspace/all/common/minarch_zip.c $(TEST_UNITY)
+	@echo "Building ZIP extraction tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lz
+
+# Build memory persistence tests (SRAM/RTC with mock core callbacks, uses real temp files)
+tests/minarch_memory_test: tests/unit/all/common/test_minarch_memory.c workspace/all/common/minarch_memory.c tests/support/libretro_mocks.c $(TEST_UNITY)
+	@echo "Building memory persistence tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build save state system tests (with mock core callbacks, uses real temp files)
+tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/common/minarch_state.c workspace/all/common/minarch_paths.c tests/support/libretro_mocks.c $(TEST_UNITY)
+	@echo "Building save state system tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build launcher command construction tests (pure string/file operations)
+tests/minui_launcher_test: tests/unit/all/common/test_minui_launcher.c workspace/all/common/minui_launcher.c $(TEST_UNITY)
+	@echo "Building launcher command tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \

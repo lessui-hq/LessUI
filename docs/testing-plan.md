@@ -4,7 +4,7 @@
 
 **Starting State (2025-12-07):** 491 tests, ~30% coverage of extracted modules, <5% coverage of minui.c/minarch.c
 
-**Current State (2025-12-07):** 707 tests, ~55% coverage of extracted modules, ~15% coverage of minui.c/minarch.c
+**Current State (2025-12-07):** 784 tests, ~65% coverage of extracted modules, ~25% coverage of minui.c/minarch.c
 
 **Target State:** 700+ tests, 80%+ coverage of testable code ✅ **ACHIEVED**
 
@@ -16,11 +16,11 @@
 |-------|--------|-------------|------------|----------------|
 | **Phase 1: Quick Wins** | ✅ Complete | 98 | 589 | 2025-12-07 |
 | **Phase 2: Config & Options** | ✅ Complete | 118 | 707 | 2025-12-07 |
-| Phase 3: Save & File I/O | ⏳ Planned | 75 | 782 | - |
-| Phase 4: State & CPU | ⏳ Planned | 90 | 872 | - |
-| Phase 5: Integration | ⏳ Planned | 40 | 912 | - |
+| **Phase 3: Save & File I/O** | ✅ Complete | 77 | 784 | 2025-12-07 |
+| Phase 4: State & CPU | ⏳ Planned | 90 | 874 | - |
+| Phase 5: Integration | ⏳ Planned | 40 | 914 | - |
 
-**Progress: 216 new tests added (60% of 358-test goal) - Target of 700 tests achieved!**
+**Progress: 293 new tests added (82% of 358-test goal) - Target of 700 tests exceeded!**
 
 ### Completed Work Details
 
@@ -35,9 +35,16 @@
 - ✅ `minui_entry.c` - 25 tests (Entry type, array operations, IntArray)
 - ✅ `directory_index.c` - 38 tests (Alias application, hidden filtering, duplicate detection, alpha indexing)
 
+**Phase 3 - Save & File I/O (77 tests)**
+- ✅ `minarch_zip.c` - 13 tests (ZIP copy/inflate with zlib, temp file I/O)
+- ✅ `minarch_memory.c` - 16 tests (SRAM/RTC read/write with mock core callbacks)
+- ✅ `minarch_state.c` - 16 tests (Save state read/write, auto-save, resume)
+- ✅ `minui_launcher.c` - 32 tests (String replacement, quote escaping, command construction)
+
 **Files Created:**
-- 7 new source modules (`workspace/all/common/minarch_*.c`, `minui_entry.c`, `directory_index.c`)
-- 7 new test suites (`tests/unit/all/common/test_*.c`)
+- 11 new source modules (`workspace/all/common/minarch_*.c`, `minui_*.c`, `directory_index.c`)
+- 11 new test suites (`tests/unit/all/common/test_*.c`)
+- Libretro mock infrastructure (`tests/support/libretro_mocks.{h,c}`)
 - All integrated into `makefile.qa`
 
 ---
@@ -52,7 +59,7 @@ This plan identifies **~350 new tests** that can be added through strategic extr
 
 ## Current Coverage Analysis
 
-### Well-Tested Modules (707 tests)
+### Well-Tested Modules (784 tests)
 
 | Module | Tests | Status |
 |--------|-------|--------|
@@ -63,20 +70,24 @@ This plan identifies **~350 new tests** that can be added through strategic extr
 | directory_index.c | 38 | Complete |
 | minarch_options.c | 36 | Complete |
 | pad.c | 36 | Complete |
+| minui_launcher.c | 32 | Complete |
 | gfx_text.c | 32 | Complete |
 | collections.c | 30 | Complete |
 | str_compare.c | 28 | Complete |
 | minui_entry.c | 25 | Complete |
-| minui_file_utils.c | 18 | Complete |
 | map_parser.c | 22 | Complete |
 | m3u_parser.c | 20 | Complete |
 | audio_resampler.c | 20 | Complete |
 | ui_layout.c | 20 | Complete |
 | minarch_config.c | 19 | Complete |
+| minui_file_utils.c | 18 | Complete |
 | recent_file.c | 18 | Complete |
 | minui_utils.c | 17 | Complete |
+| minarch_memory.c | 16 | Complete |
+| minarch_state.c | 16 | Complete |
 | minarch_paths.c | 16 | Complete |
 | platform_variant.c | 14 | Complete |
+| minarch_zip.c | 13 | Complete |
 | binary_file_utils.c | 12 | Complete |
 | collection_parser.c | 11 | Complete |
 | **Integration tests** | 22 | Complete |

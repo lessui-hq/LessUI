@@ -403,7 +403,11 @@ See `.clang-format` for complete style definition.
 | MinArch utilities | `workspace/all/common/minarch_utils.c` |
 | MinArch config utilities | `workspace/all/common/minarch_config.c` |
 | MinArch option management | `workspace/all/common/minarch_options.c` |
+| MinArch ZIP extraction | `workspace/all/common/minarch_zip.c` |
+| MinArch memory persistence | `workspace/all/common/minarch_memory.c` |
+| MinArch save states | `workspace/all/common/minarch_state.c` |
 | MinUI Entry type | `workspace/all/common/minui_entry.c` |
+| MinUI launcher commands | `workspace/all/common/minui_launcher.c` |
 | Directory indexing | `workspace/all/common/directory_index.c` |
 | Effect system | `workspace/all/common/effect_system.c` |
 | Platform variant detection | `workspace/all/common/platform_variant.c` |
@@ -429,7 +433,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 707 tests across 26 test suites** ✅
+**Total: 784 tests across 30 test suites** ✅
 
 ### Extracted and Tested Modules
 
@@ -444,20 +448,24 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | directory_index.c | 38 | minui.c | Alias application, duplicate detection, alpha indexing |
 | minarch_options.c | 36 | minarch.c | Option list search and manipulation |
 | pad.c | 36 | api.c | Button state machine, analog input |
+| minui_launcher.c | 32 | minui.c | Shell command construction, quote escaping |
 | gfx_text.c | 32 | api.c | Text truncation, wrapping, sizing |
 | collections.c | 30 | minui.c | Array, Hash data structures |
 | str_compare.c | 28 | (original) | Natural string sorting |
 | minui_entry.c | 25 | minui.c | Entry type, array operations, IntArray |
-| minui_file_utils.c | 18 | minui.c | File/dir checking utilities |
 | map_parser.c | 22 | minui.c/minarch.c | ROM display name aliasing |
 | m3u_parser.c | 20 | minui.c | M3U playlist parsing |
 | audio_resampler.c | 20 | api.c | Sample rate conversion |
 | ui_layout.c | 20 | api.c | UI layout calculations (DP system) |
 | minarch_config.c | 19 | minarch.c | Config path generation, option mapping |
+| minui_file_utils.c | 18 | minui.c | File/dir checking utilities |
 | recent_file.c | 18 | minui.c | Recent games read/write |
 | minui_utils.c | 17 | minui.c | Index char, console dir detection |
+| minarch_memory.c | 16 | minarch.c | SRAM/RTC persistence with mock core |
+| minarch_state.c | 16 | minarch.c | Save state read/write, auto-resume |
 | minarch_paths.c | 16 | minarch.c | Save file path generation |
 | platform_variant.c | 14 | (original) | Platform variant detection |
+| minarch_zip.c | 13 | minarch.c | ZIP extraction (copy, deflate) |
 | binary_file_utils.c | 12 | minarch.c | Binary file read/write |
 | collection_parser.c | 11 | minui.c | Custom ROM list parsing |
 
