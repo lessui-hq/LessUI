@@ -1,5 +1,5 @@
 /**
- * m3u_parser.h - M3U playlist parser for multi-disc games
+ * minui_m3u.h - M3U playlist parser for multi-disc games
  *
  * M3U files list disc images for multi-disc games (e.g., Final Fantasy VII).
  * Format: Plain text file with one disc path per line.
@@ -8,12 +8,10 @@
  *   FF7 (Disc 1).bin
  *   FF7 (Disc 2).bin
  *   FF7 (Disc 3).bin
- *
- * Extracted from minui.c for testability.
  */
 
-#ifndef __M3U_PARSER_H__
-#define __M3U_PARSER_H__
+#ifndef MINUI_M3U_H
+#define MINUI_M3U_H
 
 /**
  * Gets the path to the first disc in an M3U playlist.
@@ -70,4 +68,4 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count);
  */
 void M3U_freeDiscs(M3U_Disc** discs, int count);
 
-#endif // __M3U_PARSER_H__
+#endif // MINUI_M3U_H

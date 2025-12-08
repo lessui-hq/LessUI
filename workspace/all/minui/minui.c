@@ -46,8 +46,10 @@
 #include "directory_index.h"
 #include "minui_entry.h"
 #include "minui_launcher.h"
+#include "minui_m3u.h"
+#include "minui_map.h"
 #include "minui_state.h"
-#include "str_compare.h"
+#include "minui_str_compare.h"
 #include "utils.h"
 
 ///////////////////////////////
@@ -441,36 +443,9 @@ static void Directory_index(Directory* self) {
 	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || is_collection; // not alphabetized
 
 	// Load map.txt for name aliasing if present
-	Hash* map = NULL;
 	char map_path[256];
 	sprintf(map_path, "%s/map.txt", is_collection ? COLLECTIONS_PATH : self->path);
-	if (exists(map_path)) {
-		FILE* file = fopen(map_path, "r");
-		if (file) {
-			map = Hash_new();
-			if (!map) {
-				fclose(file);
-				return;
-			}
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
-
-				// Parse "filename\tdisplay name" format
-				char* tmp = strchr(line, '\t');
-				if (tmp) {
-					tmp[0] = '\0';
-					char* key = line;
-					char* value = tmp + 1;
-					Hash_set(map, key, value);
-				}
-			}
-			fclose(file);
-		}
-	}
+	Hash* map = Map_load(map_path);
 
 	// Use DirectoryIndex module for aliasing, filtering, duplicate detection, and alpha index
 	Array* indexed = DirectoryIndex_index(self->entries, self->alphas, map, skip_index);
@@ -1085,37 +1060,12 @@ static Array* getRoot(void) {
 		closedir(dh);
 	}
 
-	// copied/modded from Directory_index
-	// we don't support hidden remaps here
+	// Apply aliases from Roms/map.txt (we don't support hidden remaps here)
 	char map_path[256];
 	sprintf(map_path, "%s/map.txt", ROMS_PATH);
-	if (entries->count > 0 && exists(map_path)) {
-		FILE* file = fopen(map_path, "r");
-		if (file) {
-			Hash* map = Hash_new();
-			if (!map) {
-				fclose(file);
-				EntryArray_free(entries);
-				Array_free(root);
-				return root;
-			}
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
-
-				char* tmp = strchr(line, '\t');
-				if (tmp) {
-					tmp[0] = '\0';
-					char* key = line;
-					char* value = tmp + 1;
-					Hash_set(map, key, value);
-				}
-			}
-			fclose(file);
-
+	if (entries->count > 0) {
+		Hash* map = Map_load(map_path);
+		if (map) {
 			int resort = 0;
 			for (int i = 0; i < entries->count; i++) {
 				Entry* entry = entries->items[i];
@@ -1253,79 +1203,25 @@ static Array* getCollection(char* path) {
 static Array* getDiscs(char* path) {
 	Array* entries = Array_new();
 
-	char base_path[256];
-	strcpy(base_path, path);
-	char* tmp = strrchr(base_path, '/') + 1;
-	tmp[0] = '\0';
-
-	FILE* file = fopen(path, "r");
-	if (file) {
-		char line[256];
-		int disc = 0;
-		while (fgets(line, 256, file) != NULL) {
-			normalizeNewline(line);
-			trimTrailingNewlines(line);
-			if (strlen(line) == 0)
-				continue; // skip empty lines
-
-			char disc_path[MAX_PATH];
-			snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
-
-			if (exists(disc_path)) {
-				disc += 1;
-				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
-				if (!entry)
-					continue;
-				char name[24];
-				snprintf(name, sizeof(name), "Disc %i", disc);
-				if (!Entry_setName(entry, name)) {
-					Entry_free(entry);
-					continue;
-				}
-				Array_push(entries, entry);
+	int disc_count = 0;
+	M3U_Disc** discs = M3U_getAllDiscs(path, &disc_count);
+	if (discs) {
+		for (int i = 0; i < disc_count; i++) {
+			Entry* entry = Entry_new(discs[i]->path, ENTRY_ROM);
+			if (!entry)
+				continue;
+			if (!Entry_setName(entry, discs[i]->name)) {
+				Entry_free(entry);
+				continue;
 			}
+			Array_push(entries, entry);
 		}
-		fclose(file);
+		M3U_freeDiscs(discs, disc_count);
 	}
 	return entries;
 }
 
-/**
- * Gets the first disc from an .m3u playlist.
- *
- * Used when auto-launching a multi-disc game.
- *
- * @param m3u_path Full path to .m3u file
- * @param disc_path Output buffer for first disc path
- * @return 1 if first disc found, 0 otherwise
- */
-static int getFirstDisc(char* m3u_path, char* disc_path) {
-	int found = 0;
-
-	char base_path[256];
-	strcpy(base_path, m3u_path);
-	char* tmp = strrchr(base_path, '/') + 1;
-	tmp[0] = '\0';
-
-	FILE* file = fopen(m3u_path, "r");
-	if (file) {
-		char line[256];
-		while (fgets(line, 256, file) != NULL) {
-			normalizeNewline(line);
-			trimTrailingNewlines(line);
-			if (strlen(line) == 0)
-				continue; // skip empty lines
-
-			sprintf(disc_path, "%s%s", base_path, line);
-
-			if (exists(disc_path))
-				found = 1;
-			break;
-		}
-		fclose(file);
-	}
-	return found;
-}
+// getFirstDisc is now provided by minui_m3u.c as M3U_M3U_getFirstDisc()
 
 static void addEntries(Array* entries, char* path) {
 	DIR* dh = opendir(path);
@@ -1585,7 +1481,7 @@ static void openRom(char* path, char* last) {
 	strcpy(recent_path, has_m3u ? m3u_path : sd_path);
 
 	if (has_m3u && suffixMatch(".m3u", sd_path)) {
-		getFirstDisc(m3u_path, sd_path);
+		M3U_getFirstDisc(m3u_path, sd_path);
 	}
 
 	char emu_name[MAX_PATH];
@@ -1667,7 +1563,7 @@ static void openDirectory(char* path, int auto_launch) {
 	strcpy(tmp, "m3u"); // replace with m3u
 	if (exists(m3u_path) && auto_launch) {
 		auto_path[0] = '\0';
-		if (getFirstDisc(m3u_path, auto_path)) {
+		if (M3U_getFirstDisc(m3u_path, auto_path)) {
 			openRom(auto_path, path);
 			return;
 		}

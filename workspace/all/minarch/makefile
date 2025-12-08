@@ -20,12 +20,12 @@ SDL?=SDL
 ###########################################################
 
 TARGET = minarch
-INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../../$(PLATFORM)/platform/
+INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../minui/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
-         ../common/gfx_text.c ../common/minui_file_utils.c ../common/platform_variant.c \
-         ../common/minarch_zip.c ../common/minarch_memory.c ../common/minarch_state.c \
-         ../common/minarch_paths.c ../common/minarch_cpu.c ../common/minarch_input.c \
+         ../common/gfx_text.c ../minui/minui_file_utils.c ../common/platform_variant.c \
+         minarch_zip.c minarch_memory.c minarch_state.c \
+         minarch_paths.c minarch_cpu.c minarch_input.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
@@ -37,7 +37,7 @@ SOURCE += ../common/render_sdl2.c ../common/effect_utils.c
 else
 SOURCE += ../common/effect_surface.c
 endif
-HEADERS = $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
+HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../minui/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS   = $(ARCH) -fomit-frame-pointer

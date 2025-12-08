@@ -12,7 +12,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_paths.h"
+#include "minarch_paths.h"
 
 #include <string.h>
 

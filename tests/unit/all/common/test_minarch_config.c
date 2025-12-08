@@ -10,7 +10,7 @@
  */
 
 #include "../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_config.h"
+#include "minarch_config.h"
 #include <string.h>
 
 void setUp(void) {

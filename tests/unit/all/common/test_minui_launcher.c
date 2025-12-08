@@ -13,7 +13,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minui_launcher.h"
+#include "minui_launcher.h"
 
 #include <stdio.h>
 #include <string.h>

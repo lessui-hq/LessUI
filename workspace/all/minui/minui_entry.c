@@ -5,7 +5,7 @@
  */
 
 #include "minui_entry.h"
-#include "str_compare.h"
+#include "minui_str_compare.h"
 #include "utils.h"
 #include <stdlib.h>
 #include <string.h>

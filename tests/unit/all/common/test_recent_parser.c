@@ -17,7 +17,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/recent_file.h"
+#include "recent_file.h"
 
 #include <string.h>
 

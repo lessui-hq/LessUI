@@ -8,7 +8,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_input.h"
+#include "minarch_input.h"
 
 #include <string.h>
 

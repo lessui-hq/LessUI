@@ -23,9 +23,10 @@ TARGET = minui
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
-         ../common/gfx_text.c ../common/str_compare.c ../common/platform_variant.c \
-         ../common/minui_entry.c ../common/minui_launcher.c ../common/directory_index.c \
-         ../common/minui_state.c ../../$(PLATFORM)/platform/platform.c
+         ../common/gfx_text.c ../common/platform_variant.c \
+         minui_entry.c minui_launcher.c directory_index.c minui_str_compare.c \
+         minui_state.c minui_m3u.c minui_map.c \
+         ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
 SOURCE += ../common/effect_system.c ../common/render_common.c
@@ -36,7 +37,7 @@ SOURCE += ../common/render_sdl2.c ../common/effect_utils.c
 else
 SOURCE += ../common/effect_surface.c
 endif
-HEADERS = $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
+HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS   = $(ARCH) -fomit-frame-pointer

@@ -13,7 +13,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_cpu.h"
+#include "minarch_cpu.h"
 
 #include <string.h>
 

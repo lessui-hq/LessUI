@@ -15,12 +15,12 @@
 #include <string.h>
 
 #include "../../workspace/all/common/binary_file_utils.h"
-#include "../../workspace/all/common/collection_parser.h"
-#include "../../workspace/all/common/m3u_parser.h"
-#include "../../workspace/all/common/map_parser.h"
-#include "../../workspace/all/common/minarch_paths.h"
-#include "../../workspace/all/common/minui_file_utils.h"
-#include "../../workspace/all/common/recent_file.h"
+#include "collection_parser.h"
+#include "minui_m3u.h"
+#include "minui_map.h"
+#include "minarch_paths.h"
+#include "minui_file_utils.h"
+#include "recent_file.h"
 #include "../support/platform.h"
 #include "../support/unity/unity.h"
 #include "integration_support.h"

@@ -293,7 +293,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 			state->panic_cooldown--;
 		}
 
-		if (util > (unsigned)config->util_high) {
+		if (util > config->util_high) {
 			// Need more performance
 			state->high_util_windows++;
 			state->low_util_windows = 0;
@@ -319,7 +319,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 					result->new_index = new_idx;
 				}
 			}
-		} else if (util < (unsigned)config->util_low) {
+		} else if (util < config->util_low) {
 			// Can reduce power
 			state->low_util_windows++;
 			state->high_util_windows = 0;
@@ -361,10 +361,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 		}
 	} else {
 		// Fallback mode: 3-level scaling
-		if (util > (unsigned)config->util_high) {
+		if (util > config->util_high) {
 			state->high_util_windows++;
 			state->low_util_windows = 0;
-		} else if (util < (unsigned)config->util_low) {
+		} else if (util < config->util_low) {
 			state->low_util_windows++;
 			state->high_util_windows = 0;
 		} else {

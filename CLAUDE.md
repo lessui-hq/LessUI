@@ -20,9 +20,9 @@ LessUI uses a **platform abstraction layer** to support 15+ different handheld d
 ```
 workspace/
 ├── all/                    # Platform-independent code (the core)
-│   ├── common/            # Utilities (utils.c, api.c)
-│   ├── minui/             # Launcher UI (1,704 lines)
-│   ├── minarch/           # Libretro frontend (4,830 lines)
+│   ├── common/            # Shared utilities (utils.c, api.c, collections.c)
+│   ├── minui/             # Launcher + modules (minui.c, minui_*.c)
+│   ├── minarch/           # Emulator frontend + modules (minarch.c, minarch_*.c)
 │   ├── clock/             # Clock app
 │   ├── minput/            # Input configuration
 │   └── say/               # Text-to-speech wrapper
@@ -400,15 +400,23 @@ See `.clang-format` for complete style definition.
 | Libretro frontend | `workspace/all/minarch/minarch.c` |
 | Utility functions | `workspace/all/common/utils.c` |
 | Platform API | `workspace/all/common/api.c` |
-| MinArch utilities | `workspace/all/common/minarch_utils.c` |
-| MinArch config utilities | `workspace/all/common/minarch_config.c` |
-| MinArch option management | `workspace/all/common/minarch_options.c` |
-| MinArch ZIP extraction | `workspace/all/common/minarch_zip.c` |
-| MinArch memory persistence | `workspace/all/common/minarch_memory.c` |
-| MinArch save states | `workspace/all/common/minarch_state.c` |
-| MinUI Entry type | `workspace/all/common/minui_entry.c` |
-| MinUI launcher commands | `workspace/all/common/minui_launcher.c` |
-| Directory indexing | `workspace/all/common/directory_index.c` |
+| MinArch utilities | `workspace/all/minarch/minarch_utils.c` |
+| MinArch config utilities | `workspace/all/minarch/minarch_config.c` |
+| MinArch option management | `workspace/all/minarch/minarch_options.c` |
+| MinArch ZIP extraction | `workspace/all/minarch/minarch_zip.c` |
+| MinArch memory persistence | `workspace/all/minarch/minarch_memory.c` |
+| MinArch save states | `workspace/all/minarch/minarch_state.c` |
+| MinArch CPU scaling | `workspace/all/minarch/minarch_cpu.c` |
+| MinArch input handling | `workspace/all/minarch/minarch_input.c` |
+| MinArch save paths | `workspace/all/minarch/minarch_paths.c` |
+| MinUI Entry type | `workspace/all/minui/minui_entry.c` |
+| MinUI launcher commands | `workspace/all/minui/minui_launcher.c` |
+| MinUI state persistence | `workspace/all/minui/minui_state.c` |
+| MinUI file utilities | `workspace/all/minui/minui_file_utils.c` |
+| MinUI misc utilities | `workspace/all/minui/minui_utils.c` |
+| Directory indexing | `workspace/all/minui/directory_index.c` |
+| Collection parsing | `workspace/all/minui/collection_parser.c` |
+| Recent games | `workspace/all/minui/recent_file.c` |
 | Effect system | `workspace/all/common/effect_system.c` |
 | Platform variant detection | `workspace/all/common/platform_variant.c` |
 | Platform definitions | `workspace/<platform>/platform/platform.h` |
@@ -433,7 +441,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 784 tests across 30 test suites** ✅
+**Total: 877 tests across 32 test suites** ✅
 
 ### Extracted and Tested Modules
 

@@ -12,7 +12,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_state.h"
+#include "minarch_state.h"
 
 #include <stdio.h>
 #include <stdlib.h>

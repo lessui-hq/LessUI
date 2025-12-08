@@ -16,7 +16,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/m3u_parser.h"
+#include "minui_m3u.h"
 
 #include <string.h>
 

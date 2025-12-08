@@ -1,12 +1,12 @@
 /**
- * str_compare.h - String comparison utilities
+ * minui_str_compare.h - String comparison utilities for MinUI
  *
  * Provides natural sorting (human-friendly alphanumeric ordering)
- * and other string comparison functions.
+ * and other string comparison functions used by the launcher.
  */
 
-#ifndef STR_COMPARE_H
-#define STR_COMPARE_H
+#ifndef MINUI_STR_COMPARE_H
+#define MINUI_STR_COMPARE_H
 
 /**
  * Skips leading article ("The ", "A ", "An ") for sorting purposes.
@@ -41,4 +41,4 @@ const char* skip_article(const char* s);
  */
 int strnatcasecmp(const char* s1, const char* s2);
 
-#endif // STR_COMPARE_H
+#endif // MINUI_STR_COMPARE_H

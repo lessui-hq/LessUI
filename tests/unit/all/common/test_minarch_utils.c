@@ -13,7 +13,7 @@
  */
 
 #include "../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_utils.h"
+#include "minarch_utils.h"
 #include <string.h>
 
 void setUp(void) {

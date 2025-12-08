@@ -8,7 +8,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minui_state.h"
+#include "minui_state.h"
 
 #include <string.h>
 

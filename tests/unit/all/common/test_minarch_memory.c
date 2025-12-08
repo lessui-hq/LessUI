@@ -11,7 +11,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_memory.h"
+#include "minarch_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>

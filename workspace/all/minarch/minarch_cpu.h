@@ -68,13 +68,13 @@ typedef enum {
  */
 typedef struct {
 	int window_frames; // Frames per monitoring window
-	int util_high; // High utilization threshold (%)
-	int util_low; // Low utilization threshold (%)
+	unsigned int util_high; // High utilization threshold (%)
+	unsigned int util_low; // Low utilization threshold (%)
 	int boost_windows; // Consecutive windows before boost
 	int reduce_windows; // Consecutive windows before reduce
 	int startup_grace; // Grace period frames at startup
 	int min_freq_khz; // Minimum frequency to consider (kHz)
-	int target_util; // Target utilization after frequency change
+	unsigned int target_util; // Target utilization after frequency change
 	int max_step; // Maximum frequency index steps per change
 } AutoCPUConfig;
 

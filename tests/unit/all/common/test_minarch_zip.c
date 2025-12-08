@@ -10,7 +10,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_zip.h"
+#include "minarch_zip.h"
 
 #include <stdio.h>
 #include <stdlib.h>

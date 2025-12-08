@@ -14,7 +14,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/minui_file_utils.h"
+#include "minui_file_utils.h"
 
 #include <string.h>
 

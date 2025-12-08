@@ -1,10 +1,10 @@
 /**
- * str_compare.c - String comparison utilities
+ * minui_str_compare.c - String comparison utilities for MinUI
  *
  * Provides natural sorting (human-friendly alphanumeric ordering).
  */
 
-#include "str_compare.h"
+#include "minui_str_compare.h"
 #include <ctype.h>
 #include <string.h>
 

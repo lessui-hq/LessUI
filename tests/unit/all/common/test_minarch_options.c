@@ -14,7 +14,7 @@
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()
 
 #include "../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minarch_options.h"
+#include "minarch_options.h"
 #include <stdlib.h>
 #include <string.h>
 

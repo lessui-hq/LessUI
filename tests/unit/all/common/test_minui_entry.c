@@ -15,7 +15,7 @@
 #define _POSIX_C_SOURCE 200809L // Required for strdup()
 
 #include "../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minui_entry.h"
+#include "minui_entry.h"
 #include <stdlib.h>
 #include <string.h>
 

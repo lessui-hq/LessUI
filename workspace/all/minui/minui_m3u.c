@@ -1,12 +1,10 @@
 /**
- * m3u_parser.c - M3U playlist parser for multi-disc games
- *
- * Extracted from minui.c for testability.
+ * minui_m3u.c - M3U playlist parser for multi-disc games
  */
 
 #define _POSIX_C_SOURCE 200809L // Required for strdup()
 
-#include "m3u_parser.h"
+#include "minui_m3u.h"
 #include "defines.h"
 #include "log.h"
 #include "utils.h"
