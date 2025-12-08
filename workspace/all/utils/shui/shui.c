@@ -577,6 +577,9 @@ static void restore_output(void) {
 static void daemon_init(void) {
 	if (screen == NULL) {
 		screen = GFX_init(MODE_MAIN);
+		if (screen == NULL) {
+			return;
+		}
 	}
 	PAD_init();
 	PWR_init();

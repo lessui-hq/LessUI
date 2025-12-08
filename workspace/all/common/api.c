@@ -476,6 +476,9 @@ SDL_Surface* GFX_init(int mode) {
 	PLAT_initLid();
 
 	gfx.screen = PLAT_initVideo();
+	if (gfx.screen == NULL) {
+		return NULL;
+	}
 	gfx.mode = mode;
 
 	// Initialize DP scaling system

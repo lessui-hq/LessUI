@@ -7050,6 +7050,10 @@ int main(int argc, char* argv[]) {
 	LOG_info("rom_path: %s", rom_path);
 
 	screen = GFX_init(MODE_MENU);
+	if (screen == NULL) {
+		LOG_error("Failed to initialize video");
+		return EXIT_FAILURE;
+	}
 	PAD_init();
 	DEVICE_WIDTH = screen->w;
 	DEVICE_HEIGHT = screen->h;

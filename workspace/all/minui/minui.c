@@ -2350,6 +2350,10 @@ int main(int argc, char* argv[]) {
 
 	LOG_debug("GFX_init");
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
+	if (screen == NULL) {
+		LOG_error("Failed to initialize video");
+		return EXIT_FAILURE;
+	}
 
 	LOG_debug("PAD_init");
 	PAD_init();
