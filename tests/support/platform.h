@@ -20,6 +20,14 @@
 #define FIXED_HEIGHT 480
 #define FIXED_PITCH 640
 #define FIXED_SIZE 307200
+#define SCREEN_DIAGONAL 3.5f
+
+// HDMI support (for platform_variant.c)
+#define HAS_HDMI 0
+
+// NEON support (for platform_variant.c)
+// Commented out for test builds
+// #define HAS_NEON
 
 // Button definitions (required by defines.h)
 #define BUTTON_NA -1

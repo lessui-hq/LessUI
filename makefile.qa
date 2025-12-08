@@ -188,7 +188,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -297,6 +297,41 @@ tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/commo
 tests/str_compare_test: tests/unit/all/common/test_str_compare.c workspace/all/common/str_compare.c $(TEST_UNITY)
 	@echo "Building string comparison tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build effect system tests (includes effect_system.c directly to avoid SDL deps)
+tests/effect_system_test: tests/unit/all/common/test_effect_system.c $(TEST_UNITY)
+	@echo "Building effect system tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch utility tests (pure functions extracted from minarch.c)
+tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/common/minarch_utils.c $(TEST_UNITY)
+	@echo "Building minarch utility tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch configuration tests (config path and option utilities)
+tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/common/minarch_config.c $(TEST_UNITY)
+	@echo "Building minarch configuration tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch option management tests (option list search and manipulation)
+tests/minarch_options_test: tests/unit/all/common/test_minarch_options.c workspace/all/common/minarch_options.c $(TEST_UNITY)
+	@echo "Building minarch option management tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build platform variant tests (platform detection and device info)
+tests/platform_variant_test: tests/unit/all/common/test_platform_variant.c workspace/all/common/platform_variant.c $(TEST_UNITY)
+	@echo "Building platform variant tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build MinUI entry type tests (Entry struct and array operations)
+tests/minui_entry_test: tests/unit/all/common/test_minui_entry.c workspace/all/common/minui_entry.c workspace/all/common/collections.c workspace/all/common/str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building MinUI entry tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build directory indexing tests (alias application, filtering, duplicate detection)
+tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/common/directory_index.c workspace/all/common/minui_entry.c workspace/all/common/collections.c workspace/all/common/str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building directory indexing tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \

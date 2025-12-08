@@ -400,6 +400,13 @@ See `.clang-format` for complete style definition.
 | Libretro frontend | `workspace/all/minarch/minarch.c` |
 | Utility functions | `workspace/all/common/utils.c` |
 | Platform API | `workspace/all/common/api.c` |
+| MinArch utilities | `workspace/all/common/minarch_utils.c` |
+| MinArch config utilities | `workspace/all/common/minarch_config.c` |
+| MinArch option management | `workspace/all/common/minarch_options.c` |
+| MinUI Entry type | `workspace/all/common/minui_entry.c` |
+| Directory indexing | `workspace/all/common/directory_index.c` |
+| Effect system | `workspace/all/common/effect_system.c` |
+| Platform variant detection | `workspace/all/common/platform_variant.c` |
 | Platform definitions | `workspace/<platform>/platform/platform.h` |
 | Common definitions | `workspace/all/common/defines.h` |
 | Tool paks | `workspace/all/paks/Tools/` |
@@ -407,7 +414,8 @@ See `.clang-format` for complete style definition.
 | MinUI pak templates | `workspace/all/paks/MinUI/` |
 | Emulator pak generation | `scripts/generate-paks.sh` |
 | MinUI pak generation | `scripts/generate-minui-pak.sh` |
-| Test suite | `tests/unit/all/common/test_utils.c` |
+| Test suite | `tests/unit/all/common/` |
+| Test plan | `docs/testing-plan.md` |
 | Build orchestration | `Makefile` (host-side) |
 | QA tools | `makefile.qa` |
 
@@ -421,7 +429,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 342 tests across 15 test suites** ✅
+**Total: 707 tests across 26 test suites** ✅
 
 ### Extracted and Tested Modules
 
@@ -429,19 +437,29 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 
 | Module | Tests | Extracted From | Purpose |
 |--------|-------|----------------|---------|
-| utils.c (split into 6 modules) | 100 | (original) | String, file, name, date, math utilities |
-| pad.c | 21 | api.c | Button state machine, analog input |
-| collections.c | 30 | minui.c | Array, Hash data structures |
+| utils.c (split into 6 modules) | 123 | (original) | String, file, name, date, math utilities |
+| effect_system.c | 43 | platform files | Visual effect state management |
+| minarch_utils.c | 41 | minarch.c | Core name extraction, string utilities |
+| nointro_parser.c | 39 | (original) | No-Intro ROM naming conventions |
+| directory_index.c | 38 | minui.c | Alias application, duplicate detection, alpha indexing |
+| minarch_options.c | 36 | minarch.c | Option list search and manipulation |
+| pad.c | 36 | api.c | Button state machine, analog input |
 | gfx_text.c | 32 | api.c | Text truncation, wrapping, sizing |
-| audio_resampler.c | 18 | api.c | Bresenham sample rate conversion |
-| minarch_paths.c | 16 | minarch.c | Save file path generation |
-| minui_utils.c | 17 | minui.c | Index char, console dir detection |
-| m3u_parser.c | 20 | minui.c | M3U playlist parsing |
-| minui_file_utils.c | 25 | minui.c | File/dir checking utilities |
+| collections.c | 30 | minui.c | Array, Hash data structures |
+| str_compare.c | 28 | (original) | Natural string sorting |
+| minui_entry.c | 25 | minui.c | Entry type, array operations, IntArray |
+| minui_file_utils.c | 18 | minui.c | File/dir checking utilities |
 | map_parser.c | 22 | minui.c/minarch.c | ROM display name aliasing |
-| collection_parser.c | 11 | minui.c | Custom ROM list parsing |
+| m3u_parser.c | 20 | minui.c | M3U playlist parsing |
+| audio_resampler.c | 20 | api.c | Sample rate conversion |
+| ui_layout.c | 20 | api.c | UI layout calculations (DP system) |
+| minarch_config.c | 19 | minarch.c | Config path generation, option mapping |
 | recent_file.c | 18 | minui.c | Recent games read/write |
+| minui_utils.c | 17 | minui.c | Index char, console dir detection |
+| minarch_paths.c | 16 | minarch.c | Save file path generation |
+| platform_variant.c | 14 | (original) | Platform variant detection |
 | binary_file_utils.c | 12 | minarch.c | Binary file read/write |
+| collection_parser.c | 11 | minui.c | Custom ROM list parsing |
 
 ### Testing Technologies
 

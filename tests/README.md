@@ -2,12 +2,12 @@
 
 This directory contains the test suite for LessUI, organized to mirror the source code structure.
 
-**Current Status: 364 tests, all passing** ✅
+**Current Status: 707 tests, all passing** ✅
 
 ## Quick Start
 
 ```bash
-make test   # Run all 364 tests in Docker (recommended)
+make test   # Run all 707 tests in Docker (recommended)
 ```
 
 Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across development environments and catches platform-specific issues.
@@ -48,7 +48,14 @@ tests/
 │           ├── test_recent_file.c        # Recent games parsing - 13 tests
 │           ├── test_recent_writer.c      # Recent games writing - 5 tests
 │           ├── test_directory_utils.c    # Directory ops (→ minui_file_utils) - 7 tests
-│           └── test_binary_file_utils.c  # Binary file I/O - 12 tests
+│           ├── test_binary_file_utils.c  # Binary file I/O - 12 tests
+│           ├── test_effect_system.c      # Visual effect state - 43 tests
+│           ├── test_minarch_utils.c      # MinArch utilities - 41 tests
+│           ├── test_minarch_config.c     # Config path generation - 19 tests
+│           ├── test_minarch_options.c    # Option management - 36 tests
+│           ├── test_platform_variant.c   # Platform detection - 14 tests
+│           ├── test_minui_entry.c        # Entry type, sorting - 25 tests
+│           └── test_directory_index.c    # Directory indexing - 38 tests
 ├── integration/                    # Integration tests (end-to-end tests)
 ├── fixtures/                       # Test data, sample ROMs, configs
 ├── support/                        # Test infrastructure
@@ -582,8 +589,8 @@ void test_getEmuName_with_parens(void) {
 
 ## Test Summary
 
-**Total: 364 tests across 16 test suites**
-- **342 unit tests** - Testing individual modules in isolation
+**Total: 644 tests across 25 test suites**
+- **622 unit tests** - Testing individual modules in isolation
 - **22 integration tests** - Testing modules working together with real file I/O
 
 ### Extracted Modules (Testable Logic)
@@ -592,20 +599,28 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 | Module | Lines | Tests | Extracted From | Key Functions |
 |--------|-------|-------|----------------|---------------|
-| utils.c | 703 | 100 | (original) | String, file, name, date, math utilities |
-| pad.c | 183 | 21 | api.c | Button state machine, analog input |
-| collections.c | 193 | 30 | minui.c | Array, Hash data structures |
+| utils.c | 703 | 123 | (original) | String, file, name, date, math utilities |
+| ui_layout.c | ~100 | 20 | api.c | UI layout calculations (DP scaling, pill heights) |
+| str_compare.c | 119 | 28 | (original) | Natural string sorting, article handling |
+| nointro_parser.c | 266 | 39 | (original) | No-Intro ROM naming conventions |
+| effect_system.c | 106 | 43 | platform files | Visual effect state management |
+| minarch_utils.c | ~120 | 41 | minarch.c | Core name extraction, option search, string utils |
+| minarch_config.c | ~50 | 19 | minarch.c | Config path generation, option name mapping |
+| minarch_options.c | ~70 | 36 | minarch.c | Option list search and manipulation |
+| pad.c | 183 | 36 | api.c | Button state machine, analog input |
 | gfx_text.c | 170 | 32 | api.c | Text truncation, wrapping, sizing |
-| audio_resampler.c | 90 | 18 | api.c | Bresenham sample rate conversion |
-| minarch_paths.c | 77 | 16 | minarch.c | Save file path generation |
-| minui_utils.c | 48 | 17 | minui.c | Index char, console dir detection |
-| m3u_parser.c | 132 | 20 | minui.c | M3U playlist parsing (getFirstDisc + getAllDiscs) |
-| minui_file_utils.c | 130 | 25 | minui.c | File/dir checking (hasEmu, hasCue, hasM3u, hasNonHiddenFiles) |
+| collections.c | 193 | 30 | minui.c | Array, Hash data structures |
+| minui_file_utils.c | 130 | 25 | minui.c | File/dir checking (hasEmu, hasCue, hasM3u) |
 | map_parser.c | 64 | 22 | minui.c/minarch.c | ROM display name aliasing (map.txt) |
-| collection_parser.c | 70 | 11 | minui.c | Custom ROM list parsing (.txt files) |
-| recent_file.c | 95 | 18 | minui.c | Recent games read/write (parse + save) |
-| binary_file_utils.c | 42 | 12 | minarch.c | Binary file read/write (fread/fwrite) |
-| **Total** | **1,997** | **342** | | |
+| m3u_parser.c | 132 | 20 | minui.c | M3U playlist parsing |
+| audio_resampler.c | 162 | 20 | api.c | Sample rate conversion |
+| recent_file.c | 95 | 18 | minui.c | Recent games read/write |
+| minui_utils.c | 48 | 17 | minui.c | Index char, console dir detection |
+| minarch_paths.c | 77 | 16 | minarch.c | Save file path generation |
+| platform_variant.c | 67 | 14 | (original) | Platform variant detection |
+| binary_file_utils.c | 42 | 12 | minarch.c | Binary file read/write |
+| collection_parser.c | 70 | 11 | minui.c | Custom ROM list parsing |
+| **Total** | **~2,870** | **622** | | |
 
 ### Testing Technologies
 
@@ -870,6 +885,78 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 **Coverage:** Complete coverage of binary file I/O patterns used in minarch.c.
 
 **Note:** Extracted from `minarch.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
+
+### workspace/all/common/effect_system.c - ✅ 43 tests
+**File:** `tests/unit/all/common/test_effect_system.c`
+
+- EFFECT_init() - State initialization
+- EFFECT_setType/setScale/setColor() - Pending state setters
+- EFFECT_applyPending() - Apply pending changes
+- EFFECT_needsUpdate() - Change detection
+- EFFECT_markLive() - Mark as rendered
+- EFFECT_getOpacity() - Opacity calculation (formula: 30 + scale * 20)
+- EFFECT_getPatternScale() - Scale clamping (2-8)
+- EFFECT_getPatternPath() - Pattern file path generation
+- Full workflow integration tests
+
+**Coverage:** Complete coverage of visual effect state management system.
+
+**Note:** Extracted from platform-specific files. Pure state management with no SDL dependencies.
+
+### workspace/all/common/minarch_utils.c - ✅ 41 tests
+**File:** `tests/unit/all/common/test_minarch_utils.c`
+
+- MinArch_getCoreName() - Extract core name from .so filename
+- MinArch_getOptionValueIndex() - Search option value arrays
+- MinArch_findNearestFrequency() - CPU frequency matching algorithm
+- MinArch_replaceString() - In-place string replacement
+- MinArch_escapeSingleQuotes() - Shell quote escaping
+
+**Coverage:** Complete coverage of pure utility functions extracted from minarch.c.
+
+**Note:** Zero external dependencies. Includes shell safety utilities and CPU scaling helpers.
+
+### workspace/all/common/minarch_config.c - ✅ 19 tests
+**File:** `tests/unit/all/common/test_minarch_config.c`
+
+- MinArch_getConfigPath() - Config file path generation with device tags
+- MinArch_getOptionDisplayName() - Option key to display name mapping
+- Game-specific vs default configs
+- Device-specific config paths
+- Edge cases (empty strings, special characters, long paths)
+
+**Coverage:** Complete coverage of config path utilities.
+
+**Note:** Extracted from `minarch.c` Config_getPath() and getOptionNameFromKey().
+
+### workspace/all/common/minarch_options.c - ✅ 36 tests
+**File:** `tests/unit/all/common/test_minarch_options.c`
+
+- MinArch_findOption() - Search option list by key
+- MinArch_getOptionValue() - Get current value string
+- MinArch_setOptionValue() - Set value by string matching
+- MinArch_setOptionRawValue() - Set value by index
+- Change tracking
+- Bounds checking
+- Edge cases (empty lists, NULL handling, invalid values)
+
+**Coverage:** Complete coverage of option list management operations.
+
+**Note:** Extracted from `minarch.c` OptionList_getOption/getOptionValue/setOptionValue functions.
+
+### workspace/all/common/platform_variant.c - ✅ 14 tests
+**File:** `tests/unit/all/common/test_platform_variant.c`
+
+- PLAT_getDeviceName() - Device name formatting
+- PlatformVariant structure field access
+- VARIANT_IS() macro - Variant checking
+- HAS_FEATURE() macro - Feature flag checking
+- DeviceInfo structure
+- Hardware feature flags (NEON, LID, RUMBLE, etc.)
+
+**Coverage:** Complete coverage of platform detection system.
+
+**Note:** Tests the unified platform variant system that supports multi-device platforms.
 
 ## Integration Tests
 
