@@ -74,6 +74,12 @@ static int inputs[INPUT_COUNT];
 void PLAT_initInput(void) {
 	inputs[0] = open("/dev/input/event0", O_RDONLY | O_NONBLOCK | O_CLOEXEC); // power
 	inputs[1] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC); // controller
+
+	if (inputs[0] < 0)
+		LOG_warn("Failed to open power input (event0)\n");
+	if (inputs[1] < 0)
+		LOG_warn("Failed to open controller input (event3)\n");
+
 	Stick_init(); // analog
 }
 
@@ -392,7 +398,7 @@ void PLAT_setCPUSpeed(int speed) {
 
 	char cmd[128];
 	// Set CPU governor to userspace mode with specified cores and frequency
-	sprintf(cmd, "overclock.elf userspace %d %d 384 1080 0", cpu, freq);
+	snprintf(cmd, sizeof(cmd), "overclock.elf userspace %d %d 384 1080 0", cpu, freq);
 	system(cmd);
 }
 
@@ -421,7 +427,7 @@ int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
 int PLAT_setCPUFrequency(int freq_khz) {
 	int freq_mhz = freq_khz / 1000;
 	char cmd[128];
-	sprintf(cmd, "overclock.elf userspace 2 %d 384 1080 0", freq_mhz);
+	snprintf(cmd, sizeof(cmd), "overclock.elf userspace 2 %d 384 1080 0", freq_mhz);
 	int ret = system(cmd);
 	return (ret == 0) ? 0 : -1;
 }

@@ -188,10 +188,12 @@ void SetRawBrightness(int val) { // 0 - 255
 	printf("SetRawBrightness(%i)\n", val); fflush(stdout);
 
     int fd = open("/dev/disp", O_RDWR);
-	if (fd) {
+	if (fd >= 0) {
 	    unsigned long param[4]={0,val,0,0};
 		ioctl(fd, DISP_LCD_SET_BRIGHTNESS, &param);
 		close(fd);
+	} else {
+		fprintf(stderr, "SetRawBrightness: failed to open /dev/disp\n");
 	}
 }
 void SetRawVolume(int val) { // 0-100

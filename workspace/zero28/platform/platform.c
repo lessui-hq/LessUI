@@ -54,6 +54,8 @@ static SDL_Joystick* joystick;
 void PLAT_initInput(void) {
 	SDL_InitSubSystem(SDL_INIT_JOYSTICK);
 	joystick = SDL_JoystickOpen(0);
+	if (!joystick)
+		LOG_warn("Failed to open joystick: %s\n", SDL_GetError());
 }
 
 /**

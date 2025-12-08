@@ -82,6 +82,11 @@ static void ion_alloc(int fd_ion, ion_alloc_info_t* info) {
 	info->fd = ifd.fd;
 	info->padd = (void*)ipd.phys_addr;
 	info->vadd = mmap(0, info->size, PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
+	if (info->vadd == MAP_FAILED) {
+		fprintf(stderr, "ION mmap failed\n");
+		close(info->fd);
+		info->vadd = NULL;
+	}
 }
 
 static void ion_free(int fd_ion, ion_alloc_info_t* info) {
@@ -339,12 +344,31 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.fd_fb = open("/dev/fb0", O_RDWR);
 	vid.fd_ion = open("/dev/ion", O_RDWR);
 	vid.fd_mem = open("/dev/mem", O_RDWR);
+	if (vid.fd_fb < 0 || vid.fd_ion < 0 || vid.fd_mem < 0) {
+		LOG_error("Failed to open device files (fb=%d ion=%d mem=%d)\n", vid.fd_fb, vid.fd_ion,
+		          vid.fd_mem);
+		if (vid.fd_fb >= 0)
+			close(vid.fd_fb);
+		if (vid.fd_ion >= 0)
+			close(vid.fd_ion);
+		if (vid.fd_mem >= 0)
+			close(vid.fd_mem);
+		return NULL;
+	}
+
 	vid.de_mem = mmap(0, DE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, vid.fd_mem, DE);
+	if (vid.de_mem == MAP_FAILED) {
+		LOG_error("Failed to mmap display engine\n");
+		close(vid.fd_mem);
+		close(vid.fd_ion);
+		close(vid.fd_fb);
+		return NULL;
+	}
 
 	ioctl(vid.fd_fb, FBIOGET_FSCREENINFO, &vid.finfo);
 	ioctl(vid.fd_fb, FBIOGET_VSCREENINFO, &vid.vinfo);
 
-	struct owlfb_sync_info sinfo;
+	struct owlfb_sync_info sinfo = {0};
 	sinfo.enabled = 1;
 	sinfo.disp_id = 2;
 	if (ioctl(vid.fd_fb, OWLFB_VSYNC_EVENT_EN, &sinfo) < 0)
@@ -746,7 +770,7 @@ void PLAT_setCPUSpeed(int speed) {
 	}
 
 	char cmd[32];
-	sprintf(cmd, "overclock.elf %d\n", freq);
+	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq);
 	system(cmd);
 }
 
@@ -771,7 +795,7 @@ int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
  */
 int PLAT_setCPUFrequency(int freq_khz) {
 	char cmd[32];
-	sprintf(cmd, "overclock.elf %d\n", freq_khz);
+	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq_khz);
 	int ret = system(cmd);
 	return (ret == 0) ? 0 : -1;
 }

@@ -229,4 +229,4 @@ count_toolchains() {
 	echo "  - Libretro cores: $TOTAL_CORES"
 	echo "  - Other dependencies: $((TOTAL_DEPS - TOTAL_TOOLCHAINS - TOTAL_CORES - 1))"
 	bump
-} | sed 's/\n/ /g'
+}

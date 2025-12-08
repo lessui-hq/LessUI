@@ -107,6 +107,12 @@ void ion_alloc(int ion_fd, ion_alloc_info_t* info) {
 	info->fd = ifd.fd;
 	info->padd = (void*)spd.phys_addr;
 	info->vadd = mmap(0, info->size, PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
+	if (info->vadd == MAP_FAILED) {
+		fprintf(stderr, "ION mmap failed\n");
+		close(info->fd);
+		info->vadd = NULL;
+		return;
+	}
 	fprintf(stderr, "allocated padd: 0x%x vadd: 0x%x size: 0x%x\n", (uintptr_t)info->padd,
 	        (uintptr_t)info->vadd, info->size);
 }
@@ -201,9 +207,30 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.fb_fd = open("/dev/fb0", O_RDWR);
 	vid.ion_fd = open("/dev/ion", O_RDWR);
 	vid.mem_fd = open("/dev/mem", O_RDWR);
+	if (vid.disp_fd < 0 || vid.fb_fd < 0 || vid.ion_fd < 0 || vid.mem_fd < 0) {
+		LOG_error("Failed to open device files (disp=%d fb=%d ion=%d mem=%d)\n", vid.disp_fd,
+		          vid.fb_fd, vid.ion_fd, vid.mem_fd);
+		if (vid.disp_fd >= 0)
+			close(vid.disp_fd);
+		if (vid.fb_fd >= 0)
+			close(vid.fb_fd);
+		if (vid.ion_fd >= 0)
+			close(vid.ion_fd);
+		if (vid.mem_fd >= 0)
+			close(vid.mem_fd);
+		return NULL;
+	}
 
 	vid.mem_map =
 	    mmap(0, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, vid.mem_fd, OVL_V);
+	if (vid.mem_map == MAP_FAILED) {
+		LOG_error("Failed to mmap overlay registers\n");
+		close(vid.mem_fd);
+		close(vid.ion_fd);
+		close(vid.fb_fd);
+		close(vid.disp_fd);
+		return NULL;
+	}
 
 	memset(&vid.fb_config, 0, sizeof(disp_layer_config));
 	memset(&vid.buffer_config, 0, sizeof(disp_layer_config));
@@ -509,8 +536,19 @@ void ADC_init(void) {
 	int addr_offset = LRADC & ~page_mask;
 
 	adc.mem_fd = open("/dev/mem", O_RDWR);
+	if (adc.mem_fd < 0) {
+		LOG_error("Failed to open /dev/mem for ADC\n");
+		return;
+	}
+
 	adc.mem_map =
 	    mmap(0, adc.page_size * 2, PROT_READ | PROT_WRITE, MAP_SHARED, adc.mem_fd, addr_start);
+	if (adc.mem_map == MAP_FAILED) {
+		LOG_error("Failed to mmap ADC registers\n");
+		close(adc.mem_fd);
+		return;
+	}
+
 	adc.adc_addr = adc.mem_map + addr_offset;
 	*(uint32_t*)adc.adc_addr = 0xC0004D;
 }

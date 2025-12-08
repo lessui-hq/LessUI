@@ -137,6 +137,8 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Read model string from environment
 	char* model = getenv("RGXX_MODEL");
+	if (!model)
+		model = "RG35xxPlus"; // Fallback to default
 
 	// Look up device in mapping table
 	const DeviceVariantMap* map = NULL;
