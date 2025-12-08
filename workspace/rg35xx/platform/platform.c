@@ -84,6 +84,7 @@ static void ion_alloc(int fd_ion, ion_alloc_info_t* info) {
 	info->vadd = mmap(0, info->size, PROT_READ | PROT_WRITE, MAP_SHARED, info->fd, 0);
 	if (info->vadd == MAP_FAILED) {
 		fprintf(stderr, "ION mmap failed\n");
+		close(info->fd);
 		info->vadd = NULL;
 	}
 }
@@ -346,12 +347,21 @@ SDL_Surface* PLAT_initVideo(void) {
 	if (vid.fd_fb < 0 || vid.fd_ion < 0 || vid.fd_mem < 0) {
 		LOG_error("Failed to open device files (fb=%d ion=%d mem=%d)\n", vid.fd_fb, vid.fd_ion,
 		          vid.fd_mem);
+		if (vid.fd_fb >= 0)
+			close(vid.fd_fb);
+		if (vid.fd_ion >= 0)
+			close(vid.fd_ion);
+		if (vid.fd_mem >= 0)
+			close(vid.fd_mem);
 		return NULL;
 	}
 
 	vid.de_mem = mmap(0, DE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, vid.fd_mem, DE);
 	if (vid.de_mem == MAP_FAILED) {
 		LOG_error("Failed to mmap display engine\n");
+		close(vid.fd_mem);
+		close(vid.fd_ion);
+		close(vid.fd_fb);
 		return NULL;
 	}
 
