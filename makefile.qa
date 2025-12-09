@@ -264,7 +264,7 @@ tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c works
 # Build map.txt parser tests (uses file mocking with GCC --wrap, Docker-only)
 tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/minui/minui_map.c workspace/all/common/collections.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building map.txt parser tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build collection parser tests (uses file mocking with GCC --wrap, Docker-only)
 tests/collection_parser_test: tests/unit/all/common/test_collection_parser.c workspace/all/minui/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
@@ -593,7 +593,15 @@ docker-build:
 docker-test: docker-build
 	@echo "Running tests in Docker container (Ubuntu 24.04)..."
 	@echo ""
-	$(DEV_RUN) make -f makefile.qa clean-tests test-native
+	$(DEV_RUN) ./scripts/run-tests.sh
+
+# Run tests with verbose output (shows all test output)
+docker-test-verbose: docker-build
+	$(DEV_RUN) ./scripts/run-tests.sh -v
+
+# Run tests with quiet output (summary only)
+docker-test-quiet: docker-build
+	$(DEV_RUN) ./scripts/run-tests.sh -q
 
 docker-lint: docker-build
 	@echo "Running linting in Docker container (Ubuntu 24.04)..."
