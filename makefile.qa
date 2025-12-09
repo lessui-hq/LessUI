@@ -191,7 +191,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common 
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/render_common_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -462,6 +462,13 @@ tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
 	workspace/all/minui/minui_context.c \
 	$(TEST_UNITY)
 	@echo "Building MinUI context tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build render common tests (pure math functions, no dependencies)
+tests/render_common_test: tests/unit/all/common/test_render_common.c \
+	workspace/all/common/render_common.c \
+	$(TEST_UNITY)
+	@echo "Building render common tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
