@@ -141,7 +141,7 @@ void test_writeState_writes_to_file(void) {
 		mock_state_buffer[i] = (uint8_t)(i & 0xFF);
 	}
 
-	MinArchStateResult result = MinArch_writeState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_write(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
@@ -155,7 +155,7 @@ void test_writeState_writes_to_file(void) {
 void test_writeState_returns_no_support_when_size_zero(void) {
 	mock_state_size = 0;
 
-	MinArchStateResult result = MinArch_writeState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_write(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_NO_SUPPORT, result);
 }
@@ -163,7 +163,7 @@ void test_writeState_returns_no_support_when_size_zero(void) {
 void test_writeState_returns_serialize_error_on_fail(void) {
 	serialize_fail = 1;
 
-	MinArchStateResult result = MinArch_writeState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_write(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_SERIALIZE_ERROR, result);
 }
@@ -172,7 +172,7 @@ void test_writeState_writes_small_state(void) {
 	mock_state_size = 64;
 	memset(mock_state_buffer, 0xCD, mock_state_size);
 
-	MinArchStateResult result = MinArch_writeState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_write(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
@@ -194,7 +194,7 @@ void test_readState_loads_from_file(void) {
 	}
 	write_test_file(test_path, test_data, sizeof(test_data));
 
-	MinArchStateResult result = MinArch_readState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_read(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 	TEST_ASSERT_EQUAL_MEMORY(test_data, mock_state_buffer, mock_state_size);
@@ -202,7 +202,7 @@ void test_readState_loads_from_file(void) {
 }
 
 void test_readState_returns_file_not_found(void) {
-	MinArchStateResult result = MinArch_readState("/nonexistent/path.st0", &test_core);
+	MinArchStateResult result = MinArchState_read("/nonexistent/path.st0", &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_FILE_NOT_FOUND, result);
 }
@@ -210,7 +210,7 @@ void test_readState_returns_file_not_found(void) {
 void test_readState_returns_no_support_when_size_zero(void) {
 	mock_state_size = 0;
 
-	MinArchStateResult result = MinArch_readState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_read(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_NO_SUPPORT, result);
 }
@@ -223,7 +223,7 @@ void test_readState_returns_serialize_error_on_fail(void) {
 
 	unserialize_fail = 1;
 
-	MinArchStateResult result = MinArch_readState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_read(test_path, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_SERIALIZE_ERROR, result);
 }
@@ -238,7 +238,7 @@ void test_autoSave_saves_to_slot_9(void) {
 		mock_state_buffer[i] = (uint8_t)(i ^ 0x55);
 	}
 
-	MinArchStateResult result = MinArch_autoSave(test_dir, "TestGame", &test_core);
+	MinArchStateResult result = MinArchState_autoSave(test_dir, "TestGame", &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
@@ -257,7 +257,7 @@ void test_autoSave_uses_correct_slot_number(void) {
 	mock_state_size = 32;
 	memset(mock_state_buffer, 0xBB, mock_state_size);
 
-	MinArchStateResult result = MinArch_autoSave(test_dir, "Game", &test_core);
+	MinArchStateResult result = MinArchState_autoSave(test_dir, "Game", &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 	// Verify the auto-resume slot is 9
@@ -286,7 +286,7 @@ void test_resumeState_loads_from_specified_slot(void) {
 	snprintf(slot_path, sizeof(slot_path), "%s/TestGame.st3", test_dir);
 	write_test_file(slot_path, test_data, sizeof(test_data));
 
-	MinArchStateResult result = MinArch_resumeState(test_dir, "TestGame", 3, &test_core);
+	MinArchStateResult result = MinArchState_resume(test_dir, "TestGame", 3, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 	TEST_ASSERT_EQUAL_MEMORY(test_data, mock_state_buffer, mock_state_size);
@@ -294,7 +294,7 @@ void test_resumeState_loads_from_specified_slot(void) {
 
 void test_resumeState_returns_file_not_found_for_empty_slot(void) {
 	// Don't create any file - slot 5 doesn't exist
-	MinArchStateResult result = MinArch_resumeState(test_dir, "TestGame", 5, &test_core);
+	MinArchStateResult result = MinArchState_resume(test_dir, "TestGame", 5, &test_core);
 
 	TEST_ASSERT_EQUAL(MINARCH_STATE_FILE_NOT_FOUND, result);
 }
@@ -311,7 +311,7 @@ void test_resumeState_handles_all_slots(void) {
 		snprintf(slot_path, sizeof(slot_path), "%s/Game.st%d", test_dir, slot);
 		write_test_file(slot_path, test_data, sizeof(test_data));
 
-		MinArchStateResult result = MinArch_resumeState(test_dir, "Game", slot, &test_core);
+		MinArchStateResult result = MinArchState_resume(test_dir, "Game", slot, &test_core);
 		TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 		// Verify correct data was loaded
@@ -324,16 +324,16 @@ void test_resumeState_handles_all_slots(void) {
 ///////////////////////////////
 
 void test_stateResultString_returns_descriptions(void) {
-	TEST_ASSERT_EQUAL_STRING("Success", MinArch_stateResultString(MINARCH_STATE_OK));
+	TEST_ASSERT_EQUAL_STRING("Success", MinArchState_resultString(MINARCH_STATE_OK));
 	TEST_ASSERT_EQUAL_STRING("Core does not support save states",
-	                         MinArch_stateResultString(MINARCH_STATE_NO_SUPPORT));
+	                         MinArchState_resultString(MINARCH_STATE_NO_SUPPORT));
 	TEST_ASSERT_EQUAL_STRING("State file not found",
-	                         MinArch_stateResultString(MINARCH_STATE_FILE_NOT_FOUND));
-	TEST_ASSERT_EQUAL_STRING("File I/O error", MinArch_stateResultString(MINARCH_STATE_FILE_ERROR));
+	                         MinArchState_resultString(MINARCH_STATE_FILE_NOT_FOUND));
+	TEST_ASSERT_EQUAL_STRING("File I/O error", MinArchState_resultString(MINARCH_STATE_FILE_ERROR));
 	TEST_ASSERT_EQUAL_STRING("Memory allocation failed",
-	                         MinArch_stateResultString(MINARCH_STATE_ALLOC_ERROR));
+	                         MinArchState_resultString(MINARCH_STATE_ALLOC_ERROR));
 	TEST_ASSERT_EQUAL_STRING("Core serialization failed",
-	                         MinArch_stateResultString(MINARCH_STATE_SERIALIZE_ERROR));
+	                         MinArchState_resultString(MINARCH_STATE_SERIALIZE_ERROR));
 }
 
 ///////////////////////////////
@@ -346,7 +346,7 @@ void test_state_write_then_read_roundtrip(void) {
 		mock_state_buffer[i] = (uint8_t)(i ^ 0x99);
 	}
 
-	MinArchStateResult result = MinArch_writeState(test_path, &test_core);
+	MinArchStateResult result = MinArchState_write(test_path, &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 	// Clear buffer
@@ -355,7 +355,7 @@ void test_state_write_then_read_roundtrip(void) {
 	memset(mock_state_buffer, 0, mock_state_size);
 
 	// Read back
-	result = MinArch_readState(test_path, &test_core);
+	result = MinArchState_read(test_path, &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 	// Should match original
@@ -369,7 +369,7 @@ void test_autosave_then_resume_roundtrip(void) {
 		mock_state_buffer[i] = (uint8_t)(0xFF - i);
 	}
 
-	MinArchStateResult result = MinArch_autoSave(test_dir, "MyGame", &test_core);
+	MinArchStateResult result = MinArchState_autoSave(test_dir, "MyGame", &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 	// Clear buffer and resume
@@ -377,7 +377,7 @@ void test_autosave_then_resume_roundtrip(void) {
 	memcpy(original, mock_state_buffer, mock_state_size);
 	memset(mock_state_buffer, 0, mock_state_size);
 
-	result = MinArch_resumeState(test_dir, "MyGame", MINARCH_AUTO_RESUME_SLOT, &test_core);
+	result = MinArchState_resume(test_dir, "MyGame", MINARCH_AUTO_RESUME_SLOT, &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
 	TEST_ASSERT_EQUAL_MEMORY(original, mock_state_buffer, mock_state_size);

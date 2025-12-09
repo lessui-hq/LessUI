@@ -113,7 +113,7 @@ void test_writeSRAM_writes_to_file(void) {
 	}
 
 	MinArchMemoryResult result =
-	    MinArch_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
@@ -128,14 +128,14 @@ void test_writeSRAM_returns_no_support_when_size_zero(void) {
 	mock_sram_size = 0;
 
 	MinArchMemoryResult result =
-	    MinArch_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_NO_SUPPORT, result);
 }
 
 void test_writeSRAM_returns_null_pointer_when_data_null(void) {
 	MinArchMemoryResult result =
-	    MinArch_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data_null);
+	    MinArchMemory_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data_null);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_NULL_POINTER, result);
 }
@@ -145,7 +145,7 @@ void test_writeSRAM_writes_small_sram(void) {
 	memset(mock_sram_buffer, 0xAB, mock_sram_size);
 
 	MinArchMemoryResult result =
-	    MinArch_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
@@ -168,7 +168,7 @@ void test_readSRAM_loads_from_file(void) {
 	write_test_file(test_path, test_data, sizeof(test_data));
 
 	MinArchMemoryResult result =
-	    MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 	TEST_ASSERT_EQUAL_MEMORY(test_data, mock_sram_buffer, mock_sram_size);
@@ -178,7 +178,7 @@ void test_readSRAM_returns_file_not_found(void) {
 	unlink(test_path); // Ensure file doesn't exist
 
 	MinArchMemoryResult result =
-	    MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_FILE_NOT_FOUND, result);
 }
@@ -187,7 +187,7 @@ void test_readSRAM_returns_no_support_when_size_zero(void) {
 	mock_sram_size = 0;
 
 	MinArchMemoryResult result =
-	    MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_NO_SUPPORT, result);
 }
@@ -197,7 +197,7 @@ void test_readSRAM_returns_null_pointer_when_data_null(void) {
 	write_test_file(test_path, "test", 4);
 
 	MinArchMemoryResult result =
-	    MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data_null);
+	    MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data_null);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_NULL_POINTER, result);
 }
@@ -212,7 +212,7 @@ void test_readSRAM_handles_partial_file(void) {
 	memset(mock_sram_buffer, 0, mock_sram_size);
 
 	MinArchMemoryResult result =
-	    MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	// Should succeed (partial reads allowed)
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
@@ -232,7 +232,7 @@ void test_writeRTC_writes_to_file(void) {
 	}
 
 	MinArchMemoryResult result =
-	    MinArch_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
@@ -247,7 +247,7 @@ void test_writeRTC_returns_no_support_when_size_zero(void) {
 	mock_rtc_size = 0;
 
 	MinArchMemoryResult result =
-	    MinArch_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_NO_SUPPORT, result);
 }
@@ -265,7 +265,7 @@ void test_readRTC_loads_from_file(void) {
 	write_test_file(test_path, test_data, sizeof(test_data));
 
 	MinArchMemoryResult result =
-	    MinArch_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 	TEST_ASSERT_EQUAL_MEMORY(test_data, mock_rtc_buffer, mock_rtc_size);
@@ -275,7 +275,7 @@ void test_readRTC_returns_file_not_found(void) {
 	unlink(test_path);
 
 	MinArchMemoryResult result =
-	    MinArch_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 
 	TEST_ASSERT_EQUAL(MINARCH_MEM_FILE_NOT_FOUND, result);
 }
@@ -285,13 +285,13 @@ void test_readRTC_returns_file_not_found(void) {
 ///////////////////////////////
 
 void test_memoryResultString_returns_descriptions(void) {
-	TEST_ASSERT_EQUAL_STRING("Success", MinArch_memoryResultString(MINARCH_MEM_OK));
+	TEST_ASSERT_EQUAL_STRING("Success", MinArchMemory_resultString(MINARCH_MEM_OK));
 	TEST_ASSERT_EQUAL_STRING("Core does not support this memory type",
-	                         MinArch_memoryResultString(MINARCH_MEM_NO_SUPPORT));
-	TEST_ASSERT_EQUAL_STRING("File not found", MinArch_memoryResultString(MINARCH_MEM_FILE_NOT_FOUND));
-	TEST_ASSERT_EQUAL_STRING("File I/O error", MinArch_memoryResultString(MINARCH_MEM_FILE_ERROR));
+	                         MinArchMemory_resultString(MINARCH_MEM_NO_SUPPORT));
+	TEST_ASSERT_EQUAL_STRING("File not found", MinArchMemory_resultString(MINARCH_MEM_FILE_NOT_FOUND));
+	TEST_ASSERT_EQUAL_STRING("File I/O error", MinArchMemory_resultString(MINARCH_MEM_FILE_ERROR));
 	TEST_ASSERT_EQUAL_STRING("Core returned null memory pointer",
-	                         MinArch_memoryResultString(MINARCH_MEM_NULL_POINTER));
+	                         MinArchMemory_resultString(MINARCH_MEM_NULL_POINTER));
 }
 
 ///////////////////////////////
@@ -305,7 +305,7 @@ void test_sram_write_then_read_roundtrip(void) {
 	}
 
 	MinArchMemoryResult result =
-	    MinArch_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
 	// Clear buffer
@@ -314,7 +314,7 @@ void test_sram_write_then_read_roundtrip(void) {
 	memset(mock_sram_buffer, 0, mock_sram_size);
 
 	// Read back
-	result = MinArch_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
+	result = MinArchMemory_readSRAM(test_path, mock_get_memory_size, mock_get_memory_data);
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
 	// Should match original
@@ -328,7 +328,7 @@ void test_rtc_write_then_read_roundtrip(void) {
 	}
 
 	MinArchMemoryResult result =
-	    MinArch_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	    MinArchMemory_writeRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
 	// Clear buffer
@@ -337,7 +337,7 @@ void test_rtc_write_then_read_roundtrip(void) {
 	memset(mock_rtc_buffer, 0, mock_rtc_size);
 
 	// Read back
-	result = MinArch_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
+	result = MinArchMemory_readRTC(test_path, mock_get_memory_size, mock_get_memory_data);
 	TEST_ASSERT_EQUAL(MINARCH_MEM_OK, result);
 
 	// Should match original

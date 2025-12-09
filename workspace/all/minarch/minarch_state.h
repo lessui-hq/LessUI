@@ -73,7 +73,7 @@ typedef struct {
  * @note Returns MINARCH_STATE_NO_SUPPORT if core reports size of 0
  * @note Returns MINARCH_STATE_FILE_NOT_FOUND if file doesn't exist
  */
-MinArchStateResult MinArch_readState(const char* filepath, const MinArchStateCore* core);
+MinArchStateResult MinArchState_read(const char* filepath, const MinArchStateCore* core);
 
 /**
  * Writes current state from core to disk.
@@ -84,7 +84,7 @@ MinArchStateResult MinArch_readState(const char* filepath, const MinArchStateCor
  *
  * @note Creates file if it doesn't exist
  */
-MinArchStateResult MinArch_writeState(const char* filepath, const MinArchStateCore* core);
+MinArchStateResult MinArchState_write(const char* filepath, const MinArchStateCore* core);
 
 /**
  * Performs auto-save to the auto-resume slot.
@@ -96,8 +96,8 @@ MinArchStateResult MinArch_writeState(const char* filepath, const MinArchStateCo
  * @param core Core interface callbacks
  * @return MINARCH_STATE_OK on success, error code otherwise
  */
-MinArchStateResult MinArch_autoSave(const char* states_dir, const char* game_name,
-                                    const MinArchStateCore* core);
+MinArchStateResult MinArchState_autoSave(const char* states_dir, const char* game_name,
+                                         const MinArchStateCore* core);
 
 /**
  * Performs auto-resume from a specified slot.
@@ -108,7 +108,7 @@ MinArchStateResult MinArch_autoSave(const char* states_dir, const char* game_nam
  * @param core Core interface callbacks
  * @return MINARCH_STATE_OK on success, error code otherwise
  */
-MinArchStateResult MinArch_resumeState(const char* states_dir, const char* game_name, int slot,
+MinArchStateResult MinArchState_resume(const char* states_dir, const char* game_name, int slot,
                                        const MinArchStateCore* core);
 
 /**
@@ -117,6 +117,6 @@ MinArchStateResult MinArch_resumeState(const char* states_dir, const char* game_
  * @param result Result code from state operation
  * @return String description (static, do not free)
  */
-const char* MinArch_stateResultString(MinArchStateResult result);
+const char* MinArchState_resultString(MinArchStateResult result);
 
 #endif // __MINARCH_STATE_H__

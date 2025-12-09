@@ -220,6 +220,129 @@ void test_validateMappings_returns_false_for_null(void) {
 }
 
 ///////////////////////////////
+// Button Collection Tests
+///////////////////////////////
+
+// Define button bits for testing (matching typical platform layout)
+#define TEST_BTN_UP (1 << 4)
+#define TEST_BTN_DOWN (1 << 5)
+#define TEST_BTN_LEFT (1 << 6)
+#define TEST_BTN_RIGHT (1 << 7)
+#define TEST_BTN_A (1 << 8)
+#define TEST_BTN_B (1 << 9)
+#define TEST_BTN_DPAD_UP (1 << 16)
+#define TEST_BTN_DPAD_DOWN (1 << 17)
+
+// Simple control mappings for collectButtons tests
+static MinArchButtonMapping collect_controls[] = {
+    {.name = "A", .retro_id = 8, .local_id = 8, .modifier = 0, .default_id = 8, .ignore = 0},
+    {.name = "B", .retro_id = 0, .local_id = 9, .modifier = 0, .default_id = 9, .ignore = 0},
+    {.name = "Up", .retro_id = 4, .local_id = 4, .modifier = 0, .default_id = 4, .ignore = 0},
+    {.name = NULL}};
+
+static MinArchButtonMapping modifier_controls[] = {
+    {.name = "A", .retro_id = 8, .local_id = 8, .modifier = 0, .default_id = 8, .ignore = 0},
+    {.name = "Turbo", .retro_id = 9, .local_id = 10, .modifier = 1, .default_id = 10, .ignore = 0},
+    {.name = NULL}};
+
+static MinArchDpadRemap test_dpad_remaps[] = {{.from_btn = TEST_BTN_DPAD_UP, .to_btn = TEST_BTN_UP},
+                                              {.from_btn = TEST_BTN_DPAD_DOWN, .to_btn = TEST_BTN_DOWN},
+                                              {.from_btn = 0, .to_btn = 0}};
+
+void test_collectButtons_returns_zero_for_null_controls(void) {
+	uint32_t result = MinArchInput_collectButtons(NULL, TEST_BTN_A, 0, 0, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(0, result);
+}
+
+void test_collectButtons_single_button_pressed(void) {
+	uint32_t result = MinArchInput_collectButtons(collect_controls, TEST_BTN_A, 0, 1, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(1 << 8, result); // retro_id 8 for A button
+}
+
+void test_collectButtons_multiple_buttons_pressed(void) {
+	uint32_t pressed = TEST_BTN_A | TEST_BTN_B;
+	uint32_t result = MinArchInput_collectButtons(collect_controls, pressed, 0, 1, NULL, NULL);
+	uint32_t expected = (1 << 8) | (1 << 0); // A=8, B=0
+	TEST_ASSERT_EQUAL_UINT32(expected, result);
+}
+
+void test_collectButtons_no_buttons_pressed(void) {
+	uint32_t result = MinArchInput_collectButtons(collect_controls, 0, 0, 1, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(0, result);
+}
+
+void test_collectButtons_unbound_button_ignored(void) {
+	// Control with local_id=0 is considered unbound (btn = 1 << 0 = 1 = BTN_NONE)
+	MinArchButtonMapping unbound[] = {
+	    {.name = "Unbound", .retro_id = 5, .local_id = 0, .modifier = 0, .default_id = 0, .ignore = 0},
+	    {.name = NULL}};
+	uint32_t result = MinArchInput_collectButtons(unbound, 0xFFFFFFFF, 0, 1, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(0, result);
+}
+
+void test_collectButtons_modifier_not_activated_without_menu(void) {
+	uint32_t pressed = 1 << 10; // Turbo button local_id
+	uint32_t result = MinArchInput_collectButtons(modifier_controls, pressed, 0, 1, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(0, result); // Should not trigger without MENU
+}
+
+void test_collectButtons_modifier_activated_with_menu(void) {
+	uint32_t pressed = 1 << 10; // Turbo button local_id
+	int used_modifier = 0;
+	uint32_t result =
+	    MinArchInput_collectButtons(modifier_controls, pressed, 1, 1, NULL, &used_modifier);
+	TEST_ASSERT_EQUAL_UINT32(1 << 9, result); // retro_id 9 for Turbo
+	TEST_ASSERT_EQUAL_INT(1, used_modifier);
+}
+
+void test_collectButtons_reports_used_modifier(void) {
+	uint32_t pressed = (1 << 8) | (1 << 10); // A (no mod) + Turbo (mod)
+	int used_modifier = 0;
+	uint32_t result =
+	    MinArchInput_collectButtons(modifier_controls, pressed, 1, 1, NULL, &used_modifier);
+	TEST_ASSERT_EQUAL_INT(1, used_modifier);
+	TEST_ASSERT_EQUAL_UINT32((1 << 8) | (1 << 9), result);
+}
+
+void test_collectButtons_no_modifier_when_menu_not_pressed(void) {
+	uint32_t pressed = (1 << 8) | (1 << 10); // A (no mod) + Turbo (mod)
+	int used_modifier = 0;
+	uint32_t result =
+	    MinArchInput_collectButtons(modifier_controls, pressed, 0, 1, NULL, &used_modifier);
+	TEST_ASSERT_EQUAL_INT(0, used_modifier);
+	TEST_ASSERT_EQUAL_UINT32(1 << 8, result); // Only A, not Turbo
+}
+
+void test_collectButtons_dpad_remapping_standard_gamepad(void) {
+	// D-pad buttons in standard gamepad mode should remap to arrow keys.
+	// In gamepad_type=0, the control is mapped to DPAD_UP (local_id=16),
+	// but hardware sends arrow keys, so we remap to check BTN_UP instead.
+	MinArchButtonMapping dpad_controls[] = {
+	    {.name = "Up", .retro_id = 4, .local_id = 16, .modifier = 0, .default_id = 16, .ignore = 0},
+	    {.name = NULL}};
+	// The control mapping says local_id=16 (DPAD_UP), but hardware sends BTN_UP
+	// when gamepad_type=0. So we pass BTN_UP as pressed (what hardware provides).
+	uint32_t result = MinArchInput_collectButtons(dpad_controls, TEST_BTN_UP, 0, 0, test_dpad_remaps,
+	                                              NULL);
+	TEST_ASSERT_EQUAL_UINT32(1 << 4, result);
+}
+
+void test_collectButtons_dpad_no_remapping_analog_gamepad(void) {
+	// In analog gamepad mode (type=1), d-pad should NOT be remapped
+	MinArchButtonMapping dpad_controls[] = {
+	    {.name = "Up", .retro_id = 4, .local_id = 16, .modifier = 0, .default_id = 16, .ignore = 0},
+	    {.name = NULL}};
+	uint32_t result = MinArchInput_collectButtons(dpad_controls, TEST_BTN_DPAD_UP, 0, 1,
+	                                              test_dpad_remaps, NULL);
+	TEST_ASSERT_EQUAL_UINT32(1 << 4, result); // Direct mapping, no remap
+}
+
+void test_collectButtons_null_modifier_output_ok(void) {
+	uint32_t result = MinArchInput_collectButtons(collect_controls, TEST_BTN_A, 0, 1, NULL, NULL);
+	TEST_ASSERT_EQUAL_UINT32(1 << 8, result);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -259,6 +382,20 @@ int main(void) {
 	RUN_TEST(test_validateMappings_returns_true_for_valid);
 	RUN_TEST(test_validateMappings_returns_false_for_duplicates);
 	RUN_TEST(test_validateMappings_returns_false_for_null);
+
+	// Button collection
+	RUN_TEST(test_collectButtons_returns_zero_for_null_controls);
+	RUN_TEST(test_collectButtons_single_button_pressed);
+	RUN_TEST(test_collectButtons_multiple_buttons_pressed);
+	RUN_TEST(test_collectButtons_no_buttons_pressed);
+	RUN_TEST(test_collectButtons_unbound_button_ignored);
+	RUN_TEST(test_collectButtons_modifier_not_activated_without_menu);
+	RUN_TEST(test_collectButtons_modifier_activated_with_menu);
+	RUN_TEST(test_collectButtons_reports_used_modifier);
+	RUN_TEST(test_collectButtons_no_modifier_when_menu_not_pressed);
+	RUN_TEST(test_collectButtons_dpad_remapping_standard_gamepad);
+	RUN_TEST(test_collectButtons_dpad_no_remapping_analog_gamepad);
+	RUN_TEST(test_collectButtons_null_modifier_output_ok);
 
 	return UNITY_END();
 }

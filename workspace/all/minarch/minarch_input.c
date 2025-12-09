@@ -194,3 +194,47 @@ bool MinArchInput_validateMappings(const MinArchButtonMapping* mappings) {
 
 	return true;
 }
+
+///////////////////////////////
+// Button State Collection
+///////////////////////////////
+
+uint32_t MinArchInput_collectButtons(const MinArchButtonMapping* controls, uint32_t pressed_buttons,
+                                     int menu_pressed, int gamepad_type,
+                                     const MinArchDpadRemap* dpad_remaps, int* out_used_modifier) {
+	if (!controls)
+		return 0;
+
+	uint32_t result = 0;
+	int used_modifier = 0;
+
+	for (int i = 0; controls[i].name != NULL; i++) {
+		const MinArchButtonMapping* mapping = &controls[i];
+		int btn = 1 << mapping->local_id;
+
+		if (btn == 1) // BTN_NONE = 0, 1 << 0 = 1
+			continue; // not bound
+
+		// Apply d-pad remapping for standard gamepad type
+		if (gamepad_type == 0 && dpad_remaps) {
+			for (int j = 0; dpad_remaps[j].from_btn != 0; j++) {
+				if (btn == dpad_remaps[j].from_btn) {
+					btn = dpad_remaps[j].to_btn;
+					break;
+				}
+			}
+		}
+
+		// Check if button is pressed and modifier requirement is met
+		if ((pressed_buttons & btn) && (!mapping->modifier || menu_pressed)) {
+			result |= 1 << mapping->retro_id;
+			if (mapping->modifier)
+				used_modifier = 1;
+		}
+	}
+
+	if (out_used_modifier)
+		*out_used_modifier = used_modifier;
+
+	return result;
+}

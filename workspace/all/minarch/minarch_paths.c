@@ -18,7 +18,7 @@
  * @param saves_dir Directory for save files
  * @param game_name Game name (without extension)
  */
-void MinArch_getSRAMPath(char* filename, const char* saves_dir, const char* game_name) {
+void MinArchPaths_getSRAM(char* filename, const char* saves_dir, const char* game_name) {
 	sprintf(filename, "%s/%s.sav", saves_dir, game_name);
 }
 
@@ -31,7 +31,7 @@ void MinArch_getSRAMPath(char* filename, const char* saves_dir, const char* game
  * @param saves_dir Directory for save files
  * @param game_name Game name (without extension)
  */
-void MinArch_getRTCPath(char* filename, const char* saves_dir, const char* game_name) {
+void MinArchPaths_getRTC(char* filename, const char* saves_dir, const char* game_name) {
 	sprintf(filename, "%s/%s.rtc", saves_dir, game_name);
 }
 
@@ -45,7 +45,8 @@ void MinArch_getRTCPath(char* filename, const char* saves_dir, const char* game_
  * @param game_name Game name (without extension)
  * @param slot Save state slot number (0-9)
  */
-void MinArch_getStatePath(char* filename, const char* states_dir, const char* game_name, int slot) {
+void MinArchPaths_getState(char* filename, const char* states_dir, const char* game_name,
+                           int slot) {
 	sprintf(filename, "%s/%s.st%i", states_dir, game_name, slot);
 }
 
@@ -60,7 +61,7 @@ void MinArch_getStatePath(char* filename, const char* states_dir, const char* ga
  * @param game_name Game name (NULL for global config)
  * @param device_tag Device-specific tag (NULL or "" if none, e.g., "-rg35xx")
  */
-void MinArch_getConfigPath(char* filename, const char* config_dir, const char* game_name,
+void MinArchConfig_getPath(char* filename, const char* config_dir, const char* game_name,
                            const char* device_tag) {
 	char device_suffix[64] = {0};
 
@@ -70,9 +71,42 @@ void MinArch_getConfigPath(char* filename, const char* config_dir, const char* g
 	}
 
 	// Generate path based on game-specific or global
-	if (game_name) {
+	// Treat empty string same as NULL (global config)
+	if (game_name && game_name[0] != '\0') {
 		sprintf(filename, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
 	} else {
 		sprintf(filename, "%s/minarch%s.cfg", config_dir, device_suffix);
+	}
+}
+
+/**
+ * Builds tag-specific BIOS directory path.
+ *
+ * Format: {base_bios_path}/{tag}
+ *
+ * @param base_bios_path Root BIOS directory
+ * @param tag Platform tag
+ * @param tag_bios_dir Output buffer for tag-specific path
+ */
+void MinArchPaths_getTagBios(const char* base_bios_path, const char* tag, char* tag_bios_dir) {
+	sprintf(tag_bios_dir, "%s/%s", base_bios_path, tag);
+}
+
+/**
+ * Chooses BIOS directory path with smart fallback (pure function).
+ *
+ * If tag directory has files, use it; otherwise fall back to root.
+ *
+ * @param base_bios_path Root BIOS directory
+ * @param tag Platform tag
+ * @param bios_dir Output buffer for selected path
+ * @param tag_dir_has_files Whether tag directory contains files
+ */
+void MinArchPaths_chooseBios(const char* base_bios_path, const char* tag, char* bios_dir,
+                             int tag_dir_has_files) {
+	if (tag_dir_has_files) {
+		MinArchPaths_getTagBios(base_bios_path, tag, bios_dir);
+	} else {
+		strcpy(bios_dir, base_bios_path);
 	}
 }

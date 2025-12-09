@@ -1,34 +1,18 @@
 /**
- * minarch_config.h - Configuration path and option utilities for MinArch
+ * minarch_config.h - Configuration option utilities for MinArch
  *
- * Provides pure utility functions for config file path generation and
+ * Provides pure utility functions for config file parsing and
  * option value manipulation. These functions have minimal dependencies
  * and can be tested in isolation.
+ *
+ * For config path generation, see minarch_paths.h (MinArchConfig_getPath).
  */
 
 #ifndef MINARCH_CONFIG_H
 #define MINARCH_CONFIG_H
 
-/**
- * Generates configuration file path with optional device tag and game override.
- *
- * Produces paths like:
- * - /userdata/platform/core/minarch.cfg (default config)
- * - /userdata/platform/core/minarch-device.cfg (with device tag)
- * - /userdata/platform/core/gamename.cfg (game-specific)
- * - /userdata/platform/core/gamename-device.cfg (game-specific with device)
- *
- * @param output Output buffer for path (should be MAX_PATH size)
- * @param config_dir Base configuration directory path
- * @param game_name Game name (or NULL for default config)
- * @param device_tag Device tag (or NULL for no tag)
- *
- * @example
- *   MinArch_getConfigPath(buf, "/userdata/GB", "Tetris", "rg35xx")
- *   // Result: "/userdata/GB/Tetris-rg35xx.cfg"
- */
-void MinArch_getConfigPath(char* output, const char* config_dir, const char* game_name,
-                           const char* device_tag);
+// MinArchConfig_getPath is in minarch_paths.h
+#include "minarch_paths.h"
 
 /**
  * Maps option keys to custom display names.
@@ -44,10 +28,10 @@ void MinArch_getConfigPath(char* output, const char* config_dir, const char* gam
  * @return Display name (either mapped or default_name)
  *
  * @example
- *   MinArch_getOptionDisplayName("pcsx_rearmed_analog_combo", "Unknown")
+ *   MinArchConfig_getOptionDisplayName("pcsx_rearmed_analog_combo", "Unknown")
  *   // Returns: "DualShock Toggle Combo"
  */
-const char* MinArch_getOptionDisplayName(const char* key, const char* default_name);
+const char* MinArchConfig_getOptionDisplayName(const char* key, const char* default_name);
 
 /**
  * Extracts a value from a configuration string.
@@ -68,10 +52,10 @@ const char* MinArch_getOptionDisplayName(const char* key, const char* default_na
  * @example
  *   char value[256];
  *   int locked = 0;
- *   MinArch_getConfigValue("scaling = native\n-vsync = on\n", "vsync", value, &locked);
+ *   MinArchConfig_getValue("scaling = native\n-vsync = on\n", "vsync", value, &locked);
  *   // value = "on", locked = 1
  */
-int MinArch_getConfigValue(const char* cfg, const char* key, char* out_value, int* lock);
+int MinArchConfig_getValue(const char* cfg, const char* key, char* out_value, int* lock);
 
 /**
  * Configuration load state enum.
@@ -94,9 +78,9 @@ typedef enum {
  * @return Description string (static, do not free)
  *
  * @example
- *   MinArch_getConfigStateDesc(MINARCH_CONFIG_CONSOLE)
+ *   MinArchConfig_getStateDesc(MINARCH_CONFIG_CONSOLE)
  *   // Returns: "Using console config."
  */
-const char* MinArch_getConfigStateDesc(MinArchConfigState state);
+const char* MinArchConfig_getStateDesc(MinArchConfigState state);
 
 #endif /* MINARCH_CONFIG_H */

@@ -37,25 +37,25 @@ static int compare_uint64(const void* a, const void* b) {
 // Public Functions
 ///////////////////////////////
 
-void AutoCPU_initConfig(AutoCPUConfig* config) {
-	config->window_frames = AUTO_CPU_DEFAULT_WINDOW_FRAMES;
-	config->util_high = AUTO_CPU_DEFAULT_UTIL_HIGH;
-	config->util_low = AUTO_CPU_DEFAULT_UTIL_LOW;
-	config->boost_windows = AUTO_CPU_DEFAULT_BOOST_WINDOWS;
-	config->reduce_windows = AUTO_CPU_DEFAULT_REDUCE_WINDOWS;
-	config->startup_grace = AUTO_CPU_DEFAULT_STARTUP_GRACE;
-	config->min_freq_khz = AUTO_CPU_DEFAULT_MIN_FREQ_KHZ;
-	config->target_util = AUTO_CPU_DEFAULT_TARGET_UTIL;
-	config->max_step = AUTO_CPU_DEFAULT_MAX_STEP;
+void MinArchCPU_initConfig(MinArchCPUConfig* config) {
+	config->window_frames = MINARCH_CPU_DEFAULT_WINDOW_FRAMES;
+	config->util_high = MINARCH_CPU_DEFAULT_UTIL_HIGH;
+	config->util_low = MINARCH_CPU_DEFAULT_UTIL_LOW;
+	config->boost_windows = MINARCH_CPU_DEFAULT_BOOST_WINDOWS;
+	config->reduce_windows = MINARCH_CPU_DEFAULT_REDUCE_WINDOWS;
+	config->startup_grace = MINARCH_CPU_DEFAULT_STARTUP_GRACE;
+	config->min_freq_khz = MINARCH_CPU_DEFAULT_MIN_FREQ_KHZ;
+	config->target_util = MINARCH_CPU_DEFAULT_TARGET_UTIL;
+	config->max_step = MINARCH_CPU_DEFAULT_MAX_STEP;
 }
 
-void AutoCPU_initState(AutoCPUState* state) {
-	memset(state, 0, sizeof(AutoCPUState));
+void MinArchCPU_initState(MinArchCPUState* state) {
+	memset(state, 0, sizeof(MinArchCPUState));
 	// Set sensible defaults
 	state->frame_budget_us = 16667; // 60fps default
 }
 
-int AutoCPU_findNearestIndex(const int* frequencies, int count, int target_khz) {
+int MinArchCPU_findNearestIndex(const int* frequencies, int count, int target_khz) {
 	if (count <= 0)
 		return 0;
 
@@ -72,11 +72,11 @@ int AutoCPU_findNearestIndex(const int* frequencies, int count, int target_khz) 
 	return best_idx;
 }
 
-void AutoCPU_detectFrequencies(AutoCPUState* state, const AutoCPUConfig* config,
-                               const int* raw_frequencies, int raw_count) {
+void MinArchCPU_detectFrequencies(MinArchCPUState* state, const MinArchCPUConfig* config,
+                                  const int* raw_frequencies, int raw_count) {
 	// Filter frequencies below minimum threshold
 	state->freq_count = 0;
-	for (int i = 0; i < raw_count && state->freq_count < AUTO_CPU_MAX_FREQUENCIES; i++) {
+	for (int i = 0; i < raw_count && state->freq_count < MINARCH_CPU_MAX_FREQUENCIES; i++) {
 		if (raw_frequencies[i] >= config->min_freq_khz) {
 			state->frequencies[state->freq_count++] = raw_frequencies[i];
 		}
@@ -90,16 +90,16 @@ void AutoCPU_detectFrequencies(AutoCPUState* state, const AutoCPUConfig* config,
 
 		// POWERSAVE: 55% of max
 		int ps_target = max_freq * 55 / 100;
-		state->preset_indices[AUTO_CPU_LEVEL_POWERSAVE] =
-		    AutoCPU_findNearestIndex(state->frequencies, state->freq_count, ps_target);
+		state->preset_indices[MINARCH_CPU_LEVEL_POWERSAVE] =
+		    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, ps_target);
 
 		// NORMAL: 80% of max
 		int normal_target = max_freq * 80 / 100;
-		state->preset_indices[AUTO_CPU_LEVEL_NORMAL] =
-		    AutoCPU_findNearestIndex(state->frequencies, state->freq_count, normal_target);
+		state->preset_indices[MINARCH_CPU_LEVEL_NORMAL] =
+		    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, normal_target);
 
 		// PERFORMANCE: max frequency
-		state->preset_indices[AUTO_CPU_LEVEL_PERFORMANCE] = state->freq_count - 1;
+		state->preset_indices[MINARCH_CPU_LEVEL_PERFORMANCE] = state->freq_count - 1;
 	} else {
 		state->use_granular = 0;
 	}
@@ -107,8 +107,8 @@ void AutoCPU_detectFrequencies(AutoCPUState* state, const AutoCPUConfig* config,
 	state->frequencies_detected = 1;
 }
 
-void AutoCPU_reset(AutoCPUState* state, const AutoCPUConfig* config, double fps,
-                   unsigned current_underruns) {
+void MinArchCPU_reset(MinArchCPUState* state, const MinArchCPUConfig* config, double fps,
+                      unsigned current_underruns) {
 	(void)config; // May be used in future for configurable grace period
 
 	state->frame_count = 0;
@@ -130,21 +130,21 @@ void AutoCPU_reset(AutoCPUState* state, const AutoCPUConfig* config, double fps,
 	memset(state->frame_times, 0, sizeof(state->frame_times));
 }
 
-void AutoCPU_recordFrameTime(AutoCPUState* state, uint64_t frame_time_us) {
-	state->frame_times[state->frame_time_index % AUTO_CPU_FRAME_BUFFER_SIZE] = frame_time_us;
+void MinArchCPU_recordFrameTime(MinArchCPUState* state, uint64_t frame_time_us) {
+	state->frame_times[state->frame_time_index % MINARCH_CPU_FRAME_BUFFER_SIZE] = frame_time_us;
 	state->frame_time_index++;
 }
 
-uint64_t AutoCPU_percentile90(const uint64_t* frame_times, int count) {
+uint64_t MinArchCPU_percentile90(const uint64_t* frame_times, int count) {
 	if (count <= 0)
 		return 0;
 
 	// Limit to buffer size
-	if (count > AUTO_CPU_FRAME_BUFFER_SIZE)
-		count = AUTO_CPU_FRAME_BUFFER_SIZE;
+	if (count > MINARCH_CPU_FRAME_BUFFER_SIZE)
+		count = MINARCH_CPU_FRAME_BUFFER_SIZE;
 
 	// Copy and sort
-	uint64_t sorted[AUTO_CPU_FRAME_BUFFER_SIZE];
+	uint64_t sorted[MINARCH_CPU_FRAME_BUFFER_SIZE];
 	memcpy(sorted, frame_times, count * sizeof(uint64_t));
 	qsort(sorted, count, sizeof(uint64_t), compare_uint64);
 
@@ -156,7 +156,7 @@ uint64_t AutoCPU_percentile90(const uint64_t* frame_times, int count) {
 	return sorted[p90_idx];
 }
 
-int AutoCPU_predictFrequency(int current_freq, int current_util, int target_util) {
+int MinArchCPU_predictFrequency(int current_freq, int current_util, int target_util) {
 	if (target_util <= 0)
 		return current_freq;
 
@@ -164,23 +164,24 @@ int AutoCPU_predictFrequency(int current_freq, int current_util, int target_util
 	return current_freq * current_util / target_util;
 }
 
-int AutoCPU_getPresetPercentage(AutoCPULevel level) {
+int MinArchCPU_getPresetPercentage(MinArchCPULevel level) {
 	switch (level) {
-	case AUTO_CPU_LEVEL_POWERSAVE:
+	case MINARCH_CPU_LEVEL_POWERSAVE:
 		return 55;
-	case AUTO_CPU_LEVEL_NORMAL:
+	case MINARCH_CPU_LEVEL_NORMAL:
 		return 80;
-	case AUTO_CPU_LEVEL_PERFORMANCE:
+	case MINARCH_CPU_LEVEL_PERFORMANCE:
 	default:
 		return 100;
 	}
 }
 
-AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config, bool fast_forward,
-                               bool show_menu, unsigned current_underruns, AutoCPUResult* result) {
+MinArchCPUDecision MinArchCPU_update(MinArchCPUState* state, const MinArchCPUConfig* config,
+                                     bool fast_forward, bool show_menu, unsigned current_underruns,
+                                     MinArchCPUResult* result) {
 	// Initialize result if provided
 	if (result) {
-		result->decision = AUTO_CPU_DECISION_NONE;
+		result->decision = MINARCH_CPU_DECISION_NONE;
 		result->new_index = state->target_index;
 		result->new_level = state->target_level;
 		result->utilization = 0;
@@ -190,16 +191,16 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 	// Skip during special states
 	if (fast_forward || show_menu) {
 		if (result)
-			result->decision = AUTO_CPU_DECISION_SKIP;
-		return AUTO_CPU_DECISION_SKIP;
+			result->decision = MINARCH_CPU_DECISION_SKIP;
+		return MINARCH_CPU_DECISION_SKIP;
 	}
 
 	// Startup grace period
 	if (state->startup_frames < config->startup_grace) {
 		state->startup_frames++;
 		if (result)
-			result->decision = AUTO_CPU_DECISION_SKIP;
-		return AUTO_CPU_DECISION_SKIP;
+			result->decision = MINARCH_CPU_DECISION_SKIP;
+		return MINARCH_CPU_DECISION_SKIP;
 	}
 
 	// Get current indices
@@ -221,7 +222,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 				new_idx = max_idx;
 			state->target_index = new_idx;
 			if (result) {
-				result->decision = AUTO_CPU_DECISION_PANIC;
+				result->decision = MINARCH_CPU_DECISION_PANIC;
 				result->new_index = new_idx;
 			}
 		} else {
@@ -230,7 +231,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 				new_level = 2;
 			state->target_level = new_level;
 			if (result) {
-				result->decision = AUTO_CPU_DECISION_PANIC;
+				result->decision = MINARCH_CPU_DECISION_PANIC;
 				result->new_level = new_level;
 			}
 		}
@@ -240,7 +241,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 		state->panic_cooldown = 8; // ~4 seconds before allowing reduction
 		state->last_underrun = 0; // Reset after handling
 
-		return AUTO_CPU_DECISION_PANIC;
+		return MINARCH_CPU_DECISION_PANIC;
 	}
 
 	// Update underrun tracking (even if at max)
@@ -253,21 +254,21 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 
 	// Check if window is complete
 	if (state->frame_count < config->window_frames) {
-		return AUTO_CPU_DECISION_NONE;
+		return MINARCH_CPU_DECISION_NONE;
 	}
 
 	// Calculate 90th percentile frame time
 	int samples = state->frame_time_index;
-	if (samples > AUTO_CPU_FRAME_BUFFER_SIZE)
-		samples = AUTO_CPU_FRAME_BUFFER_SIZE;
+	if (samples > MINARCH_CPU_FRAME_BUFFER_SIZE)
+		samples = MINARCH_CPU_FRAME_BUFFER_SIZE;
 
 	if (samples < 5) {
 		// Not enough samples - reset and wait
 		state->frame_count = 0;
-		return AUTO_CPU_DECISION_NONE;
+		return MINARCH_CPU_DECISION_NONE;
 	}
 
-	uint64_t p90_time = AutoCPU_percentile90(state->frame_times, samples);
+	uint64_t p90_time = MinArchCPU_percentile90(state->frame_times, samples);
 
 	// Calculate utilization as percentage of frame budget
 	unsigned util = 0;
@@ -282,7 +283,7 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 		result->p90_time = p90_time;
 	}
 
-	AutoCPUDecision decision = AUTO_CPU_DECISION_NONE;
+	MinArchCPUDecision decision = MINARCH_CPU_DECISION_NONE;
 
 	if (state->use_granular) {
 		// Granular mode: linear frequency scaling
@@ -300,9 +301,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 
 			if (state->high_util_windows >= config->boost_windows && current_idx < max_idx) {
 				// Predict optimal frequency using linear scaling
-				int needed_freq = AutoCPU_predictFrequency(current_freq, util, config->target_util);
+				int needed_freq =
+				    MinArchCPU_predictFrequency(current_freq, util, config->target_util);
 				int new_idx =
-				    AutoCPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
+				    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
 
 				// Ensure we actually go higher
 				if (new_idx <= current_idx)
@@ -312,10 +314,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 
 				state->target_index = new_idx;
 				state->high_util_windows = 0;
-				decision = AUTO_CPU_DECISION_BOOST;
+				decision = MINARCH_CPU_DECISION_BOOST;
 
 				if (result) {
-					result->decision = AUTO_CPU_DECISION_BOOST;
+					result->decision = MINARCH_CPU_DECISION_BOOST;
 					result->new_index = new_idx;
 				}
 			}
@@ -330,9 +332,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 
 			if (reduce_ok) {
 				// Predict lower frequency
-				int needed_freq = AutoCPU_predictFrequency(current_freq, util, config->target_util);
+				int needed_freq =
+				    MinArchCPU_predictFrequency(current_freq, util, config->target_util);
 				int new_idx =
-				    AutoCPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
+				    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
 
 				// Ensure we actually go lower
 				if (new_idx >= current_idx)
@@ -347,10 +350,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 
 				state->target_index = new_idx;
 				state->low_util_windows = 0;
-				decision = AUTO_CPU_DECISION_REDUCE;
+				decision = MINARCH_CPU_DECISION_REDUCE;
 
 				if (result) {
-					result->decision = AUTO_CPU_DECISION_REDUCE;
+					result->decision = MINARCH_CPU_DECISION_REDUCE;
 					result->new_index = new_idx;
 				}
 			}
@@ -377,10 +380,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 			int new_level = current_level + 1;
 			state->target_level = new_level;
 			state->high_util_windows = 0;
-			decision = AUTO_CPU_DECISION_BOOST;
+			decision = MINARCH_CPU_DECISION_BOOST;
 
 			if (result) {
-				result->decision = AUTO_CPU_DECISION_BOOST;
+				result->decision = MINARCH_CPU_DECISION_BOOST;
 				result->new_level = new_level;
 			}
 		}
@@ -390,10 +393,10 @@ AutoCPUDecision AutoCPU_update(AutoCPUState* state, const AutoCPUConfig* config,
 			int new_level = current_level - 1;
 			state->target_level = new_level;
 			state->low_util_windows = 0;
-			decision = AUTO_CPU_DECISION_REDUCE;
+			decision = MINARCH_CPU_DECISION_REDUCE;
 
 			if (result) {
-				result->decision = AUTO_CPU_DECISION_REDUCE;
+				result->decision = MINARCH_CPU_DECISION_REDUCE;
 				result->new_level = new_level;
 			}
 		}

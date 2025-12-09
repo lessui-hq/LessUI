@@ -191,7 +191,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common 
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -312,7 +312,7 @@ tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/a
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build minarch configuration tests (config path and option utilities)
-tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c $(TEST_UNITY)
+tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
 	@echo "Building minarch configuration tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -370,6 +370,51 @@ tests/minarch_input_test: tests/unit/all/common/test_minarch_input.c workspace/a
 tests/minui_state_test: tests/unit/all/common/test_minui_state.c workspace/all/minui/minui_state.c $(TEST_UNITY)
 	@echo "Building launcher state tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build menu context system tests (validates context pattern for testing)
+# Uses SDL shim headers and fff-based mocking infrastructure
+# Note: Uses menu_state_stub.c which provides testable menu functions without SDL dependencies
+tests/minarch_menu_test: tests/unit/all/common/test_minarch_menu.c \
+	workspace/all/minarch/minarch_context.c \
+	tests/support/menu_state_stub.c \
+	tests/support/sdl_fakes.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building menu context tests..."
+	@$(CC) -o $@ $^ -I tests/support/SDL $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include -I tests/support/fff $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build env callback tests (tests environment callback handlers in minarch_env.c)
+tests/minarch_env_test: tests/unit/all/common/test_minarch_env.c \
+	workspace/all/minarch/minarch_env.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building environment callback tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build game file handling tests (ZIP parsing, M3U detection, extension matching)
+tests/minarch_game_test: tests/unit/all/common/test_minarch_game.c \
+	workspace/all/minarch/minarch_game.c \
+	$(TEST_UNITY)
+	@echo "Building game file handling tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DMINARCH_GAME_TEST
+
+# Build video scaler calculation tests (pure geometry math)
+tests/minarch_scaler_test: tests/unit/all/common/test_minarch_scaler.c \
+	workspace/all/minarch/minarch_scaler.c \
+	$(TEST_UNITY)
+	@echo "Building video scaler tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build core AV info processing tests (aspect ratio calculation, game info building)
+tests/minarch_core_test: tests/unit/all/common/test_minarch_core.c \
+	workspace/all/minarch/minarch_core.c \
+	$(TEST_UNITY)
+	@echo "Building core AV info tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \

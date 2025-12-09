@@ -2,6 +2,9 @@
  * minarch_utils.c - Pure utility functions extracted from minarch.c
  *
  * These functions have no external dependencies and can be tested in isolation.
+ *
+ * For option-related functions, see minarch_options.c
+ * For CPU frequency functions, see minarch_cpu.c
  */
 
 #include "minarch_utils.h"
@@ -22,7 +25,7 @@ static char* basename_impl(const char* path) {
 #include <libgen.h>
 #endif
 
-void MinArch_getCoreName(const char* in_name, char* out_name) {
+void MinArchUtils_getCoreName(const char* in_name, char* out_name) {
 	// Copy basename to output (handles paths like "/path/to/core_libretro.so")
 	char temp[256];
 	strncpy(temp, in_name, sizeof(temp) - 1);
@@ -39,40 +42,7 @@ void MinArch_getCoreName(const char* in_name, char* out_name) {
 	}
 }
 
-int MinArch_getOptionValueIndex(const MinArchOption* opt, const char* value) {
-	if (!value || !opt || !opt->values) {
-		return 0;
-	}
-
-	for (int i = 0; i < opt->count; i++) {
-		if (opt->values[i] && strcmp(opt->values[i], value) == 0) {
-			return i;
-		}
-	}
-
-	return 0;
-}
-
-int MinArch_findNearestFrequency(const int* frequencies, int count, int target_khz) {
-	if (count <= 0 || !frequencies) {
-		return 0;
-	}
-
-	int best_idx = 0;
-	int best_diff = abs(frequencies[0] - target_khz);
-
-	for (int i = 1; i < count; i++) {
-		int diff = abs(frequencies[i] - target_khz);
-		if (diff < best_diff) {
-			best_diff = diff;
-			best_idx = i;
-		}
-	}
-
-	return best_idx;
-}
-
-int MinArch_replaceString(char* line, const char* search, const char* replace) {
+int MinArchUtils_replaceString(char* line, const char* search, const char* replace) {
 	char* sp; // start of pattern
 
 	if ((sp = strstr(line, search)) == NULL) {
@@ -105,12 +75,12 @@ int MinArch_replaceString(char* line, const char* search, const char* replace) {
 	}
 
 	memcpy(sp, replace, rLen);
-	count += MinArch_replaceString(sp + rLen, search, replace);
+	count += MinArchUtils_replaceString(sp + rLen, search, replace);
 
 	return count;
 }
 
-char* MinArch_escapeSingleQuotes(char* str) {
-	MinArch_replaceString(str, "'", "'\\''");
+char* MinArchUtils_escapeSingleQuotes(char* str) {
+	MinArchUtils_replaceString(str, "'", "'\\''");
 	return str;
 }

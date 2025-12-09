@@ -1347,7 +1347,8 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
  *
  * @note Maximum 16 lines supported, line height is fixed at 24 (scaled)
  */
-void GFX_blitMessage(TTF_Font* ttf_font, char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect) {
+void GFX_blitMessage(TTF_Font* ttf_font, const char* msg, SDL_Surface* dst,
+                     const SDL_Rect* dst_rect) {
 	if (!dst_rect)
 		dst_rect = &(SDL_Rect){0, 0, dst->w, dst->h};
 
@@ -1357,7 +1358,7 @@ void GFX_blitMessage(TTF_Font* ttf_font, char* msg, SDL_Surface* dst, const SDL_
 #define TEXT_BOX_MAX_ROWS 16
 #define LINE_HEIGHT 24
 	char* rows[TEXT_BOX_MAX_ROWS];
-	int row_count = splitTextLines(msg, rows, TEXT_BOX_MAX_ROWS);
+	int row_count = splitTextLines((char*)msg, rows, TEXT_BOX_MAX_ROWS);
 	if (row_count == 0)
 		return;
 

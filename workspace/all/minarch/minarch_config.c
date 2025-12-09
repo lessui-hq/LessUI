@@ -1,5 +1,7 @@
 /**
- * minarch_config.c - Configuration path and option utilities implementation
+ * minarch_config.c - Configuration option utilities implementation
+ *
+ * For config path generation (MinArchConfig_getPath), see minarch_paths.c.
  */
 
 #include "minarch_config.h"
@@ -7,31 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 
-void MinArch_getConfigPath(char* output, const char* config_dir, const char* game_name,
-                           const char* device_tag) {
-	char device_suffix[64] = {0};
-
-	// Build device tag suffix if provided
-	if (device_tag && device_tag[0] != '\0') {
-		snprintf(device_suffix, sizeof(device_suffix), "-%s", device_tag);
-	}
-
-	// Generate path based on whether this is game-specific or default config
-	if (game_name && game_name[0] != '\0') {
-		// Game-specific config: /userdata/GB/Tetris-rg35xx.cfg
-		sprintf(output, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
-	} else {
-		// Default config: /userdata/GB/minarch-rg35xx.cfg
-		sprintf(output, "%s/minarch%s.cfg", config_dir, device_suffix);
-	}
-}
-
 // Option key to display name mapping table
 // Format: {key1, name1, key2, name2, ..., NULL}
 static const char* option_key_name_map[] = {"pcsx_rearmed_analog_combo", "DualShock Toggle Combo",
                                             NULL};
 
-const char* MinArch_getOptionDisplayName(const char* key, const char* default_name) {
+const char* MinArchConfig_getOptionDisplayName(const char* key, const char* default_name) {
 	if (!key) {
 		return default_name;
 	}
@@ -47,7 +30,7 @@ const char* MinArch_getOptionDisplayName(const char* key, const char* default_na
 	return default_name;
 }
 
-int MinArch_getConfigValue(const char* cfg, const char* key, char* out_value, int* lock) {
+int MinArchConfig_getValue(const char* cfg, const char* key, char* out_value, int* lock) {
 	if (!cfg || !key || !out_value) {
 		return 0;
 	}
@@ -76,19 +59,23 @@ int MinArch_getConfigValue(const char* cfg, const char* key, char* out_value, in
 	strncpy(out_value, tmp, 256);
 	out_value[255] = '\0';
 
-	// Trim at newline
+	// Trim at newline or carriage return (handle both \r\n and \n)
 	char* nl = strchr(out_value, '\n');
-	if (!nl) {
-		nl = strchr(out_value, '\r');
-	}
-	if (nl) {
+	char* cr = strchr(out_value, '\r');
+
+	// Terminate at whichever comes first
+	if (nl && cr) {
+		*(nl < cr ? nl : cr) = '\0';
+	} else if (nl) {
 		*nl = '\0';
+	} else if (cr) {
+		*cr = '\0';
 	}
 
 	return 1;
 }
 
-const char* MinArch_getConfigStateDesc(MinArchConfigState state) {
+const char* MinArchConfig_getStateDesc(MinArchConfigState state) {
 	switch (state) {
 	case MINARCH_CONFIG_NONE:
 		return "Using defaults.";

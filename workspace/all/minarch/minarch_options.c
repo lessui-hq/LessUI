@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-MinArchOption* MinArch_findOption(MinArchOptionList* list, const char* key) {
+MinArchOption* MinArchOptions_find(MinArchOptionList* list, const char* key) {
 	if (!list || !key) {
 		return NULL;
 	}
@@ -21,8 +21,8 @@ MinArchOption* MinArch_findOption(MinArchOptionList* list, const char* key) {
 	return NULL;
 }
 
-const char* MinArch_getOptionValue(MinArchOptionList* list, const char* key) {
-	MinArchOption* option = MinArch_findOption(list, key);
+const char* MinArchOptions_getValue(MinArchOptionList* list, const char* key) {
+	MinArchOption* option = MinArchOptions_find(list, key);
 
 	if (option && option->value >= 0 && option->value < option->count) {
 		return option->values[option->value];
@@ -31,8 +31,8 @@ const char* MinArch_getOptionValue(MinArchOptionList* list, const char* key) {
 	return NULL;
 }
 
-void MinArch_setOptionValue(MinArchOptionList* list, const char* key, const char* value) {
-	MinArchOption* option = MinArch_findOption(list, key);
+void MinArchOptions_setValue(MinArchOptionList* list, const char* key, const char* value) {
+	MinArchOption* option = MinArchOptions_find(list, key);
 
 	if (!option || !value) {
 		return;
@@ -54,8 +54,8 @@ void MinArch_setOptionValue(MinArchOptionList* list, const char* key, const char
 	}
 }
 
-void MinArch_setOptionRawValue(MinArchOptionList* list, const char* key, int value_index) {
-	MinArchOption* option = MinArch_findOption(list, key);
+void MinArchOptions_setRawValue(MinArchOptionList* list, const char* key, int value_index) {
+	MinArchOption* option = MinArchOptions_find(list, key);
 
 	if (!option) {
 		return;
@@ -66,4 +66,18 @@ void MinArch_setOptionRawValue(MinArchOptionList* list, const char* key, int val
 		option->value = value_index;
 		list->changed = 1;
 	}
+}
+
+int MinArchOptions_getValueIndex(const MinArchOption* opt, const char* value) {
+	if (!value || !opt || !opt->values) {
+		return 0;
+	}
+
+	for (int i = 0; i < opt->count; i++) {
+		if (opt->values[i] && strcmp(opt->values[i], value) == 0) {
+			return i;
+		}
+	}
+
+	return 0;
 }

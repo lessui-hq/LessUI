@@ -56,8 +56,8 @@ typedef void* (*MinArchGetMemoryDataFn)(unsigned type);
  * @note Returns MINARCH_MEM_NO_SUPPORT if core reports size of 0
  * @note Returns MINARCH_MEM_FILE_NOT_FOUND if file doesn't exist (not an error)
  */
-MinArchMemoryResult MinArch_readSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                     MinArchGetMemoryDataFn get_data);
+MinArchMemoryResult MinArchMemory_readSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                           MinArchGetMemoryDataFn get_data);
 
 /**
  * Writes battery-backed save RAM from core memory to disk.
@@ -70,8 +70,8 @@ MinArchMemoryResult MinArch_readSRAM(const char* filepath, MinArchGetMemorySizeF
  * @note Returns MINARCH_MEM_NO_SUPPORT if core reports size of 0
  * @note Creates file if it doesn't exist
  */
-MinArchMemoryResult MinArch_writeSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                      MinArchGetMemoryDataFn get_data);
+MinArchMemoryResult MinArchMemory_writeSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                            MinArchGetMemoryDataFn get_data);
 
 /**
  * Reads real-time clock data from disk into core memory.
@@ -81,8 +81,8 @@ MinArchMemoryResult MinArch_writeSRAM(const char* filepath, MinArchGetMemorySize
  * @param get_data Function to get RTC pointer from core
  * @return MINARCH_MEM_OK on success, error code otherwise
  */
-MinArchMemoryResult MinArch_readRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                    MinArchGetMemoryDataFn get_data);
+MinArchMemoryResult MinArchMemory_readRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                          MinArchGetMemoryDataFn get_data);
 
 /**
  * Writes real-time clock data from core memory to disk.
@@ -92,8 +92,8 @@ MinArchMemoryResult MinArch_readRTC(const char* filepath, MinArchGetMemorySizeFn
  * @param get_data Function to get RTC pointer from core
  * @return MINARCH_MEM_OK on success, error code otherwise
  */
-MinArchMemoryResult MinArch_writeRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                     MinArchGetMemoryDataFn get_data);
+MinArchMemoryResult MinArchMemory_writeRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                           MinArchGetMemoryDataFn get_data);
 
 /**
  * Generic memory read function.
@@ -105,7 +105,7 @@ MinArchMemoryResult MinArch_writeRTC(const char* filepath, MinArchGetMemorySizeF
  * @param get_data Function to get memory pointer from core
  * @return MINARCH_MEM_OK on success, error code otherwise
  */
-MinArchMemoryResult MinArch_readMemory(const char* filepath, unsigned memory_type,
+MinArchMemoryResult MinArchMemory_read(const char* filepath, unsigned memory_type,
                                        MinArchGetMemorySizeFn get_size,
                                        MinArchGetMemoryDataFn get_data);
 
@@ -119,7 +119,7 @@ MinArchMemoryResult MinArch_readMemory(const char* filepath, unsigned memory_typ
  * @param get_data Function to get memory pointer from core
  * @return MINARCH_MEM_OK on success, error code otherwise
  */
-MinArchMemoryResult MinArch_writeMemory(const char* filepath, unsigned memory_type,
+MinArchMemoryResult MinArchMemory_write(const char* filepath, unsigned memory_type,
                                         MinArchGetMemorySizeFn get_size,
                                         MinArchGetMemoryDataFn get_data);
 
@@ -129,6 +129,6 @@ MinArchMemoryResult MinArch_writeMemory(const char* filepath, unsigned memory_ty
  * @param result Result code from memory operation
  * @return String description (static, do not free)
  */
-const char* MinArch_memoryResultString(MinArchMemoryResult result);
+const char* MinArchMemory_resultString(MinArchMemoryResult result);
 
 #endif // __MINARCH_MEMORY_H__

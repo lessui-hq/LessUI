@@ -163,4 +163,36 @@ void MinArchInput_resetToDefaults(MinArchButtonMapping* mappings);
  */
 bool MinArchInput_validateMappings(const MinArchButtonMapping* mappings);
 
+/**
+ * D-pad button remapping entry.
+ *
+ * Used to remap d-pad buttons to arrow keys for standard gamepad type.
+ */
+typedef struct {
+	int from_btn; // Source button (BTN_DPAD_*)
+	int to_btn; // Target button (BTN_UP/DOWN/LEFT/RIGHT)
+} MinArchDpadRemap;
+
+/**
+ * Collects button state into retro button bitmask.
+ *
+ * Iterates through control mappings and builds a bitmask of pressed
+ * libretro buttons based on current device button state.
+ *
+ * Handles:
+ * - D-pad to arrow key remapping for standard gamepad (gamepad_type=0)
+ * - Modifier key requirements (MENU must be held)
+ *
+ * @param controls Array of button mappings (NULL-terminated by name)
+ * @param pressed_buttons Bitmask of currently pressed device buttons
+ * @param menu_pressed Whether MENU modifier is currently pressed
+ * @param gamepad_type 0=standard (d-pad→arrows), 1=analog (d-pad direct)
+ * @param dpad_remaps Array of d-pad remapping entries (NULL-terminated, or NULL to disable)
+ * @param out_used_modifier Set to 1 if any modifier-requiring button was used
+ * @return Bitmask of pressed libretro buttons
+ */
+uint32_t MinArchInput_collectButtons(const MinArchButtonMapping* controls, uint32_t pressed_buttons,
+                                     int menu_pressed, int gamepad_type,
+                                     const MinArchDpadRemap* dpad_remaps, int* out_used_modifier);
+
 #endif // __MINARCH_INPUT_H__

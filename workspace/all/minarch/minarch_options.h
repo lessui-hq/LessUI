@@ -19,9 +19,11 @@ typedef struct MinArchOption {
 	char* name; // Display name (e.g., "Video Scale")
 	char* desc; // Description text (truncated)
 	char* full; // Full description text
-	int value; // Current value index
+	char* var; // Raw variable string from core (internal)
 	int default_value; // Default value index
+	int value; // Current value index
 	int count; // Number of possible values
+	int lock; // Option is locked (from config file)
 	char** values; // Value strings (internal)
 	char** labels; // Label strings (for display)
 } MinArchOption;
@@ -33,6 +35,9 @@ typedef struct MinArchOptionList {
 	int count; // Number of options
 	int changed; // Has any option changed?
 	MinArchOption* options; // Array of options
+
+	int enabled_count; // Number of enabled options (filtered)
+	MinArchOption** enabled_options; // Array of pointers to enabled options
 } MinArchOptionList;
 
 /**
@@ -46,9 +51,9 @@ typedef struct MinArchOptionList {
  * @return Pointer to option, or NULL if not found
  *
  * @example
- *   MinArchOption* opt = MinArch_findOption(&list, "video_scale");
+ *   MinArchOption* opt = MinArchOptions_find(&list, "video_scale");
  */
-MinArchOption* MinArch_findOption(MinArchOptionList* list, const char* key);
+MinArchOption* MinArchOptions_find(MinArchOptionList* list, const char* key);
 
 /**
  * Gets the current value string for an option.
@@ -61,10 +66,10 @@ MinArchOption* MinArch_findOption(MinArchOptionList* list, const char* key);
  * @return Current value string, or NULL if not found
  *
  * @example
- *   const char* scale = MinArch_getOptionValue(&list, "video_scale");
+ *   const char* scale = MinArchOptions_getValue(&list, "video_scale");
  *   // Returns: "2x" (or whatever is currently set)
  */
-const char* MinArch_getOptionValue(MinArchOptionList* list, const char* key);
+const char* MinArchOptions_getValue(MinArchOptionList* list, const char* key);
 
 /**
  * Sets an option to a specific value by string.
@@ -77,9 +82,9 @@ const char* MinArch_getOptionValue(MinArchOptionList* list, const char* key);
  * @param value Value string to set (must match one of the option's values)
  *
  * @example
- *   MinArch_setOptionValue(&list, "video_scale", "3x");
+ *   MinArchOptions_setValue(&list, "video_scale", "3x");
  */
-void MinArch_setOptionValue(MinArchOptionList* list, const char* key, const char* value);
+void MinArchOptions_setValue(MinArchOptionList* list, const char* key, const char* value);
 
 /**
  * Sets an option to a specific value by index.
@@ -92,8 +97,26 @@ void MinArch_setOptionValue(MinArchOptionList* list, const char* key, const char
  * @param value_index Index into the option's values array
  *
  * @example
- *   MinArch_setOptionRawValue(&list, "video_scale", 2); // Set to third value
+ *   MinArchOptions_setRawValue(&list, "video_scale", 2); // Set to third value
  */
-void MinArch_setOptionRawValue(MinArchOptionList* list, const char* key, int value_index);
+void MinArchOptions_setRawValue(MinArchOptionList* list, const char* key, int value_index);
+
+/**
+ * Finds the index of a value in an option's value list.
+ *
+ * Searches the option's values array for a matching string.
+ * Returns 0 (default) if value is NULL or not found.
+ *
+ * @param opt Option to search
+ * @param value Value string to find
+ * @return Index of value in values array, or 0 if not found
+ *
+ * @example
+ *   // Given option with values ["1x", "2x", "3x"]
+ *   MinArchOptions_getValueIndex(opt, "2x") -> 1
+ *   MinArchOptions_getValueIndex(opt, "4x") -> 0 (not found)
+ *   MinArchOptions_getValueIndex(opt, NULL) -> 0
+ */
+int MinArchOptions_getValueIndex(const MinArchOption* opt, const char* value);
 
 #endif /* MINARCH_OPTIONS_H */

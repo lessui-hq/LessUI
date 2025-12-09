@@ -16,7 +16,7 @@
 #define MAX_PATH 512
 #endif
 
-MinArchStateResult MinArch_readState(const char* filepath, const MinArchStateCore* core) {
+MinArchStateResult MinArchState_read(const char* filepath, const MinArchStateCore* core) {
 	MinArchStateResult result = MINARCH_STATE_OK;
 	FILE* state_file = NULL;
 	void* state_buffer = NULL;
@@ -62,7 +62,7 @@ cleanup:
 	return result;
 }
 
-MinArchStateResult MinArch_writeState(const char* filepath, const MinArchStateCore* core) {
+MinArchStateResult MinArchState_write(const char* filepath, const MinArchStateCore* core) {
 	MinArchStateResult result = MINARCH_STATE_OK;
 	FILE* state_file = NULL;
 	void* state_buffer = NULL;
@@ -107,21 +107,21 @@ cleanup:
 	return result;
 }
 
-MinArchStateResult MinArch_autoSave(const char* states_dir, const char* game_name,
-                                    const MinArchStateCore* core) {
+MinArchStateResult MinArchState_autoSave(const char* states_dir, const char* game_name,
+                                         const MinArchStateCore* core) {
 	char filepath[MAX_PATH];
-	MinArch_getStatePath(filepath, states_dir, game_name, MINARCH_AUTO_RESUME_SLOT);
-	return MinArch_writeState(filepath, core);
+	MinArchPaths_getState(filepath, states_dir, game_name, MINARCH_AUTO_RESUME_SLOT);
+	return MinArchState_write(filepath, core);
 }
 
-MinArchStateResult MinArch_resumeState(const char* states_dir, const char* game_name, int slot,
+MinArchStateResult MinArchState_resume(const char* states_dir, const char* game_name, int slot,
                                        const MinArchStateCore* core) {
 	char filepath[MAX_PATH];
-	MinArch_getStatePath(filepath, states_dir, game_name, slot);
-	return MinArch_readState(filepath, core);
+	MinArchPaths_getState(filepath, states_dir, game_name, slot);
+	return MinArchState_read(filepath, core);
 }
 
-const char* MinArch_stateResultString(MinArchStateResult result) {
+const char* MinArchState_resultString(MinArchStateResult result) {
 	switch (result) {
 	case MINARCH_STATE_OK:
 		return "Success";

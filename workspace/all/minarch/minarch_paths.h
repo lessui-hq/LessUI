@@ -23,7 +23,7 @@
  * @param saves_dir Directory for save files
  * @param game_name Game name (without extension)
  */
-void MinArch_getSRAMPath(char* filename, const char* saves_dir, const char* game_name);
+void MinArchPaths_getSRAM(char* filename, const char* saves_dir, const char* game_name);
 
 /**
  * Generates path for RTC (real-time clock) file.
@@ -35,7 +35,7 @@ void MinArch_getSRAMPath(char* filename, const char* saves_dir, const char* game
  * @param saves_dir Directory for save files
  * @param game_name Game name (without extension)
  */
-void MinArch_getRTCPath(char* filename, const char* saves_dir, const char* game_name);
+void MinArchPaths_getRTC(char* filename, const char* saves_dir, const char* game_name);
 
 /**
  * Generates path for save state file.
@@ -48,7 +48,7 @@ void MinArch_getRTCPath(char* filename, const char* saves_dir, const char* game_
  * @param game_name Game name (without extension)
  * @param slot Save state slot number (0-9)
  */
-void MinArch_getStatePath(char* filename, const char* states_dir, const char* game_name, int slot);
+void MinArchPaths_getState(char* filename, const char* states_dir, const char* game_name, int slot);
 
 /**
  * Generates path for configuration file.
@@ -64,7 +64,37 @@ void MinArch_getStatePath(char* filename, const char* states_dir, const char* ga
  * @param game_name Game name (NULL for global config)
  * @param device_tag Device-specific tag (NULL or "" if none, e.g., "-rg35xx")
  */
-void MinArch_getConfigPath(char* filename, const char* config_dir, const char* game_name,
+void MinArchConfig_getPath(char* filename, const char* config_dir, const char* game_name,
                            const char* device_tag);
+
+/**
+ * Chooses BIOS directory path with smart fallback (pure function).
+ *
+ * Implements intelligent BIOS path selection:
+ * - If tag-specific directory (e.g., Bios/GB/) has files, use it
+ * - Otherwise fall back to root BIOS directory (Bios/)
+ *
+ * This allows organized users (separate folders per system) and messy
+ * users (all BIOS files in root) to work seamlessly.
+ *
+ * @param base_bios_path Root BIOS directory (e.g., "/mnt/SDCARD/Bios")
+ * @param tag Platform tag (e.g., "GB", "PS", "N64")
+ * @param bios_dir Output buffer for selected BIOS directory path
+ * @param tag_dir_has_files Whether the tag-specific directory contains files
+ */
+void MinArchPaths_chooseBios(const char* base_bios_path, const char* tag, char* bios_dir,
+                             int tag_dir_has_files);
+
+/**
+ * Builds tag-specific BIOS directory path.
+ *
+ * Format: {base_bios_path}/{tag}
+ * Example: "/mnt/SDCARD/Bios/GB"
+ *
+ * @param base_bios_path Root BIOS directory
+ * @param tag Platform tag
+ * @param tag_bios_dir Output buffer for tag-specific path
+ */
+void MinArchPaths_getTagBios(const char* base_bios_path, const char* tag, char* tag_bios_dir);
 
 #endif // __MINARCH_PATHS_H__

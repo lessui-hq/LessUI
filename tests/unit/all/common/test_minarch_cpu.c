@@ -18,16 +18,16 @@
 #include <string.h>
 
 // Test state and config
-static AutoCPUState state;
-static AutoCPUConfig config;
+static MinArchCPUState state;
+static MinArchCPUConfig config;
 
 ///////////////////////////////
 // Test Setup/Teardown
 ///////////////////////////////
 
 void setUp(void) {
-	AutoCPU_initState(&state);
-	AutoCPU_initConfig(&config);
+	MinArchCPU_initState(&state);
+	MinArchCPU_initConfig(&config);
 }
 
 void tearDown(void) {
@@ -39,8 +39,8 @@ void tearDown(void) {
 ///////////////////////////////
 
 void test_initConfig_sets_defaults(void) {
-	AutoCPUConfig c;
-	AutoCPU_initConfig(&c);
+	MinArchCPUConfig c;
+	MinArchCPU_initConfig(&c);
 
 	TEST_ASSERT_EQUAL(30, c.window_frames);
 	TEST_ASSERT_EQUAL(85, c.util_high);
@@ -54,9 +54,9 @@ void test_initConfig_sets_defaults(void) {
 }
 
 void test_initState_zeros_state(void) {
-	AutoCPUState s;
+	MinArchCPUState s;
 	memset(&s, 0xFF, sizeof(s)); // Fill with garbage
-	AutoCPU_initState(&s);
+	MinArchCPU_initState(&s);
 
 	TEST_ASSERT_EQUAL(0, s.freq_count);
 	TEST_ASSERT_EQUAL(0, s.target_index);
@@ -70,39 +70,39 @@ void test_initState_zeros_state(void) {
 ///////////////////////////////
 
 void test_findNearestIndex_empty_array(void) {
-	int result = AutoCPU_findNearestIndex(NULL, 0, 1000000);
+	int result = MinArchCPU_findNearestIndex(NULL, 0, 1000000);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_findNearestIndex_exact_match(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	int result = AutoCPU_findNearestIndex(freqs, 4, 800000);
+	int result = MinArchCPU_findNearestIndex(freqs, 4, 800000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
 void test_findNearestIndex_nearest_lower(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
 	// 750000 is closer to 800000 than 600000
-	int result = AutoCPU_findNearestIndex(freqs, 4, 750000);
+	int result = MinArchCPU_findNearestIndex(freqs, 4, 750000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
 void test_findNearestIndex_nearest_higher(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
 	// 650000 is closer to 600000 than 800000
-	int result = AutoCPU_findNearestIndex(freqs, 4, 650000);
+	int result = MinArchCPU_findNearestIndex(freqs, 4, 650000);
 	TEST_ASSERT_EQUAL(1, result);
 }
 
 void test_findNearestIndex_below_min(void) {
 	int freqs[] = {400000, 600000, 800000};
-	int result = AutoCPU_findNearestIndex(freqs, 3, 100000);
+	int result = MinArchCPU_findNearestIndex(freqs, 3, 100000);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_findNearestIndex_above_max(void) {
 	int freqs[] = {400000, 600000, 800000};
-	int result = AutoCPU_findNearestIndex(freqs, 3, 2000000);
+	int result = MinArchCPU_findNearestIndex(freqs, 3, 2000000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
@@ -112,7 +112,7 @@ void test_findNearestIndex_above_max(void) {
 
 void test_detectFrequencies_filters_below_minimum(void) {
 	int raw[] = {100000, 200000, 300000, 400000, 600000, 800000};
-	AutoCPU_detectFrequencies(&state, &config, raw, 6);
+	MinArchCPU_detectFrequencies(&state, &config, raw, 6);
 
 	// Should only keep 400000, 600000, 800000
 	TEST_ASSERT_EQUAL(3, state.freq_count);
@@ -123,7 +123,7 @@ void test_detectFrequencies_filters_below_minimum(void) {
 
 void test_detectFrequencies_enables_granular_mode(void) {
 	int raw[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, raw, 4);
+	MinArchCPU_detectFrequencies(&state, &config, raw, 4);
 
 	TEST_ASSERT_EQUAL(1, state.use_granular);
 	TEST_ASSERT_EQUAL(1, state.frequencies_detected);
@@ -131,7 +131,7 @@ void test_detectFrequencies_enables_granular_mode(void) {
 
 void test_detectFrequencies_fallback_with_one_freq(void) {
 	int raw[] = {800000}; // Only one frequency
-	AutoCPU_detectFrequencies(&state, &config, raw, 1);
+	MinArchCPU_detectFrequencies(&state, &config, raw, 1);
 
 	TEST_ASSERT_EQUAL(0, state.use_granular);
 	TEST_ASSERT_EQUAL(1, state.freq_count);
@@ -144,11 +144,11 @@ void test_detectFrequencies_calculates_preset_indices(void) {
 	// NORMAL (80%): 800000 -> exact match (index 2)
 	// PERFORMANCE (100%): 1000000 (index 3)
 	int raw[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, raw, 4);
+	MinArchCPU_detectFrequencies(&state, &config, raw, 4);
 
-	TEST_ASSERT_EQUAL(1, state.preset_indices[AUTO_CPU_LEVEL_POWERSAVE]);
-	TEST_ASSERT_EQUAL(2, state.preset_indices[AUTO_CPU_LEVEL_NORMAL]);
-	TEST_ASSERT_EQUAL(3, state.preset_indices[AUTO_CPU_LEVEL_PERFORMANCE]);
+	TEST_ASSERT_EQUAL(1, state.preset_indices[MINARCH_CPU_LEVEL_POWERSAVE]);
+	TEST_ASSERT_EQUAL(2, state.preset_indices[MINARCH_CPU_LEVEL_NORMAL]);
+	TEST_ASSERT_EQUAL(3, state.preset_indices[MINARCH_CPU_LEVEL_PERFORMANCE]);
 }
 
 ///////////////////////////////
@@ -161,7 +161,7 @@ void test_reset_clears_monitoring_state(void) {
 	state.low_util_windows = 3;
 	state.panic_cooldown = 8;
 
-	AutoCPU_reset(&state, &config, 60.0, 0);
+	MinArchCPU_reset(&state, &config, 60.0, 0);
 
 	TEST_ASSERT_EQUAL(0, state.frame_count);
 	TEST_ASSERT_EQUAL(0, state.high_util_windows);
@@ -171,22 +171,22 @@ void test_reset_clears_monitoring_state(void) {
 }
 
 void test_reset_calculates_frame_budget_60fps(void) {
-	AutoCPU_reset(&state, &config, 60.0, 0);
+	MinArchCPU_reset(&state, &config, 60.0, 0);
 	TEST_ASSERT_EQUAL(16666, state.frame_budget_us); // 1000000/60
 }
 
 void test_reset_calculates_frame_budget_50fps(void) {
-	AutoCPU_reset(&state, &config, 50.0, 0);
+	MinArchCPU_reset(&state, &config, 50.0, 0);
 	TEST_ASSERT_EQUAL(20000, state.frame_budget_us); // 1000000/50
 }
 
 void test_reset_defaults_to_60fps_on_zero(void) {
-	AutoCPU_reset(&state, &config, 0.0, 0);
+	MinArchCPU_reset(&state, &config, 0.0, 0);
 	TEST_ASSERT_EQUAL(16667, state.frame_budget_us);
 }
 
 void test_reset_stores_initial_underruns(void) {
-	AutoCPU_reset(&state, &config, 60.0, 42);
+	MinArchCPU_reset(&state, &config, 60.0, 42);
 	TEST_ASSERT_EQUAL(42, state.last_underrun);
 }
 
@@ -195,9 +195,9 @@ void test_reset_stores_initial_underruns(void) {
 ///////////////////////////////
 
 void test_recordFrameTime_stores_in_ring_buffer(void) {
-	AutoCPU_recordFrameTime(&state, 15000);
-	AutoCPU_recordFrameTime(&state, 16000);
-	AutoCPU_recordFrameTime(&state, 17000);
+	MinArchCPU_recordFrameTime(&state, 15000);
+	MinArchCPU_recordFrameTime(&state, 16000);
+	MinArchCPU_recordFrameTime(&state, 17000);
 
 	TEST_ASSERT_EQUAL(15000, state.frame_times[0]);
 	TEST_ASSERT_EQUAL(16000, state.frame_times[1]);
@@ -207,14 +207,14 @@ void test_recordFrameTime_stores_in_ring_buffer(void) {
 
 void test_recordFrameTime_wraps_at_buffer_size(void) {
 	// Fill buffer
-	for (int i = 0; i < AUTO_CPU_FRAME_BUFFER_SIZE; i++) {
-		AutoCPU_recordFrameTime(&state, 10000 + i);
+	for (int i = 0; i < MINARCH_CPU_FRAME_BUFFER_SIZE; i++) {
+		MinArchCPU_recordFrameTime(&state, 10000 + i);
 	}
 	// Add one more - should wrap to index 0
-	AutoCPU_recordFrameTime(&state, 99999);
+	MinArchCPU_recordFrameTime(&state, 99999);
 
 	TEST_ASSERT_EQUAL(99999, state.frame_times[0]);
-	TEST_ASSERT_EQUAL(AUTO_CPU_FRAME_BUFFER_SIZE + 1, state.frame_time_index);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_FRAME_BUFFER_SIZE + 1, state.frame_time_index);
 }
 
 ///////////////////////////////
@@ -222,20 +222,20 @@ void test_recordFrameTime_wraps_at_buffer_size(void) {
 ///////////////////////////////
 
 void test_percentile90_empty_returns_zero(void) {
-	uint64_t result = AutoCPU_percentile90(NULL, 0);
+	uint64_t result = MinArchCPU_percentile90(NULL, 0);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_percentile90_single_value(void) {
 	uint64_t times[] = {12345};
-	uint64_t result = AutoCPU_percentile90(times, 1);
+	uint64_t result = MinArchCPU_percentile90(times, 1);
 	TEST_ASSERT_EQUAL(12345, result);
 }
 
 void test_percentile90_ten_values(void) {
 	// Values 1-10, 90th percentile index = (10 * 90) / 100 = 9, sorted[9] = 10
 	uint64_t times[] = {5, 3, 8, 1, 9, 2, 7, 4, 10, 6};
-	uint64_t result = AutoCPU_percentile90(times, 10);
+	uint64_t result = MinArchCPU_percentile90(times, 10);
 	TEST_ASSERT_EQUAL(10, result);
 }
 
@@ -245,7 +245,7 @@ void test_percentile90_ignores_outliers(void) {
 	// 90% of 10 = 9, so index 9 = 1000000
 	// But we want the frame times to show typical load, not spikes
 	uint64_t times[] = {10, 11, 12, 13, 14, 15, 16, 17, 18, 1000000};
-	uint64_t result = AutoCPU_percentile90(times, 10);
+	uint64_t result = MinArchCPU_percentile90(times, 10);
 	// Index 9 (90%) is the outlier
 	TEST_ASSERT_EQUAL(1000000, result);
 }
@@ -257,19 +257,19 @@ void test_percentile90_ignores_outliers(void) {
 void test_predictFrequency_boost_case(void) {
 	// At 1000MHz with 90% util, want 70% util
 	// new_freq = 1000 * 90 / 70 = 1285
-	int result = AutoCPU_predictFrequency(1000000, 90, 70);
+	int result = MinArchCPU_predictFrequency(1000000, 90, 70);
 	TEST_ASSERT_EQUAL(1285714, result);
 }
 
 void test_predictFrequency_reduce_case(void) {
 	// At 1000MHz with 40% util, want 70% util
 	// new_freq = 1000 * 40 / 70 = 571
-	int result = AutoCPU_predictFrequency(1000000, 40, 70);
+	int result = MinArchCPU_predictFrequency(1000000, 40, 70);
 	TEST_ASSERT_EQUAL(571428, result);
 }
 
 void test_predictFrequency_zero_target_returns_current(void) {
-	int result = AutoCPU_predictFrequency(1000000, 50, 0);
+	int result = MinArchCPU_predictFrequency(1000000, 50, 0);
 	TEST_ASSERT_EQUAL(1000000, result);
 }
 
@@ -278,15 +278,15 @@ void test_predictFrequency_zero_target_returns_current(void) {
 ///////////////////////////////
 
 void test_getPresetPercentage_powersave(void) {
-	TEST_ASSERT_EQUAL(55, AutoCPU_getPresetPercentage(AUTO_CPU_LEVEL_POWERSAVE));
+	TEST_ASSERT_EQUAL(55, MinArchCPU_getPresetPercentage(MINARCH_CPU_LEVEL_POWERSAVE));
 }
 
 void test_getPresetPercentage_normal(void) {
-	TEST_ASSERT_EQUAL(80, AutoCPU_getPresetPercentage(AUTO_CPU_LEVEL_NORMAL));
+	TEST_ASSERT_EQUAL(80, MinArchCPU_getPresetPercentage(MINARCH_CPU_LEVEL_NORMAL));
 }
 
 void test_getPresetPercentage_performance(void) {
-	TEST_ASSERT_EQUAL(100, AutoCPU_getPresetPercentage(AUTO_CPU_LEVEL_PERFORMANCE));
+	TEST_ASSERT_EQUAL(100, MinArchCPU_getPresetPercentage(MINARCH_CPU_LEVEL_PERFORMANCE));
 }
 
 ///////////////////////////////
@@ -294,27 +294,27 @@ void test_getPresetPercentage_performance(void) {
 ///////////////////////////////
 
 void test_update_skips_during_fast_forward(void) {
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, true, false, 0, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, true, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_SKIP, decision);
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_SKIP, result.decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, result.decision);
 }
 
 void test_update_skips_during_menu(void) {
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, true, 0, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, true, 0, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
 }
 
 void test_update_skips_during_grace_period(void) {
 	config.startup_grace = 300;
 	state.startup_frames = 100; // Not yet at grace period
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(101, state.startup_frames); // Incremented
 }
 
@@ -325,15 +325,15 @@ void test_update_skips_during_grace_period(void) {
 void test_update_panic_on_underrun_granular(void) {
 	// Setup: granular mode, not at max
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace; // Past grace
 	state.target_index = 1; // At 600MHz
 	state.last_underrun = 0;
 
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 1, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 1, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index); // Boosted by max_step=2 (1+2=3)
 	TEST_ASSERT_EQUAL(8, state.panic_cooldown);
 }
@@ -345,24 +345,24 @@ void test_update_panic_on_underrun_fallback(void) {
 	state.target_level = 0; // At powersave
 	state.last_underrun = 0;
 
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 1, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 1, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_EQUAL(2, state.target_level); // Boosted to max
 }
 
 void test_update_no_panic_when_at_max(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3; // Already at max
 	state.last_underrun = 0;
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 1, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 1, NULL);
 
 	// Should not panic, just update underrun tracking
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index); // Still at max
 }
 
@@ -372,13 +372,13 @@ void test_update_no_panic_when_at_max(void) {
 
 void test_update_waits_for_full_window(void) {
 	int freqs[] = {400000, 600000, 800000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 3);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 3);
 	state.startup_frames = config.startup_grace;
 	state.frame_count = 10; // Not yet at window_frames (30)
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(11, state.frame_count); // Incremented
 }
 
@@ -388,7 +388,7 @@ void test_update_waits_for_full_window(void) {
 
 void test_update_boost_on_high_util_granular(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 1;                  // 600MHz
 	state.frame_count = config.window_frames - 1;
@@ -397,19 +397,19 @@ void test_update_boost_on_high_util_granular(void) {
 	// Add frame times that result in high utilization (~90%)
 	state.frame_budget_us = 16667; // 60fps
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 15000); // 90% of 16667
+		MinArchCPU_recordFrameTime(&state, 15000); // 90% of 16667
 	}
 
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_TRUE(state.target_index > 1); // Moved up
 }
 
 void test_update_reduce_on_low_util_granular(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3;                  // 1000MHz
 	state.frame_count = config.window_frames - 1;
@@ -419,19 +419,19 @@ void test_update_reduce_on_low_util_granular(void) {
 	// Add frame times that result in low utilization (~40%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 6667); // 40% of 16667
+		MinArchCPU_recordFrameTime(&state, 6667); // 40% of 16667
 	}
 
-	AutoCPUResult result;
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, &result);
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_TRUE(state.target_index < 3); // Moved down
 }
 
 void test_update_no_reduce_during_cooldown(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3;
 	state.frame_count = config.window_frames - 1;
@@ -440,13 +440,13 @@ void test_update_no_reduce_during_cooldown(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 6667); // Low util
+		MinArchCPU_recordFrameTime(&state, 6667); // Low util
 	}
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
 	// Should NOT reduce due to cooldown
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index);
 	TEST_ASSERT_EQUAL(4, state.panic_cooldown); // Decremented
 }
@@ -460,12 +460,12 @@ void test_update_boost_fallback_mode(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 15000);
+		MinArchCPU_recordFrameTime(&state, 15000);
 	}
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
 }
 
@@ -478,18 +478,18 @@ void test_update_reduce_fallback_mode(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 6667);
+		MinArchCPU_recordFrameTime(&state, 6667);
 	}
 
-	AutoCPUDecision decision = AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(AUTO_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
 }
 
 void test_update_sweet_spot_resets_counters(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	AutoCPU_detectFrequencies(&state, &config, freqs, 4);
+	MinArchCPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 2;
 	state.frame_count = config.window_frames - 1;
@@ -499,10 +499,10 @@ void test_update_sweet_spot_resets_counters(void) {
 	// Add frame times that result in sweet spot utilization (~70%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		AutoCPU_recordFrameTime(&state, 11667); // ~70% of 16667
+		MinArchCPU_recordFrameTime(&state, 11667); // ~70% of 16667
 	}
 
-	AutoCPU_update(&state, &config, false, false, 0, NULL);
+	MinArchCPU_update(&state, &config, false, false, 0, NULL);
 
 	// Counters should be reset
 	TEST_ASSERT_EQUAL(0, state.high_util_windows);

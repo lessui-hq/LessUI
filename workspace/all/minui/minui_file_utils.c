@@ -126,11 +126,16 @@ int MinUI_buildThumbPath(const char* entry_path, char* out_path) {
 	}
 
 	int dir_len = (int)(last_slash - entry_path);
-	if (dir_len <= 0 || dir_len >= MAX_PATH - 32) {
+	if (dir_len < 0 || dir_len >= MAX_PATH - 32) {
 		return 0;
 	}
 
-	snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
+	// For root-level files (dir_len == 0), use "/" as directory
+	if (dir_len == 0) {
+		snprintf(out_path, MAX_PATH, "/.res/%s.png", last_slash + 1);
+	} else {
+		snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
+	}
 	return 1;
 }
 

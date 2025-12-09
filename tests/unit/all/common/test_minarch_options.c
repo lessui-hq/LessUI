@@ -5,10 +5,10 @@
  * data structure operations with no external dependencies.
  *
  * Test coverage:
- * - MinArch_findOption - Option search by key
- * - MinArch_getOptionValue - Get current value string
- * - MinArch_setOptionValue - Set value by string
- * - MinArch_setOptionRawValue - Set value by index
+ * - MinArchOptions_find - Option search by key
+ * - MinArchOptions_getValue - Get current value string
+ * - MinArchOptions_setValue - Set value by string
+ * - MinArchOptions_setRawValue - Set value by index
  */
 
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()
@@ -81,83 +81,83 @@ void tearDown(void) {
 }
 
 ///////////////////////////////
-// MinArch_findOption tests
+// MinArchOptions_find tests
 ///////////////////////////////
 
 void test_findOption_finds_first_option(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "video_scale");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "video_scale");
 	TEST_ASSERT_NOT_NULL(opt);
 	TEST_ASSERT_EQUAL_STRING("video_scale", opt->key);
 	TEST_ASSERT_EQUAL_STRING("Video Scale", opt->name);
 }
 
 void test_findOption_finds_middle_option(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "audio_enable");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "audio_enable");
 	TEST_ASSERT_NOT_NULL(opt);
 	TEST_ASSERT_EQUAL_STRING("audio_enable", opt->key);
 	TEST_ASSERT_EQUAL_STRING("Audio", opt->name);
 }
 
 void test_findOption_finds_last_option(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "frameskip");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "frameskip");
 	TEST_ASSERT_NOT_NULL(opt);
 	TEST_ASSERT_EQUAL_STRING("frameskip", opt->key);
 	TEST_ASSERT_EQUAL_STRING("Frameskip", opt->name);
 }
 
 void test_findOption_returns_null_for_nonexistent(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "nonexistent_option");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "nonexistent_option");
 	TEST_ASSERT_NULL(opt);
 }
 
 void test_findOption_returns_null_for_null_key(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, NULL);
+	MinArchOption* opt = MinArchOptions_find(&test_list, NULL);
 	TEST_ASSERT_NULL(opt);
 }
 
 void test_findOption_returns_null_for_null_list(void) {
-	MinArchOption* opt = MinArch_findOption(NULL, "video_scale");
+	MinArchOption* opt = MinArchOptions_find(NULL, "video_scale");
 	TEST_ASSERT_NULL(opt);
 }
 
 void test_findOption_case_sensitive(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "VIDEO_SCALE");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "VIDEO_SCALE");
 	TEST_ASSERT_NULL(opt);  // Should not match (case mismatch)
 }
 
 void test_findOption_empty_string(void) {
-	MinArchOption* opt = MinArch_findOption(&test_list, "");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "");
 	TEST_ASSERT_NULL(opt);
 }
 
 ///////////////////////////////
-// MinArch_getOptionValue tests
+// MinArchOptions_getValue tests
 ///////////////////////////////
 
 void test_getOptionValue_returns_current_value(void) {
-	const char* value = MinArch_getOptionValue(&test_list, "video_scale");
+	const char* value = MinArchOptions_getValue(&test_list, "video_scale");
 	TEST_ASSERT_NOT_NULL(value);
 	TEST_ASSERT_EQUAL_STRING("2x", value);  // Default is index 1
 }
 
 void test_getOptionValue_returns_first_value(void) {
-	const char* value = MinArch_getOptionValue(&test_list, "frameskip");
+	const char* value = MinArchOptions_getValue(&test_list, "frameskip");
 	TEST_ASSERT_NOT_NULL(value);
 	TEST_ASSERT_EQUAL_STRING("0", value);  // Default is index 0
 }
 
 void test_getOptionValue_returns_null_for_nonexistent(void) {
-	const char* value = MinArch_getOptionValue(&test_list, "missing");
+	const char* value = MinArchOptions_getValue(&test_list, "missing");
 	TEST_ASSERT_NULL(value);
 }
 
 void test_getOptionValue_returns_null_for_null_key(void) {
-	const char* value = MinArch_getOptionValue(&test_list, NULL);
+	const char* value = MinArchOptions_getValue(&test_list, NULL);
 	TEST_ASSERT_NULL(value);
 }
 
 void test_getOptionValue_returns_null_for_null_list(void) {
-	const char* value = MinArch_getOptionValue(NULL, "video_scale");
+	const char* value = MinArchOptions_getValue(NULL, "video_scale");
 	TEST_ASSERT_NULL(value);
 }
 
@@ -165,23 +165,23 @@ void test_getOptionValue_after_change(void) {
 	// Change the value
 	options[0].value = 2;  // Change to 3x
 
-	const char* value = MinArch_getOptionValue(&test_list, "video_scale");
+	const char* value = MinArchOptions_getValue(&test_list, "video_scale");
 	TEST_ASSERT_EQUAL_STRING("3x", value);
 }
 
 ///////////////////////////////
-// MinArch_setOptionValue tests
+// MinArchOptions_setValue tests
 ///////////////////////////////
 
 void test_setOptionValue_changes_value(void) {
-	MinArch_setOptionValue(&test_list, "video_scale", "3x");
+	MinArchOptions_setValue(&test_list, "video_scale", "3x");
 
 	TEST_ASSERT_EQUAL_INT(2, options[0].value);  // Index of "3x"
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
 void test_setOptionValue_changes_to_first(void) {
-	MinArch_setOptionValue(&test_list, "video_scale", "1x");
+	MinArchOptions_setValue(&test_list, "video_scale", "1x");
 
 	TEST_ASSERT_EQUAL_INT(0, options[0].value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
@@ -190,7 +190,7 @@ void test_setOptionValue_changes_to_first(void) {
 void test_setOptionValue_marks_list_as_changed(void) {
 	test_list.changed = 0;
 
-	MinArch_setOptionValue(&test_list, "audio_enable", "Off");
+	MinArchOptions_setValue(&test_list, "audio_enable", "Off");
 
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
@@ -199,7 +199,7 @@ void test_setOptionValue_ignores_invalid_value(void) {
 	int original_value = options[0].value;
 	int original_changed = test_list.changed;
 
-	MinArch_setOptionValue(&test_list, "video_scale", "4x");  // Not in list
+	MinArchOptions_setValue(&test_list, "video_scale", "4x");  // Not in list
 
 	// Should not change
 	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
@@ -209,13 +209,13 @@ void test_setOptionValue_ignores_invalid_value(void) {
 void test_setOptionValue_ignores_nonexistent_key(void) {
 	int original_changed = test_list.changed;
 
-	MinArch_setOptionValue(&test_list, "nonexistent", "value");
+	MinArchOptions_setValue(&test_list, "nonexistent", "value");
 
 	TEST_ASSERT_EQUAL_INT(original_changed, test_list.changed);
 }
 
 void test_setOptionValue_ignores_null_key(void) {
-	MinArch_setOptionValue(&test_list, NULL, "value");
+	MinArchOptions_setValue(&test_list, NULL, "value");
 	// Should not crash
 	TEST_PASS();
 }
@@ -223,7 +223,7 @@ void test_setOptionValue_ignores_null_key(void) {
 void test_setOptionValue_ignores_null_value(void) {
 	int original_value = options[0].value;
 
-	MinArch_setOptionValue(&test_list, "video_scale", NULL);
+	MinArchOptions_setValue(&test_list, "video_scale", NULL);
 
 	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
 }
@@ -232,25 +232,25 @@ void test_setOptionValue_case_sensitive_values(void) {
 	// "on" != "On"
 	int original_value = options[1].value;
 
-	MinArch_setOptionValue(&test_list, "audio_enable", "on");  // lowercase
+	MinArchOptions_setValue(&test_list, "audio_enable", "on");  // lowercase
 
 	// Should not match "On" (uppercase)
 	TEST_ASSERT_EQUAL_INT(original_value, options[1].value);
 }
 
 ///////////////////////////////
-// MinArch_setOptionRawValue tests
+// MinArchOptions_setRawValue tests
 ///////////////////////////////
 
 void test_setOptionRawValue_changes_value(void) {
-	MinArch_setOptionRawValue(&test_list, "video_scale", 2);
+	MinArchOptions_setRawValue(&test_list, "video_scale", 2);
 
 	TEST_ASSERT_EQUAL_INT(2, options[0].value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
 void test_setOptionRawValue_sets_to_zero(void) {
-	MinArch_setOptionRawValue(&test_list, "video_scale", 0);
+	MinArchOptions_setRawValue(&test_list, "video_scale", 0);
 
 	TEST_ASSERT_EQUAL_INT(0, options[0].value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
@@ -259,7 +259,7 @@ void test_setOptionRawValue_sets_to_zero(void) {
 void test_setOptionRawValue_marks_list_as_changed(void) {
 	test_list.changed = 0;
 
-	MinArch_setOptionRawValue(&test_list, "frameskip", 2);
+	MinArchOptions_setRawValue(&test_list, "frameskip", 2);
 
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
@@ -267,7 +267,7 @@ void test_setOptionRawValue_marks_list_as_changed(void) {
 void test_setOptionRawValue_ignores_out_of_bounds_low(void) {
 	int original_value = options[0].value;
 
-	MinArch_setOptionRawValue(&test_list, "video_scale", -1);
+	MinArchOptions_setRawValue(&test_list, "video_scale", -1);
 
 	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
 }
@@ -275,20 +275,20 @@ void test_setOptionRawValue_ignores_out_of_bounds_low(void) {
 void test_setOptionRawValue_ignores_out_of_bounds_high(void) {
 	int original_value = options[0].value;
 
-	MinArch_setOptionRawValue(&test_list, "video_scale", 10);
+	MinArchOptions_setRawValue(&test_list, "video_scale", 10);
 
 	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
 }
 
 void test_setOptionRawValue_ignores_nonexistent_key(void) {
-	MinArch_setOptionRawValue(&test_list, "nonexistent", 0);
+	MinArchOptions_setRawValue(&test_list, "nonexistent", 0);
 	// Should not crash
 	TEST_PASS();
 }
 
 void test_setOptionRawValue_max_valid_index(void) {
 	// Set to last valid index
-	MinArch_setOptionRawValue(&test_list, "frameskip", 3);
+	MinArchOptions_setRawValue(&test_list, "frameskip", 3);
 
 	TEST_ASSERT_EQUAL_INT(3, options[2].value);
 }
@@ -299,28 +299,28 @@ void test_setOptionRawValue_max_valid_index(void) {
 
 void test_option_workflow_find_get_set(void) {
 	// Find option
-	MinArchOption* opt = MinArch_findOption(&test_list, "video_scale");
+	MinArchOption* opt = MinArchOptions_find(&test_list, "video_scale");
 	TEST_ASSERT_NOT_NULL(opt);
 
 	// Get current value
-	const char* current = MinArch_getOptionValue(&test_list, "video_scale");
+	const char* current = MinArchOptions_getValue(&test_list, "video_scale");
 	TEST_ASSERT_EQUAL_STRING("2x", current);
 
 	// Change value
-	MinArch_setOptionValue(&test_list, "video_scale", "3x");
+	MinArchOptions_setValue(&test_list, "video_scale", "3x");
 
 	// Verify change
-	const char* new_value = MinArch_getOptionValue(&test_list, "video_scale");
+	const char* new_value = MinArchOptions_getValue(&test_list, "video_scale");
 	TEST_ASSERT_EQUAL_STRING("3x", new_value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
 void test_option_workflow_raw_value_setting(void) {
 	// Set using raw index
-	MinArch_setOptionRawValue(&test_list, "audio_enable", 0);
+	MinArchOptions_setRawValue(&test_list, "audio_enable", 0);
 
 	// Verify via get
-	const char* value = MinArch_getOptionValue(&test_list, "audio_enable");
+	const char* value = MinArchOptions_getValue(&test_list, "audio_enable");
 	TEST_ASSERT_EQUAL_STRING("Off", value);
 }
 
@@ -328,28 +328,28 @@ void test_multiple_changes_track_correctly(void) {
 	test_list.changed = 0;
 
 	// Make multiple changes
-	MinArch_setOptionValue(&test_list, "video_scale", "1x");
+	MinArchOptions_setValue(&test_list, "video_scale", "1x");
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 
-	MinArch_setOptionValue(&test_list, "audio_enable", "Off");
+	MinArchOptions_setValue(&test_list, "audio_enable", "Off");
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);  // Still 1 (just a flag)
 
-	MinArch_setOptionRawValue(&test_list, "frameskip", 2);
+	MinArchOptions_setRawValue(&test_list, "frameskip", 2);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
 void test_empty_option_list(void) {
 	MinArchOptionList empty_list = {.count = 0, .changed = 0, .options = NULL};
 
-	MinArchOption* opt = MinArch_findOption(&empty_list, "anything");
+	MinArchOption* opt = MinArchOptions_find(&empty_list, "anything");
 	TEST_ASSERT_NULL(opt);
 
-	const char* value = MinArch_getOptionValue(&empty_list, "anything");
+	const char* value = MinArchOptions_getValue(&empty_list, "anything");
 	TEST_ASSERT_NULL(value);
 
 	// Should not crash
-	MinArch_setOptionValue(&empty_list, "anything", "value");
-	MinArch_setOptionRawValue(&empty_list, "anything", 0);
+	MinArchOptions_setValue(&empty_list, "anything", "value");
+	MinArchOptions_setRawValue(&empty_list, "anything", 0);
 	TEST_PASS();
 }
 
@@ -376,10 +376,10 @@ void test_option_with_single_value(void) {
 	    .options = &single_opt
 	};
 
-	const char* value = MinArch_getOptionValue(&single_list, "single");
+	const char* value = MinArchOptions_getValue(&single_list, "single");
 	TEST_ASSERT_EQUAL_STRING("only", value);
 
-	MinArch_setOptionValue(&single_list, "single", "only");
+	MinArchOptions_setValue(&single_list, "single", "only");
 	TEST_ASSERT_EQUAL_INT(0, single_opt.value);
 
 	// Cleanup
@@ -393,7 +393,7 @@ void test_option_value_at_boundary(void) {
 	// Test value at maximum index
 	options[2].value = 3;  // Last valid index for frameskip
 
-	const char* value = MinArch_getOptionValue(&test_list, "frameskip");
+	const char* value = MinArchOptions_getValue(&test_list, "frameskip");
 	TEST_ASSERT_EQUAL_STRING("3", value);
 }
 
@@ -401,10 +401,61 @@ void test_unchanged_list_stays_unchanged(void) {
 	test_list.changed = 0;
 
 	// Set to current value (no actual change)
-	MinArch_setOptionValue(&test_list, "video_scale", "2x");
+	MinArchOptions_setValue(&test_list, "video_scale", "2x");
 
 	// Still marks as changed (implementation doesn't check if value actually changed)
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
+}
+
+///////////////////////////////
+// MinArchOptions_getValueIndex tests
+///////////////////////////////
+
+void test_getOptionValueIndex_finds_first(void) {
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[0], "1x"));
+}
+
+void test_getOptionValueIndex_finds_middle(void) {
+	TEST_ASSERT_EQUAL_INT(1, MinArchOptions_getValueIndex(&options[0], "2x"));
+}
+
+void test_getOptionValueIndex_finds_last(void) {
+	TEST_ASSERT_EQUAL_INT(2, MinArchOptions_getValueIndex(&options[0], "3x"));
+}
+
+void test_getOptionValueIndex_returns_0_for_not_found(void) {
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[0], "4x"));
+}
+
+void test_getOptionValueIndex_returns_0_for_null_value(void) {
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[0], NULL));
+}
+
+void test_getOptionValueIndex_returns_0_for_null_opt(void) {
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(NULL, "1x"));
+}
+
+void test_getOptionValueIndex_case_sensitive(void) {
+	// "Off" should match index 0, but "off" should return 0 (default, not found)
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[1], "Off"));
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[1], "off")); // Not found -> returns 0
+}
+
+void test_getOptionValueIndex_empty_string_not_in_values(void) {
+	// Empty string not in our test values, should return 0
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&options[0], ""));
+}
+
+void test_getOptionValueIndex_single_value_option(void) {
+	// Create a single-value option
+	MinArchOption single = {
+		.key = "single",
+		.name = "Single",
+		.count = 1,
+		.values = (char*[]){ "only", NULL },
+		.value = 0
+	};
+	TEST_ASSERT_EQUAL_INT(0, MinArchOptions_getValueIndex(&single, "only"));
 }
 
 ///////////////////////////////
@@ -414,7 +465,7 @@ void test_unchanged_list_stays_unchanged(void) {
 int main(void) {
 	UNITY_BEGIN();
 
-	// MinArch_findOption
+	// MinArchOptions_find
 	RUN_TEST(test_findOption_finds_first_option);
 	RUN_TEST(test_findOption_finds_middle_option);
 	RUN_TEST(test_findOption_finds_last_option);
@@ -424,7 +475,7 @@ int main(void) {
 	RUN_TEST(test_findOption_case_sensitive);
 	RUN_TEST(test_findOption_empty_string);
 
-	// MinArch_getOptionValue
+	// MinArchOptions_getValue
 	RUN_TEST(test_getOptionValue_returns_current_value);
 	RUN_TEST(test_getOptionValue_returns_first_value);
 	RUN_TEST(test_getOptionValue_returns_null_for_nonexistent);
@@ -432,7 +483,7 @@ int main(void) {
 	RUN_TEST(test_getOptionValue_returns_null_for_null_list);
 	RUN_TEST(test_getOptionValue_after_change);
 
-	// MinArch_setOptionValue
+	// MinArchOptions_setValue
 	RUN_TEST(test_setOptionValue_changes_value);
 	RUN_TEST(test_setOptionValue_changes_to_first);
 	RUN_TEST(test_setOptionValue_marks_list_as_changed);
@@ -442,7 +493,7 @@ int main(void) {
 	RUN_TEST(test_setOptionValue_ignores_null_value);
 	RUN_TEST(test_setOptionValue_case_sensitive_values);
 
-	// MinArch_setOptionRawValue
+	// MinArchOptions_setRawValue
 	RUN_TEST(test_setOptionRawValue_changes_value);
 	RUN_TEST(test_setOptionRawValue_sets_to_zero);
 	RUN_TEST(test_setOptionRawValue_marks_list_as_changed);
@@ -461,6 +512,17 @@ int main(void) {
 	RUN_TEST(test_option_with_single_value);
 	RUN_TEST(test_option_value_at_boundary);
 	RUN_TEST(test_unchanged_list_stays_unchanged);
+
+	// MinArchOptions_getValueIndex
+	RUN_TEST(test_getOptionValueIndex_finds_first);
+	RUN_TEST(test_getOptionValueIndex_finds_middle);
+	RUN_TEST(test_getOptionValueIndex_finds_last);
+	RUN_TEST(test_getOptionValueIndex_returns_0_for_not_found);
+	RUN_TEST(test_getOptionValueIndex_returns_0_for_null_value);
+	RUN_TEST(test_getOptionValueIndex_returns_0_for_null_opt);
+	RUN_TEST(test_getOptionValueIndex_case_sensitive);
+	RUN_TEST(test_getOptionValueIndex_empty_string_not_in_values);
+	RUN_TEST(test_getOptionValueIndex_single_value_option);
 
 	return UNITY_END();
 }

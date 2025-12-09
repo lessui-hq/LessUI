@@ -30,7 +30,7 @@
  * @param size Number of bytes to copy
  * @return 0 on success, -1 on error
  */
-int MinArch_zipCopy(FILE* zip, FILE* dst, size_t size);
+int MinArchZip_copy(FILE* zip, FILE* dst, size_t size);
 
 /**
  * Extracts and decompresses deflate-compressed data from ZIP archive.
@@ -49,6 +49,6 @@ int MinArch_zipCopy(FILE* zip, FILE* dst, size_t size);
  * - Z_DATA_ERROR: Corrupt or invalid compressed data
  * - Z_MEM_ERROR: Memory allocation failure
  */
-int MinArch_zipInflate(FILE* zip, FILE* dst, size_t size);
+int MinArchZip_inflate(FILE* zip, FILE* dst, size_t size);
 
 #endif // __MINARCH_ZIP_H__

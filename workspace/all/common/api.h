@@ -626,7 +626,7 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
  * @param dst Destination surface
  * @param dst_rect Destination rectangle
  */
-void GFX_blitMessage(TTF_Font* font, char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect);
+void GFX_blitMessage(TTF_Font* font, const char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect);
 
 /**
  * Blits hardware status indicators (brightness, volume, battery).

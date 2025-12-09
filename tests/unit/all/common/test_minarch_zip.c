@@ -5,8 +5,8 @@
  * These are pure functions operating on FILE* handles.
  *
  * Test coverage:
- * - MinArch_zipCopy: Uncompressed file extraction
- * - MinArch_zipInflate: Deflate-compressed extraction
+ * - MinArchZip_copy: Uncompressed file extraction
+ * - MinArchZip_inflate: Deflate-compressed extraction
  */
 
 #include "../../../support/unity/unity.h"
@@ -69,7 +69,7 @@ static void verify_file_contents(const char* path, const void* expected, size_t 
 }
 
 ///////////////////////////////
-// MinArch_zipCopy Tests
+// MinArchZip_copy Tests
 ///////////////////////////////
 
 void test_zipCopy_copies_small_file(void) {
@@ -83,7 +83,7 @@ void test_zipCopy_copies_small_file(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, data_len);
+	int result = MinArchZip_copy(src, dst, data_len);
 
 	fclose(src);
 	fclose(dst);
@@ -110,7 +110,7 @@ void test_zipCopy_copies_exact_chunk_size(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, data_len);
+	int result = MinArchZip_copy(src, dst, data_len);
 
 	fclose(src);
 	fclose(dst);
@@ -139,7 +139,7 @@ void test_zipCopy_copies_multiple_chunks(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, data_len);
+	int result = MinArchZip_copy(src, dst, data_len);
 
 	fclose(src);
 	fclose(dst);
@@ -161,7 +161,7 @@ void test_zipCopy_copies_empty_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, 0);
+	int result = MinArchZip_copy(src, dst, 0);
 
 	fclose(src);
 	fclose(dst);
@@ -186,7 +186,7 @@ void test_zipCopy_fails_on_short_read(void) {
 	TEST_ASSERT_NOT_NULL(dst);
 
 	// Try to read more than available
-	int result = MinArch_zipCopy(src, dst, 100);
+	int result = MinArchZip_copy(src, dst, 100);
 
 	fclose(src);
 	fclose(dst);
@@ -206,7 +206,7 @@ void test_zipCopy_copies_partial_chunk(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, data_len);
+	int result = MinArchZip_copy(src, dst, data_len);
 
 	fclose(src);
 	fclose(dst);
@@ -227,7 +227,7 @@ void test_zipCopy_copies_binary_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipCopy(src, dst, data_len);
+	int result = MinArchZip_copy(src, dst, data_len);
 
 	fclose(src);
 	fclose(dst);
@@ -237,7 +237,7 @@ void test_zipCopy_copies_binary_data(void) {
 }
 
 ///////////////////////////////
-// MinArch_zipInflate Tests
+// MinArchZip_inflate Tests
 ///////////////////////////////
 
 // Helper to create deflate-compressed data
@@ -283,7 +283,7 @@ void test_zipInflate_decompresses_simple_text(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, compressed_len);
+	int result = MinArchZip_inflate(src, dst, compressed_len);
 
 	fclose(src);
 	fclose(dst);
@@ -312,7 +312,7 @@ void test_zipInflate_decompresses_binary_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, compressed_len);
+	int result = MinArchZip_inflate(src, dst, compressed_len);
 
 	fclose(src);
 	fclose(dst);
@@ -342,7 +342,7 @@ void test_zipInflate_decompresses_highly_compressible_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, compressed_len);
+	int result = MinArchZip_inflate(src, dst, compressed_len);
 
 	fclose(src);
 	fclose(dst);
@@ -380,7 +380,7 @@ void test_zipInflate_decompresses_larger_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, compressed_len);
+	int result = MinArchZip_inflate(src, dst, compressed_len);
 
 	fclose(src);
 	fclose(dst);
@@ -402,7 +402,7 @@ void test_zipInflate_fails_on_invalid_data(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, sizeof(garbage));
+	int result = MinArchZip_inflate(src, dst, sizeof(garbage));
 
 	fclose(src);
 	fclose(dst);
@@ -424,7 +424,7 @@ void test_zipInflate_handles_empty_compressed_stream(void) {
 	TEST_ASSERT_NOT_NULL(src);
 	TEST_ASSERT_NOT_NULL(dst);
 
-	int result = MinArch_zipInflate(src, dst, compressed_len);
+	int result = MinArchZip_inflate(src, dst, compressed_len);
 
 	fclose(src);
 	fclose(dst);
@@ -446,7 +446,7 @@ void test_zipInflate_handles_empty_compressed_stream(void) {
 int main(void) {
 	UNITY_BEGIN();
 
-	// MinArch_zipCopy tests
+	// MinArchZip_copy tests
 	RUN_TEST(test_zipCopy_copies_small_file);
 	RUN_TEST(test_zipCopy_copies_exact_chunk_size);
 	RUN_TEST(test_zipCopy_copies_multiple_chunks);
@@ -455,7 +455,7 @@ int main(void) {
 	RUN_TEST(test_zipCopy_copies_partial_chunk);
 	RUN_TEST(test_zipCopy_copies_binary_data);
 
-	// MinArch_zipInflate tests
+	// MinArchZip_inflate tests
 	RUN_TEST(test_zipInflate_decompresses_simple_text);
 	RUN_TEST(test_zipInflate_decompresses_binary_data);
 	RUN_TEST(test_zipInflate_decompresses_highly_compressible_data);

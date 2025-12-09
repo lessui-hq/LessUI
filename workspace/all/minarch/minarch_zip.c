@@ -16,7 +16,7 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-int MinArch_zipCopy(FILE* zip, FILE* dst, size_t size) {
+int MinArchZip_copy(FILE* zip, FILE* dst, size_t size) {
 	uint8_t chunk[MINARCH_ZIP_CHUNK_SIZE];
 
 	while (size) {
@@ -30,7 +30,7 @@ int MinArch_zipCopy(FILE* zip, FILE* dst, size_t size) {
 	return 0;
 }
 
-int MinArch_zipInflate(FILE* zip, FILE* dst, size_t size) {
+int MinArchZip_inflate(FILE* zip, FILE* dst, size_t size) {
 	z_stream stream = {0};
 	size_t have = 0;
 	uint8_t in[MINARCH_ZIP_CHUNK_SIZE];

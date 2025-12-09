@@ -69,6 +69,23 @@ typedef struct SDL_Rect {
 } SDL_Rect;
 
 ///////////////////////////////
+// SDL_Color
+///////////////////////////////
+
+typedef struct SDL_Color {
+	Uint8 r, g, b, a;
+} SDL_Color;
+
+///////////////////////////////
+// SDL_RWops (opaque for testing)
+///////////////////////////////
+
+typedef struct SDL_RWops {
+	int type;
+	void* hidden;
+} SDL_RWops;
+
+///////////////////////////////
 // SDL Event System
 ///////////////////////////////
 

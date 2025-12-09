@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-MinArchMemoryResult MinArch_readMemory(const char* filepath, unsigned memory_type,
+MinArchMemoryResult MinArchMemory_read(const char* filepath, unsigned memory_type,
                                        MinArchGetMemorySizeFn get_size,
                                        MinArchGetMemoryDataFn get_data) {
 	// Check if core supports this memory type
@@ -46,7 +46,7 @@ MinArchMemoryResult MinArch_readMemory(const char* filepath, unsigned memory_typ
 	return MINARCH_MEM_OK;
 }
 
-MinArchMemoryResult MinArch_writeMemory(const char* filepath, unsigned memory_type,
+MinArchMemoryResult MinArchMemory_write(const char* filepath, unsigned memory_type,
                                         MinArchGetMemorySizeFn get_size,
                                         MinArchGetMemoryDataFn get_data) {
 	// Check if core supports this memory type
@@ -78,27 +78,27 @@ MinArchMemoryResult MinArch_writeMemory(const char* filepath, unsigned memory_ty
 	return MINARCH_MEM_OK;
 }
 
-MinArchMemoryResult MinArch_readSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                     MinArchGetMemoryDataFn get_data) {
-	return MinArch_readMemory(filepath, MINARCH_MEMORY_SAVE_RAM, get_size, get_data);
+MinArchMemoryResult MinArchMemory_readSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                           MinArchGetMemoryDataFn get_data) {
+	return MinArchMemory_read(filepath, MINARCH_MEMORY_SAVE_RAM, get_size, get_data);
 }
 
-MinArchMemoryResult MinArch_writeSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                      MinArchGetMemoryDataFn get_data) {
-	return MinArch_writeMemory(filepath, MINARCH_MEMORY_SAVE_RAM, get_size, get_data);
+MinArchMemoryResult MinArchMemory_writeSRAM(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                            MinArchGetMemoryDataFn get_data) {
+	return MinArchMemory_write(filepath, MINARCH_MEMORY_SAVE_RAM, get_size, get_data);
 }
 
-MinArchMemoryResult MinArch_readRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                    MinArchGetMemoryDataFn get_data) {
-	return MinArch_readMemory(filepath, MINARCH_MEMORY_RTC, get_size, get_data);
+MinArchMemoryResult MinArchMemory_readRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                          MinArchGetMemoryDataFn get_data) {
+	return MinArchMemory_read(filepath, MINARCH_MEMORY_RTC, get_size, get_data);
 }
 
-MinArchMemoryResult MinArch_writeRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
-                                     MinArchGetMemoryDataFn get_data) {
-	return MinArch_writeMemory(filepath, MINARCH_MEMORY_RTC, get_size, get_data);
+MinArchMemoryResult MinArchMemory_writeRTC(const char* filepath, MinArchGetMemorySizeFn get_size,
+                                           MinArchGetMemoryDataFn get_data) {
+	return MinArchMemory_write(filepath, MINARCH_MEMORY_RTC, get_size, get_data);
 }
 
-const char* MinArch_memoryResultString(MinArchMemoryResult result) {
+const char* MinArchMemory_resultString(MinArchMemoryResult result) {
 	switch (result) {
 	case MINARCH_MEM_OK:
 		return "Success";
