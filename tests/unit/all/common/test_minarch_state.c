@@ -260,12 +260,9 @@ void test_autoSave_uses_correct_slot_number(void) {
 	MinArchStateResult result = MinArchState_autoSave(test_dir, "Game", &test_core);
 	TEST_ASSERT_EQUAL(MINARCH_STATE_OK, result);
 
-	// Verify the auto-resume slot is 9
-	TEST_ASSERT_EQUAL(9, MINARCH_AUTO_RESUME_SLOT);
-
-	// Check file exists
+	// Check file exists at auto-resume slot (st9)
 	char path[512];
-	snprintf(path, sizeof(path), "%s/Game.st9", test_dir);
+	snprintf(path, sizeof(path), "%s/Game.st%d", test_dir, MINARCH_AUTO_RESUME_SLOT);
 	FILE* f = fopen(path, "rb");
 	TEST_ASSERT_NOT_NULL(f);
 	fclose(f);

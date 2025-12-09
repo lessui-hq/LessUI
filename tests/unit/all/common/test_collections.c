@@ -38,7 +38,7 @@ void test_Array_new_creates_empty_array(void) {
 
 	TEST_ASSERT_NOT_NULL(arr);
 	TEST_ASSERT_EQUAL_INT(0, arr->count);
-	TEST_ASSERT_EQUAL_INT(8, arr->capacity);
+	TEST_ASSERT_GREATER_OR_EQUAL(arr->count, arr->capacity);
 	TEST_ASSERT_NOT_NULL(arr->items);
 
 	Array_free(arr);

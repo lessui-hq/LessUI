@@ -176,14 +176,18 @@ void test_getOptionValue_after_change(void) {
 void test_setOptionValue_changes_value(void) {
 	MinArchOptions_setValue(&test_list, "video_scale", "3x");
 
-	TEST_ASSERT_EQUAL_INT(2, options[0].value);  // Index of "3x"
+	// Verify via public API instead of internal index
+	const char* value = MinArchOptions_getValue(&test_list, "video_scale");
+	TEST_ASSERT_EQUAL_STRING("3x", value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
 void test_setOptionValue_changes_to_first(void) {
 	MinArchOptions_setValue(&test_list, "video_scale", "1x");
 
-	TEST_ASSERT_EQUAL_INT(0, options[0].value);
+	// Verify via public API instead of internal index
+	const char* value = MinArchOptions_getValue(&test_list, "video_scale");
+	TEST_ASSERT_EQUAL_STRING("1x", value);
 	TEST_ASSERT_EQUAL_INT(1, test_list.changed);
 }
 
@@ -196,13 +200,14 @@ void test_setOptionValue_marks_list_as_changed(void) {
 }
 
 void test_setOptionValue_ignores_invalid_value(void) {
-	int original_value = options[0].value;
+	const char* original_value = MinArchOptions_getValue(&test_list, "video_scale");
 	int original_changed = test_list.changed;
 
 	MinArchOptions_setValue(&test_list, "video_scale", "4x");  // Not in list
 
 	// Should not change
-	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
+	const char* current_value = MinArchOptions_getValue(&test_list, "video_scale");
+	TEST_ASSERT_EQUAL_STRING(original_value, current_value);
 	TEST_ASSERT_EQUAL_INT(original_changed, test_list.changed);
 }
 
@@ -221,21 +226,23 @@ void test_setOptionValue_ignores_null_key(void) {
 }
 
 void test_setOptionValue_ignores_null_value(void) {
-	int original_value = options[0].value;
+	const char* original_value = MinArchOptions_getValue(&test_list, "video_scale");
 
 	MinArchOptions_setValue(&test_list, "video_scale", NULL);
 
-	TEST_ASSERT_EQUAL_INT(original_value, options[0].value);
+	const char* current_value = MinArchOptions_getValue(&test_list, "video_scale");
+	TEST_ASSERT_EQUAL_STRING(original_value, current_value);
 }
 
 void test_setOptionValue_case_sensitive_values(void) {
 	// "on" != "On"
-	int original_value = options[1].value;
+	const char* original_value = MinArchOptions_getValue(&test_list, "audio_enable");
 
 	MinArchOptions_setValue(&test_list, "audio_enable", "on");  // lowercase
 
 	// Should not match "On" (uppercase)
-	TEST_ASSERT_EQUAL_INT(original_value, options[1].value);
+	const char* current_value = MinArchOptions_getValue(&test_list, "audio_enable");
+	TEST_ASSERT_EQUAL_STRING(original_value, current_value);
 }
 
 ///////////////////////////////

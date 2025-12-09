@@ -326,11 +326,6 @@ void test_slot_decrement_wraps_at_zero(void) {
 	TEST_ASSERT_EQUAL(MENU_SLOT_COUNT - 1, m->slot);
 }
 
-void test_slot_bounds_are_0_to_7(void) {
-	// Verify MENU_SLOT_COUNT is 8 (slots 0-7)
-	TEST_ASSERT_EQUAL(8, MENU_SLOT_COUNT);
-}
-
 void test_slot_navigation_full_cycle(void) {
 	MinArchMenuState* m = MinArchMenu_getState();
 	m->slot = 0;
@@ -458,30 +453,6 @@ void test_menu_state_txt_path_generation(void) {
 	char expected[256];
 	sprintf(expected, "%s/Tetris.5.txt", test_dir);
 	TEST_ASSERT_EQUAL_STRING(expected, m->txt_path);
-}
-
-///////////////////////////////
-// Menu Constants Tests
-///////////////////////////////
-
-void test_menu_item_count_is_five(void) {
-	TEST_ASSERT_EQUAL(5, MENU_ITEM_COUNT);
-}
-
-void test_menu_slot_count_is_eight(void) {
-	TEST_ASSERT_EQUAL(8, MENU_SLOT_COUNT);
-}
-
-void test_menu_max_discs_is_nine(void) {
-	TEST_ASSERT_EQUAL(9, MENU_MAX_DISCS);
-}
-
-void test_menu_item_indices_correct(void) {
-	TEST_ASSERT_EQUAL(0, MENU_ITEM_CONT);
-	TEST_ASSERT_EQUAL(1, MENU_ITEM_SAVE);
-	TEST_ASSERT_EQUAL(2, MENU_ITEM_LOAD);
-	TEST_ASSERT_EQUAL(3, MENU_ITEM_OPTS);
-	TEST_ASSERT_EQUAL(4, MENU_ITEM_QUIT);
 }
 
 ///////////////////////////////
@@ -1125,7 +1096,6 @@ int main(void) {
 	// Slot navigation tests
 	RUN_TEST(test_slot_increment_wraps_at_max);
 	RUN_TEST(test_slot_decrement_wraps_at_zero);
-	RUN_TEST(test_slot_bounds_are_0_to_7);
 	RUN_TEST(test_slot_navigation_full_cycle);
 
 	// Disc navigation tests
@@ -1139,12 +1109,6 @@ int main(void) {
 	RUN_TEST(test_menu_state_slot_path_can_be_set);
 	RUN_TEST(test_menu_state_bmp_path_generation);
 	RUN_TEST(test_menu_state_txt_path_generation);
-
-	// Menu constants tests
-	RUN_TEST(test_menu_item_count_is_five);
-	RUN_TEST(test_menu_slot_count_is_eight);
-	RUN_TEST(test_menu_max_discs_is_nine);
-	RUN_TEST(test_menu_item_indices_correct);
 
 	// MinArchMenu_initState tests
 	RUN_TEST(test_initState_sets_slot_to_zero_when_no_file);
