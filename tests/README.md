@@ -2,12 +2,12 @@
 
 This directory contains the test suite for LessUI, organized to mirror the source code structure.
 
-**Current Status: 707 tests, all passing** ✅
+**Current Status: 1408 tests, all passing** ✅
 
 ## Quick Start
 
 ```bash
-make test   # Run all 707 tests in Docker (recommended)
+make test   # Run all 1408 tests in Docker (recommended)
 ```
 
 Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across development environments and catches platform-specific issues.
@@ -589,9 +589,7 @@ void test_getEmuName_with_parens(void) {
 
 ## Test Summary
 
-**Total: 644 tests across 25 test suites**
-- **622 unit tests** - Testing individual modules in isolation
-- **22 integration tests** - Testing modules working together with real file I/O
+**Total: 1408 tests across 45 test suites**
 
 ### Extracted Modules (Testable Logic)
 

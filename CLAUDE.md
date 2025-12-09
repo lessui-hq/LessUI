@@ -274,7 +274,6 @@ tests/
 - Mock external dependencies (SDL, hardware)
 - Focus on business logic, not I/O
 - See `tests/README.md` for comprehensive guide
-- See `docs/testing-checklist.md` for testing roadmap
 
 ### Clean Build
 
@@ -481,11 +480,10 @@ See `.clang-format` for complete style definition.
 - `docs/paks-architecture.md` - Tool pak architecture guide
 - `docs/creating-paks.md` - Third-party pak creation guide
 - `tests/README.md` - Comprehensive testing guide
-- `docs/testing-checklist.md` - Testing roadmap and priorities
 
 ## Current Test Coverage
 
-**Total: 1253 tests across 41 test suites** ✅
+**Total: 1408 tests across 45 test suites** ✅
 
 ### Extracted and Tested Modules
 
