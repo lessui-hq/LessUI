@@ -73,4 +73,4 @@ libretro-common:
 	git clone https://github.com/libretro/libretro-common
 	
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && make
+	cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)

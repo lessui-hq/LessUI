@@ -128,9 +128,9 @@ dev-deploy:
 #        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
 dev-build-deploy:
 	@if [ -n "$(PLATFORM)" ]; then \
-		make common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		$(MAKE) common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
 	else \
-		make all && ./scripts/dev-deploy.sh; \
+		$(MAKE) all && ./scripts/dev-deploy.sh; \
 	fi
 
 # Build all components for a specific platform (in Docker)
@@ -150,7 +150,7 @@ system:
 	# Install utils (calls install hook for each util - includes keymon.elf and show.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
 	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
-	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
+	$(MAKE) -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	# Construct tool paks from workspace/all/paks/Tools/
 	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
@@ -359,5 +359,5 @@ package: tidy
 .DEFAULT:
 	# ----------------------------------------------------
 	# $@
-	@echo "$(PLATFORMS)" | grep -q "\b$@\b" && (make common PLATFORM=$@) || (exit 1)
+	@echo "$(PLATFORMS)" | grep -q "\b$@\b" && ($(MAKE) common PLATFORM=$@) || (exit 1)
 	

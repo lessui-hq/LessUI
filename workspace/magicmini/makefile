@@ -18,10 +18,10 @@ all: readmes
 	
 early: $(REQUIRES_351FILES)
 	mkdir -p other
-	cd $(REQUIRES_351FILES) && START_PATH=/storage/TF2 CC=${CROSS_COMPILE}gcc make
-	
+	cd $(REQUIRES_351FILES) && START_PATH=/storage/TF2 CC=${CROSS_COMPILE}gcc $(MAKE)
+
 clean:
-	cd $(REQUIRES_351FILES) && make clean
+	cd $(REQUIRES_351FILES) && $(MAKE) clean
 	
 $(REQUIRES_351FILES):
 	git clone --depth 1 https://github.com/shauninman/351Files.git $(REQUIRES_351FILES)

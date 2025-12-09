@@ -34,17 +34,17 @@ overclock:
 
 early: $(REQUIRES_SDL) $(REQUIRES_COMMANDER)
 	cd other/sdl && ./make.sh
-	cd other/logotweak && make
-	cd other/latency_reduction && make
-	cd other/DinguxCommander && make -j
+	cd other/logotweak && $(MAKE)
+	cd other/latency_reduction && $(MAKE)
+	cd other/DinguxCommander && $(MAKE) -j
 
 clean:
-	cd blank && make clean
-	cd batmon && make clean
-	cd lumon && make clean
-	cd other/sdl && make distclean
-	cd other/latency_reduction && make clean
-	cd other/DinguxCommander && make clean
+	cd blank && $(MAKE) clean
+	cd batmon && $(MAKE) clean
+	cd lumon && $(MAKE) clean
+	cd other/sdl && $(MAKE) distclean
+	cd other/latency_reduction && $(MAKE) clean
+	cd other/DinguxCommander && $(MAKE) clean
 
 ###########################################################
 

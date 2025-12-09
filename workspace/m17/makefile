@@ -17,7 +17,7 @@ early:
 	# early
 
 clean:
-	cd ./overclock && make clean
+	cd ./overclock && $(MAKE) clean
 	rm -f ./boot/*.bmp
 
 ###########################################################

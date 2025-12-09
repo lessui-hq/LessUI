@@ -19,17 +19,17 @@ REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 
 # show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
-	cd other/squashfs && make
+	cd other/squashfs && $(MAKE)
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_MKBOOTIMG) $(REQUIRES_RSCEGO) $(REQUIRES_COMMANDER)
 	mkdir -p other
-	cd $(REQUIRES_COMMANDER) && make -j
+	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
 	cd $(REQUIRES_EVTEST) && $(CROSS_COMPILE)gcc -o evtest evtest.c
-	cd $(REQUIRES_MKBOOTIMG) && make
+	cd $(REQUIRES_MKBOOTIMG) && $(MAKE)
 	cd $(REQUIRES_RSCEGO) && go build -o rsce_tool
-	
+
 clean:
-	cd $(REQUIRES_COMMANDER) && make clean
+	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
 
 ###########################################################
 

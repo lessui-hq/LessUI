@@ -17,11 +17,11 @@ REQUIRES_SDLCOMPAT=other/sdl12-compat
 all: readmes
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
-	cd $(REQUIRES_COMMANDER) && make -j
+	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
 	cd $(REQUIRES_SDLCOMPAT) && cmake --build build
 
 clean:
-	cd $(REQUIRES_COMMANDER) && make clean
+	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
 	cd $(REQUIRES_SDLCOMPAT) && rm -rf build
 
 ###########################################################

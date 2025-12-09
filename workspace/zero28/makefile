@@ -15,15 +15,15 @@ endif
 REQUIRES_COMMANDER=other/DinguxCommander-sdl2
 
 all: readmes
-	cd bl && make
+	cd bl && $(MAKE)
 
 early: $(REQUIRES_COMMANDER)
 	mkdir -p other
-	cd $(REQUIRES_COMMANDER) && make -j
-		
+	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
+
 clean:
-	cd bl && make clean
-	cd $(REQUIRES_COMMANDER) && make clean
+	cd bl && $(MAKE) clean
+	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
 	
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 https://github.com/shauninman/DinguxCommander-sdl2.git $(REQUIRES_COMMANDER)
