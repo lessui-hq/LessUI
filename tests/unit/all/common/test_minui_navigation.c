@@ -295,6 +295,64 @@ void test_NavAction_paths_are_independent(void) {
 }
 
 ///////////////////////////////
+// MinUINav_buildRomCommand Tests
+///////////////////////////////
+
+void test_buildRomCommand_basic(void) {
+	char cmd[512], sd_path[512];
+
+	MinUINav_buildRomCommand("/mnt/SDCARD/Roms/GB/game.gb", "gambatte", "/mnt/SDCARD/Emus/GB.pak", false,
+	                         NULL, NULL, NULL, cmd, sizeof(cmd), sd_path, sizeof(sd_path));
+
+	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/GB/game.gb", sd_path);
+	// Command should contain emulator and ROM path
+	TEST_ASSERT_NOT_EQUAL(0, strlen(cmd));
+}
+
+void test_buildRomCommand_preserves_rom_path(void) {
+	char cmd[512], sd_path[512];
+
+	MinUINav_buildRomCommand("/mnt/SDCARD/Roms/GBA/pokemon.gba", "gpsp", "/mnt/SDCARD/Emus/GBA.pak",
+	                         false, NULL, NULL, NULL, cmd, sizeof(cmd), sd_path, sizeof(sd_path));
+
+	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/GBA/pokemon.gba", sd_path);
+}
+
+void test_buildRomCommand_handles_path_with_spaces(void) {
+	char cmd[512], sd_path[512];
+
+	MinUINav_buildRomCommand("/mnt/SDCARD/Roms/GB/My Game (USA).gb", "gambatte",
+	                         "/mnt/SDCARD/Emus/GB.pak", false, NULL, NULL, NULL, cmd, sizeof(cmd),
+	                         sd_path, sizeof(sd_path));
+
+	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/GB/My Game (USA).gb", sd_path);
+}
+
+void test_buildRomCommand_null_inputs(void) {
+	char cmd[512] = "initial", sd_path[512];
+
+	// Null ROM path
+	MinUINav_buildRomCommand(NULL, "emu", "/emu/path", false, NULL, NULL, NULL, cmd, sizeof(cmd),
+	                         sd_path, sizeof(sd_path));
+	TEST_ASSERT_EQUAL_STRING("", cmd);
+
+	// Null emu path
+	cmd[0] = 'x';
+	MinUINav_buildRomCommand("/rom", "emu", NULL, false, NULL, NULL, NULL, cmd, sizeof(cmd), sd_path,
+	                         sizeof(sd_path));
+	TEST_ASSERT_EQUAL_STRING("", cmd);
+
+	// Null cmd buffer - should not crash
+	MinUINav_buildRomCommand("/rom", "emu", "/emu", false, NULL, NULL, NULL, NULL, 512, sd_path,
+	                         sizeof(sd_path));
+
+	// Zero cmd size
+	cmd[0] = 'x';
+	MinUINav_buildRomCommand("/rom", "emu", "/emu", false, NULL, NULL, NULL, cmd, 0, sd_path,
+	                         sizeof(sd_path));
+}
+
+///////////////////////////////
 // Context-aware function tests with mock callbacks
 ///////////////////////////////
 
@@ -476,6 +534,182 @@ void test_openRom_ctx_null_path_does_not_crash(void) {
 }
 
 ///////////////////////////////
+// MinUINav_openDirectory with autolaunch tests
+///////////////////////////////
+
+void test_openDirectory_autolaunch_with_cue_does_not_call_open_directory(void) {
+	// Create temp directory with cue file
+	char temp_dir[] = "/tmp/autolaunch_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	char game_dir[512];
+	snprintf(game_dir, sizeof(game_dir), "%s/FF7", temp_dir);
+	mkdir(game_dir, 0755);
+
+	// Create cue file named after directory
+	char cue_path[512];
+	snprintf(cue_path, sizeof(cue_path), "%s/FF7.cue", game_dir);
+	FILE* f = fopen(cue_path, "w");
+	fputs("FILE \"track01.bin\" BINARY\n", f);
+	fclose(f);
+
+	reset_mocks();
+	MinUICallbacks callbacks = {
+	    .open_directory = mock_open_directory,
+	};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	// With autolaunch enabled and cue present, should NOT call open_directory
+	// (would call openRom instead, but that's a stub)
+	MinUINav_openDirectory(ctx, game_dir, 1);
+
+	// open_directory should NOT be called because autolaunch detected the cue
+	TEST_ASSERT_EQUAL(0, mock_open_directory_called);
+
+	// Cleanup
+	unlink(cue_path);
+	rmdir(game_dir);
+	rmdir(temp_dir);
+}
+
+void test_openDirectory_autolaunch_without_cue_calls_open_directory(void) {
+	// Create temp directory without cue file
+	char temp_dir[] = "/tmp/autolaunch_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	char game_dir[512];
+	snprintf(game_dir, sizeof(game_dir), "%s/Games", temp_dir);
+	mkdir(game_dir, 0755);
+
+	// Create a ROM file (not a matching cue)
+	char rom_path[512];
+	snprintf(rom_path, sizeof(rom_path), "%s/game.bin", game_dir);
+	FILE* f = fopen(rom_path, "w");
+	fputs("rom data", f);
+	fclose(f);
+
+	reset_mocks();
+	MinUICallbacks callbacks = {
+	    .open_directory = mock_open_directory,
+	};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	// With autolaunch enabled but no matching cue, should call open_directory
+	MinUINav_openDirectory(ctx, game_dir, 1);
+
+	TEST_ASSERT_EQUAL(1, mock_open_directory_called);
+	TEST_ASSERT_EQUAL_STRING(game_dir, mock_open_directory_path);
+	TEST_ASSERT_EQUAL(0, mock_open_directory_auto_launch); // Subdirs don't auto-launch
+
+	// Cleanup
+	unlink(rom_path);
+	rmdir(game_dir);
+	rmdir(temp_dir);
+}
+
+///////////////////////////////
+// MinUINav_openEntry tests
+///////////////////////////////
+
+void test_openEntry_null_context_does_not_crash(void) {
+	Entry entry = {.path = "/path", .name = "name", .type = ENTRY_ROM};
+	// Should not crash
+	MinUINav_openEntry(NULL, &entry);
+}
+
+void test_openEntry_null_entry_does_not_crash(void) {
+	reset_mocks();
+	MinUICallbacks callbacks = {0};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	// Should not crash
+	MinUINav_openEntry(ctx, NULL);
+}
+
+void test_openEntry_pak_calls_openPak(void) {
+	reset_mocks();
+	MinUICallbacks callbacks = {
+	    .save_last = mock_save_last,
+	    .queue_next = mock_queue_next,
+	};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	Entry entry = {.path = "/mnt/SDCARD/Tools/Clock.pak", .name = "Clock", .type = ENTRY_PAK};
+
+	MinUINav_openEntry(ctx, &entry);
+
+	// Should have called save_last and queue_next via openPak
+	TEST_ASSERT_EQUAL(1, mock_save_last_called);
+	TEST_ASSERT_EQUAL(1, mock_queue_next_called);
+	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Tools/Clock.pak", mock_save_last_path);
+}
+
+void test_openEntry_dir_calls_openDirectory(void) {
+	reset_mocks();
+	MinUICallbacks callbacks = {
+	    .open_directory = mock_open_directory,
+	};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	Entry entry = {.path = "/mnt/SDCARD/Roms/GB", .name = "GB", .type = ENTRY_DIR};
+
+	MinUINav_openEntry(ctx, &entry);
+
+	// Since it's a directory with auto_launch, it will try to autolaunch first
+	// Since /mnt/SDCARD/Roms/GB probably doesn't exist with a matching cue,
+	// it should call open_directory
+	TEST_ASSERT_EQUAL(1, mock_open_directory_called);
+}
+
+void test_openEntry_sets_recent_alias(void) {
+	reset_mocks();
+	MinUICallbacks callbacks = {
+	    .save_last = mock_save_last,
+	    .queue_next = mock_queue_next,
+	};
+	MinUIContext* ctx = create_mock_context(&callbacks);
+
+	// Set up recent_alias pointer
+	char* alias_target = NULL;
+	ctx->recent_alias = &alias_target;
+
+	Entry entry = {.path = "/mnt/SDCARD/Tools/Clock.pak", .name = "Clock", .type = ENTRY_PAK};
+
+	MinUINav_openEntry(ctx, &entry);
+
+	// recent_alias should point to entry name
+	TEST_ASSERT_EQUAL_STRING("Clock", alias_target);
+}
+
+///////////////////////////////
+// determineAction edge cases
+///////////////////////////////
+
+void test_determineAction_unknown_entry_type(void) {
+	Entry entry = {.path = "/path", .name = "name", .type = 999}; // Invalid type
+	MinUINavAction action;
+	action.action = MINUI_NAV_OPEN_ROM; // Pre-set
+
+	MinUINav_determineAction(&entry, "/path", NULL, &action);
+
+	TEST_ASSERT_EQUAL(MINUI_NAV_NONE, action.action);
+}
+
+void test_determineAction_collection_rom_no_slash_in_path(void) {
+	// Edge case: entry path has no slash
+	Entry entry = {.path = "game.gb", .name = "game", .type = ENTRY_ROM};
+	MinUINavAction action;
+	const char* collections_path = "/mnt/SDCARD/.minui/Collections";
+	const char* current_path = "/mnt/SDCARD/.minui/Collections/Favorites";
+
+	MinUINav_determineAction(&entry, current_path, collections_path, &action);
+
+	TEST_ASSERT_EQUAL(MINUI_NAV_OPEN_ROM, action.action);
+	// No slash in entry path, so last_path remains empty
+	TEST_ASSERT_EQUAL_STRING("", action.last_path);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -527,6 +761,27 @@ int main(void) {
 	// Structure tests
 	RUN_TEST(test_NavAction_structure_size);
 	RUN_TEST(test_NavAction_paths_are_independent);
+
+	// buildRomCommand tests
+	RUN_TEST(test_buildRomCommand_basic);
+	RUN_TEST(test_buildRomCommand_preserves_rom_path);
+	RUN_TEST(test_buildRomCommand_handles_path_with_spaces);
+	RUN_TEST(test_buildRomCommand_null_inputs);
+
+	// openDirectory with autolaunch tests
+	RUN_TEST(test_openDirectory_autolaunch_with_cue_does_not_call_open_directory);
+	RUN_TEST(test_openDirectory_autolaunch_without_cue_calls_open_directory);
+
+	// openEntry tests
+	RUN_TEST(test_openEntry_null_context_does_not_crash);
+	RUN_TEST(test_openEntry_null_entry_does_not_crash);
+	RUN_TEST(test_openEntry_pak_calls_openPak);
+	RUN_TEST(test_openEntry_dir_calls_openDirectory);
+	RUN_TEST(test_openEntry_sets_recent_alias);
+
+	// determineAction edge cases
+	RUN_TEST(test_determineAction_unknown_entry_type);
+	RUN_TEST(test_determineAction_collection_rom_no_slash_in_path);
 
 	return UNITY_END();
 }

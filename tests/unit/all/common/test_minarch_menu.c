@@ -247,6 +247,55 @@ void test_ctx_accessors_handle_null_safely(void) {
 }
 
 ///////////////////////////////
+// Context Initialization Tests
+///////////////////////////////
+
+void test_context_getCallbacks_returns_instance(void) {
+	MinArchCallbacks* cb = MinArchContext_getCallbacks();
+	TEST_ASSERT_NOT_NULL(cb);
+
+	// Same instance on multiple calls
+	MinArchCallbacks* cb2 = MinArchContext_getCallbacks();
+	TEST_ASSERT_EQUAL_PTR(cb, cb2);
+}
+
+void test_context_initGlobals_handles_null(void) {
+	// Should not crash
+	MinArchContext_initGlobals(NULL);
+}
+
+void test_context_initGlobals_sets_initialized(void) {
+	MinArchContext* ctx = MinArchContext_get();
+	MinArchContext_initGlobals(ctx);
+	// If we get here without crashing, initialization worked
+	TEST_ASSERT_NOT_NULL(ctx);
+}
+
+void test_context_initCallbacks_handles_null(void) {
+	// Should not crash with NULL context
+	MinArchCallbacks cb = {0};
+	MinArchContext_initCallbacks(NULL, &cb);
+
+	// Should not crash with NULL callbacks
+	MinArchContext* ctx = MinArchContext_get();
+	MinArchContext_initCallbacks(ctx, NULL);
+}
+
+void test_context_initCallbacks_links_to_context(void) {
+	MinArchContext* ctx = MinArchContext_get();
+	MinArchCallbacks* cb = MinArchContext_getCallbacks();
+
+	// Setup test callback
+	cb->sram_write = NULL;
+
+	MinArchContext_initCallbacks(ctx, cb);
+
+	// Verify callback is linked
+	TEST_ASSERT_NOT_NULL(ctx->callbacks);
+	TEST_ASSERT_EQUAL_PTR(cb, ctx->callbacks);
+}
+
+///////////////////////////////
 // Slot Navigation Tests
 ///////////////////////////////
 
@@ -1065,6 +1114,13 @@ int main(void) {
 	RUN_TEST(test_context_state_modifications_persist);
 	RUN_TEST(test_ctx_accessors_work);
 	RUN_TEST(test_ctx_accessors_handle_null_safely);
+
+	// Context initialization tests
+	RUN_TEST(test_context_getCallbacks_returns_instance);
+	RUN_TEST(test_context_initGlobals_handles_null);
+	RUN_TEST(test_context_initGlobals_sets_initialized);
+	RUN_TEST(test_context_initCallbacks_handles_null);
+	RUN_TEST(test_context_initCallbacks_links_to_context);
 
 	// Slot navigation tests
 	RUN_TEST(test_slot_increment_wraps_at_max);

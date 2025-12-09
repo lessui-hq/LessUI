@@ -135,6 +135,7 @@ declare -a TEST_BUILDS=(
 	"minui_context_test:tests/unit/all/common/test_minui_context.c workspace/all/minui/minui_context.c:"
 	"render_common_test:tests/unit/all/common/test_render_common.c workspace/all/common/render_common.c:"
 	"integration_workflows_test:tests/integration/test_workflows.c tests/integration/integration_support.c workspace/all/minui/minui_m3u.c workspace/all/minui/minui_map.c workspace/all/minui/collection_parser.c workspace/all/minui/recent_file.c workspace/all/minui/minui_file_utils.c workspace/all/common/binary_file_utils.c workspace/all/common/collections.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c:-I tests/integration -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE"
+	"log_test:tests/unit/all/common/test_log.c workspace/all/common/log.c:-D_DEFAULT_SOURCE -lpthread"
 )
 
 TOTAL_SUITES=${#TEST_BUILDS[@]}
@@ -262,16 +263,29 @@ fi
 echo ""
 
 # Show per-file summary (top 10 lowest coverage, excluding headers)
+# Note: lcov --list has bugs in lcov 2.0, so we parse coverage.info directly
 echo -e "  ${DIM}Lowest coverage files:${RESET}"
-lcov --list "$COVERAGE_DIR/coverage.info" 2>/dev/null | \
-	grep -E "^common/|^minarch/|^minui/" | \
-	grep -v "\.h$" | \
-	sort -t'|' -k2 -n | \
+awk '
+/^SF:/ {
+    # Extract file path (remove /lessui/workspace/all/ prefix)
+    file = $0
+    sub(/^SF:.*workspace\/all\//, "", file)
+    lf = 0
+    lh = 0
+}
+/^LF:/ { lf = substr($0, 4) + 0 }
+/^LH:/ { lh = substr($0, 4) + 0 }
+/^end_of_record/ {
+    if (lf > 0 && file !~ /\.h$/) {
+        pct = (lh * 100.0) / lf
+        printf "%s %.1f\n", file, pct
+    }
+}
+' "$COVERAGE_DIR/coverage.info" | \
+	sort -t' ' -k2 -n | \
 	head -10 | \
-	while read -r line; do
-		file=$(echo "$line" | awk '{print $1}')
-		pct=$(echo "$line" | awk -F'|' '{print $2}' | awk '{print $1}')
-		printf "    %-35s %s\n" "$file" "$pct"
+	while read -r file pct; do
+		printf "    %-35s %s%%\n" "$file" "$pct"
 	done
 
 echo ""

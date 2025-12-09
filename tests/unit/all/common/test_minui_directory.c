@@ -359,6 +359,288 @@ void test_scan_empty_directory(void) {
 }
 
 ///////////////////////////////
+// scanCollated() Tests
+///////////////////////////////
+
+void test_scanCollated_finds_matching_region_dirs(void) {
+	// Create temp Roms directory
+	char temp_dir[] = "/tmp/collated_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	// Create two Game Boy region directories
+	char gb_usa[512], gb_japan[512];
+	snprintf(gb_usa, sizeof(gb_usa), "%s/Game Boy (USA)", temp_dir);
+	snprintf(gb_japan, sizeof(gb_japan), "%s/Game Boy (Japan)", temp_dir);
+	mkdir(gb_usa, 0755);
+	mkdir(gb_japan, 0755);
+
+	// Add ROM files to each
+	char rom1[512], rom2[512];
+	snprintf(rom1, sizeof(rom1), "%s/tetris.gb", gb_usa);
+	snprintf(rom2, sizeof(rom2), "%s/mario.gb", gb_japan);
+	FILE* f = fopen(rom1, "w");
+	fputs("rom", f);
+	fclose(f);
+	f = fopen(rom2, "w");
+	fputs("rom", f);
+	fclose(f);
+
+	// Build collation prefix
+	char prefix[MINUI_DIR_MAX_PATH];
+	MinUIDir_buildCollationPrefix(gb_usa, prefix);
+
+	// Scan with collation
+	MinUIDirScanResult* result = MinUIDir_scanCollated(temp_dir, prefix);
+
+	TEST_ASSERT_NOT_NULL(result);
+	TEST_ASSERT_EQUAL(2, result->count); // Should find both ROMs
+
+	// Verify both ROMs are found
+	int found_tetris = 0, found_mario = 0;
+	for (int i = 0; i < result->count; i++) {
+		if (strstr(result->paths[i], "tetris.gb"))
+			found_tetris = 1;
+		if (strstr(result->paths[i], "mario.gb"))
+			found_mario = 1;
+	}
+	TEST_ASSERT_TRUE(found_tetris);
+	TEST_ASSERT_TRUE(found_mario);
+
+	MinUIDirScanResult_free(result);
+
+	// Cleanup
+	unlink(rom1);
+	unlink(rom2);
+	rmdir(gb_usa);
+	rmdir(gb_japan);
+	rmdir(temp_dir);
+}
+
+void test_scanCollated_excludes_non_matching_dirs(void) {
+	char temp_dir[] = "/tmp/collated_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	// Create Game Boy and Game Boy Advance directories
+	char gb_usa[512], gba_usa[512];
+	snprintf(gb_usa, sizeof(gb_usa), "%s/Game Boy (USA)", temp_dir);
+	snprintf(gba_usa, sizeof(gba_usa), "%s/Game Boy Advance (USA)", temp_dir);
+	mkdir(gb_usa, 0755);
+	mkdir(gba_usa, 0755);
+
+	// Add ROMs
+	char rom1[512], rom2[512];
+	snprintf(rom1, sizeof(rom1), "%s/tetris.gb", gb_usa);
+	snprintf(rom2, sizeof(rom2), "%s/pokemon.gba", gba_usa);
+	FILE* f = fopen(rom1, "w");
+	fputs("rom", f);
+	fclose(f);
+	f = fopen(rom2, "w");
+	fputs("rom", f);
+	fclose(f);
+
+	// Build prefix for Game Boy (should NOT match Game Boy Advance)
+	char prefix[MINUI_DIR_MAX_PATH];
+	MinUIDir_buildCollationPrefix(gb_usa, prefix);
+
+	MinUIDirScanResult* result = MinUIDir_scanCollated(temp_dir, prefix);
+
+	TEST_ASSERT_NOT_NULL(result);
+	TEST_ASSERT_EQUAL(1, result->count); // Only Game Boy ROM
+
+	// Should find tetris but not pokemon
+	int found_tetris = 0, found_pokemon = 0;
+	for (int i = 0; i < result->count; i++) {
+		if (strstr(result->paths[i], "tetris.gb"))
+			found_tetris = 1;
+		if (strstr(result->paths[i], "pokemon.gba"))
+			found_pokemon = 1;
+	}
+	TEST_ASSERT_TRUE(found_tetris);
+	TEST_ASSERT_FALSE(found_pokemon);
+
+	MinUIDirScanResult_free(result);
+
+	// Cleanup
+	unlink(rom1);
+	unlink(rom2);
+	rmdir(gb_usa);
+	rmdir(gba_usa);
+	rmdir(temp_dir);
+}
+
+void test_scanCollated_returns_null_for_null_inputs(void) {
+	TEST_ASSERT_NULL(MinUIDir_scanCollated(NULL, "/prefix("));
+	TEST_ASSERT_NULL(MinUIDir_scanCollated("/path", NULL));
+	TEST_ASSERT_NULL(MinUIDir_scanCollated("/path", ""));
+}
+
+void test_scanCollated_returns_null_for_nonexistent_dir(void) {
+	MinUIDirScanResult* result = MinUIDir_scanCollated("/nonexistent/path", "/nonexistent/path/Game (");
+	TEST_ASSERT_NULL(result);
+}
+
+void test_scanCollated_returns_empty_when_no_matches(void) {
+	char temp_dir[] = "/tmp/collated_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	// Create a directory that won't match our prefix
+	char other_dir[512];
+	snprintf(other_dir, sizeof(other_dir), "%s/NES", temp_dir);
+	mkdir(other_dir, 0755);
+
+	// Look for Game Boy (won't find any)
+	char prefix[MINUI_DIR_MAX_PATH];
+	snprintf(prefix, sizeof(prefix), "%s/Game Boy (", temp_dir);
+
+	MinUIDirScanResult* result = MinUIDir_scanCollated(temp_dir, prefix);
+
+	TEST_ASSERT_NOT_NULL(result);
+	TEST_ASSERT_EQUAL(0, result->count);
+
+	MinUIDirScanResult_free(result);
+
+	rmdir(other_dir);
+	rmdir(temp_dir);
+}
+
+///////////////////////////////
+// Directory_free Tests
+///////////////////////////////
+
+void test_Directory_free_handles_null(void) {
+	// Should not crash
+	Directory_free(NULL);
+}
+
+void test_Directory_free_frees_all_fields(void) {
+	// Create a minimal Directory for testing
+	Directory* dir = malloc(sizeof(Directory));
+	TEST_ASSERT_NOT_NULL(dir);
+
+	dir->path = strdup("/test/path");
+	dir->name = strdup("TestDir");
+	dir->entries = Array_new();
+	dir->alphas = IntArray_new();
+	dir->selected = 0;
+	dir->start = 0;
+	dir->end = 0;
+
+	// Add an entry to entries array
+	Entry* entry = Entry_new("/test/path/game.gb", ENTRY_ROM);
+	Array_push(dir->entries, entry);
+
+	// Add an alpha index
+	IntArray_push(dir->alphas, 0);
+
+	// Should free all allocated memory without crashing
+	Directory_free(dir);
+}
+
+///////////////////////////////
+// DirectoryArray Tests
+///////////////////////////////
+
+void test_DirectoryArray_pop_removes_and_frees(void) {
+	Array* arr = Array_new();
+
+	// Create two directories
+	Directory* dir1 = malloc(sizeof(Directory));
+	dir1->path = strdup("/path1");
+	dir1->name = strdup("Dir1");
+	dir1->entries = Array_new();
+	dir1->alphas = IntArray_new();
+
+	Directory* dir2 = malloc(sizeof(Directory));
+	dir2->path = strdup("/path2");
+	dir2->name = strdup("Dir2");
+	dir2->entries = Array_new();
+	dir2->alphas = IntArray_new();
+
+	Array_push(arr, dir1);
+	Array_push(arr, dir2);
+
+	TEST_ASSERT_EQUAL(2, arr->count);
+
+	// Pop should remove and free the last directory
+	DirectoryArray_pop(arr);
+	TEST_ASSERT_EQUAL(1, arr->count);
+
+	DirectoryArray_pop(arr);
+	TEST_ASSERT_EQUAL(0, arr->count);
+
+	Array_free(arr);
+}
+
+void test_DirectoryArray_pop_handles_null(void) {
+	// Should not crash
+	DirectoryArray_pop(NULL);
+}
+
+void test_DirectoryArray_free_frees_all_directories(void) {
+	Array* arr = Array_new();
+
+	// Create and add directories
+	for (int i = 0; i < 3; i++) {
+		Directory* dir = malloc(sizeof(Directory));
+		char path[64], name[64];
+		snprintf(path, sizeof(path), "/path%d", i);
+		snprintf(name, sizeof(name), "Dir%d", i);
+		dir->path = strdup(path);
+		dir->name = strdup(name);
+		dir->entries = Array_new();
+		dir->alphas = IntArray_new();
+		Array_push(arr, dir);
+	}
+
+	TEST_ASSERT_EQUAL(3, arr->count);
+
+	// Should free all directories and the array
+	DirectoryArray_free(arr);
+}
+
+void test_DirectoryArray_free_handles_null(void) {
+	// Should not crash
+	DirectoryArray_free(NULL);
+}
+
+///////////////////////////////
+// ScanResult capacity growth edge cases
+///////////////////////////////
+
+void test_ScanResult_new_uses_default_capacity_for_zero(void) {
+	MinUIDirScanResult* result = MinUIDirScanResult_new(0);
+
+	TEST_ASSERT_NOT_NULL(result);
+	TEST_ASSERT_EQUAL(16, result->capacity); // Default when <= 0
+
+	MinUIDirScanResult_free(result);
+}
+
+void test_ScanResult_new_uses_default_capacity_for_negative(void) {
+	MinUIDirScanResult* result = MinUIDirScanResult_new(-5);
+
+	TEST_ASSERT_NOT_NULL(result);
+	TEST_ASSERT_EQUAL(16, result->capacity); // Default when <= 0
+
+	MinUIDirScanResult_free(result);
+}
+
+void test_ScanResult_add_handles_null_result(void) {
+	int ok = MinUIDirScanResult_add(NULL, "/path", 0);
+	TEST_ASSERT_FALSE(ok);
+}
+
+void test_ScanResult_add_handles_null_path(void) {
+	MinUIDirScanResult* result = MinUIDirScanResult_new(10);
+
+	int ok = MinUIDirScanResult_add(result, NULL, 0);
+	TEST_ASSERT_FALSE(ok);
+	TEST_ASSERT_EQUAL(0, result->count); // Nothing added
+
+	MinUIDirScanResult_free(result);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -408,6 +690,29 @@ int main(void) {
 	RUN_TEST(test_scan_returns_null_for_nonexistent_dir);
 	RUN_TEST(test_scan_handles_null_path);
 	RUN_TEST(test_scan_empty_directory);
+
+	// scanCollated tests (using real temp dirs)
+	RUN_TEST(test_scanCollated_finds_matching_region_dirs);
+	RUN_TEST(test_scanCollated_excludes_non_matching_dirs);
+	RUN_TEST(test_scanCollated_returns_null_for_null_inputs);
+	RUN_TEST(test_scanCollated_returns_null_for_nonexistent_dir);
+	RUN_TEST(test_scanCollated_returns_empty_when_no_matches);
+
+	// Directory_free tests
+	RUN_TEST(test_Directory_free_handles_null);
+	RUN_TEST(test_Directory_free_frees_all_fields);
+
+	// DirectoryArray tests
+	RUN_TEST(test_DirectoryArray_pop_removes_and_frees);
+	RUN_TEST(test_DirectoryArray_pop_handles_null);
+	RUN_TEST(test_DirectoryArray_free_frees_all_directories);
+	RUN_TEST(test_DirectoryArray_free_handles_null);
+
+	// ScanResult edge cases
+	RUN_TEST(test_ScanResult_new_uses_default_capacity_for_zero);
+	RUN_TEST(test_ScanResult_new_uses_default_capacity_for_negative);
+	RUN_TEST(test_ScanResult_add_handles_null_result);
+	RUN_TEST(test_ScanResult_add_handles_null_path);
 
 	return UNITY_END();
 }

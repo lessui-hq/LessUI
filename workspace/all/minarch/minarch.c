@@ -4311,7 +4311,8 @@ int Menu_options(MenuList* list) {
 	while (show_options) {
 		if (nav.await_input) {
 			defer_menu = true;
-			list->on_confirm(list, nav.selected);
+			if (list->on_confirm)
+				list->on_confirm(list, nav.selected);
 
 			MinArchMenuNav_advanceItem(&nav);
 			nav.dirty = 1;

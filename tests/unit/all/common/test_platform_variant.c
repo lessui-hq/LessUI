@@ -13,6 +13,7 @@
 
 #include "../../support/unity/unity.h"
 #include "../../../../workspace/all/common/platform_variant.h"
+#include "platform.h" // For PLATFORM, FIXED_WIDTH, etc.
 #include <string.h>
 
 // Test device registry
@@ -154,6 +155,35 @@ void test_HAS_FEATURE_all_flags(void) {
 }
 
 ///////////////////////////////
+// PLAT_detectVariant tests (weak fallback implementation)
+///////////////////////////////
+
+void test_PLAT_detectVariant_sets_platform(void) {
+	PlatformVariant v = {0};
+	PLAT_detectVariant(&v);
+	TEST_ASSERT_EQUAL_STRING(PLATFORM, v.platform);
+}
+
+void test_PLAT_detectVariant_sets_variant_standard(void) {
+	PlatformVariant v = {0};
+	PLAT_detectVariant(&v);
+	TEST_ASSERT_EQUAL_INT(VARIANT_STANDARD, v.variant);
+}
+
+void test_PLAT_detectVariant_sets_screen_dimensions(void) {
+	PlatformVariant v = {0};
+	PLAT_detectVariant(&v);
+	TEST_ASSERT_EQUAL_INT(FIXED_WIDTH, v.screen_width);
+	TEST_ASSERT_EQUAL_INT(FIXED_HEIGHT, v.screen_height);
+}
+
+void test_PLAT_detectVariant_null_device(void) {
+	PlatformVariant v = {0};
+	PLAT_detectVariant(&v);
+	TEST_ASSERT_NULL(v.device);
+}
+
+///////////////////////////////
 // DeviceInfo structure tests
 ///////////////////////////////
 
@@ -200,6 +230,12 @@ int main(void) {
 	RUN_TEST(test_HAS_FEATURE_multiple_flags);
 	RUN_TEST(test_HAS_FEATURE_no_flags);
 	RUN_TEST(test_HAS_FEATURE_all_flags);
+
+	// PLAT_detectVariant (weak fallback)
+	RUN_TEST(test_PLAT_detectVariant_sets_platform);
+	RUN_TEST(test_PLAT_detectVariant_sets_variant_standard);
+	RUN_TEST(test_PLAT_detectVariant_sets_screen_dimensions);
+	RUN_TEST(test_PLAT_detectVariant_null_device);
 
 	// DeviceInfo structure
 	RUN_TEST(test_DeviceInfo_fields);
