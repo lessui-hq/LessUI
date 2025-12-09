@@ -7,7 +7,6 @@
 
 build
 releases
-toolchains
 
 # Old per-platform cores (no longer used - migrated to shared cores)
 **/cores/src

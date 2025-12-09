@@ -13,12 +13,12 @@
 # Adding a new platform:
 #   1. Fork the union-<platform>-toolchain repo to lessui-hq org
 #   2. Add .github/workflows/build-container.yml to the fork
-#   3. Trigger the workflow to build and publish the container
+#   3. Trigger the workflow to build and publish container
 #
 # DO NOT call this makefile directly unless debugging toolchain issues.
 # Use the main makefile's 'shell' and 'build' targets instead.
 
-.PHONY: build all clean force-pull
+.PHONY: all build clean pull
 
 ifeq (,$(PLATFORM))
 $(error PLATFORM not specified. Use: make -f makefile.toolchain PLATFORM=<platform>)
@@ -33,18 +33,21 @@ CONTAINER_REGISTRY=ghcr.io
 CONTAINER_ORG=lessui-hq
 CONTAINER_IMAGE=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/union-$(PLATFORM)-toolchain:latest
 
-# Toolchain marker file
-INIT_IF_NECESSARY=toolchains/$(PLATFORM)-toolchain/.build
+# Common docker run options
+DOCKER_RUN=docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
 
-# Default target: ensure toolchain is built, then launch interactive shell
-all: $(INIT_IF_NECESSARY)
-	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash
+# Default target: launch interactive shell (pulls image if missing)
+all:
+	@$(DOCKER_RUN) --pull=missing $(CONTAINER_IMAGE) /bin/bash
 
-# Get toolchain: pull pre-built container (required)
-$(INIT_IF_NECESSARY):
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "Preparing $(PLATFORM)-toolchain..."
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# Build all workspace components in Docker (non-interactive)
+# Uses -j for parallel builds (nproc detects available cores in container)
+build:
+	@$(DOCKER_RUN) --pull=missing $(CONTAINER_IMAGE) /bin/bash -c '. ~/.bashrc && cd /root/workspace && make -j$$(nproc)'
+
+# Force pull latest container (useful for updates)
+pull:
+	@echo "Pulling latest $(PLATFORM) toolchain..."
 	@docker pull $(CONTAINER_IMAGE) || \
 		(echo "" && \
 		 echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
@@ -55,32 +58,8 @@ $(INIT_IF_NECESSARY):
 		 echo "  3. Trigger workflow to build and publish container" && \
 		 echo "" && \
 		 exit 1)
-	@docker tag $(CONTAINER_IMAGE) $(PLATFORM)-toolchain
-	@mkdir -p toolchains/$(PLATFORM)-toolchain && touch $(INIT_IF_NECESSARY)
-	@echo "✓ Using $(CONTAINER_IMAGE)"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "✓ Updated to latest"
 
-# Clean Docker image
+# Remove cached Docker image
 clean:
-	@docker rmi $(PLATFORM)-toolchain 2>/dev/null || true
 	@docker rmi $(CONTAINER_IMAGE) 2>/dev/null || true
-	@rm -f $(INIT_IF_NECESSARY)
-
-# Build all workspace components in Docker (non-interactive)
-# Uses -j for parallel builds (nproc detects available cores in container)
-build: $(INIT_IF_NECESSARY)
-	@docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE) $(PLATFORM)-toolchain /bin/bash -c '. ~/.bashrc && cd /root/workspace && make -j$$(nproc)'
-
-# Force pull latest pre-built container (useful for updates)
-force-pull:
-	@echo "Updating $(PLATFORM)-toolchain from $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)..."
-	@docker pull $(CONTAINER_IMAGE) || \
-		(echo "" && \
-		 echo "❌ Failed to pull container: $(CONTAINER_IMAGE)" && \
-		 echo "" && \
-		 echo "Check your network connection, authentication, or image existence." && \
-		 echo "" && \
-		 exit 1)
-	@docker tag $(CONTAINER_IMAGE) $(PLATFORM)-toolchain
-	@mkdir -p toolchains/$(PLATFORM)-toolchain && touch $(INIT_IF_NECESSARY)
-	@echo "✓ Updated to latest container"
