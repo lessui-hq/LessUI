@@ -17,7 +17,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/map_parser.h"
+#include "minui_map.h"
 
 #include <string.h>
 

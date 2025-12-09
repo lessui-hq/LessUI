@@ -14,13 +14,14 @@
 # The main makefile forwards to this file for test/lint/format targets.
 # Run 'make -f makefile.qa help' for complete target list.
 
-.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report
+.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
 help:
 	@echo "LessUI Quality Assurance Tools"
 	@echo ""
 	@echo "Main targets (use these):"
 	@echo "  make test          - Run unit tests (Docker, recommended)"
+	@echo "  make coverage      - Run tests with coverage analysis (Docker)"
 	@echo "  make lint          - Run ALL linting checks (clang-tidy, format-check, shellcheck)"
 	@echo "  make format        - Format code with clang-format (MODIFIES FILES)"
 	@echo ""
@@ -32,18 +33,20 @@ help:
 	@echo "  make lint-shell    - Run shellcheck on shell scripts"
 	@echo ""
 	@echo "Docker targets:"
-	@echo "  make docker-test    - Run tests in Docker container (Ubuntu 24.04)"
-	@echo "  make docker-analyze - Run static analysis in Docker container"
-	@echo "  make docker-build   - Build Docker image"
-	@echo "  make docker-shell   - Enter Docker container for debugging"
+	@echo "  make docker-test     - Run tests in Docker container (Ubuntu 24.04)"
+	@echo "  make docker-coverage - Run coverage analysis in Docker container"
+	@echo "  make docker-analyze  - Run static analysis in Docker container"
+	@echo "  make docker-build    - Build Docker image"
+	@echo "  make docker-shell    - Enter Docker container for debugging"
 	@echo ""
 	@echo "Other:"
 	@echo "  make test-native   - Run tests natively (not recommended on macOS)"
 	@echo "  make clean-qa      - Clean QA artifacts"
+	@echo "  make clean-coverage - Clean coverage data and reports"
 	@echo ""
 	@echo "Installing tools:"
 	@echo "  macOS:  brew install llvm shellcheck sdl2 sdl2_image sdl2_ttf"
-	@echo "  Ubuntu: sudo apt-get install clang-tidy clang-format shellcheck libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev"
+	@echo "  Ubuntu: sudo apt-get install clang-tidy clang-format shellcheck libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev lcov"
 
 # clang-tidy configuration
 # Checks for: bugs, performance issues, readability, security
@@ -82,6 +85,8 @@ TIDY_COMPILE_FLAGS = -DPLATFORM=\"desktop\" \
                      -DBUILD_DATE=\"$(shell date +%Y%m%d)\" \
                      -DBUILD_HASH=\"tidy\" \
                      -I workspace/all/common \
+                     -I workspace/all/minui \
+                     -I workspace/all/minarch \
                      -I workspace/desktop/platform \
                      -I workspace/all/minarch/libretro-common/include \
                      -iquote workspace/all/minarch/libretro-common/include \
@@ -132,7 +137,8 @@ SCAN_BUILD := $(shell which scan-build 2>/dev/null || which /opt/homebrew/opt/ll
 # Note: SDL2_CFLAGS defined above (line 67)
 
 ANALYZE_FLAGS = -DPLATFORM=\"desktop\" -DSDCARD_PATH=\"../../desktop/FAKESD\" -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS \
-                -I workspace/all/common -I workspace/desktop/platform \
+                -I workspace/all/common -I workspace/all/minui -I workspace/all/minarch \
+                -I workspace/desktop/platform \
                 -I workspace/all/minarch/libretro-common/include \
                 -iquote workspace/all/minarch/libretro-common/include \
                 $(SDL2_CFLAGS) -DUSE_SDL2 -std=gnu99
@@ -184,11 +190,11 @@ analyze-native: check-scan-build
 ###########################################################
 # Test Configuration
 TEST_CFLAGS = -std=c99 -Wall -Wextra -Wno-unused-parameter
-TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common
+TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common -I workspace/all/minui -I workspace/all/minarch
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/render_common_test tests/integration_workflows_test tests/log_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -239,47 +245,52 @@ tests/audio_resampler_test: tests/unit/all/common/test_audio_resampler.c workspa
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build MinArch path generation tests (pure sprintf logic)
-tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/common/minarch_paths.c $(TEST_UNITY)
+tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
 	@echo "Building MinArch path generation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build LessUI launcher utility tests (pure string logic)
-tests/minui_utils_test: tests/unit/all/common/test_minui_utils.c workspace/all/common/minui_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/minui_utils_test: tests/unit/all/common/test_minui_utils.c workspace/all/minui/minui_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building LessUI launcher utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build M3U parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/m3u_parser_test: tests/unit/all/common/test_m3u_parser.c workspace/all/common/m3u_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/m3u_parser_test: tests/unit/all/common/test_m3u_parser.c workspace/all/minui/minui_m3u.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building M3U parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build LessUI file utility tests (uses file mocking with GCC --wrap, Docker-only)
-tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c workspace/all/common/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c workspace/all/minui/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building LessUI file utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build map.txt parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/common/map_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/minui/minui_map.c workspace/all/common/collections.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building map.txt parser tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build collection parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/collection_parser_test: tests/unit/all/common/test_collection_parser.c workspace/all/common/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/collection_parser_test: tests/unit/all/common/test_collection_parser.c workspace/all/minui/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building collection parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build recent.txt file tests (uses file mocking with GCC --wrap, Docker-only)
-tests/recent_parser_test: tests/unit/all/common/test_recent_parser.c workspace/all/common/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/recent_parser_test: tests/unit/all/common/test_recent_parser.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building recent.txt parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build recent.txt writer tests (uses real temp files, no --wrap needed)
-tests/recent_writer_test: tests/unit/all/common/test_recent_writer.c workspace/all/common/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/recent_writer_test: tests/unit/all/common/test_recent_writer.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building recent.txt writer tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
+# Build recent runtime tests (Recent struct and array operations)
+tests/recent_runtime_test: tests/unit/all/common/test_recent_runtime.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building recent runtime tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
 # Build directory utility tests (uses real temp directories, no --wrap needed)
-tests/directory_utils_test: tests/unit/all/common/test_directory_utils.c workspace/all/common/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/directory_utils_test: tests/unit/all/common/test_directory_utils.c workspace/all/minui/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building directory utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
@@ -294,20 +305,186 @@ tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/commo
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lm
 
 # Build string comparison tests (natural sort, pure algorithm)
-tests/str_compare_test: tests/unit/all/common/test_str_compare.c workspace/all/common/str_compare.c $(TEST_UNITY)
+tests/str_compare_test: tests/unit/all/common/test_str_compare.c workspace/all/minui/minui_str_compare.c $(TEST_UNITY)
 	@echo "Building string comparison tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build effect system tests (includes effect_system.c directly to avoid SDL deps)
+tests/effect_system_test: tests/unit/all/common/test_effect_system.c $(TEST_UNITY)
+	@echo "Building effect system tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch utility tests (pure functions extracted from minarch.c)
+tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c $(TEST_UNITY)
+	@echo "Building minarch utility tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch configuration tests (config path and option utilities)
+tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
+	@echo "Building minarch configuration tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build minarch option management tests (option list search and manipulation)
+tests/minarch_options_test: tests/unit/all/common/test_minarch_options.c workspace/all/minarch/minarch_options.c $(TEST_UNITY)
+	@echo "Building minarch option management tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build platform variant tests (platform detection and device info)
+tests/platform_variant_test: tests/unit/all/common/test_platform_variant.c workspace/all/common/platform_variant.c $(TEST_UNITY)
+	@echo "Building platform variant tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build MinUI entry type tests (Entry struct and array operations)
+tests/minui_entry_test: tests/unit/all/common/test_minui_entry.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building MinUI entry tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build directory indexing tests (alias application, filtering, duplicate detection)
+tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/minui/directory_index.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building directory indexing tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build ZIP extraction tests (pure file I/O functions, uses zlib)
+tests/minarch_zip_test: tests/unit/all/common/test_minarch_zip.c workspace/all/minarch/minarch_zip.c $(TEST_UNITY)
+	@echo "Building ZIP extraction tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lz
+
+# Build memory persistence tests (SRAM/RTC with mock core callbacks, uses real temp files)
+tests/minarch_memory_test: tests/unit/all/common/test_minarch_memory.c workspace/all/minarch/minarch_memory.c tests/support/libretro_mocks.c $(TEST_UNITY)
+	@echo "Building memory persistence tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build save state system tests (with mock core callbacks, uses real temp files)
+tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c tests/support/libretro_mocks.c $(TEST_UNITY)
+	@echo "Building save state system tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build launcher command construction tests (pure string/file operations)
+tests/minui_launcher_test: tests/unit/all/common/test_minui_launcher.c workspace/all/minui/minui_launcher.c $(TEST_UNITY)
+	@echo "Building launcher command tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build auto CPU scaling tests (pure algorithm, no external dependencies)
+tests/minarch_cpu_test: tests/unit/all/common/test_minarch_cpu.c workspace/all/minarch/minarch_cpu.c $(TEST_UNITY)
+	@echo "Building auto CPU scaling tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build input handling tests (pure state queries and mapping lookups)
+tests/minarch_input_test: tests/unit/all/common/test_minarch_input.c workspace/all/minarch/minarch_input.c $(TEST_UNITY)
+	@echo "Building input handling tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build launcher state persistence tests (path decomposition, resume paths)
+tests/minui_state_test: tests/unit/all/common/test_minui_state.c workspace/all/minui/minui_state.c $(TEST_UNITY)
+	@echo "Building launcher state tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build menu context system tests (validates context pattern for testing)
+# Uses SDL shim headers and fff-based mocking infrastructure
+# Note: Uses menu_state_stub.c which provides testable menu functions without SDL dependencies
+tests/minarch_menu_test: tests/unit/all/common/test_minarch_menu.c \
+	workspace/all/minarch/minarch_context.c \
+	tests/support/menu_state_stub.c \
+	tests/support/sdl_fakes.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building menu context tests..."
+	@$(CC) -o $@ $^ -I tests/support/SDL $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include -I tests/support/fff $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build env callback tests (tests environment callback handlers in minarch_env.c)
+tests/minarch_env_test: tests/unit/all/common/test_minarch_env.c \
+	workspace/all/minarch/minarch_env.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building environment callback tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build game file handling tests (ZIP parsing, M3U detection, extension matching)
+tests/minarch_game_test: tests/unit/all/common/test_minarch_game.c \
+	workspace/all/minarch/minarch_game.c \
+	$(TEST_UNITY)
+	@echo "Building game file handling tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DMINARCH_GAME_TEST
+
+# Build video scaler calculation tests (pure geometry math)
+tests/minarch_scaler_test: tests/unit/all/common/test_minarch_scaler.c \
+	workspace/all/minarch/minarch_scaler.c \
+	$(TEST_UNITY)
+	@echo "Building video scaler tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build core AV info processing tests (aspect ratio calculation, game info building)
+tests/minarch_core_test: tests/unit/all/common/test_minarch_core.c \
+	workspace/all/minarch/minarch_core.c \
+	$(TEST_UNITY)
+	@echo "Building core AV info tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS)
+
+# Build MinUI directory building tests (uses real temp directories, no --wrap needed)
+tests/minui_directory_test: tests/unit/all/common/test_minui_directory.c \
+	workspace/all/minui/minui_directory.c \
+	workspace/all/minui/minui_file_utils.c \
+	workspace/all/minui/minui_entry.c \
+	workspace/all/minui/minui_str_compare.c \
+	workspace/all/common/collections.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI directory tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build MinUI navigation tests (pure navigation logic, uses real temp dirs)
+tests/minui_navigation_test: tests/unit/all/common/test_minui_navigation.c \
+	workspace/all/minui/minui_navigation.c \
+	workspace/all/minui/minui_context.c \
+	workspace/all/minui/minui_launcher.c \
+	workspace/all/minui/minui_entry.c \
+	workspace/all/minui/minui_str_compare.c \
+	workspace/all/common/collections.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI navigation tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build MinUI thumbnail cache tests (pure cache logic and fade animation math)
+tests/minui_thumbnail_test: tests/unit/all/common/test_minui_thumbnail.c \
+	workspace/all/minui/minui_thumbnail.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI thumbnail cache tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build MinUI context tests (context lifecycle and accessor functions)
+tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
+	workspace/all/minui/minui_context.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI context tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build render common tests (pure math functions, no dependencies)
+tests/render_common_test: tests/unit/all/common/test_render_common.c \
+	workspace/all/common/render_common.c \
+	$(TEST_UNITY)
+	@echo "Building render common tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \
 	tests/integration/integration_support.c \
-	workspace/all/common/m3u_parser.c \
-	workspace/all/common/map_parser.c \
-	workspace/all/common/collection_parser.c \
-	workspace/all/common/recent_file.c \
-	workspace/all/common/minui_file_utils.c \
+	workspace/all/minui/minui_m3u.c \
+	workspace/all/minui/minui_map.c \
+	workspace/all/minui/collection_parser.c \
+	workspace/all/minui/recent_file.c \
+	workspace/all/minui/minui_file_utils.c \
 	workspace/all/common/binary_file_utils.c \
-	workspace/all/common/minarch_paths.c \
+	workspace/all/common/collections.c \
+	workspace/all/minarch/minarch_paths.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
@@ -323,7 +500,9 @@ clean-tests:
 # Use LLVM 18 to match CI
 CLANG_FORMAT = $(shell /opt/homebrew/opt/llvm@18/bin/clang-format --version >/dev/null 2>&1 && echo /opt/homebrew/opt/llvm@18/bin/clang-format || which clang-format)
 FORMAT_PATHS = workspace/all/minui/*.c \
+               workspace/all/minui/*.h \
                workspace/all/minarch/*.c \
+               workspace/all/minarch/*.h \
                workspace/all/common/*.c \
                workspace/all/common/*.h \
                workspace/all/paks/Tools/*/src/*.c \
@@ -417,7 +596,15 @@ docker-build:
 docker-test: docker-build
 	@echo "Running tests in Docker container (Ubuntu 24.04)..."
 	@echo ""
-	$(DEV_RUN) make -f makefile.qa clean-tests test-native
+	$(DEV_RUN) ./scripts/run-tests.sh
+
+# Run tests with verbose output (shows all test output)
+docker-test-verbose: docker-build
+	$(DEV_RUN) ./scripts/run-tests.sh -v
+
+# Run tests with quiet output (summary only)
+docker-test-quiet: docker-build
+	$(DEV_RUN) ./scripts/run-tests.sh -q
 
 docker-lint: docker-build
 	@echo "Running linting in Docker container (Ubuntu 24.04)..."
@@ -454,3 +641,29 @@ lint-native: check-clang-tidy check-clang-format check-shellcheck
 	echo "=================================" && \
 	echo "✓ All linting checks passed" && \
 	echo "================================="
+
+###########################################################
+# Code Coverage Analysis
+# Uses gcov/lcov to measure test coverage
+# Runs in Docker by default for consistency
+
+# Coverage output directory
+COVERAGE_DIR = coverage
+
+# Default: use Docker for coverage
+coverage: docker-coverage
+
+# Docker coverage target
+docker-coverage: docker-build
+	@echo "Running coverage analysis in Docker container..."
+	@echo ""
+	$(DEV_RUN) ./scripts/run-coverage.sh
+
+# Clean coverage artifacts
+clean-coverage:
+	@echo "Cleaning coverage data..."
+	rm -rf $(COVERAGE_DIR)
+	find . -name "*.gcno" -delete 2>/dev/null || true
+	find . -name "*.gcda" -delete 2>/dev/null || true
+	find . -name "*.gcov" -delete 2>/dev/null || true
+	@echo "✓ Coverage data cleaned"

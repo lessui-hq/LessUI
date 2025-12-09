@@ -16,7 +16,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/collection_parser.h"
+#include "collection_parser.h"
 
 #include <string.h>
 

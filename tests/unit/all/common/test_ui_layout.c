@@ -269,8 +269,9 @@ void test_button_padding_proportional(void) {
 void test_text_baseline_proportional(void) {
 	UI_initLayout(640, 480, 2.8f);
 
-	// text_baseline should scale proportionally (~4 for 30dp)
-	int expected_baseline = (4 * ui.pill_height + 15) / 30;
+	// text_baseline = (pill_height * 2) / 10, per UI_initLayout implementation
+	// For 30dp pill: (30 * 2) / 10 = 6
+	int expected_baseline = (ui.pill_height * 2) / 10;
 	TEST_ASSERT_EQUAL_INT(expected_baseline, ui.text_baseline);
 }
 

@@ -15,12 +15,12 @@
 #include <string.h>
 
 #include "../../workspace/all/common/binary_file_utils.h"
-#include "../../workspace/all/common/collection_parser.h"
-#include "../../workspace/all/common/m3u_parser.h"
-#include "../../workspace/all/common/map_parser.h"
-#include "../../workspace/all/common/minarch_paths.h"
-#include "../../workspace/all/common/minui_file_utils.h"
-#include "../../workspace/all/common/recent_file.h"
+#include "collection_parser.h"
+#include "minui_m3u.h"
+#include "minui_map.h"
+#include "minarch_paths.h"
+#include "minui_file_utils.h"
+#include "recent_file.h"
 #include "../support/platform.h"
 #include "../support/unity/unity.h"
 #include "integration_support.h"
@@ -395,7 +395,7 @@ void test_minarch_save_state_workflow(void) {
 	// Generate save state path for slot 0
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArch_getStatePath(save_path, states_dir, "mario", 0);
+	MinArchPaths_getState(save_path, states_dir, "mario", 0);
 
 	// Verify path format
 	TEST_ASSERT_TRUE(strstr(save_path, ".st0") != NULL);
@@ -443,11 +443,11 @@ void test_minarch_sram_rtc_workflow(void) {
 	         test_dir);
 
 	// Generate SRAM path
-	MinArch_getSRAMPath(sram_path, saves_dir, "pokemon");
+	MinArchPaths_getSRAM(sram_path, saves_dir, "pokemon");
 	TEST_ASSERT_TRUE(strstr(sram_path, ".sav") != NULL);
 
 	// Generate RTC path
-	MinArch_getRTCPath(rtc_path, saves_dir, "pokemon");
+	MinArchPaths_getRTC(rtc_path, saves_dir, "pokemon");
 	TEST_ASSERT_TRUE(strstr(rtc_path, ".rtc") != NULL);
 
 	// Create parent directories
@@ -807,7 +807,7 @@ void test_recent_with_save_states(void) {
 	char states_dir[512];
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArch_getStatePath(save_path, states_dir, "game", 0);
+	MinArchPaths_getState(save_path, states_dir, "game", 0);
 
 	// Create parent directory
 	TEST_ASSERT_TRUE(create_parent_dir(save_path));
@@ -837,7 +837,7 @@ void test_recent_with_save_states(void) {
 
 	// Verify save state path matches what we used earlier
 	char verify_save_path[256];
-	MinArch_getStatePath(verify_save_path, states_dir, "game", 0);
+	MinArchPaths_getState(verify_save_path, states_dir, "game", 0);
 	TEST_ASSERT_EQUAL_STRING(save_path, verify_save_path);
 
 	// Verify can read save state data
@@ -873,11 +873,11 @@ void test_minarch_config_file_integration(void) {
 	         test_dir);
 
 	// Generate game-specific config
-	MinArch_getConfigPath(game_cfg, config_dir, "Pokemon", NULL);
+	MinArchConfig_getPath(game_cfg, config_dir, "Pokemon", NULL);
 	TEST_ASSERT_TRUE(strstr(game_cfg, "Pokemon.cfg") != NULL);
 
 	// Generate global config
-	MinArch_getConfigPath(global_cfg, config_dir, NULL, NULL);
+	MinArchConfig_getPath(global_cfg, config_dir, NULL, NULL);
 	TEST_ASSERT_TRUE(strstr(global_cfg, "minarch.cfg") != NULL);
 
 	// Verify they're different
@@ -926,11 +926,11 @@ void test_config_device_tags(void) {
 	snprintf(config_dir, sizeof(config_dir), "%s/.userdata/shared/gpsp", test_dir);
 
 	// Generate miyoomini config
-	MinArch_getConfigPath(miyoo_cfg, config_dir, "Game", "miyoomini");
+	MinArchConfig_getPath(miyoo_cfg, config_dir, "Game", "miyoomini");
 	TEST_ASSERT_TRUE(strstr(miyoo_cfg, "-miyoomini.cfg") != NULL);
 
 	// Generate rg35xx config
-	MinArch_getConfigPath(rg35_cfg, config_dir, "Game", "rg35xx");
+	MinArchConfig_getPath(rg35_cfg, config_dir, "Game", "rg35xx");
 	TEST_ASSERT_TRUE(strstr(rg35_cfg, "-rg35xx.cfg") != NULL);
 
 	// Verify they're different
@@ -965,7 +965,7 @@ void test_auto_resume_slot_9(void) {
 	// Generate slot 9 save state (auto-resume)
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArch_getStatePath(save_path, states_dir, "zelda", 9);
+	MinArchPaths_getState(save_path, states_dir, "zelda", 9);
 
 	TEST_ASSERT_TRUE(strstr(save_path, ".st9") != NULL);
 
@@ -997,7 +997,7 @@ void test_auto_resume_slot_9(void) {
 	char verify_path[256];
 	char full_rom[512];
 	snprintf(full_rom, sizeof(full_rom), "%s%s", test_dir, loaded[0]->path);
-	MinArch_getStatePath(verify_path, states_dir, "zelda", 9);
+	MinArchPaths_getState(verify_path, states_dir, "zelda", 9);
 	TEST_ASSERT_EQUAL_STRING(save_path, verify_path);
 
 	// Verify save data is intact
@@ -1026,7 +1026,7 @@ void test_all_save_slots(void) {
 	// Create saves for all 10 slots
 	for (int slot = 0; slot < 10; slot++) {
 		char save_path[256];
-		MinArch_getStatePath(save_path, states_dir, "metroid", slot);
+		MinArchPaths_getState(save_path, states_dir, "metroid", slot);
 
 		// Verify slot number in filename
 		char expected[10];
@@ -1045,7 +1045,7 @@ void test_all_save_slots(void) {
 	// Read back and verify each slot has correct data
 	for (int slot = 0; slot < 10; slot++) {
 		char save_path[256];
-		MinArch_getStatePath(save_path, states_dir, "metroid", slot);
+		MinArchPaths_getState(save_path, states_dir, "metroid", slot);
 
 		unsigned char data[64];
 		int read = BinaryFile_read(save_path, data, sizeof(data));
@@ -1273,7 +1273,7 @@ void test_rom_with_all_features(void) {
 	char save_path[256];
 	char states_dir[512];
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/pcsx", test_dir);
-	MinArch_getStatePath(save_path, states_dir, "FF8", 0);
+	MinArchPaths_getState(save_path, states_dir, "FF8", 0);
 	TEST_ASSERT_TRUE(create_parent_dir(save_path));
 
 	unsigned char save[512];
@@ -1282,7 +1282,7 @@ void test_rom_with_all_features(void) {
 
 	// Create SRAM
 	char sram_path[256];
-	MinArch_getSRAMPath(sram_path, states_dir, "FF8");
+	MinArchPaths_getSRAM(sram_path, states_dir, "FF8");
 	TEST_ASSERT_TRUE(create_parent_dir(sram_path));
 
 	unsigned char sram[8192];
@@ -1329,14 +1329,14 @@ void test_rom_with_all_features(void) {
 
 	// 5. Save states exist
 	char verify_save[256];
-	MinArch_getStatePath(verify_save, states_dir, "FF8", 0);
+	MinArchPaths_getState(verify_save, states_dir, "FF8", 0);
 	unsigned char verify_data[512];
 	TEST_ASSERT_EQUAL(512, BinaryFile_read(verify_save, verify_data, sizeof(verify_data)));
 	TEST_ASSERT_EQUAL(0xF8, verify_data[0]);
 
 	// 6. SRAM exists
 	char verify_sram[256];
-	MinArch_getSRAMPath(verify_sram, states_dir, "FF8");
+	MinArchPaths_getSRAM(verify_sram, states_dir, "FF8");
 	unsigned char verify_sram_data[8192];
 	TEST_ASSERT_EQUAL(8192,
 	                  BinaryFile_read(verify_sram, verify_sram_data, sizeof(verify_sram_data)));
@@ -1362,11 +1362,11 @@ void test_multi_platform_save_isolation(void) {
 
 	// Generate paths for miyoomini
 	snprintf(miyoo_dir, sizeof(miyoo_dir), "%s/.userdata/miyoomini/gpsp", test_dir);
-	MinArch_getStatePath(miyoo_save, miyoo_dir, "pokemon", 0);
+	MinArchPaths_getState(miyoo_save, miyoo_dir, "pokemon", 0);
 
 	// Generate paths for rg35xx
 	snprintf(rg35_dir, sizeof(rg35_dir), "%s/.userdata/rg35xx/gpsp", test_dir);
-	MinArch_getStatePath(rg35_save, rg35_dir, "pokemon", 0);
+	MinArchPaths_getState(rg35_save, rg35_dir, "pokemon", 0);
 
 	// Verify they're different
 	TEST_ASSERT_NOT_EQUAL(strcmp(miyoo_save, rg35_save), 0);

@@ -10,7 +10,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/minui_utils.h"
+#include "minui_utils.h"
 
 void setUp(void) {
 	// Nothing to set up

@@ -6,7 +6,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "../../../../workspace/all/common/recent_file.h"
+#include "recent_file.h"
 
 #include <string.h>
 #include <stdlib.h>

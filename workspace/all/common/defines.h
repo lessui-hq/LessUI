@@ -446,4 +446,13 @@ enum {
 };
 #endif
 
+// Sleep/wake button fallbacks (if not defined by platform)
+// These must be after the BTN_* enum to use enum values as defaults
+#ifndef BTN_SLEEP
+#define BTN_SLEEP BTN_POWER
+#endif
+#ifndef BTN_WAKE
+#define BTN_WAKE BTN_MENU
+#endif
+
 #endif

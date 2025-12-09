@@ -43,7 +43,19 @@
 #include "api.h"
 #include "collections.h"
 #include "defines.h"
-#include "str_compare.h"
+#include "directory_index.h"
+#include "minui_context.h"
+#include "minui_directory.h"
+#include "minui_entry.h"
+#include "minui_file_utils.h"
+#include "minui_launcher.h"
+#include "minui_m3u.h"
+#include "minui_map.h"
+#include "minui_navigation.h"
+#include "minui_state.h"
+#include "minui_str_compare.h"
+#include "minui_thumbnail.h"
+#include "recent_file.h"
 #include "utils.h"
 
 ///////////////////////////////
@@ -63,13 +75,7 @@
 #define THUMB_SELECTED_WIDTH_PERCENT 100 // Selected item text width when thumbnail shown
 #define THUMB_MAX_WIDTH_PERCENT 40 // Maximum thumbnail width
 
-// Thumbnail animation
-#define THUMB_FADE_DURATION_MS 100 // Duration of fade-in animation in milliseconds
-#define THUMB_ALPHA_MAX 255 // Fully opaque
-#define THUMB_ALPHA_MIN 0 // Fully transparent
-
-// Thumbnail cache
-#define THUMB_CACHE_SIZE 3 // Number of thumbnails to keep in cache (prev, current, next)
+// Note: MINUI_THUMBNAIL_* constants now in minui_thumbnail.h
 
 ///////////////////////////////
 // Async thumbnail loader
@@ -194,7 +200,7 @@ static void* thumb_loader_thread(void* arg) {
  * Starts the thumbnail loader thread.
  * Call once at startup.
  */
-static void ThumbLoader_init(void) {
+static void MinUIThumbnail_loaderInit(void) {
 	thumb_request_path[0] = '\0';
 	thumb_result_path[0] = '\0';
 	thumb_preload_hint_path[0] = '\0';
@@ -217,7 +223,7 @@ static void ThumbLoader_init(void) {
  * Stops the thumbnail loader thread and frees resources.
  * Call once at shutdown.
  */
-static void ThumbLoader_quit(void) {
+static void MinUIThumbnail_loaderQuit(void) {
 	if (thumb_thread_valid) {
 		pthread_mutex_lock(&thumb_mutex);
 		thumb_shutdown = 1;
@@ -245,8 +251,8 @@ static void ThumbLoader_quit(void) {
  * @param hint_path Optional path to preload after this one (can be NULL)
  * @param hint_index Entry index of hint path
  */
-static void ThumbLoader_request(const char* path, int max_w, int max_h, int entry_index,
-                                int is_preload, const char* hint_path, int hint_index) {
+static void MinUIThumbnail_loaderRequest(const char* path, int max_w, int max_h, int entry_index,
+                                         int is_preload, const char* hint_path, int hint_index) {
 	pthread_mutex_lock(&thumb_mutex);
 
 	// Current (non-preload) requests always supersede preload requests
@@ -281,7 +287,7 @@ static void ThumbLoader_request(const char* path, int max_w, int max_h, int entr
  * @param out_path Output buffer for result path (must be MAX_PATH, can be NULL)
  * @return Surface if ready (caller takes ownership), NULL otherwise
  */
-static SDL_Surface* ThumbLoader_get(int* out_entry_index, char* out_path) {
+static SDL_Surface* MinUIThumbnail_loaderGet(int* out_entry_index, char* out_path) {
 	SDL_Surface* result = NULL;
 
 	pthread_mutex_lock(&thumb_mutex);
@@ -301,447 +307,52 @@ static SDL_Surface* ThumbLoader_get(int* out_entry_index, char* out_path) {
 }
 
 ///////////////////////////////
-// Thumbnail cache management
+// Thumbnail cache SDL wrappers
 //
-// Encapsulated cache that prevents dangling pointer bugs:
-// - Never exposes raw surface pointers for storage
-// - Tracks which item is "displayed" and invalidates on eviction
-// - All access through getter functions that return fresh lookups
-///////////////////////////////
-
-typedef struct {
-	SDL_Surface* surface;
-	int entry_index;
-} ThumbCacheItem;
-
-typedef struct {
-	ThumbCacheItem items[THUMB_CACHE_SIZE];
-	int count;
-	int displayed_index; // entry_index of currently displayed item, or -1
-	int displayed_valid; // 1 if displayed item is in cache, 0 if evicted
-} ThumbCache;
-
-/**
- * Initialize the thumbnail cache.
- */
-static void ThumbCache_init(ThumbCache* cache) {
-	memset(cache->items, 0, sizeof(cache->items));
-	cache->count = 0;
-	cache->displayed_index = -1;
-	cache->displayed_valid = 0;
-}
-
-/**
- * Find item position in cache by entry index.
- * Returns -1 if not found.
- */
-static int ThumbCache_findPos(ThumbCache* cache, int entry_index) {
-	for (int i = 0; i < cache->count; i++) {
-		if (cache->items[i].entry_index == entry_index) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-/**
- * Get surface for an entry index.
- * Returns NULL if not in cache. Never store the returned pointer - always re-lookup.
- */
-static SDL_Surface* ThumbCache_get(ThumbCache* cache, int entry_index) {
-	int pos = ThumbCache_findPos(cache, entry_index);
-	if (pos >= 0) {
-		return cache->items[pos].surface;
-	}
-	return NULL;
-}
-
-/**
- * Add item to cache (evict oldest if full).
- * Uses FIFO eviction policy - oldest items fall off the front.
- * Automatically invalidates displayed item if it gets evicted.
- */
-static void ThumbCache_add(ThumbCache* cache, SDL_Surface* surface, int entry_index) {
-	if (cache->count == THUMB_CACHE_SIZE) {
-		// Check if we're evicting the displayed item
-		if (cache->displayed_valid && cache->items[0].entry_index == cache->displayed_index) {
-			LOG_debug("thumb cache: evicting displayed item idx=%d", cache->displayed_index);
-			cache->displayed_valid = 0;
-		}
-
-		// Evict oldest (first item)
-		if (cache->items[0].surface)
-			SDL_FreeSurface(cache->items[0].surface);
-
-		// Shift left
-		memmove(&cache->items[0], &cache->items[1],
-		        (THUMB_CACHE_SIZE - 1) * sizeof(ThumbCacheItem));
-		cache->count--;
-	}
-
-	// Add to end
-	cache->items[cache->count].surface = surface;
-	cache->items[cache->count].entry_index = entry_index;
-	cache->count++;
-}
-
-/**
- * Mark an entry as currently displayed.
- * The cache tracks this so it can invalidate if evicted.
- */
-static void ThumbCache_setDisplayed(ThumbCache* cache, int entry_index) {
-	cache->displayed_index = entry_index;
-	cache->displayed_valid = (ThumbCache_findPos(cache, entry_index) >= 0);
-}
-
-/**
- * Clear the displayed item tracking.
- */
-static void ThumbCache_clearDisplayed(ThumbCache* cache) {
-	cache->displayed_index = -1;
-	cache->displayed_valid = 0;
-}
-
-/**
- * Check if the displayed item is still valid (in cache).
- */
-static int ThumbCache_isDisplayedValid(ThumbCache* cache) {
-	return cache->displayed_valid;
-}
-
-/**
- * Get the surface for the currently displayed item.
- * Returns NULL if no item is displayed or it was evicted.
- */
-static SDL_Surface* ThumbCache_getDisplayed(ThumbCache* cache) {
-	if (!cache->displayed_valid || cache->displayed_index < 0) {
-		return NULL;
-	}
-	return ThumbCache_get(cache, cache->displayed_index);
-}
-
-/**
- * Clear all cache items and free surfaces.
- */
-static void ThumbCache_clear(ThumbCache* cache) {
-	for (int i = 0; i < cache->count; i++) {
-		if (cache->items[i].surface) {
-			SDL_FreeSurface(cache->items[i].surface);
-			cache->items[i].surface = NULL;
-		}
-	}
-	cache->count = 0;
-	cache->displayed_index = -1;
-	cache->displayed_valid = 0;
-}
-
-/**
- * Build thumbnail path for an entry.
- * Thumbnails are stored as: <dir>/.res/<filename>.png
- *
- * @param entry_path Full path to the entry
- * @param out_path Output buffer for thumbnail path (MAX_PATH)
- * @return 1 if path was built successfully, 0 if entry_path is invalid
- */
-static int build_thumb_path(const char* entry_path, char* out_path) {
-	out_path[0] = '\0';
-	if (!entry_path)
-		return 0;
-
-	const char* last_slash = strrchr(entry_path, '/');
-	if (!last_slash || last_slash[1] == '\0')
-		return 0;
-
-	int dir_len = (int)(last_slash - entry_path);
-	if (dir_len <= 0 || dir_len >= MAX_PATH - 32)
-		return 0;
-
-	snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
-	return 1;
-}
-
-///////////////////////////////
-// File browser entries
+// Cache logic moved to minui_thumbnail.c for testability.
+// These wrappers handle SDL_Surface allocation/freeing.
+// Tracks displayed item to prevent dangling pointer bugs.
 ///////////////////////////////
 
 /**
- * Type of entry in the file browser.
+ * Add surface to cache, freeing evicted surface if necessary.
  */
-enum EntryType {
-	ENTRY_DIR, // Directory (open to browse contents)
-	ENTRY_PAK, // .pak folder (executable tool/app)
-	ENTRY_ROM, // ROM file (launch with emulator)
-};
-
-/**
- * Represents a file or folder in the browser.
- *
- * Entries can be ROMs, directories, or .pak applications.
- * Display names are processed to remove region codes and extensions.
- */
-typedef struct Entry {
-	char* path; // Full path to file/folder
-	char* name; // Cleaned display name (may be aliased via map.txt)
-	char* sort_key; // Sorting key (name with leading article skipped)
-	char* unique; // Disambiguating text when multiple entries have same name
-	int type; // ENTRY_DIR, ENTRY_PAK, or ENTRY_ROM
-	int alpha; // Index into parent Directory's alphas array for L1/R1 navigation
-} Entry;
-
-/**
- * Sets an entry's display name and computes its sort key.
- *
- * The sort key is the name with any leading article ("The ", "A ", "An ")
- * stripped, ensuring sorting and alphabetical indexing are consistent.
- *
- * @param self Entry to update
- * @param name New display name (will be copied)
- * @return 1 on success, 0 on allocation failure
- */
-static int Entry_setName(Entry* self, const char* name) {
-	char* new_name = strdup(name);
-	if (!new_name)
-		return 0;
-
-	// Compute sort key by skipping leading article
-	const char* key_start = skip_article(name);
-	char* new_sort_key = strdup(key_start);
-	if (!new_sort_key) {
-		free(new_name);
-		return 0;
+static void thumb_cache_push(MinUIThumbnailCache* cache, SDL_Surface* surface, const char* path,
+                             int entry_index) {
+	// If cache is full, free the evicted surface first
+	if (MinUIThumbnail_cacheIsFull(cache)) {
+		SDL_Surface* evicted = (SDL_Surface*)MinUIThumbnail_cacheGetData(cache, 0);
+		if (evicted)
+			SDL_FreeSurface(evicted);
+		MinUIThumbnail_cacheEvict(cache);
 	}
-
-	// Free old values and assign new ones
-	if (self->name)
-		free(self->name);
-	if (self->sort_key)
-		free(self->sort_key);
-
-	self->name = new_name;
-	self->sort_key = new_sort_key;
-	return 1;
+	MinUIThumbnail_cacheAdd(cache, entry_index, path, surface);
 }
 
 /**
- * Creates a new entry from a path.
- *
- * Automatically processes the display name to remove extensions,
- * region codes, and other metadata.
- *
- * @param path Full path to the file/folder
- * @param type ENTRY_DIR, ENTRY_PAK, or ENTRY_ROM
- * @return Pointer to allocated Entry
- *
- * @warning Caller must free with Entry_free()
+ * Clear cache and free all surfaces.
  */
-static Entry* Entry_new(char* path, int type) {
-	char display_name[256];
-	getDisplayName(path, display_name);
-	Entry* self = malloc(sizeof(Entry));
-	if (!self)
-		return NULL;
-	self->path = strdup(path);
-	if (!self->path) {
-		free(self);
-		return NULL;
+static void thumb_cache_clear(MinUIThumbnailCache* cache) {
+	for (int i = 0; i < cache->size; i++) {
+		SDL_Surface* surface = (SDL_Surface*)MinUIThumbnail_cacheGetData(cache, i);
+		if (surface)
+			SDL_FreeSurface(surface);
 	}
-	// Initialize to NULL before Entry_setName
-	self->name = NULL;
-	self->sort_key = NULL;
-	if (!Entry_setName(self, display_name)) {
-		free(self->path);
-		free(self);
-		return NULL;
-	}
-	self->unique = NULL;
-	self->type = type;
-	self->alpha = 0;
-	return self;
+	MinUIThumbnail_cacheClear(cache);
 }
 
-/**
- * Frees an entry and all its strings.
- *
- * @param self Entry to free
- */
-static void Entry_free(Entry* self) {
-	free(self->path);
-	free(self->name);
-	free(self->sort_key);
-	if (self->unique)
-		free(self->unique);
-	free(self);
-}
-
-/**
- * Finds an entry by path in an entry array.
- *
- * @param self Array of Entry pointers
- * @param path Path to search for
- * @return Index of matching entry, or -1 if not found
- */
-static int EntryArray_indexOf(Array* self, char* path) {
-	for (int i = 0; i < self->count; i++) {
-		Entry* entry = self->items[i];
-		if (exactMatch(entry->path, path))
-			return i;
-	}
-	return -1;
-}
-
-/**
- * Comparison function for qsort - sorts entries using natural sort.
- *
- * Uses sort_key for comparison, which has leading articles stripped.
- * Natural sort orders numeric sequences by value, not lexicographically.
- * Example: "Game 2" < "Game 10" (unlike strcmp where "Game 10" < "Game 2")
- *
- * @param a First entry pointer (Entry**)
- * @param b Second entry pointer (Entry**)
- * @return Negative if a < b, 0 if equal, positive if a > b
- */
-static int EntryArray_sortEntry(const void* a, const void* b) {
-	Entry* item1 = *(Entry**)a;
-	Entry* item2 = *(Entry**)b;
-	return strnatcasecmp(item1->sort_key, item2->sort_key);
-}
-
-/**
- * Sorts an entry array alphabetically by display name.
- *
- * @param self Array to sort (modified in place)
- */
-static void EntryArray_sort(Array* self) {
-	qsort(self->items, self->count, sizeof(void*), EntryArray_sortEntry);
-}
-
-/**
- * Frees an entry array and all entries it contains.
- *
- * @param self Array to free
- */
-static void EntryArray_free(Array* self) {
-	for (int i = 0; i < self->count; i++) {
-		Entry_free(self->items[i]);
-	}
-	Array_free(self);
-}
+// build_thumb_path moved to minui_file_utils.c as MinUI_buildThumbPath
 
 ///////////////////////////////
-// Fixed-size integer array
+// Note: Entry, IntArray and related functions moved to
+// workspace/all/common/minui_entry.c for testability.
 ///////////////////////////////
 
-/**
- * Fixed-size array of integers for alphabetical indexing.
- *
- * Stores up to 27 indices (one for # and one for each letter A-Z).
- * Each value is the index of the first entry starting with that letter.
- */
-#define INT_ARRAY_MAX 27
-typedef struct IntArray {
-	int count;
-	int items[INT_ARRAY_MAX];
-} IntArray;
-/**
- * Creates a new empty integer array.
- *
- * @return Pointer to allocated IntArray
- *
- * @warning Caller must free with IntArray_free()
- */
-static IntArray* IntArray_new(void) {
-	IntArray* self = malloc(sizeof(IntArray));
-	if (!self)
-		return NULL;
-	self->count = 0;
-	memset(self->items, 0, sizeof(int) * INT_ARRAY_MAX);
-	return self;
-}
-
-/**
- * Appends an integer to the array.
- * Silently drops if array is full.
- *
- * @param self Array to modify
- * @param i Value to append
- */
-static void IntArray_push(IntArray* self, int i) {
-	if (self->count >= INT_ARRAY_MAX)
-		return;
-	self->items[self->count++] = i;
-}
-
-/**
- * Frees an integer array.
- *
- * @param self Array to free
- */
-static void IntArray_free(IntArray* self) {
-	free(self);
-}
-
 ///////////////////////////////
-// Directory structure and indexing
+// Note: Directory structure moved to minui_directory.h for type safety.
+// Directory_new and Directory_index stay here (depend on globals).
+// Directory_free, DirectoryArray_* moved to minui_directory.c (pure functions).
 ///////////////////////////////
-
-/**
- * Represents a directory in the file browser.
- *
- * Maintains list of entries, alphabetical index, and rendering state
- * (selected item, visible window start/end).
- */
-typedef struct Directory {
-	char* path; // Full path to directory
-	char* name; // Display name
-	Array* entries; // Array of Entry pointers
-	IntArray* alphas; // Alphabetical index for L1/R1 navigation
-	// Rendering state
-	int selected; // Currently selected entry index
-	int start; // First visible entry index
-	int end; // One past last visible entry index
-} Directory;
-
-/**
- * Gets the alphabetical index for a sort key.
- *
- * Used to group entries by first letter for L1/R1 shoulder button navigation.
- * Should be called with entry->sort_key (not entry->name) to match sort order.
- *
- * @param sort_key Sort key string (articles already stripped)
- * @return 0 for non-alphabetic, 1-26 for A-Z (case-insensitive)
- */
-static int getIndexChar(char* sort_key) {
-	char i = 0;
-	char c = tolower(sort_key[0]);
-	if (c >= 'a' && c <= 'z')
-		i = (c - 'a') + 1;
-	return i;
-}
-
-/**
- * Generates a unique name for an entry when duplicates exist.
- *
- * Appends the emulator name in parentheses to disambiguate entries
- * with identical display names but from different systems.
- *
- * Example: "Tetris" becomes "Tetris (GB)" or "Tetris (NES)"
- *
- * @param entry Entry to generate unique name for
- * @param out_name Output buffer for unique name (min 256 bytes)
- */
-static void getUniqueName(Entry* entry, char* out_name) {
-	char emu_tag[256];
-	getEmuName(entry->path, emu_tag);
-
-	char* tmp;
-	strcpy(out_name, entry->name);
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, " (");
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, emu_tag);
-	tmp = out_name + strlen(out_name);
-	strcpy(tmp, ")");
-}
 
 /**
  * Indexes a directory's entries and applies name aliasing.
@@ -765,147 +376,22 @@ static void getUniqueName(Entry* entry, char* out_name) {
  *
  * @param self Directory to index (modified in place)
  */
-static void Directory_index(Directory* self) {
+void Directory_index(Directory* self) {
 	int is_collection = prefixMatch(COLLECTIONS_PATH, self->path);
 	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || is_collection; // not alphabetized
 
 	// Load map.txt for name aliasing if present
-	Hash* map = NULL;
 	char map_path[256];
 	sprintf(map_path, "%s/map.txt", is_collection ? COLLECTIONS_PATH : self->path);
-	if (exists(map_path)) {
-		FILE* file = fopen(map_path, "r");
-		if (file) {
-			map = Hash_new();
-			if (!map) {
-				fclose(file);
-				return;
-			}
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
+	Hash* map = Map_load(map_path);
 
-				// Parse "filename\tdisplay name" format
-				char* tmp = strchr(line, '\t');
-				if (tmp) {
-					tmp[0] = '\0';
-					char* key = line;
-					char* value = tmp + 1;
-					Hash_set(map, key, value);
-				}
-			}
-			fclose(file);
-
-			// Apply aliases from map
-			int resort = 0;
-			int filter = 0;
-			for (int i = 0; i < self->entries->count; i++) {
-				Entry* entry = self->entries->items[i];
-				char* filename = strrchr(entry->path, '/') + 1;
-				char* alias = Hash_get(map, filename);
-				if (alias) {
-					if (!Entry_setName(entry, alias))
-						continue;
-					resort = 1;
-					// Check if any alias starts with '.' (hidden)
-					if (!filter && hide(entry->name))
-						filter = 1;
-				}
-			}
-
-			// Remove hidden entries (those with aliases starting with '.')
-			if (filter) {
-				Array* entries = Array_new();
-				if (!entries) {
-					Hash_free(map);
-					return;
-				}
-				for (int i = 0; i < self->entries->count; i++) {
-					Entry* entry = self->entries->items[i];
-					if (hide(entry->name)) {
-						Entry_free(entry);
-					} else {
-						Array_push(entries, entry);
-					}
-				}
-				// Not EntryArray_free - entries were moved, not freed
-				Array_free(self->entries);
-				self->entries = entries;
-			}
-			if (resort)
-				EntryArray_sort(self->entries);
-		}
-	}
-
-	// Detect duplicates and build alphabetical index
-	// Note: aliases were already applied above, no need to re-apply here
-	Entry* prior = NULL;
-	int alpha = -1;
-	int index = 0;
-	for (int i = 0; i < self->entries->count; i++) {
-		Entry* entry = self->entries->items[i];
-
-		// Detect duplicate display names
-		if (prior != NULL && exactMatch(prior->name, entry->name)) {
-			if (prior->unique)
-				free(prior->unique);
-			if (entry->unique)
-				free(entry->unique);
-
-			char* prior_filename = strrchr(prior->path, '/') + 1;
-			char* entry_filename = strrchr(entry->path, '/') + 1;
-
-			// If filenames differ, use them to disambiguate
-			if (exactMatch(prior_filename, entry_filename)) {
-				// Same filename (cross-platform ROM) - use emulator name
-				char prior_unique[256];
-				char entry_unique[256];
-				getUniqueName(prior, prior_unique);
-				getUniqueName(entry, entry_unique);
-
-				char* prior_str = strdup(prior_unique);
-				char* entry_str = strdup(entry_unique);
-				if (prior_str && entry_str) {
-					prior->unique = prior_str;
-					entry->unique = entry_str;
-				} else {
-					free(prior_str);
-					free(entry_str);
-					prior->unique = NULL;
-					entry->unique = NULL;
-				}
-			} else {
-				// Different filenames - show them
-				char* prior_str = strdup(prior_filename);
-				char* entry_str = strdup(entry_filename);
-				if (prior_str && entry_str) {
-					prior->unique = prior_str;
-					entry->unique = entry_str;
-				} else {
-					free(prior_str);
-					free(entry_str);
-					prior->unique = NULL;
-					entry->unique = NULL;
-				}
-			}
-		}
-
-		// Build alphabetical index for L1/R1 navigation
-		// Uses sort_key which has articles stripped, matching sort order
-		if (!skip_index) {
-			int a = getIndexChar(entry->sort_key);
-			if (a != alpha) {
-				index = self->alphas->count;
-				IntArray_push(self->alphas, i);
-				alpha = a;
-			}
-			entry->alpha = index;
-		}
-
-		prior = entry;
+	// Use DirectoryIndex module for aliasing, filtering, duplicate detection, and alpha index
+	Array* indexed = DirectoryIndex_index(self->entries, self->alphas, map, skip_index);
+	if (indexed != self->entries) {
+		// Entries were filtered - update our reference
+		// Don't use EntryArray_free on old array since entries were moved, not copied
+		Array_free(self->entries);
+		self->entries = indexed;
 	}
 
 	if (map)
@@ -936,7 +422,7 @@ static Array* getEntries(char* path);
  *
  * @warning Caller must free with Directory_free()
  */
-static Directory* Directory_new(char* path, int selected) {
+Directory* Directory_new(char* path, int selected) {
 	char display_name[256];
 	getDisplayName(path, display_name);
 
@@ -979,55 +465,13 @@ static Directory* Directory_new(char* path, int selected) {
 	return self;
 }
 
-/**
- * Frees a directory and all its contents.
- *
- * @param self Directory to free
- */
-static void Directory_free(Directory* self) {
-	free(self->path);
-	free(self->name);
-	EntryArray_free(self->entries);
-	IntArray_free(self->alphas);
-	free(self);
-}
-
-/**
- * Pops and frees the top directory from a directory array.
- *
- * @param self Array of Directory pointers
- */
-static void DirectoryArray_pop(Array* self) {
-	Directory_free(Array_pop(self));
-}
-
-/**
- * Frees a directory array and all directories it contains.
- *
- * @param self Array to free
- */
-static void DirectoryArray_free(Array* self) {
-	for (int i = 0; i < self->count; i++) {
-		Directory_free(self->items[i]);
-	}
-	Array_free(self);
-}
+// Directory_free, DirectoryArray_pop, DirectoryArray_free moved to minui_directory.c
 
 ///////////////////////////////
-// Recently played games
+// Note: Recent structure moved to recent_file.h for type safety.
+// Recent_new now in recent_file.c (takes hasEmu callback for testability).
+// RecentArray functions moved to recent_file.c (pure array operations).
 ///////////////////////////////
-
-/**
- * Represents a recently played game.
- *
- * Paths are stored relative to SDCARD_PATH for platform portability.
- * This allows the same SD card to work across different devices.
- */
-typedef struct Recent {
-	char* path; // Path relative to SDCARD_PATH (without prefix)
-	char* alias; // Optional custom display name
-	int available; // 1 if emulator exists, 0 if not
-} Recent;
 
 // Global used to pass alias when opening ROM from recents/collections
 // This is a workaround to avoid changing function signatures
@@ -1035,79 +479,19 @@ static char* recent_alias = NULL;
 
 static int hasEmu(char* emu_name);
 
-/**
- * Creates a new recent entry.
- *
- * @param path ROM path relative to SDCARD_PATH (without prefix)
- * @param alias Optional custom display name, or NULL
- * @return Pointer to allocated Recent
- *
- * @warning Caller must free with Recent_free()
- */
-static Recent* Recent_new(char* path, char* alias) {
-	Recent* self = malloc(sizeof(Recent));
-	if (!self)
-		return NULL;
+// Recent_new, Recent_free, RecentArray_* moved to recent_file.c
+// Local wrappers for convenience:
 
-	// Need full path to determine emulator
-	char sd_path[256];
-	sprintf(sd_path, "%s%s", SDCARD_PATH, path);
-
-	char emu_name[256];
-	getEmuName(sd_path, emu_name);
-
-	self->path = strdup(path);
-	if (!self->path) {
-		free(self);
-		return NULL;
-	}
-	self->alias = alias ? strdup(alias) : NULL;
-	if (alias && !self->alias) {
-		free(self->path);
-		free(self);
-		return NULL;
-	}
-	self->available = hasEmu(emu_name);
-	return self;
+static Recent* Recent_new_local(char* path, char* alias) {
+	return Recent_new(path, alias, SDCARD_PATH, hasEmu);
 }
 
-/**
- * Frees a recent entry.
- *
- * @param self Recent to free
- */
-static void Recent_free(Recent* self) {
-	free(self->path);
-	if (self->alias)
-		free(self->alias);
-	free(self);
+static int RecentArray_indexOf_local(Array* self, char* str) {
+	return RecentArray_indexOf(self->items, self->count, str);
 }
 
-/**
- * Finds a recent by path in a recent array.
- *
- * @param self Array of Recent pointers
- * @param str Path to search for (relative to SDCARD_PATH)
- * @return Index of matching recent, or -1 if not found
- */
-static int RecentArray_indexOf(Array* self, char* str) {
-	for (int i = 0; i < self->count; i++) {
-		Recent* item = self->items[i];
-		if (exactMatch(item->path, str))
-			return i;
-	}
-	return -1;
-}
-
-/**
- * Frees a recent array and all recents it contains.
- *
- * @param self Array to free
- */
-static void RecentArray_free(Array* self) {
-	for (int i = 0; i < self->count; i++) {
-		Recent_free(self->items[i]);
-	}
+static void RecentArray_free_local(Array* self) {
+	RecentArray_free(self->items, self->count);
 	Array_free(self);
 }
 
@@ -1126,11 +510,15 @@ static int simple_mode = 0; // 1 if simple mode enabled (hides Tools, disables s
 static char slot_path[MAX_PATH]; // Path to save state slot file for can_resume check
 
 // State restoration variables for preserving selection when navigating
-static int restore_depth = -1;
-static int restore_relative = -1;
-static int restore_selected = 0;
-static int restore_start = 0;
-static int restore_end = 0;
+// Restore state (for state restoration after launching a game)
+static MinUIRestoreState g_restore_state = {
+    .depth = -1, .relative = -1, .selected = 0, .start = 0, .end = 0};
+// Legacy aliases for gradual migration
+#define restore_depth g_restore_state.depth
+#define restore_relative g_restore_state.relative
+#define restore_selected g_restore_state.selected
+#define restore_start g_restore_state.start
+#define restore_end g_restore_state.end
 
 ///////////////////////////////
 // Recents management
@@ -1175,12 +563,12 @@ static void saveRecents(void) {
  */
 static void addRecent(char* path, char* alias) {
 	path += strlen(SDCARD_PATH); // makes paths platform agnostic
-	int id = RecentArray_indexOf(recents, path);
+	int id = RecentArray_indexOf_local(recents, path);
 	if (id == -1) { // add new entry
 		while (recents->count >= MAX_RECENTS) {
 			Recent_free(Array_pop(recents));
 		}
-		Recent* new_recent = Recent_new(path, alias);
+		Recent* new_recent = Recent_new_local(path, alias);
 		if (new_recent)
 			Array_unshift(recents, new_recent);
 	} else if (id > 0) { // bump existing entry to top
@@ -1200,82 +588,26 @@ static void addRecent(char* path, char* alias) {
 
 /**
  * Checks if an emulator is installed.
- *
- * Searches in two locations:
- * 1. Shared: /mnt/SDCARD/Roms/Emus/<emu>.pak/launch.sh
- * 2. Platform-specific: /mnt/SDCARD/Emus/<platform>/<emu>.pak/launch.sh
- *
- * @param emu_name Emulator name (e.g., "GB", "NES")
- * @return 1 if emulator exists, 0 otherwise
+ * Wrapper around MinUI_hasEmu with platform-specific paths.
  */
 static int hasEmu(char* emu_name) {
-	char pak_path[256];
-	sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
-	if (exists(pak_path))
-		return 1;
-
-	sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM, emu_name);
-	return exists(pak_path);
+	return MinUI_hasEmu(emu_name, PAKS_PATH, SDCARD_PATH, PLATFORM);
 }
 
 /**
  * Checks if a directory contains a .cue file for multi-disc games.
- *
- * The .cue file must be named after the directory itself.
- * Example: /Roms/PS1/Final Fantasy VII/Final Fantasy VII.cue
- *
- * @param dir_path Full path to directory
- * @param cue_path Output buffer for .cue file path (modified in place)
- * @return 1 if .cue file exists, 0 otherwise
- *
- * @note cue_path is always written, even if file doesn't exist
+ * Wrapper around MinUI_hasCue.
  */
 static int hasCue(char* dir_path, char* cue_path) {
-	char* tmp = strrchr(dir_path, '/') + 1; // folder name
-	sprintf(cue_path, "%s/%s.cue", dir_path, tmp);
-	return exists(cue_path);
+	return MinUI_hasCue(dir_path, cue_path);
 }
 
 /**
  * Checks if a ROM has an associated .m3u playlist for multi-disc games.
- *
- * The .m3u file must be in the parent directory and named after that directory.
- * Example: For /Roms/PS1/Game/disc1.bin, looks for /Roms/PS1/Game.m3u
- *
- * @param rom_path Full path to ROM file
- * @param m3u_path Output buffer for .m3u file path (modified in place)
- * @return 1 if .m3u file exists, 0 otherwise
- *
- * @note m3u_path is always written, even if file doesn't exist
+ * Wrapper around MinUI_hasM3u.
  */
 static int hasM3u(char* rom_path, char* m3u_path) {
-	char* tmp;
-
-	strcpy(m3u_path, rom_path);
-	tmp = strrchr(m3u_path, '/') + 1;
-	tmp[0] = '\0';
-
-	// path to parent directory
-	char base_path[256];
-	strcpy(base_path, m3u_path);
-
-	tmp = strrchr(m3u_path, '/');
-	tmp[0] = '\0';
-
-	// get parent directory name
-	char dir_name[256];
-	tmp = strrchr(m3u_path, '/');
-	strcpy(dir_name, tmp);
-
-	// dir_name is also our m3u file name
-	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, dir_name);
-
-	// add extension
-	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, ".m3u");
-
-	return exists(m3u_path);
+	return MinUI_hasM3u(rom_path, m3u_path);
 }
 
 /**
@@ -1307,7 +639,7 @@ static int hasRecents(void) {
 		getFile(CHANGE_DISC_PATH, sd_path, 256);
 		if (exists(sd_path)) {
 			char* disc_path = sd_path + strlen(SDCARD_PATH); // makes path platform agnostic
-			Recent* recent = Recent_new(disc_path, NULL);
+			Recent* recent = Recent_new_local(disc_path, NULL);
 			if (recent) {
 				if (recent->available)
 					has += 1;
@@ -1374,7 +706,7 @@ static int hasRecents(void) {
 
 					// LOG_info("path:%s alias:%s", path, alias);
 
-					Recent* recent = Recent_new(path, alias);
+					Recent* recent = Recent_new_local(path, alias);
 					if (recent) {
 						if (recent->available)
 							has += 1;
@@ -1394,64 +726,18 @@ static int hasRecents(void) {
 
 /**
  * Checks if any ROM collections exist.
- *
- * @return 1 if collections directory contains any non-hidden files, 0 otherwise
+ * Wrapper around MinUI_hasNonHiddenFiles.
  */
 static int hasCollections(void) {
-	int has = 0;
-	if (!exists(COLLECTIONS_PATH))
-		return has;
-
-	DIR* dh = opendir(COLLECTIONS_PATH);
-	if (!dh)
-		return has;
-
-	struct dirent* dp;
-	while ((dp = readdir(dh)) != NULL) {
-		if (hide(dp->d_name))
-			continue;
-		has = 1;
-		break;
-	}
-	closedir(dh);
-	return has;
+	return MinUI_hasNonHiddenFiles(COLLECTIONS_PATH);
 }
 
 /**
  * Checks if a ROM system directory has any playable ROMs.
- *
- * A system is considered to have ROMs if:
- * 1. The emulator .pak exists
- * 2. The directory contains at least one non-hidden file
- *
- * @param dir_name Name of ROM directory (e.g., "GB (Game Boy)")
- * @return 1 if system has playable ROMs, 0 otherwise
+ * Wrapper around MinUIDir_hasRoms with platform-specific paths.
  */
 static int hasRoms(char* dir_name) {
-	int has = 0;
-	char emu_name[256];
-	char rom_path[256];
-
-	getEmuName(dir_name, emu_name);
-
-	// check for emu pak
-	if (!hasEmu(emu_name))
-		return has;
-
-	// check for at least one non-hidden file (assume it's a rom)
-	sprintf(rom_path, "%s/%s/", ROMS_PATH, dir_name);
-	DIR* dh = opendir(rom_path);
-	if (dh != NULL) {
-		struct dirent* dp;
-		while ((dp = readdir(dh)) != NULL) {
-			if (hide(dp->d_name))
-				continue;
-			has = 1;
-			break;
-		}
-		closedir(dh);
-	}
-	return has;
+	return MinUIDir_hasRoms(dir_name, ROMS_PATH, PAKS_PATH, SDCARD_PATH, PLATFORM);
 }
 
 ///////////////////////////////
@@ -1512,37 +798,12 @@ static Array* getRoot(void) {
 		closedir(dh);
 	}
 
-	// copied/modded from Directory_index
-	// we don't support hidden remaps here
+	// Apply aliases from Roms/map.txt (we don't support hidden remaps here)
 	char map_path[256];
 	sprintf(map_path, "%s/map.txt", ROMS_PATH);
-	if (entries->count > 0 && exists(map_path)) {
-		FILE* file = fopen(map_path, "r");
-		if (file) {
-			Hash* map = Hash_new();
-			if (!map) {
-				fclose(file);
-				EntryArray_free(entries);
-				Array_free(root);
-				return root;
-			}
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
-
-				char* tmp = strchr(line, '\t');
-				if (tmp) {
-					tmp[0] = '\0';
-					char* key = line;
-					char* value = tmp + 1;
-					Hash_set(map, key, value);
-				}
-			}
-			fclose(file);
-
+	if (entries->count > 0) {
+		Hash* map = Map_load(map_path);
+		if (map) {
 			int resort = 0;
 			for (int i = 0; i < entries->count; i++) {
 				Entry* entry = entries->items[i];
@@ -1680,79 +941,25 @@ static Array* getCollection(char* path) {
 static Array* getDiscs(char* path) {
 	Array* entries = Array_new();
 
-	char base_path[256];
-	strcpy(base_path, path);
-	char* tmp = strrchr(base_path, '/') + 1;
-	tmp[0] = '\0';
-
-	FILE* file = fopen(path, "r");
-	if (file) {
-		char line[256];
-		int disc = 0;
-		while (fgets(line, 256, file) != NULL) {
-			normalizeNewline(line);
-			trimTrailingNewlines(line);
-			if (strlen(line) == 0)
-				continue; // skip empty lines
-
-			char disc_path[MAX_PATH];
-			snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
-
-			if (exists(disc_path)) {
-				disc += 1;
-				Entry* entry = Entry_new(disc_path, ENTRY_ROM);
-				if (!entry)
-					continue;
-				char name[24];
-				snprintf(name, sizeof(name), "Disc %i", disc);
-				if (!Entry_setName(entry, name)) {
-					Entry_free(entry);
-					continue;
-				}
-				Array_push(entries, entry);
+	int disc_count = 0;
+	M3U_Disc** discs = M3U_getAllDiscs(path, &disc_count);
+	if (discs) {
+		for (int i = 0; i < disc_count; i++) {
+			Entry* entry = Entry_new(discs[i]->path, ENTRY_ROM);
+			if (!entry)
+				continue;
+			if (!Entry_setName(entry, discs[i]->name)) {
+				Entry_free(entry);
+				continue;
 			}
+			Array_push(entries, entry);
 		}
-		fclose(file);
+		M3U_freeDiscs(discs, disc_count);
 	}
 	return entries;
 }
 
-/**
- * Gets the first disc from an .m3u playlist.
- *
- * Used when auto-launching a multi-disc game.
- *
- * @param m3u_path Full path to .m3u file
- * @param disc_path Output buffer for first disc path
- * @return 1 if first disc found, 0 otherwise
- */
-static int getFirstDisc(char* m3u_path, char* disc_path) {
-	int found = 0;
-
-	char base_path[256];
-	strcpy(base_path, m3u_path);
-	char* tmp = strrchr(base_path, '/') + 1;
-	tmp[0] = '\0';
-
-	FILE* file = fopen(m3u_path, "r");
-	if (file) {
-		char line[256];
-		while (fgets(line, 256, file) != NULL) {
-			normalizeNewline(line);
-			trimTrailingNewlines(line);
-			if (strlen(line) == 0)
-				continue; // skip empty lines
-
-			sprintf(disc_path, "%s%s", base_path, line);
-
-			if (exists(disc_path))
-				found = 1;
-			break;
-		}
-		fclose(file);
-	}
-	return found;
-}
+// getFirstDisc is now provided by minui_m3u.c as M3U_M3U_getFirstDisc()
 
 static void addEntries(Array* entries, char* path) {
 	DIR* dh = opendir(path);
@@ -1767,71 +974,52 @@ static void addEntries(Array* entries, char* path) {
 				continue;
 			strcpy(tmp, dp->d_name);
 			int is_dir = dp->d_type == DT_DIR;
-			int type;
-			if (is_dir) {
-				// TODO: this should make sure launch.sh exists
-				if (suffixMatch(".pak", dp->d_name)) {
-					type = ENTRY_PAK;
-				} else {
-					type = ENTRY_DIR;
-				}
-			} else {
-				if (prefixMatch(COLLECTIONS_PATH, full_path)) {
-					type = ENTRY_DIR; // :shrug:
-				} else {
-					type = ENTRY_ROM;
-				}
-			}
+			int type = MinUIDir_determineEntryType(dp->d_name, is_dir, path, COLLECTIONS_PATH);
 			Array_push(entries, Entry_new(full_path, type));
 		}
 		closedir(dh);
 	}
 }
 
+/**
+ * Checks if a path is a top-level console directory.
+ * Wrapper around MinUIDir_isConsoleDir.
+ */
 static int isConsoleDir(char* path) {
-	char* tmp;
-	char parent_dir[256];
-	strcpy(parent_dir, path);
-	tmp = strrchr(parent_dir, '/');
-	tmp[0] = '\0';
-
-	return exactMatch(parent_dir, ROMS_PATH);
+	return MinUIDir_isConsoleDir(path, ROMS_PATH);
 }
 
 static Array* getEntries(char* path) {
 	Array* entries = Array_new();
 
 	if (isConsoleDir(path)) { // top-level console folder, might collate
-		char collated_path[256];
-		strcpy(collated_path, path);
-		char* tmp = strrchr(collated_path, '(');
-		// 1 because we want to keep the opening parenthesis to avoid collating "Game Boy Color" and "Game Boy Advance" into "Game Boy"
-		// but conditional so we can continue to support a bare tag name as a folder name
-		if (tmp)
-			tmp[1] = '\0';
+		char collation_prefix[MINUI_DIR_MAX_PATH];
+		if (MinUIDir_buildCollationPrefix(path, collation_prefix)) {
+			// Collated console directory (e.g., "Game Boy (USA)" matches "Game Boy (Japan)")
+			DIR* dh = opendir(ROMS_PATH);
+			if (dh != NULL) {
+				struct dirent* dp;
+				char full_path[MINUI_DIR_MAX_PATH];
+				while ((dp = readdir(dh)) != NULL) {
+					if (hide(dp->d_name))
+						continue;
+					if (dp->d_type != DT_DIR)
+						continue;
+					snprintf(full_path, sizeof(full_path), "%s/%s", ROMS_PATH, dp->d_name);
 
-		DIR* dh = opendir(ROMS_PATH);
-		if (dh != NULL) {
-			struct dirent* dp;
-			char full_path[256];
-			sprintf(full_path, "%s/", ROMS_PATH);
-			tmp = full_path + strlen(full_path);
-			// while loop so we can collate paths, see above
-			while ((dp = readdir(dh)) != NULL) {
-				if (hide(dp->d_name))
-					continue;
-				if (dp->d_type != DT_DIR)
-					continue;
-				strcpy(tmp, dp->d_name);
-
-				if (!prefixMatch(collated_path, full_path))
-					continue;
-				addEntries(entries, full_path);
+					if (!MinUIDir_matchesCollation(full_path, collation_prefix))
+						continue;
+					addEntries(entries, full_path);
+				}
+				closedir(dh);
 			}
-			closedir(dh);
+		} else {
+			// Non-collated console directory (no region suffix)
+			addEntries(entries, path);
 		}
-	} else
+	} else {
 		addEntries(entries, path); // just a subfolder
+	}
 
 	EntryArray_sort(entries);
 	return entries;
@@ -1855,66 +1043,6 @@ static void queueNext(char* cmd) {
 	LOG_info("cmd: %s", cmd);
 	putFile("/tmp/next", cmd);
 	quit = 1;
-}
-
-/**
- * Replaces all occurrences of a substring in a string.
- *
- * Modifies the string in place. Handles overlapping replacements
- * by recursing after each replacement.
- *
- * @param line String to modify (modified in place)
- * @param search Substring to find
- * @param replace Replacement string
- * @return Number of replacements made
- *
- * @note Based on https://stackoverflow.com/a/31775567/145965
- */
-static int replaceString(char* line, const char* search, const char* replace) {
-	char* sp; // start of pattern
-	if ((sp = strstr(line, search)) == NULL) {
-		return 0;
-	}
-	int count = 1;
-	int sLen = strlen(search);
-	int rLen = strlen(replace);
-	if (sLen > rLen) {
-		// move from right to left
-		char* src = sp + sLen;
-		char* dst = sp + rLen;
-		while ((*dst = *src) != '\0') {
-			dst++;
-			src++;
-		}
-	} else if (sLen < rLen) {
-		// move from left to right
-		int tLen = strlen(sp) - sLen;
-		char* stop = sp + rLen;
-		char* src = sp + sLen + tLen;
-		char* dst = sp + rLen + tLen;
-		while (dst >= stop) {
-			*dst = *src;
-			dst--;
-			src--;
-		}
-	}
-	memcpy(sp, replace, rLen);
-	count += replaceString(sp + rLen, search, replace);
-	return count;
-}
-
-/**
- * Escapes single quotes in a string for shell command safety.
- *
- * Replaces ' with '\'' which safely handles quotes in bash strings.
- * Example: "it's" becomes "it'\''s"
- *
- * @param str String to escape (modified in place)
- * @return The modified string (same pointer as input)
- */
-static char* escapeSingleQuotes(char* str) {
-	replaceString(str, "'", "'\\''");
-	return str;
 }
 
 ///////////////////////////////
@@ -2010,8 +1138,8 @@ static int autoResume(void) {
 	// putFile(LAST_PATH, FAUX_RECENT_PATH); // saveLast() will crash here because top is NULL
 
 	char cmd[MAX_PATH * 2];
-	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
-	         escapeSingleQuotes(sd_path));
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", MinUI_escapeSingleQuotes(emu_path),
+	         MinUI_escapeSingleQuotes(sd_path));
 	putInt(RESUME_SLOT_PATH, AUTO_RESUME_SLOT);
 	queueNext(cmd);
 	return 1;
@@ -2022,27 +1150,41 @@ static int autoResume(void) {
 ///////////////////////////////
 
 /**
- * Launches a .pak application.
+ * Launches a .pak application (context-aware version).
  *
  * .pak folders are applications (tools, emulators) with a launch.sh script.
  * Saves to recents if in Roms path. Saves current path for state restoration.
  *
+ * @param ctx MinUI context
  * @param path Full path to .pak directory
  */
-static void openPak(char* path) {
+static void openPak_ctx(MinUIContext* ctx, char* path) {
 	// Save path before escaping (escapeSingleQuotes modifies string)
 	if (prefixMatch(ROMS_PATH, path)) {
-		addRecent(path, NULL);
+		if (ctx->callbacks && ctx->callbacks->add_recent) {
+			ctx->callbacks->add_recent(path, NULL);
+		}
 	}
-	saveLast(path);
+	if (ctx->callbacks && ctx->callbacks->save_last) {
+		ctx->callbacks->save_last(path);
+	}
 
 	char cmd[256];
-	sprintf(cmd, "'%s/launch.sh'", escapeSingleQuotes(path));
-	queueNext(cmd);
+	sprintf(cmd, "'%s/launch.sh'", MinUI_escapeSingleQuotes(path));
+	if (ctx->callbacks && ctx->callbacks->queue_next) {
+		ctx->callbacks->queue_next(cmd);
+	}
 }
 
 /**
- * Launches a ROM with its emulator.
+ * Launches a .pak application (legacy wrapper).
+ */
+static void openPak(char* path) {
+	openPak_ctx(MinUIContext_get(), path);
+}
+
+/**
+ * Launches a ROM with its emulator (context-aware version).
  *
  * This function handles:
  * - Multi-disc games (.m3u playlists)
@@ -2051,15 +1193,11 @@ static void openPak(char* path) {
  * - Adding to recently played list
  * - State restoration path tracking
  *
- * Multi-disc logic:
- * - If ROM has .m3u, add .m3u to recents (not individual disc)
- * - If launching .m3u directly, get first disc from playlist
- * - If resuming multi-disc game, load the disc that was saved
- *
+ * @param ctx MinUI context
  * @param path Full ROM path (may be .m3u or actual disc file)
  * @param last Path to save for state restoration (may differ from path)
  */
-static void openRom(char* path, char* last) {
+static void openRom_ctx(MinUIContext* ctx, char* path, char* last) {
 	LOG_info("openRom(%s,%s)", path, last);
 
 	char sd_path[MAX_PATH];
@@ -2072,17 +1210,17 @@ static void openRom(char* path, char* last) {
 	strcpy(recent_path, has_m3u ? m3u_path : sd_path);
 
 	if (has_m3u && suffixMatch(".m3u", sd_path)) {
-		getFirstDisc(m3u_path, sd_path);
+		M3U_getFirstDisc(m3u_path, sd_path);
 	}
 
 	char emu_name[MAX_PATH];
 	getEmuName(sd_path, emu_name);
 
-	if (should_resume) {
+	if (ctx->should_resume && *ctx->should_resume) {
 		char slot[16];
-		getFile(slot_path, slot, 16);
+		getFile(ctx->slot_path, slot, 16);
 		putFile(RESUME_SLOT_PATH, slot);
-		should_resume = 0;
+		*ctx->should_resume = 0;
 
 		if (has_m3u) {
 			char rom_file[MAX_PATH];
@@ -2107,43 +1245,54 @@ static void openRom(char* path, char* last) {
 				}
 			}
 		}
-	} else
+	} else {
 		putInt(RESUME_SLOT_PATH, 8); // resume hidden default state
+	}
 
 	char emu_path[MAX_PATH];
 	getEmuPath(emu_name, emu_path);
 
-	// NOTE: escapeSingleQuotes() modifies the passed string
+	// NOTE: MinUI_escapeSingleQuotes() modifies the passed string
 	// so we need to save the path before we call that
-	addRecent(recent_path, recent_alias); // yiiikes
-	saveLast(last == NULL ? sd_path : last);
+	char* alias = (ctx->recent_alias) ? *ctx->recent_alias : NULL;
+	if (ctx->callbacks && ctx->callbacks->add_recent) {
+		ctx->callbacks->add_recent(recent_path, alias);
+	}
+	if (ctx->callbacks && ctx->callbacks->save_last) {
+		ctx->callbacks->save_last(last == NULL ? sd_path : last);
+	}
 
 	char cmd[MAX_PATH * 2];
-	snprintf(cmd, sizeof(cmd), "'%s' '%s'", escapeSingleQuotes(emu_path),
-	         escapeSingleQuotes(sd_path));
-	queueNext(cmd);
+	snprintf(cmd, sizeof(cmd), "'%s' '%s'", MinUI_escapeSingleQuotes(emu_path),
+	         MinUI_escapeSingleQuotes(sd_path));
+	if (ctx->callbacks && ctx->callbacks->queue_next) {
+		ctx->callbacks->queue_next(cmd);
+	}
+}
+
+/**
+ * Launches a ROM with its emulator (legacy wrapper).
+ */
+static void openRom(char* path, char* last) {
+	openRom_ctx(MinUIContext_get(), path, last);
 }
 /**
- * Opens a directory for browsing or auto-launches its contents.
+ * Opens a directory for browsing or auto-launches its contents (context-aware).
  *
  * Auto-launch logic (when auto_launch=1):
  * - If directory contains a .cue file, launch it
  * - If directory contains a .m3u file, launch first disc
  * - Otherwise, open directory for browsing
  *
- * Used for:
- * - Multi-disc game folders (auto-launch .cue or .m3u)
- * - Regular folder navigation (auto_launch=0)
- * - State restoration (preserves selection/scroll position)
- *
+ * @param ctx MinUI context
  * @param path Full path to directory
  * @param auto_launch 1 to auto-launch contents, 0 to browse
  */
-static void openDirectory(char* path, int auto_launch) {
+static void openDirectory_ctx(MinUIContext* ctx, char* path, int auto_launch) {
 	char auto_path[256];
 	// Auto-launch .cue file if present
 	if (hasCue(path, auto_path) && auto_launch) {
-		openRom(auto_path, path);
+		openRom_ctx(ctx, auto_path, path);
 		return;
 	}
 
@@ -2154,49 +1303,76 @@ static void openDirectory(char* path, int auto_launch) {
 	strcpy(tmp, "m3u"); // replace with m3u
 	if (exists(m3u_path) && auto_launch) {
 		auto_path[0] = '\0';
-		if (getFirstDisc(m3u_path, auto_path)) {
-			openRom(auto_path, path);
+		if (M3U_getFirstDisc(m3u_path, auto_path)) {
+			openRom_ctx(ctx, auto_path, path);
 			return;
 		}
 	}
 
+	// Get current directory from context
+	Directory* current_top = (Directory*)*ctx->top;
+	Array* current_stack = *ctx->stack;
+	MinUIRestoreState* restore = ctx->restore;
+
 	int selected = 0;
 	int start = selected;
 	int end = 0;
-	if (top && top->entries->count > 0) {
-		if (restore_depth == stack->count && top->selected == restore_relative) {
-			selected = restore_selected;
-			start = restore_start;
-			end = restore_end;
+	if (current_top && current_top->entries->count > 0) {
+		if (restore->depth == current_stack->count && current_top->selected == restore->relative) {
+			selected = restore->selected;
+			start = restore->start;
+			end = restore->end;
 		}
 	}
 
-	top = Directory_new(path, selected);
-	if (top) {
-		top->start = start;
-		top->end =
-		    end ? end : ((top->entries->count < ui.row_count) ? top->entries->count : ui.row_count);
-		Array_push(stack, top);
+	Directory* new_dir = Directory_new(path, selected);
+	if (new_dir) {
+		new_dir->start = start;
+		new_dir->end = end ? end
+		                   : ((new_dir->entries->count < ui.row_count) ? new_dir->entries->count
+		                                                               : ui.row_count);
+		Array_push(current_stack, new_dir);
+		*ctx->top = new_dir;
 	}
-}
-/**
- * Closes the current directory and returns to parent.
- *
- * Saves current scroll position and selection for potential restoration.
- * Updates global restore state and pops directory from stack.
- */
-static void closeDirectory(void) {
-	restore_selected = top->selected;
-	restore_start = top->start;
-	restore_end = top->end;
-	DirectoryArray_pop(stack);
-	restore_depth = stack->count;
-	top = stack->items[stack->count - 1];
-	restore_relative = top->selected;
 }
 
 /**
- * Opens an entry (ROM, directory, or application).
+ * Opens a directory for browsing or auto-launches its contents (legacy wrapper).
+ */
+static void openDirectory(char* path, int auto_launch) {
+	openDirectory_ctx(MinUIContext_get(), path, auto_launch);
+}
+/**
+ * Closes the current directory and returns to parent (context-aware).
+ *
+ * Saves current scroll position and selection for potential restoration.
+ * Updates restore state and pops directory from stack.
+ *
+ * @param ctx MinUI context
+ */
+static void closeDirectory_ctx(MinUIContext* ctx) {
+	Directory* current_top = (Directory*)*ctx->top;
+	Array* current_stack = *ctx->stack;
+	MinUIRestoreState* restore = ctx->restore;
+
+	restore->selected = current_top->selected;
+	restore->start = current_top->start;
+	restore->end = current_top->end;
+	DirectoryArray_pop(current_stack);
+	restore->depth = current_stack->count;
+	*ctx->top = current_stack->items[current_stack->count - 1];
+	restore->relative = ((Directory*)*ctx->top)->selected;
+}
+
+/**
+ * Closes the current directory and returns to parent (legacy wrapper).
+ */
+static void closeDirectory(void) {
+	closeDirectory_ctx(MinUIContext_get());
+}
+
+/**
+ * Opens an entry (ROM, directory, or application) - context-aware.
  *
  * Dispatches to appropriate handler based on entry type:
  * - ENTRY_ROM: Launch with emulator
@@ -2206,15 +1382,22 @@ static void closeDirectory(void) {
  * Special handling for collections: Uses collection path for
  * state restoration instead of actual ROM path.
  *
+ * @param ctx MinUI context
  * @param self Entry to open
  */
-static void Entry_open(Entry* self) {
-	recent_alias = self->name; // Passed to addRecent via global
+static void Entry_open_ctx(MinUIContext* ctx, Entry* self) {
+	// Set recent_alias via context
+	if (ctx->recent_alias) {
+		*ctx->recent_alias = self->name;
+	}
+
+	Directory* current_top = (Directory*)*ctx->top;
+
 	if (self->type == ENTRY_ROM) {
 		char* last = NULL;
 		char last_path[MAX_PATH]; // Moved outside if block to fix invalidLifetime bug
 		// Collection ROMs use collection path for state restoration
-		if (prefixMatch(COLLECTIONS_PATH, top->path)) {
+		if (prefixMatch(COLLECTIONS_PATH, current_top->path)) {
 			char* tmp;
 			char filename[MAX_PATH];
 
@@ -2222,15 +1405,22 @@ static void Entry_open(Entry* self) {
 			if (tmp)
 				strcpy(filename, tmp + 1);
 
-			snprintf(last_path, sizeof(last_path), "%s/%s", top->path, filename);
+			snprintf(last_path, sizeof(last_path), "%s/%s", current_top->path, filename);
 			last = last_path;
 		}
-		openRom(self->path, last);
+		openRom_ctx(ctx, self->path, last);
 	} else if (self->type == ENTRY_PAK) {
-		openPak(self->path);
+		openPak_ctx(ctx, self->path);
 	} else if (self->type == ENTRY_DIR) {
-		openDirectory(self->path, 1);
+		openDirectory_ctx(ctx, self->path, 1);
 	}
+}
+
+/**
+ * Opens an entry (ROM, directory, or application) - legacy wrapper.
+ */
+static void Entry_open(Entry* self) {
+	Entry_open_ctx(MinUIContext_get(), self);
 }
 
 ///////////////////////////////
@@ -2300,14 +1490,12 @@ static void loadLast(void) {
 		if (!exactMatch(
 		        path,
 		        ROMS_PATH)) { // romsDir is effectively root as far as restoring state after a game
-			char collated_path[256];
+			// Extract collation prefix if this is a collated console dir (e.g., "Game Boy (USA)")
+			// This allows matching against other regions like "Game Boy (Japan)"
+			char collated_path[MINUI_STATE_MAX_PATH];
 			collated_path[0] = '\0';
-			if (suffixMatch(")", path) && isConsoleDir(path)) {
-				strcpy(collated_path, path);
-				tmp = strrchr(collated_path, '(');
-				if (tmp)
-					tmp[1] =
-					    '\0'; // 1 because we want to keep the opening parenthesis to avoid collating "Game Boy Color" and "Game Boy Advance" into "Game Boy"
+			if (isConsoleDir(path)) {
+				MinUIState_getCollationPrefix(path, collated_path);
 			}
 
 			for (int i = 0; i < top->entries->count; i++) {
@@ -2374,8 +1562,63 @@ static void Menu_init(void) {
  * Frees all allocated memory for recents and directory stack.
  */
 static void Menu_quit(void) {
-	RecentArray_free(recents);
+	RecentArray_free_local(recents);
 	DirectoryArray_free(stack);
+}
+
+///////////////////////////////
+// Context initialization
+///////////////////////////////
+
+/**
+ * Sets up the MinUI context with pointers to globals.
+ *
+ * This enables navigation functions to be tested with mock contexts
+ * and allows gradual migration to context-based function signatures.
+ */
+static void MinUIContext_setup(void) {
+	MinUIContext* ctx = MinUIContext_get();
+
+	// Wire up navigation state (now properly typed)
+	ctx->top = &top;
+	ctx->stack = &stack;
+	ctx->recents = &recents;
+
+	// Wire up runtime flags
+	ctx->quit = &quit;
+	ctx->can_resume = &can_resume;
+	ctx->should_resume = &should_resume;
+	ctx->simple_mode = &simple_mode;
+
+	// Wire up resume state
+	ctx->slot_path = slot_path;
+	ctx->slot_path_size = sizeof(slot_path);
+
+	// Wire up state restoration
+	ctx->restore = &g_restore_state;
+
+	// Wire up UI state (from api.h)
+	ctx->ui = &ui;
+
+	// Wire up recent alias
+	ctx->recent_alias = &recent_alias;
+
+	MinUIContext_initGlobals(ctx);
+
+	// Initialize callbacks for navigation module
+	// Note: static to ensure pointer remains valid after function returns
+	static MinUICallbacks callbacks = {0};
+	callbacks.add_recent = addRecent;
+	callbacks.save_recents = saveRecents;
+	callbacks.queue_next = queueNext;
+	callbacks.save_last = saveLast;
+	callbacks.open_directory = openDirectory;
+	callbacks.directory_new = (MinUIDirectoryNewFunc)Directory_new;
+	callbacks.exists = exists;
+	callbacks.put_file = putFile;
+	callbacks.get_file = getFile;
+	callbacks.put_int = putInt;
+	MinUIContext_initCallbacks(ctx, &callbacks);
 }
 
 ///////////////////////////////
@@ -2419,6 +1662,10 @@ int main(int argc, char* argv[]) {
 
 	simple_mode = exists(SIMPLE_MODE_PATH);
 
+	// Initialize context with pointers to globals
+	// This enables navigation functions to be tested and migrated incrementally
+	MinUIContext_setup();
+
 	LOG_info("Starting MinUI on %s", PLATFORM);
 
 	LOG_debug("InitSettings");
@@ -2441,8 +1688,8 @@ int main(int argc, char* argv[]) {
 
 	SDL_Surface* version = NULL;
 
-	LOG_debug("ThumbLoader_init");
-	ThumbLoader_init();
+	LOG_debug("MinUIThumbnail_loaderInit");
+	MinUIThumbnail_loaderInit();
 
 	LOG_debug("Menu_init");
 	Menu_init();
@@ -2477,17 +1724,19 @@ int main(int argc, char* argv[]) {
 	// pointers become invalid when directories are freed/reallocated.
 	///////////////////////////////
 
-	// Thumbnail cache - FIFO with preloading, tracks displayed item
-	ThumbCache thumb_cache;
-	ThumbCache_init(&thumb_cache);
+	// Thumbnail cache - FIFO with preloading, tracks displayed item (logic in minui_thumbnail.c)
+	MinUIThumbnailCache thumb_cache;
+	MinUIThumbnail_cacheInit(&thumb_cache);
 	int last_selected_index = -1; // For scroll direction detection
 	Directory* last_directory = NULL; // Detect directory changes
 
 	// Thumbnail display state (display tracking is inside thumb_cache)
 	Entry* last_rendered_entry = NULL; // Entry we last processed (change detection)
 	int thumb_exists = 0; // Whether current entry has a thumbnail file
-	int thumb_alpha = THUMB_ALPHA_MAX; // Fade animation alpha
-	unsigned long thumb_fade_start_ms = 0; // Fade start time (0 = not fading)
+
+	// Thumbnail fade animation (logic in minui_thumbnail.c)
+	MinUIThumbnailFadeState thumb_fade;
+	MinUIThumbnail_fadeInit(&thumb_fade, MINUI_THUMBNAIL_FADE_DURATION_MS);
 
 	// Thumbnail dimensions (constant for session)
 	int thumb_padding = DP(ui.edge_padding);
@@ -2662,12 +1911,13 @@ int main(int argc, char* argv[]) {
 		// When directory changes, all cached data becomes invalid (entries are freed/reallocated)
 		if (top != last_directory) {
 			// Clear thumbnail cache (surfaces point to old entries)
-			if (thumb_cache.count > 0)
-				LOG_debug("thumb: clearing cache (%d items)", thumb_cache.count);
-			ThumbCache_clear(&thumb_cache);
+			if (thumb_cache.size > 0)
+				LOG_debug("thumb: clearing cache (%d items)", thumb_cache.size);
+			thumb_cache_clear(&thumb_cache);
 			last_selected_index = -1;
 			last_rendered_entry = NULL; // Prevent dangling pointer comparison
 			thumb_exists = 0;
+			MinUIThumbnail_fadeReset(&thumb_fade);
 			last_directory = top;
 
 			// Check resume state for initially selected entry
@@ -2708,9 +1958,9 @@ int main(int argc, char* argv[]) {
 		// Step 1: Poll for async thumbnail load completion
 		{
 			int loaded_index;
-			SDL_Surface* loaded = ThumbLoader_get(&loaded_index, NULL);
+			SDL_Surface* loaded = MinUIThumbnail_loaderGet(&loaded_index, NULL);
 			if (loaded) {
-				ThumbCache_add(&thumb_cache, loaded, loaded_index);
+				thumb_cache_push(&thumb_cache, loaded, "", loaded_index);
 			}
 		}
 
@@ -2719,7 +1969,7 @@ int main(int argc, char* argv[]) {
 		int current_selected = top ? top->selected : -1;
 		if (current_entry != last_rendered_entry) {
 			// Selection changed - reset thumbnail state
-			ThumbCache_clearDisplayed(&thumb_cache);
+			MinUIThumbnail_cacheClearDisplayed(&thumb_cache);
 			thumb_exists = 0;
 
 			// Detect fast scrolling (nav button held, not just pressed)
@@ -2738,7 +1988,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				// Build and check thumbnail path
 				char thumb_path[MAX_PATH];
-				if (build_thumb_path(current_entry->path, thumb_path))
+				if (MinUI_buildThumbPath(current_entry->path, thumb_path))
 					thumb_exists = exists(thumb_path);
 
 				if (!thumb_exists) {
@@ -2753,33 +2003,40 @@ int main(int argc, char* argv[]) {
 					int has_hint = 0;
 					if (hint_index >= 0 && hint_index < total) {
 						Entry* hint_entry = top->entries->items[hint_index];
-						has_hint = build_thumb_path(hint_entry->path, hint_path);
+						has_hint = MinUI_buildThumbPath(hint_entry->path, hint_path);
 					}
 
 					// Check cache
-					SDL_Surface* cached = ThumbCache_get(&thumb_cache, current_selected);
-					if (cached) {
+					int cached_slot = MinUIThumbnail_cacheFind(&thumb_cache, current_selected);
+					SDL_Surface* cached_surface =
+					    cached_slot >= 0
+					        ? (SDL_Surface*)MinUIThumbnail_cacheGetData(&thumb_cache, cached_slot)
+					        : NULL;
+					if (cached_surface) {
 						// Cache HIT - mark as displayed
 						LOG_debug("thumb: idx=%d CACHE HIT", current_selected);
-						ThumbCache_setDisplayed(&thumb_cache, current_selected);
-						thumb_fade_start_ms = SDLX_SupportsSurfaceAlphaMod() ? now : 0;
-						thumb_alpha = thumb_fade_start_ms ? THUMB_ALPHA_MIN : THUMB_ALPHA_MAX;
+						MinUIThumbnail_cacheSetDisplayed(&thumb_cache, current_selected);
+						if (SDLX_SupportsSurfaceAlphaMod()) {
+							MinUIThumbnail_fadeStart(&thumb_fade, now);
+						} else {
+							MinUIThumbnail_fadeReset(&thumb_fade);
+						}
 						dirty = 1;
 
 						// Queue preload for next item (if not already cached)
-						if (has_hint && !ThumbCache_get(&thumb_cache, hint_index)) {
+						if (has_hint && MinUIThumbnail_cacheFind(&thumb_cache, hint_index) < 0) {
 							LOG_debug("thumb: idx=%d HIT, preloading %d", current_selected,
 							          hint_index);
-							ThumbLoader_request(hint_path, thumb_max_width, thumb_max_height,
-							                    hint_index, 1, NULL, -1);
+							MinUIThumbnail_loaderRequest(hint_path, thumb_max_width,
+							                             thumb_max_height, hint_index, 1, NULL, -1);
 						}
 					} else {
 						// Cache MISS - request async load with preload hint
 						LOG_debug("thumb: idx=%d MISS -> requesting (hint=%d)", current_selected,
 						          has_hint ? hint_index : -1);
-						ThumbLoader_request(thumb_path, thumb_max_width, thumb_max_height,
-						                    current_selected, 0, has_hint ? hint_path : NULL,
-						                    hint_index);
+						MinUIThumbnail_loaderRequest(thumb_path, thumb_max_width, thumb_max_height,
+						                             current_selected, 0,
+						                             has_hint ? hint_path : NULL, hint_index);
 					}
 					last_rendered_entry = current_entry;
 					last_selected_index = current_selected;
@@ -2788,13 +2045,20 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Step 3: Check if async load completed (no selection change, but thumbnail now ready)
-		if (thumb_exists && !ThumbCache_isDisplayedValid(&thumb_cache)) {
-			SDL_Surface* cached = ThumbCache_get(&thumb_cache, current_selected);
-			if (cached) {
+		if (thumb_exists && !MinUIThumbnail_cacheIsDisplayedValid(&thumb_cache)) {
+			int cached_slot = MinUIThumbnail_cacheFind(&thumb_cache, current_selected);
+			SDL_Surface* cached_surface =
+			    cached_slot >= 0
+			        ? (SDL_Surface*)MinUIThumbnail_cacheGetData(&thumb_cache, cached_slot)
+			        : NULL;
+			if (cached_surface) {
 				LOG_debug("thumb: idx=%d ready", current_selected);
-				ThumbCache_setDisplayed(&thumb_cache, current_selected);
-				thumb_fade_start_ms = SDLX_SupportsSurfaceAlphaMod() ? now : 0;
-				thumb_alpha = thumb_fade_start_ms ? THUMB_ALPHA_MIN : THUMB_ALPHA_MAX;
+				MinUIThumbnail_cacheSetDisplayed(&thumb_cache, current_selected);
+				if (SDLX_SupportsSurfaceAlphaMod()) {
+					MinUIThumbnail_fadeStart(&thumb_fade, now);
+				} else {
+					MinUIThumbnail_fadeReset(&thumb_fade);
+				}
 				dirty = 1;
 			}
 		}
@@ -2803,31 +2067,24 @@ int main(int argc, char* argv[]) {
 		// Note: displayed_index >= 0 distinguishes "was displayed then evicted" from "never displayed"
 		// Note: Keep thumb_exists=1 so text layout stays narrow while we re-request
 		if (thumb_exists && thumb_cache.displayed_index >= 0 &&
-		    !ThumbCache_isDisplayedValid(&thumb_cache)) {
+		    !MinUIThumbnail_cacheIsDisplayedValid(&thumb_cache)) {
 			// Surface was evicted - reset state so Step 2 re-requests next frame
 			last_rendered_entry = NULL;
 			dirty = 1;
 		}
 
 		// Get current thumbnail surface (fresh lookup each frame - never store the pointer)
-		SDL_Surface* thumb_surface = ThumbCache_getDisplayed(&thumb_cache);
+		SDL_Surface* thumb_surface =
+		    (SDL_Surface*)MinUIThumbnail_cacheGetDisplayedData(&thumb_cache);
 
 		// Check if thumbnail is actually loaded and ready to display
 		int showing_thumb = (!show_version && total > 0 && thumb_surface && thumb_surface->w > 0 &&
 		                     thumb_surface->h > 0);
 
 		// Animate thumbnail fade-in with smoothstep easing (SDL 2.0 only)
-		if (SDLX_SupportsSurfaceAlphaMod() && thumb_surface && thumb_fade_start_ms > 0) {
-			unsigned long elapsed = now - thumb_fade_start_ms;
-			if (elapsed >= THUMB_FADE_DURATION_MS) {
-				thumb_alpha = THUMB_ALPHA_MAX; // Fade complete
-				thumb_fade_start_ms = 0; // Stop fading
-				dirty = 1; // Render final frame
-			} else {
-				// Smoothstep easing: f(t) = t * t * (3 - 2 * t)
-				float t = (float)elapsed / THUMB_FADE_DURATION_MS;
-				float eased = t * t * (3.0f - 2.0f * t);
-				thumb_alpha = (int)(eased * THUMB_ALPHA_MAX);
+		if (SDLX_SupportsSurfaceAlphaMod() && thumb_surface &&
+		    MinUIThumbnail_fadeIsActive(&thumb_fade)) {
+			if (MinUIThumbnail_fadeUpdate(&thumb_fade, now)) {
 				dirty = 1; // Keep rendering while animating
 			}
 		}
@@ -2841,7 +2098,7 @@ int main(int argc, char* argv[]) {
 				int padding = DP(ui.edge_padding);
 				int ox = ui.screen_width_px - thumb_surface->w - padding;
 				int oy = (ui.screen_height_px - thumb_surface->h) / 2;
-				SDLX_SetAlphaMod(thumb_surface, thumb_alpha);
+				SDLX_SetAlphaMod(thumb_surface, thumb_fade.alpha);
 				SDL_BlitSurface(thumb_surface, NULL, screen, &(SDL_Rect){ox, oy, 0, 0});
 			}
 
@@ -3147,7 +2404,7 @@ int main(int argc, char* argv[]) {
 
 	if (version)
 		SDL_FreeSurface(version);
-	ThumbCache_clear(&thumb_cache);
+	thumb_cache_clear(&thumb_cache);
 
 	// Free text cache surfaces
 	for (int i = 0; i < TEXT_CACHE_SIZE; i++) {
@@ -3157,7 +2414,7 @@ int main(int argc, char* argv[]) {
 			SDL_FreeSurface(text_cache[i].unique_surface);
 	}
 
-	ThumbLoader_quit();
+	MinUIThumbnail_loaderQuit();
 	Menu_quit();
 	PWR_quit();
 	PAD_quit();

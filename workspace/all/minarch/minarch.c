@@ -55,6 +55,24 @@
 #include "api.h"
 #include "defines.h"
 #include "libretro.h"
+#include "minarch_config.h"
+#include "minarch_context.h"
+#include "minarch_core.h"
+#include "minarch_cpu.h"
+#include "minarch_env.h"
+#include "minarch_game.h"
+#include "minarch_input.h"
+#include "minarch_internal.h"
+#include "minarch_mappings.h"
+#include "minarch_memory.h"
+#include "minarch_menu.h"
+#include "minarch_menu_types.h"
+#include "minarch_paths.h"
+#include "minarch_rotation.h"
+#include "minarch_scaler.h"
+#include "minarch_state.h"
+#include "minarch_video_convert.h"
+#include "minarch_zip.h"
 #include "minui_file_utils.h"
 #include "scaler.h"
 #include "utils.h"
@@ -71,39 +89,17 @@ static int quit = 0; // Set to 1 to exit main loop
 static int show_menu = 0; // Set to 1 to display in-game menu
 static int simple_mode = 0; // Simplified interface mode (fewer options)
 
-// Video geometry state for dynamic updates
-static struct {
-	unsigned rotation; // 0=0°, 1=90°, 2=180°, 3=270°
-	int geometry_changed; // Flag for SET_GEOMETRY
-	int av_info_changed; // Flag for SET_SYSTEM_AV_INFO
-	retro_frame_time_callback_t frame_time_cb; // Frame timing callback
-	retro_usec_t frame_time_ref; // Reference frame time in microseconds
-	retro_usec_t frame_time_last; // Last frame timestamp for delta calculation
-} video_state = {.rotation = 0,
-                 .geometry_changed = 0,
-                 .av_info_changed = 0,
-                 .frame_time_cb = NULL,
-                 .frame_time_ref = 0,
-                 .frame_time_last = 0};
+// Video geometry state for dynamic updates (type defined in minarch_env.h)
+static MinArchVideoState video_state;
 
-///////////////////////////////////////
-// Video Scaling Modes
-///////////////////////////////////////
-
-enum {
-	SCALE_NATIVE, // No scaling, 1:1 pixel mapping (may be cropped)
-	SCALE_ASPECT, // Scale maintaining aspect ratio (letterboxed)
-	SCALE_FULLSCREEN, // Scale to fill entire screen (may distort)
-	SCALE_CROPPED, // Crop to fill screen maintaining aspect ratio
-	SCALE_COUNT, // Number of scaling modes
-};
+// Video Scaling Modes - defined in minarch_mappings.h
 
 ///////////////////////////////////////
 // Frontend Configuration
 ///////////////////////////////////////
 
 // Video Settings
-static int screen_scaling = SCALE_ASPECT; // Default to aspect-ratio preserving
+static int screen_scaling = MINARCH_SCALE_ASPECT; // Default to aspect-ratio preserving
 static int screen_sharpness = SHARPNESS_SOFT; // Bilinear filtering by default
 static int screen_effect = EFFECT_NONE; // No scanlines or grid effects
 
@@ -139,42 +135,9 @@ static int overclock = 3; // CPU speed (0=powersave, 1=normal, 2=performance, 3=
 
 // Auto CPU Scaling State (when overclock == 3)
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
-// This directly measures CPU performance, unlike audio buffer fill which is
-// contaminated by display/audio timing mismatches.
-//
-// Granular frequency scaling: Instead of 3 fixed levels, we use all available
-// CPU frequencies detected from the system. Performance scales linearly with
-// frequency, allowing smooth transitions and better power efficiency.
-
-// Detected frequency array (populated at startup from PLAT_getAvailableCPUFrequencies)
-static int
-    auto_cpu_frequencies[CPU_MAX_FREQUENCIES]; // Available frequencies in kHz (sorted low→high)
-static int auto_cpu_freq_count = 0; // Number of frequencies detected
-static int auto_cpu_target_index = 0; // Target frequency index (main thread)
-static int auto_cpu_current_index = 0; // Actually applied frequency index (CPU thread)
-
-// Preset indices for manual modes (POWERSAVE/NORMAL/PERFORMANCE)
-// Set during frequency detection to map presets to nearest available frequencies
-static int auto_cpu_preset_indices[3] = {0, 0, 0}; // [POWERSAVE, NORMAL, PERFORMANCE]
-
-// Legacy level tracking (for fallback when no frequencies detected)
-static int auto_cpu_target_level = 1; // Target level from monitoring (main thread)
-static int auto_cpu_current_level = 1; // Actually applied level (CPU thread)
-static int auto_cpu_use_granular = 0; // 1 if granular mode available, 0 for 3-level fallback
-
-// Monitoring state
-static int auto_cpu_frame_count = 0; // Frames in current window
-static int auto_cpu_high_util_windows =
-    0; // Consecutive windows with high utilization (needs boost)
-static int auto_cpu_low_util_windows = 0; // Consecutive windows with low utilization (can reduce)
-static unsigned auto_cpu_last_underrun = 0; // Last seen underrun count
-static int auto_cpu_startup_frames = 0; // Frames since game start (for grace period)
-static int auto_cpu_panic_cooldown = 0; // Windows to wait after panic before reducing
-
-// Frame timing data for percentile calculation
-static uint64_t auto_cpu_frame_times[64]; // Ring buffer of frame execution times (microseconds)
-static int auto_cpu_frame_time_index = 0; // Current position in ring buffer
-static uint64_t auto_cpu_frame_budget_us = 16667; // Target frame time (updated from core.fps)
+// State and config are managed via minarch_cpu.h structs for testability.
+static MinArchCPUState auto_cpu_state;
+static MinArchCPUConfig auto_cpu_config;
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
 // Background thread for applying CPU changes without blocking main loop
@@ -182,21 +145,9 @@ static pthread_t auto_cpu_thread;
 static pthread_mutex_t auto_cpu_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int auto_cpu_thread_running = 0;
 
-// Auto CPU Scaling Tuning Constants
-// Frame timing thresholds (based on 90th percentile utilization)
-#define AUTO_CPU_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define AUTO_CPU_UTIL_HIGH 85 // Utilization above 85% = needs boost (15% headroom for jitter)
-#define AUTO_CPU_UTIL_LOW 55 // Utilization below 55% = can reduce (conservative)
-#define AUTO_CPU_BOOST_WINDOWS 2 // Boost after ~1s of high utilization
-#define AUTO_CPU_REDUCE_WINDOWS 4 // Reduce after ~2s of low utilization (conservative)
-#define AUTO_CPU_STARTUP_GRACE 300 // Ignore first N frames (~5 sec at 60fps)
-#define AUTO_CPU_MIN_FREQ_KHZ 400000 // Minimum frequency to consider (400 MHz)
-#define AUTO_CPU_TARGET_UTIL 70 // Target utilization after frequency change
-#define AUTO_CPU_MAX_STEP 2 // Maximum frequency steps per change (prevents oscillation)
-
 // Input Settings
 static int has_custom_controllers = 0; // Custom controller mappings defined
-static int gamepad_type = 0; // Index in gamepad_labels/gamepad_values
+static int gamepad_type = 0; // Index in minarch_gamepad_labels/minarch_gamepad_values
 
 // Device Dimensions
 // These are no longer constants as of the RG CubeXX (rotatable display)
@@ -206,83 +157,13 @@ static int DEVICE_PITCH = 0; // Screen pitch in bytes
 
 GFX_Renderer renderer; // Platform-specific renderer handle
 
-// Rotation buffer for software rotation
-static struct {
-	void* buffer; // Rotation output buffer (RGB565)
-	size_t size; // Current buffer size in bytes
-	uint32_t width; // Buffer width in pixels
-	uint32_t height; // Buffer height in pixels
-	uint32_t pitch; // Buffer pitch in bytes
-} rotation_buffer = {NULL, 0, 0, 0, 0};
 
 ///////////////////////////////////////
 // Libretro Core Interface
 ///////////////////////////////////////
 
-/**
- * Core structure - Manages the loaded libretro core (.so) and its interface.
- *
- * This structure holds both the dynamically loaded library handle and
- * function pointers to the libretro API, as well as metadata about the
- * core and its current configuration.
- *
- * Libretro cores are emulator implementations that conform to the libretro API.
- * They are loaded at runtime via dlopen() and provide a standardized interface
- * for running games, saving state, handling input, etc.
- */
-static struct Core {
-	// State
-	int initialized; // Core has been initialized
-	int need_fullpath; // Core requires file path (not ROM data)
-
-	// Metadata (populated from core)
-	const char tag[8]; // Platform tag, e.g., "GBC", "NES"
-	const char name[128]; // Core name, e.g., "gambatte", "fceumm"
-	const char version[128]; // Core version string
-	const char extensions[128]; // Supported file extensions, e.g., "gb|gbc|dmg"
-
-	// Directory paths
-	const char config_dir[MAX_PATH]; // Core config: /mnt/sdcard/.userdata/<platform>/<tag>-<name>
-	const char states_dir[MAX_PATH]; // Save states: /mnt/sdcard/.userdata/<arch>/<tag>-<name>
-	const char saves_dir[MAX_PATH]; // SRAM saves: /mnt/sdcard/Saves/<tag>
-	const char bios_dir[MAX_PATH]; // BIOS files: /mnt/sdcard/Bios/<tag> (or /Bios if tag dir empty)
-
-	// Audio/Video parameters (from core)
-	double fps; // Target frames per second
-	double sample_rate; // Audio sample rate in Hz
-	double aspect_ratio; // Display aspect ratio
-
-	// Dynamic library
-	void* handle; // dlopen() handle to loaded .so file
-
-	// Libretro API function pointers (loaded via dlsym)
-	void (*init)(void);
-	void (*deinit)(void);
-	void (*get_system_info)(struct retro_system_info* info);
-	void (*get_system_av_info)(struct retro_system_av_info* info);
-	void (*set_controller_port_device)(unsigned port, unsigned device);
-	void (*reset)(void);
-	void (*run)(void); // Run one frame of emulation
-
-	// Save state functions
-	size_t (*serialize_size)(void); // Get required buffer size for save state
-	bool (*serialize)(void* data, size_t size); // Save state to buffer
-	bool (*unserialize)(const void* data, size_t size); // Load state from buffer
-
-	// Game management
-	bool (*load_game)(const struct retro_game_info* game);
-	bool (*load_game_special)(unsigned game_type, const struct retro_game_info* info,
-	                          size_t num_info);
-	void (*unload_game)(void);
-
-	// Memory access
-	unsigned (*get_region)(void); // Get TV system (NTSC/PAL)
-	void* (*get_memory_data)(unsigned id); // Get pointer to SRAM/RTC memory
-	size_t (*get_memory_size)(unsigned id); // Get size of SRAM/RTC memory
-
-	// Callbacks from core (optional)
-	retro_audio_buffer_status_callback_t audio_buffer_status; // Audio buffer occupancy reporting
-} core;
+// Core instance (struct defined in minarch_internal.h)
+static struct Core core;
 
 ///////////////////////////////////////
 // ZIP File Extraction
@@ -300,121 +181,15 @@ static struct Core {
 	((uint32_t)(((uint8_t*)(buf))[3] << 24 | ((uint8_t*)(buf))[2] << 16 |                          \
 	            ((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
 
+// ZIP extraction function pointer type for selecting copy vs inflate
 typedef int (*Zip_extract_t)(FILE* zip, FILE* dst, size_t size);
-
-/**
- * Extracts an uncompressed file from a ZIP archive.
- *
- * Used for ZIP files with compression method 0 (store).
- * Reads in chunks for memory efficiency.
- *
- * @param zip Source ZIP file (positioned at data start)
- * @param dst Destination file for extracted data
- * @param size Number of bytes to extract
- * @return 0 on success, -1 on error
- */
-static int Zip_copy(FILE* zip, FILE* dst, size_t size) {
-	uint8_t chunk[ZIP_CHUNK_SIZE];
-	while (size) {
-		size_t sz = MIN(size, ZIP_CHUNK_SIZE);
-		if (sz != fread(chunk, 1, sz, zip))
-			return -1;
-		if (sz != fwrite(chunk, 1, sz, dst))
-			return -1;
-		size -= sz;
-	}
-	return 0;
-}
-
-/**
- * Extracts and decompresses a deflate-compressed file from a ZIP archive.
- *
- * Used for ZIP files with compression method 8 (deflate).
- * Uses zlib for decompression.
- *
- * @param zip Source ZIP file (positioned at compressed data start)
- * @param dst Destination file for decompressed data
- * @param size Number of compressed bytes to read
- * @return Z_OK on success, Z_* error code on failure
- */
-static int Zip_inflate(FILE* zip, FILE* dst, size_t size) {
-	z_stream stream = {0};
-	size_t have = 0;
-	uint8_t in[ZIP_CHUNK_SIZE];
-	uint8_t out[ZIP_CHUNK_SIZE];
-	int ret = -1;
-
-	ret = inflateInit2(&stream, -MAX_WBITS);
-	if (ret != Z_OK)
-		return ret;
-
-	do {
-		size_t insize = MIN(size, ZIP_CHUNK_SIZE);
-
-		stream.avail_in = fread(in, 1, insize, zip);
-		if (ferror(zip)) {
-			(void)inflateEnd(&stream);
-			return Z_ERRNO;
-		}
-
-		if (!stream.avail_in)
-			break;
-		stream.next_in = in;
-
-		do {
-			stream.avail_out = ZIP_CHUNK_SIZE;
-			stream.next_out = out;
-
-			ret = inflate(&stream, Z_NO_FLUSH);
-			switch (ret) {
-			case Z_NEED_DICT:
-				ret = Z_DATA_ERROR;
-				/* fall through */
-			case Z_DATA_ERROR:
-			case Z_MEM_ERROR:
-				(void)inflateEnd(&stream);
-				return ret;
-			}
-
-			have = ZIP_CHUNK_SIZE - stream.avail_out;
-			if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
-				(void)inflateEnd(&stream);
-				return Z_ERRNO;
-			}
-		} while (stream.avail_out == 0);
-
-		size -= insize;
-	} while (size && ret != Z_STREAM_END);
-
-	(void)inflateEnd(&stream);
-
-	if (!size || ret == Z_STREAM_END) {
-		return Z_OK;
-	} else {
-		return Z_DATA_ERROR;
-	}
-}
 
 ///////////////////////////////////////
 // Game Management
 ///////////////////////////////////////
 
-/**
- * Game structure - Represents the currently loaded game/ROM file.
- *
- * Handles both direct ROM loading and ZIP extraction. Some cores require
- * the ROM to be loaded into memory (data/size), others just need the path
- * (need_fullpath cores like PCSX ReARMed for large disc images).
- */
-static struct Game {
-	char path[MAX_PATH]; // Original ROM path provided by user
-	char name[MAX_PATH]; // Base filename (for save file naming)
-	char m3u_path[MAX_PATH]; // Path to .m3u playlist (multi-disc games)
-	char tmp_path[MAX_PATH]; // Temporary file path (extracted from ZIP)
-	void* data; // ROM data in memory (if !need_fullpath)
-	size_t size; // Size of ROM data in bytes
-	int is_open; // Successfully loaded
-} game;
+// Game instance (struct defined in minarch_internal.h)
+static struct Game game;
 
 /**
  * Opens and prepares a game for loading into the core.
@@ -439,20 +214,11 @@ static void Game_open(char* path) {
 	// if we have a zip file
 	if (suffixMatch(".zip", game.path)) {
 		LOG_info("is zip file");
-		int supports_zip = 0;
-		int i = 0;
-		char* ext;
+		bool supports_zip = false;
 		char exts[128];
-		char* extensions[32];
+		char* extensions[MINARCH_MAX_EXTENSIONS];
 		strcpy(exts, core.extensions);
-		while ((ext = strtok(i ? NULL : exts, "|"))) {
-			extensions[i++] = ext;
-			if (!strcmp("zip", ext)) {
-				supports_zip = 1;
-				break;
-			}
-		}
-		extensions[i] = NULL;
+		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_zip);
 
 		// if the core doesn't support zip files natively
 		if (!supports_zip) {
@@ -463,45 +229,36 @@ static void Game_open(char* path) {
 			}
 
 			// extract a known file format
-			uint8_t header[ZIP_HEADER_SIZE];
+			uint8_t header[MINARCH_ZIP_HEADER_SIZE];
 			uint32_t next = 0;
-			uint16_t len = 0;
+			uint16_t filename_len = 0;
 			char filename[MAX_PATH];
+			uint16_t compression_method = 0;
 			uint32_t compressed_size = 0;
-			char extension[8];
+			uint16_t extra_len = 0;
 			while (1) {
 				if (next)
 					fseek(zip, next, SEEK_CUR);
 
-				if (ZIP_HEADER_SIZE != fread(header, 1, ZIP_HEADER_SIZE, zip))
+				if (MINARCH_ZIP_HEADER_SIZE != fread(header, 1, MINARCH_ZIP_HEADER_SIZE, zip))
 					break;
 
-				if ((uint16_t)(header[6]) & 0x0008)
+				if (!MinArchGame_parseZipHeader(header, &compression_method, &filename_len,
+				                                &compressed_size, &extra_len))
 					break;
 
-				len = ZIP_LE_READ16(&header[26]);
-				if (len >= MAX_PATH)
+				if (filename_len >= MAX_PATH)
 					break;
 
-				if (len != fread(filename, 1, len, zip))
+				if (filename_len != fread(filename, 1, filename_len, zip))
 					break;
-				filename[len] = '\0';
+				filename[filename_len] = '\0';
 				LOG_info("filename: %s", filename);
 
-				compressed_size = ZIP_LE_READ32(&header[18]);
-
-				fseek(zip, ZIP_LE_READ16(&header[28]), SEEK_CUR);
+				fseek(zip, extra_len, SEEK_CUR);
 				next = compressed_size;
 
-				int found = 0;
-				for (i = 0; extensions[i]; i++) {
-					sprintf(extension, ".%s", extensions[i]);
-					if (suffixMatch(extension, filename)) {
-						found = 1;
-						break;
-					}
-				}
-				if (!found)
+				if (!MinArchGame_matchesExtension(filename, extensions))
 					continue;
 
 				char tmp_template[MAX_PATH];
@@ -520,12 +277,12 @@ static void Game_open(char* path) {
 				}
 
 				Zip_extract_t extract = NULL;
-				switch (ZIP_LE_READ16(&header[8])) {
+				switch (compression_method) {
 				case 0:
-					extract = Zip_copy;
+					extract = MinArchZip_copy;
 					break;
 				case 8:
-					extract = Zip_inflate;
+					extract = MinArchZip_inflate;
 					break;
 				}
 
@@ -571,30 +328,8 @@ static void Game_open(char* path) {
 	}
 
 	// m3u-based?
-	char* tmp;
-	char m3u_path[256];
-	char base_path[256];
-	char dir_name[256];
-
-	strcpy(m3u_path, game.path);
-	tmp = strrchr(m3u_path, '/') + 1;
-	tmp[0] = '\0';
-
-	strcpy(base_path, m3u_path);
-
-	tmp = strrchr(m3u_path, '/');
-	tmp[0] = '\0';
-
-	tmp = strrchr(m3u_path, '/');
-	strcpy(dir_name, tmp);
-
-	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, dir_name);
-
-	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, ".m3u");
-
-	if (exists(m3u_path)) {
+	char m3u_path[MAX_PATH];
+	if (MinArchGame_detectM3uPath(game.path, m3u_path, sizeof(m3u_path))) {
 		strcpy(game.m3u_path, m3u_path);
 		strcpy((char*)game.name, strrchr(m3u_path, '/') + 1);
 	}
@@ -636,7 +371,7 @@ static struct retro_disk_control_ext_callback disk_control_ext;
  * @note Writes path to CHANGE_DISC_PATH for MinUI launcher integration
  * @note Skips if path is same as current or doesn't exist
  */
-static void Game_changeDisc(char* path) {
+void Game_changeDisc(char* path) {
 	if (exactMatch(game.path, path) || !exists(path))
 		return;
 
@@ -671,25 +406,16 @@ static void SRAM_getPath(char* filename) {
  * @note Silently skips if core doesn't support SRAM or file doesn't exist
  */
 static void SRAM_read(void) {
-	size_t sram_size = core.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-	if (!sram_size)
-		return;
-
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
 	LOG_debug("sav path (read): %s", filename);
 
-	FILE* sram_file = fopen(filename, "r");
-	if (!sram_file)
-		return;
-
-	void* sram = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-
-	if (!sram || !fread(sram, 1, sram_size, sram_file)) {
-		LOG_error("Error reading SRAM data");
+	MinArchMemoryResult result =
+	    MinArchMemory_readSRAM(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_FILE_NOT_FOUND &&
+	    result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error reading SRAM: %s", MinArchMemory_resultString(result));
 	}
-
-	fclose(sram_file);
 }
 
 /**
@@ -701,28 +427,16 @@ static void SRAM_read(void) {
  *
  * @note Silently skips if core doesn't support SRAM
  */
-static void SRAM_write(void) {
-	size_t sram_size = core.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-	if (!sram_size)
-		return;
-
+void SRAM_write(void) {
 	char filename[MAX_PATH];
 	SRAM_getPath(filename);
 	LOG_debug("sav path (write): %s", filename);
 
-	FILE* sram_file = fopen(filename, "w");
-	if (!sram_file) {
-		LOG_error("Error opening SRAM file: %s", strerror(errno));
-		return;
+	MinArchMemoryResult result =
+	    MinArchMemory_writeSRAM(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error writing SRAM: %s", MinArchMemory_resultString(result));
 	}
-
-	void* sram = core.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-
-	if (!sram || sram_size != fwrite(sram, 1, sram_size, sram_file)) {
-		LOG_error("Error writing SRAM data to file");
-	}
-
-	fclose(sram_file);
 
 	sync();
 }
@@ -743,25 +457,16 @@ static void RTC_getPath(char* filename) {
  * @note Silently skips if core doesn't support RTC or file doesn't exist
  */
 static void RTC_read(void) {
-	size_t rtc_size = core.get_memory_size(RETRO_MEMORY_RTC);
-	if (!rtc_size)
-		return;
-
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
 	LOG_debug("rtc path (read): %s", filename);
 
-	FILE* rtc_file = fopen(filename, "r");
-	if (!rtc_file)
-		return;
-
-	void* rtc = core.get_memory_data(RETRO_MEMORY_RTC);
-
-	if (!rtc || !fread(rtc, 1, rtc_size, rtc_file)) {
-		LOG_error("Error reading RTC data");
+	MinArchMemoryResult result =
+	    MinArchMemory_readRTC(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_FILE_NOT_FOUND &&
+	    result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error reading RTC: %s", MinArchMemory_resultString(result));
 	}
-
-	fclose(rtc_file);
 }
 
 /**
@@ -769,28 +474,16 @@ static void RTC_read(void) {
  *
  * @note Silently skips if core doesn't support RTC
  */
-static void RTC_write(void) {
-	size_t rtc_size = core.get_memory_size(RETRO_MEMORY_RTC);
-	if (!rtc_size)
-		return;
-
+void RTC_write(void) {
 	char filename[MAX_PATH];
 	RTC_getPath(filename);
-	LOG_debug("rtc path (write) size(%zu): %s", rtc_size, filename);
+	LOG_debug("rtc path (write): %s", filename);
 
-	FILE* rtc_file = fopen(filename, "w");
-	if (!rtc_file) {
-		LOG_error("Error opening RTC file: %s", strerror(errno));
-		return;
+	MinArchMemoryResult result =
+	    MinArchMemory_writeRTC(filename, core.get_memory_size, core.get_memory_data);
+	if (result != MINARCH_MEM_OK && result != MINARCH_MEM_NO_SUPPORT) {
+		LOG_error("Error writing RTC: %s", MinArchMemory_resultString(result));
 	}
-
-	void* rtc = core.get_memory_data(RETRO_MEMORY_RTC);
-
-	if (!rtc || rtc_size != fwrite(rtc, 1, rtc_size, rtc_file)) {
-		LOG_error("Error writing RTC data to file");
-	}
-
-	fclose(rtc_file);
 
 	sync();
 }
@@ -808,7 +501,7 @@ static void RTC_write(void) {
 
 static int state_slot = 0; // Currently selected slot (0-9)
 
-static void State_getPath(char* filename) {
+void State_getPath(char* filename) {
 	sprintf(filename, "%s/%s.st%i", core.states_dir, game.name, state_slot);
 }
 
@@ -822,49 +515,25 @@ static void State_getPath(char* filename) {
  * @note Silently fails if state file doesn't exist or core doesn't support states
  * @note Uses gzopen for compressed state files
  */
-static void State_read(void) {
-	size_t state_size = core.serialize_size();
-	if (!state_size)
-		return;
-
+void State_read(void) {
 	int was_ff = fast_forward;
 	fast_forward = 0;
-
-	FILE* state_file = NULL;
-	void* state = calloc(1, state_size);
-	if (!state) {
-		LOG_error("Couldn't allocate memory for state");
-		goto error;
-	}
 
 	char filename[MAX_PATH];
 	State_getPath(filename);
 
-	state_file = fopen(filename, "r");
-	if (!state_file) {
-		if (state_slot != 8) { // st8 is a default state in MiniUI and may not exist, that's okay
-			LOG_error("Error opening state file: %s (%s)", filename, strerror(errno));
+	MinArchStateCore state_core = {.serialize_size = core.serialize_size,
+	                               .serialize = core.serialize,
+	                               .unserialize = core.unserialize};
+
+	MinArchStateResult result = MinArchState_read(filename, &state_core);
+
+	if (result != MINARCH_STATE_OK && result != MINARCH_STATE_NO_SUPPORT) {
+		// slot 8 is a default state in MiniUI and may not exist, that's okay
+		if (result != MINARCH_STATE_FILE_NOT_FOUND || state_slot != 8) {
+			LOG_error("Error reading state: %s (%s)", filename, MinArchState_resultString(result));
 		}
-		goto error;
 	}
-
-	// some cores report the wrong serialize size initially for some games, eg. mgba: Wario Land 4
-	// so we allow a size mismatch as long as the actual size fits in the buffer we've allocated
-	if (state_size < fread(state, 1, state_size, state_file)) {
-		LOG_error("Error reading state data from file: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
-
-	if (!core.unserialize(state, state_size)) {
-		LOG_error("Error restoring save state: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
-
-error:
-	if (state)
-		free(state);
-	if (state_file)
-		fclose(state_file);
 
 	fast_forward = was_ff;
 }
@@ -878,45 +547,22 @@ error:
  * @note Based on picoarch implementation
  * @note Silently fails if core doesn't support states or allocation fails
  */
-static void State_write(void) {
-	size_t state_size = core.serialize_size();
-	if (!state_size)
-		return;
-
+void State_write(void) {
 	int was_ff = fast_forward;
 	fast_forward = 0;
-
-	FILE* state_file = NULL;
-	void* state = calloc(1, state_size);
-	if (!state) {
-		LOG_error("Couldn't allocate memory for state");
-		goto error;
-	}
 
 	char filename[MAX_PATH];
 	State_getPath(filename);
 
-	state_file = fopen(filename, "w");
-	if (!state_file) {
-		LOG_error("Error opening state file: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
+	MinArchStateCore state_core = {.serialize_size = core.serialize_size,
+	                               .serialize = core.serialize,
+	                               .unserialize = core.unserialize};
 
-	if (!core.serialize(state, state_size)) {
-		LOG_error("Error creating save state: %s (%s)", filename, strerror(errno));
-		goto error;
-	}
+	MinArchStateResult result = MinArchState_write(filename, &state_core);
 
-	if (state_size != fwrite(state, 1, state_size, state_file)) {
-		LOG_error("Error writing state data to file: %s (%s)", filename, strerror(errno));
-		goto error;
+	if (result != MINARCH_STATE_OK && result != MINARCH_STATE_NO_SUPPORT) {
+		LOG_error("Error writing state: %s (%s)", filename, MinArchState_resultString(result));
 	}
-
-error:
-	if (state)
-		free(state);
-	if (state_file)
-		fclose(state_file);
 
 	sync();
 
@@ -931,7 +577,7 @@ error:
  *
  * @note AUTO_RESUME_SLOT is typically 9
  */
-static void State_autosave(void) {
+void State_autosave(void) {
 	int last_state_slot = state_slot;
 	state_slot = AUTO_RESUME_SLOT;
 	State_write();
@@ -961,325 +607,18 @@ static void State_resume(void) {
 
 ///////////////////////////////
 
-typedef struct Option {
-	char* key;
-	char* name; // desc
-	char* desc; // info, truncated
-	char* full; // info, longer but possibly still truncated
-	char* var;
-	int default_value;
-	int value;
-	int count; // TODO: drop this?
-	int lock;
-	char** values;
-	char** labels;
-} Option;
-typedef struct OptionList {
-	int count;
-	int changed;
-	Option* options;
+// Option and MinArchOptionList types defined in minarch_internal.h
 
-	int enabled_count;
-	Option** enabled_options;
-	// OptionList_callback_t on_set;
-} OptionList;
+// Label arrays, enums, and button constants now in minarch_mappings.h
 
-static char* onoff_labels[] = {"Off", "On", NULL};
-static char* scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
-static char* effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", NULL};
-static char* sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
-static char* max_ff_labels[] = {
-    "None", "2x", "3x", "4x", "5x", "6x", "7x", "8x", NULL,
-};
+// Static button mapping arrays now in minarch_mappings.h/c
+// Runtime button mapping state
+static MinArchButtonMapping core_button_mapping[RETRO_BUTTON_COUNT + 1] = {0};
 
-///////////////////////////////
-
-enum {
-	FE_OPT_SCALING,
-	FE_OPT_EFFECT,
-	FE_OPT_SHARPNESS,
-	FE_OPT_OVERCLOCK,
-	FE_OPT_DEBUG,
-	FE_OPT_MAXFF,
-	FE_OPT_COUNT,
-};
-
-enum {
-	SHORTCUT_SAVE_STATE,
-	SHORTCUT_LOAD_STATE,
-	SHORTCUT_RESET_GAME,
-	SHORTCUT_SAVE_QUIT,
-	SHORTCUT_CYCLE_SCALE,
-	SHORTCUT_CYCLE_EFFECT,
-	SHORTCUT_TOGGLE_FF,
-	SHORTCUT_HOLD_FF,
-	SHORTCUT_COUNT,
-};
-
-#define LOCAL_BUTTON_COUNT 16 // depends on device
-#define RETRO_BUTTON_COUNT                                                                         \
-	16 // allow L3/R3 to be remapped by user if desired, eg. Virtual Boy uses extra buttons for right d-pad
-
-typedef struct ButtonMapping {
-	char* name;
-	int retro;
-	int local; // TODO: dislike this name...
-	int mod;
-	int default_;
-	int ignore;
-} ButtonMapping;
-
-static ButtonMapping default_button_mapping[] =
-    { // used if pak.cfg doesn't exist or doesn't have bindings
-        {.name = "Up",
-         .retro = RETRO_DEVICE_ID_JOYPAD_UP,
-         .local = BTN_ID_DPAD_UP,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Down",
-         .retro = RETRO_DEVICE_ID_JOYPAD_DOWN,
-         .local = BTN_ID_DPAD_DOWN,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Left",
-         .retro = RETRO_DEVICE_ID_JOYPAD_LEFT,
-         .local = BTN_ID_DPAD_LEFT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Right",
-         .retro = RETRO_DEVICE_ID_JOYPAD_RIGHT,
-         .local = BTN_ID_DPAD_RIGHT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "A Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_A,
-         .local = BTN_ID_A,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "B Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_B,
-         .local = BTN_ID_B,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "X Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_X,
-         .local = BTN_ID_X,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Y Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_Y,
-         .local = BTN_ID_Y,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Start",
-         .retro = RETRO_DEVICE_ID_JOYPAD_START,
-         .local = BTN_ID_START,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Select",
-         .retro = RETRO_DEVICE_ID_JOYPAD_SELECT,
-         .local = BTN_ID_SELECT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L1 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L,
-         .local = BTN_ID_L1,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R1 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R,
-         .local = BTN_ID_R1,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L2 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L2,
-         .local = BTN_ID_L2,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R2 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R2,
-         .local = BTN_ID_R2,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L3 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L3,
-         .local = BTN_ID_L3,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R3 Button",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R3,
-         .local = BTN_ID_R3,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = NULL, .retro = 0, .local = 0, .mod = 0, .default_ = 0, .ignore = 0}};
-static ButtonMapping button_label_mapping[] =
-    { // used to lookup the retro_id and local btn_id from button name
-        {.name = "NONE", .retro = -1, .local = BTN_ID_NONE, .mod = 0, .default_ = 0, .ignore = 0},
-        {.name = "UP",
-         .retro = RETRO_DEVICE_ID_JOYPAD_UP,
-         .local = BTN_ID_DPAD_UP,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "DOWN",
-         .retro = RETRO_DEVICE_ID_JOYPAD_DOWN,
-         .local = BTN_ID_DPAD_DOWN,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "LEFT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_LEFT,
-         .local = BTN_ID_DPAD_LEFT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "RIGHT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_RIGHT,
-         .local = BTN_ID_DPAD_RIGHT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "A",
-         .retro = RETRO_DEVICE_ID_JOYPAD_A,
-         .local = BTN_ID_A,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "B",
-         .retro = RETRO_DEVICE_ID_JOYPAD_B,
-         .local = BTN_ID_B,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "X",
-         .retro = RETRO_DEVICE_ID_JOYPAD_X,
-         .local = BTN_ID_X,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "Y",
-         .retro = RETRO_DEVICE_ID_JOYPAD_Y,
-         .local = BTN_ID_Y,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "START",
-         .retro = RETRO_DEVICE_ID_JOYPAD_START,
-         .local = BTN_ID_START,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "SELECT",
-         .retro = RETRO_DEVICE_ID_JOYPAD_SELECT,
-         .local = BTN_ID_SELECT,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L1",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L,
-         .local = BTN_ID_L1,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R1",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R,
-         .local = BTN_ID_R1,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L2",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L2,
-         .local = BTN_ID_L2,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R2",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R2,
-         .local = BTN_ID_R2,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "L3",
-         .retro = RETRO_DEVICE_ID_JOYPAD_L3,
-         .local = BTN_ID_L3,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = "R3",
-         .retro = RETRO_DEVICE_ID_JOYPAD_R3,
-         .local = BTN_ID_R3,
-         .mod = 0,
-         .default_ = 0,
-         .ignore = 0},
-        {.name = NULL, .retro = 0, .local = 0, .mod = 0, .default_ = 0, .ignore = 0}};
-static ButtonMapping core_button_mapping[RETRO_BUTTON_COUNT + 1] = {0};
-
-static const char* device_button_names[LOCAL_BUTTON_COUNT] = {
-    [BTN_ID_DPAD_UP] = "UP",
-    [BTN_ID_DPAD_DOWN] = "DOWN",
-    [BTN_ID_DPAD_LEFT] = "LEFT",
-    [BTN_ID_DPAD_RIGHT] = "RIGHT",
-    [BTN_ID_SELECT] = "SELECT",
-    [BTN_ID_START] = "START",
-    [BTN_ID_Y] = "Y",
-    [BTN_ID_X] = "X",
-    [BTN_ID_B] = "B",
-    [BTN_ID_A] = "A",
-    [BTN_ID_L1] = "L1",
-    [BTN_ID_R1] = "R1",
-    [BTN_ID_L2] = "L2",
-    [BTN_ID_R2] = "R2",
-    [BTN_ID_L3] = "L3",
-    [BTN_ID_R3] = "R3",
-};
-
-
-// NOTE: these must be in BTN_ID_ order also off by 1 because of NONE (which is -1 in BTN_ID_ land)
-static char* button_labels[] = {
-    "NONE", // displayed by default
-    "UP",      "DOWN",    "LEFT",    "RIGHT",      "A",           "B",          "X",
-    "Y",       "START",   "SELECT",  "L1",         "R1",          "L2",         "R2",
-    "L3",      "R3",      "MENU+UP", "MENU+DOWN",  "MENU+LEFT",   "MENU+RIGHT", "MENU+A",
-    "MENU+B",  "MENU+X",  "MENU+Y",  "MENU+START", "MENU+SELECT", "MENU+L1",    "MENU+R1",
-    "MENU+L2", "MENU+R2", "MENU+L3", "MENU+R3",    NULL,
-};
-static char* overclock_labels[] = {
-    "Powersave", "Normal", "Performance", "Auto", NULL,
-};
-
-// TODO: this should be provided by the core
-static char* gamepad_labels[] = {
-    "Standard",
-    "DualShock",
-    NULL,
-};
-static char* gamepad_values[] = {
-    "1",
-    "517",
-    NULL,
-};
-
-enum {
-	CONFIG_NONE,
-	CONFIG_CONSOLE,
-	CONFIG_GAME,
-};
+// Config state enum aliases (actual enum in minarch_config.h)
+#define CONFIG_NONE MINARCH_CONFIG_NONE
+#define CONFIG_CONSOLE MINARCH_CONFIG_CONSOLE
+#define CONFIG_GAME MINARCH_CONFIG_GAME
 
 static inline char* getScreenScalingDesc(void) {
 	if (GFX_supportsOverscan()) {
@@ -1295,138 +634,132 @@ static inline int getScreenScalingCount(void) {
 }
 
 
-static struct Config {
-	char* system_cfg; // system.cfg based on system limitations
-	char* default_cfg; // pak.cfg based on platform limitations
-	char* user_cfg; // minarch.cfg or game.cfg based on user preference
-	char* device_tag;
-	OptionList frontend;
-	OptionList core;
-	ButtonMapping* controls;
-	ButtonMapping* shortcuts;
-	int loaded;
-	int initialized;
-} config = {
+// Config instance (struct defined in minarch_internal.h)
+static struct Config config = {
     .system_cfg = NULL,
     .default_cfg = NULL,
     .user_cfg = NULL,
     .device_tag = NULL,
     .frontend =
-        {// (OptionList)
+        {// (MinArchOptionList)
          .count = FE_OPT_COUNT,
          .changed = 0,
-         .options =
-             (Option[]){[FE_OPT_SCALING] =
-                            {
-                                .key = "minarch_screen_scaling",
-                                .name = "Screen Scaling",
-                                .desc = NULL, // will call getScreenScalingDesc()
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 1,
-                                .value = 1,
-                                .count = 3, // will call getScreenScalingCount()
-                                .lock = 0,
-                                .values = scaling_labels,
-                                .labels = scaling_labels,
-                            },
-                        [FE_OPT_EFFECT] =
-                            {
-                                .key = "minarch_screen_effect",
-                                .name = "Screen Effect",
-                                .desc = "Simulates classic CRT and LCD displays.\n"
-                                        "Works best at native scaling.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 6,
-                                .lock = 0,
-                                .values = effect_labels,
-                                .labels = effect_labels,
-                            },
-                        [FE_OPT_SHARPNESS] =
-                            {
-                                .key = "minarch_screen_sharpness",
-                                .name = "Screen Sharpness",
-                                .desc =
-                                    "Sharp uses nearest neighbor sampling.\nCrisp integer upscales "
-                                    "before linear sampling.\nSoft uses linear sampling.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 2,
-                                .value = 2,
-                                .count = 3,
-                                .lock = 0,
-                                .values = sharpness_labels,
-                                .labels = sharpness_labels,
-                            },
-                        [FE_OPT_OVERCLOCK] =
-                            {
-                                .key = "minarch_cpu_speed",
-                                .name = "CPU Speed",
-                                .desc = "Over- or underclock the CPU to prioritize\n"
-                                        "performance or power savings.\n"
-                                        "Auto adjusts based on emulation demand.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 3, // Auto
-                                .value = 3, // Auto
-                                .count = 4,
-                                .lock = 0,
-                                .values = overclock_labels,
-                                .labels = overclock_labels,
-                            },
-                        [FE_OPT_DEBUG] =
-                            {
-                                .key = "minarch_debug_hud",
-                                .name = "Debug HUD",
-                                .desc = "Show frames per second, cpu load,\nresolution, and scaler "
-                                        "information.",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 0,
-                                .value = 0,
-                                .count = 2,
-                                .lock = 0,
-                                .values = onoff_labels,
-                                .labels = onoff_labels,
-                            },
-                        [FE_OPT_MAXFF] =
-                            {
-                                .key = "minarch_max_ff_speed",
-                                .name = "Max FF Speed",
-                                .desc = "Fast forward will not exceed the\nselected speed (but may "
-                                        "be less\ndepending on game and emulator).",
-                                .full = NULL,
-                                .var = NULL,
-                                .default_value = 3, // 4x
-                                .value = 3, // 4x
-                                .count = 8,
-                                .lock = 0,
-                                .values = max_ff_labels,
-                                .labels = max_ff_labels,
-                            },
-                        [FE_OPT_COUNT] = {.key = NULL,
-                                          .name = NULL,
-                                          .desc = NULL,
-                                          .full = NULL,
-                                          .var = NULL,
-                                          .default_value = 0,
-                                          .value = 0,
-                                          .count = 0,
-                                          .lock = 0,
-                                          .values = NULL,
-                                          .labels = NULL}},
+         .options = (MinArchOption[]){[FE_OPT_SCALING] =
+                                          {
+                                              .key = "minarch_screen_scaling",
+                                              .name = "Screen Scaling",
+                                              .desc = NULL, // will call getScreenScalingDesc()
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 1,
+                                              .value = 1,
+                                              .count = 3, // will call getScreenScalingCount()
+                                              .lock = 0,
+                                              .values = minarch_scaling_labels,
+                                              .labels = minarch_scaling_labels,
+                                          },
+                                      [FE_OPT_EFFECT] =
+                                          {
+                                              .key = "minarch_screen_effect",
+                                              .name = "Screen Effect",
+                                              .desc = "Simulates classic CRT and LCD displays.\n"
+                                                      "Works best at native scaling.",
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 0,
+                                              .value = 0,
+                                              .count = 6,
+                                              .lock = 0,
+                                              .values = minarch_effect_labels,
+                                              .labels = minarch_effect_labels,
+                                          },
+                                      [FE_OPT_SHARPNESS] =
+                                          {
+                                              .key = "minarch_screen_sharpness",
+                                              .name = "Screen Sharpness",
+                                              .desc = "Sharp uses nearest neighbor "
+                                                      "sampling.\nCrisp integer upscales "
+                                                      "before linear sampling.\nSoft uses linear "
+                                                      "sampling.",
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 2,
+                                              .value = 2,
+                                              .count = 3,
+                                              .lock = 0,
+                                              .values = minarch_sharpness_labels,
+                                              .labels = minarch_sharpness_labels,
+                                          },
+                                      [FE_OPT_OVERCLOCK] =
+                                          {
+                                              .key = "minarch_cpu_speed",
+                                              .name = "CPU Speed",
+                                              .desc = "Over- or underclock the CPU to prioritize\n"
+                                                      "performance or power savings.\n"
+                                                      "Auto adjusts based on emulation demand.",
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 3, // Auto
+                                              .value = 3, // Auto
+                                              .count = 4,
+                                              .lock = 0,
+                                              .values = minarch_overclock_labels,
+                                              .labels = minarch_overclock_labels,
+                                          },
+                                      [FE_OPT_DEBUG] =
+                                          {
+                                              .key = "minarch_debug_hud",
+                                              .name = "Debug HUD",
+                                              .desc = "Show frames per second, cpu "
+                                                      "load,\nresolution, and scaler "
+                                                      "information.",
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 0,
+                                              .value = 0,
+                                              .count = 2,
+                                              .lock = 0,
+                                              .values = minarch_onoff_labels,
+                                              .labels = minarch_onoff_labels,
+                                          },
+                                      [FE_OPT_MAXFF] =
+                                          {
+                                              .key = "minarch_max_ff_speed",
+                                              .name = "Max FF Speed",
+                                              .desc = "Fast forward will not exceed the\nselected "
+                                                      "speed (but may "
+                                                      "be less\ndepending on game and emulator).",
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 3, // 4x
+                                              .value = 3, // 4x
+                                              .count = 8,
+                                              .lock = 0,
+                                              .values = minarch_max_ff_labels,
+                                              .labels = minarch_max_ff_labels,
+                                          },
+                                      [FE_OPT_COUNT] =
+                                          {
+                                              .key = NULL,
+                                              .name = NULL,
+                                              .desc = NULL,
+                                              .full = NULL,
+                                              .var = NULL,
+                                              .default_value = 0,
+                                              .value = 0,
+                                              .count = 0,
+                                              .lock = 0,
+                                              .values = NULL,
+                                              .labels = NULL}},
          .enabled_count = 0,
          .enabled_options = NULL},
     .core =
         {
-            // (OptionList)
+            // (MinArchOptionList)
             .count = 0,
             .changed = 0,
             .options =
-                (Option[]){
+                (MinArchOption[]){
                     {.key = NULL,
                      .name = NULL,
                      .desc = NULL,
@@ -1442,89 +775,65 @@ static struct Config {
             .enabled_count = 0,
             .enabled_options = NULL,
         },
-    .controls = default_button_mapping,
-    .shortcuts = (ButtonMapping[]){[SHORTCUT_SAVE_STATE] = {.name = "Save State",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
-                                                            .ignore = 0},
-                                   [SHORTCUT_LOAD_STATE] = {.name = "Load State",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
-                                                            .ignore = 0},
-                                   [SHORTCUT_RESET_GAME] = {.name = "Reset Game",
-                                                            .retro = -1,
-                                                            .local = BTN_ID_NONE,
-                                                            .mod = 0,
-                                                            .default_ = 0,
-                                                            .ignore = 0},
-                                   [SHORTCUT_SAVE_QUIT] = {.name = "Save & Quit",
-                                                           .retro = -1,
-                                                           .local = BTN_ID_NONE,
-                                                           .mod = 0,
-                                                           .default_ = 0,
-                                                           .ignore = 0},
-                                   [SHORTCUT_CYCLE_SCALE] = {.name = "Cycle Scaling",
-                                                             .retro = -1,
-                                                             .local = BTN_ID_NONE,
-                                                             .mod = 0,
-                                                             .default_ = 0,
-                                                             .ignore = 0},
-                                   [SHORTCUT_CYCLE_EFFECT] = {.name = "Cycle Effect",
-                                                              .retro = -1,
-                                                              .local = BTN_ID_NONE,
-                                                              .mod = 0,
-                                                              .default_ = 0,
-                                                              .ignore = 0},
-                                   [SHORTCUT_TOGGLE_FF] = {.name = "Toggle FF",
-                                                           .retro = -1,
-                                                           .local = BTN_ID_NONE,
-                                                           .mod = 0,
-                                                           .default_ = 0,
-                                                           .ignore = 0},
-                                   [SHORTCUT_HOLD_FF] = {.name = "Hold FF",
-                                                         .retro = -1,
-                                                         .local = BTN_ID_NONE,
-                                                         .mod = 0,
-                                                         .default_ = 0,
-                                                         .ignore = 0},
-                                   {.name = NULL,
-                                    .retro = 0,
-                                    .local = 0,
-                                    .mod = 0,
-                                    .default_ = 0,
-                                    .ignore = 0}},
+    .controls = minarch_default_button_mapping,
+    .shortcuts = (MinArchButtonMapping[]){[SHORTCUT_SAVE_STATE] = {.name = "Save State",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_LOAD_STATE] = {.name = "Load State",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_RESET_GAME] = {.name = "Reset Game",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_SAVE_QUIT] = {.name = "Save & Quit",
+                                                                  .retro_id = -1,
+                                                                  .local_id = BTN_ID_NONE,
+                                                                  .modifier = 0,
+                                                                  .default_id = 0,
+                                                                  .ignore = 0},
+                                          [SHORTCUT_CYCLE_SCALE] = {.name = "Cycle Scaling",
+                                                                    .retro_id = -1,
+                                                                    .local_id = BTN_ID_NONE,
+                                                                    .modifier = 0,
+                                                                    .default_id = 0,
+                                                                    .ignore = 0},
+                                          [SHORTCUT_CYCLE_EFFECT] = {.name = "Cycle Effect",
+                                                                     .retro_id = -1,
+                                                                     .local_id = BTN_ID_NONE,
+                                                                     .modifier = 0,
+                                                                     .default_id = 0,
+                                                                     .ignore = 0},
+                                          [SHORTCUT_TOGGLE_FF] = {.name = "Toggle FF",
+                                                                  .retro_id = -1,
+                                                                  .local_id = BTN_ID_NONE,
+                                                                  .modifier = 0,
+                                                                  .default_id = 0,
+                                                                  .ignore = 0},
+                                          [SHORTCUT_HOLD_FF] = {.name = "Hold FF",
+                                                                .retro_id = -1,
+                                                                .local_id = BTN_ID_NONE,
+                                                                .modifier = 0,
+                                                                .default_id = 0,
+                                                                .ignore = 0},
+                                          {.name = NULL,
+                                           .retro_id = 0,
+                                           .local_id = 0,
+                                           .modifier = 0,
+                                           .default_id = 0,
+                                           .ignore = 0}},
     .loaded = 0,
     .initialized = 0,
 };
-static int Config_getValue(char* cfg, const char* key, char* out_value,
-                           int* lock) { // gets value from string
-	char* tmp = cfg;
-	while ((tmp = strstr(tmp, key))) {
-		if (lock != NULL && tmp > cfg && *(tmp - 1) == '-')
-			*lock = 1; // prefixed with a `-` means lock
-		tmp += strlen(key);
-		if (!strncmp(tmp, " = ", 3))
-			break; // matched
-	};
-	if (!tmp)
-		return 0;
-	tmp += 3;
-
-	strncpy(out_value, tmp, 256);
-	out_value[256 - 1] = '\0';
-	tmp = strchr(out_value, '\n');
-	if (!tmp)
-		tmp = strchr(out_value, '\r');
-	if (tmp)
-		*tmp = '\0';
-
-	// LOG_info("\t%s = %s (%s)", key, out_value, (lock && *lock) ? "hidden":"shown");
-	return 1;
-}
+// Config_getValue moved to minarch_config.c as MinArchConfig_getValue
 
 ///////////////////////////////////////
 // Auto CPU Scaling
@@ -1549,25 +858,26 @@ static int Config_getValue(char* cfg, const char* key, char* out_value,
  * Thread safety: Uses auto_cpu_mutex to protect shared state.
  */
 static void* auto_cpu_scaling_thread(void* arg) {
-	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n", auto_cpu_use_granular,
-	          auto_cpu_freq_count);
+	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n",
+	          auto_cpu_state.use_granular, auto_cpu_state.freq_count);
 
 	while (auto_cpu_thread_running) {
-		if (auto_cpu_use_granular) {
+		if (auto_cpu_state.use_granular) {
 			// Granular frequency mode
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int target_idx = auto_cpu_target_index;
-			int current_idx = auto_cpu_current_index;
+			int target_idx = auto_cpu_state.target_index;
+			int current_idx = auto_cpu_state.current_index;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
-			if (target_idx != current_idx && target_idx >= 0 && target_idx < auto_cpu_freq_count) {
-				int freq_khz = auto_cpu_frequencies[target_idx];
+			if (target_idx != current_idx && target_idx >= 0 &&
+			    target_idx < auto_cpu_state.freq_count) {
+				int freq_khz = auto_cpu_state.frequencies[target_idx];
 				LOG_info("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
-				         auto_cpu_freq_count - 1);
+				         auto_cpu_state.freq_count - 1);
 
 				if (PLAT_setCPUFrequency(freq_khz) == 0) {
 					pthread_mutex_lock(&auto_cpu_mutex);
-					auto_cpu_current_index = target_idx;
+					auto_cpu_state.current_index = target_idx;
 					pthread_mutex_unlock(&auto_cpu_mutex);
 				} else {
 					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
@@ -1576,8 +886,8 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		} else {
 			// Fallback to 3-level mode
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int target = auto_cpu_target_level;
-			int current = auto_cpu_current_level;
+			int target = auto_cpu_state.target_level;
+			int current = auto_cpu_state.current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
 			if (target != current) {
@@ -1607,7 +917,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);
-				auto_cpu_current_level = target;
+				auto_cpu_state.current_level = target;
 				pthread_mutex_unlock(&auto_cpu_mutex);
 			}
 		}
@@ -1664,23 +974,23 @@ static void auto_cpu_stopThread(void) {
  */
 static void auto_cpu_setTargetLevel(int level) {
 	pthread_mutex_lock(&auto_cpu_mutex);
-	auto_cpu_target_level = level;
+	auto_cpu_state.target_level = level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
 
 /**
  * Requests a CPU frequency index change (non-blocking, granular mode).
  *
- * @param index Target index into auto_cpu_frequencies array
+ * @param index Target index into auto_cpu_state.frequencies array
  */
 static void auto_cpu_setTargetIndex(int index) {
 	if (index < 0)
 		index = 0;
-	if (index >= auto_cpu_freq_count)
-		index = auto_cpu_freq_count - 1;
+	if (index >= auto_cpu_state.freq_count)
+		index = auto_cpu_state.freq_count - 1;
 
 	pthread_mutex_lock(&auto_cpu_mutex);
-	auto_cpu_target_index = index;
+	auto_cpu_state.target_index = index;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 }
 
@@ -1689,7 +999,7 @@ static void auto_cpu_setTargetIndex(int index) {
  */
 static int auto_cpu_getCurrentIndex(void) {
 	pthread_mutex_lock(&auto_cpu_mutex);
-	int idx = auto_cpu_current_index;
+	int idx = auto_cpu_state.current_index;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 	return idx;
 }
@@ -1699,30 +1009,19 @@ static int auto_cpu_getCurrentIndex(void) {
  */
 static int auto_cpu_getCurrentFrequency(void) {
 	int idx = auto_cpu_getCurrentIndex();
-	if (idx >= 0 && idx < auto_cpu_freq_count) {
-		return auto_cpu_frequencies[idx];
+	if (idx >= 0 && idx < auto_cpu_state.freq_count) {
+		return auto_cpu_state.frequencies[idx];
 	}
 	return 0;
 }
 
 /**
  * Finds the index of the nearest frequency to the target.
+ * Wrapper around module function for convenience.
  */
 static int auto_cpu_findNearestIndex(int target_khz) {
-	if (auto_cpu_freq_count <= 0)
-		return 0;
-
-	int best_idx = 0;
-	int best_diff = abs(auto_cpu_frequencies[0] - target_khz);
-
-	for (int i = 1; i < auto_cpu_freq_count; i++) {
-		int diff = abs(auto_cpu_frequencies[i] - target_khz);
-		if (diff < best_diff) {
-			best_diff = diff;
-			best_idx = i;
-		}
-	}
-	return best_idx;
+	return MinArchCPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count,
+	                                   target_khz);
 }
 
 /**
@@ -1737,70 +1036,74 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
-	int raw_count = PLAT_getAvailableCPUFrequencies(auto_cpu_frequencies, CPU_MAX_FREQUENCIES);
+	int raw_count =
+	    PLAT_getAvailableCPUFrequencies(auto_cpu_state.frequencies, CPU_MAX_FREQUENCIES);
 
 	// Filter out frequencies below minimum threshold
-	auto_cpu_freq_count = 0;
+	auto_cpu_state.freq_count = 0;
 	for (int i = 0; i < raw_count; i++) {
-		if (auto_cpu_frequencies[i] >= AUTO_CPU_MIN_FREQ_KHZ) {
-			auto_cpu_frequencies[auto_cpu_freq_count++] = auto_cpu_frequencies[i];
+		if (auto_cpu_state.frequencies[i] >= auto_cpu_config.min_freq_khz) {
+			auto_cpu_state.frequencies[auto_cpu_state.freq_count++] = auto_cpu_state.frequencies[i];
 		}
 	}
 
-	if (auto_cpu_freq_count >= 2) {
-		auto_cpu_use_granular = 1;
+	if (auto_cpu_state.freq_count >= 2) {
+		auto_cpu_state.use_granular = 1;
 
 		// Calculate preset indices based on frequency percentages of max
-		int max_freq = auto_cpu_frequencies[auto_cpu_freq_count - 1];
+		int max_freq = auto_cpu_state.frequencies[auto_cpu_state.freq_count - 1];
 
 		// POWERSAVE: 55% of max
 		int ps_target = max_freq * 55 / 100;
-		auto_cpu_preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
+		auto_cpu_state.preset_indices[0] = auto_cpu_findNearestIndex(ps_target);
 
 		// NORMAL: 80% of max
 		int normal_target = max_freq * 80 / 100;
-		auto_cpu_preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
+		auto_cpu_state.preset_indices[1] = auto_cpu_findNearestIndex(normal_target);
 
 		// PERFORMANCE: max frequency
-		auto_cpu_preset_indices[2] = auto_cpu_freq_count - 1;
+		auto_cpu_state.preset_indices[2] = auto_cpu_state.freq_count - 1;
 
 		LOG_info("Auto CPU: %d frequencies available (%d - %d kHz), filtered from %d\n",
-		         auto_cpu_freq_count, auto_cpu_frequencies[0], max_freq, raw_count);
+		         auto_cpu_state.freq_count, auto_cpu_state.frequencies[0], max_freq, raw_count);
 		LOG_info("Auto CPU: preset indices PS=%d (%d kHz), N=%d (%d kHz), P=%d (%d kHz)\n",
-		         auto_cpu_preset_indices[0], auto_cpu_frequencies[auto_cpu_preset_indices[0]],
-		         auto_cpu_preset_indices[1], auto_cpu_frequencies[auto_cpu_preset_indices[1]],
-		         auto_cpu_preset_indices[2], auto_cpu_frequencies[auto_cpu_preset_indices[2]]);
+		         auto_cpu_state.preset_indices[0],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[0]],
+		         auto_cpu_state.preset_indices[1],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[1]],
+		         auto_cpu_state.preset_indices[2],
+		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[2]]);
 
 		// Log all frequencies for debugging
 		LOG_debug("Auto CPU: frequency table:\n");
-		for (int i = 0; i < auto_cpu_freq_count; i++) {
-			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_frequencies[i]);
+		for (int i = 0; i < auto_cpu_state.freq_count; i++) {
+			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_state.frequencies[i]);
 		}
 	} else {
-		auto_cpu_use_granular = 0;
+		auto_cpu_state.use_granular = 0;
 		LOG_info("Auto CPU: %d frequencies after filtering (raw: %d), using 3-level fallback\n",
-		         auto_cpu_freq_count, raw_count);
+		         auto_cpu_state.freq_count, raw_count);
 	}
 }
 
 static void resetAutoCPUState(void) {
-	auto_cpu_frame_count = 0;
-	auto_cpu_high_util_windows = 0;
-	auto_cpu_low_util_windows = 0;
-	auto_cpu_last_underrun = SND_getUnderrunCount();
-	auto_cpu_startup_frames = 0;
-	auto_cpu_frame_time_index = 0;
-	auto_cpu_panic_cooldown = 0;
+	auto_cpu_state.frame_count = 0;
+	auto_cpu_state.high_util_windows = 0;
+	auto_cpu_state.low_util_windows = 0;
+	auto_cpu_state.last_underrun = SND_getUnderrunCount();
+	auto_cpu_state.startup_frames = 0;
+	auto_cpu_state.frame_time_index = 0;
+	auto_cpu_state.panic_cooldown = 0;
 
 	// Calculate frame budget from core's declared FPS
 	if (core.fps > 0) {
-		auto_cpu_frame_budget_us = (uint64_t)(1000000.0 / core.fps);
+		auto_cpu_state.frame_budget_us = (uint64_t)(1000000.0 / core.fps);
 	} else {
-		auto_cpu_frame_budget_us = 16667; // Default to 60fps
+		auto_cpu_state.frame_budget_us = 16667; // Default to 60fps
 	}
 
 	// Clear frame time buffer
-	memset(auto_cpu_frame_times, 0, sizeof(auto_cpu_frame_times));
+	memset(auto_cpu_state.frame_times, 0, sizeof(auto_cpu_state.frame_times));
 
 	// Detect available frequencies (only once, on first auto mode entry)
 	static int frequencies_detected = 0;
@@ -1812,14 +1115,15 @@ static void resetAutoCPUState(void) {
 	// Note: target/current frequency set by setOverclock() after this call
 
 	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
-	         (unsigned long long)auto_cpu_frame_budget_us, core.fps, auto_cpu_use_granular);
+	         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+	         auto_cpu_state.use_granular);
 	LOG_debug(
 	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
-	    AUTO_CPU_UTIL_HIGH, AUTO_CPU_UTIL_LOW, AUTO_CPU_BOOST_WINDOWS, AUTO_CPU_REDUCE_WINDOWS,
-	    AUTO_CPU_STARTUP_GRACE);
+	    auto_cpu_config.util_high, auto_cpu_config.util_low, auto_cpu_config.boost_windows,
+	    auto_cpu_config.reduce_windows, auto_cpu_config.startup_grace);
 }
 
-static void setOverclock(int i) {
+void setOverclock(int i) {
 	// Stop auto thread if leaving auto mode
 	if (overclock == 3 && i != 3) {
 		auto_cpu_stopThread();
@@ -1840,19 +1144,20 @@ static void setOverclock(int i) {
 		resetAutoCPUState();
 		// Start at max frequency to avoid startup stutter during grace period
 		// Background thread will scale down as needed after grace period
-		if (auto_cpu_use_granular) {
-			int start_idx = auto_cpu_preset_indices[2]; // PERFORMANCE - start high
-			int start_freq = auto_cpu_frequencies[start_idx];
+		if (auto_cpu_state.use_granular) {
+			int start_idx = auto_cpu_state.preset_indices[2]; // PERFORMANCE - start high
+			int start_freq = auto_cpu_state.frequencies[start_idx];
 			PLAT_setCPUFrequency(start_freq);
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_target_index = start_idx; // Set target so thread doesn't immediately change
-			auto_cpu_current_index = start_idx; // Mark as applied
+			auto_cpu_state.target_index =
+			    start_idx; // Set target so thread doesn't immediately change
+			auto_cpu_state.current_index = start_idx; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		} else {
 			PWR_setCPUSpeed(CPU_SPEED_PERFORMANCE);
 			pthread_mutex_lock(&auto_cpu_mutex);
-			auto_cpu_target_level = 2; // Set target so thread doesn't immediately change
-			auto_cpu_current_level = 2; // Mark as applied
+			auto_cpu_state.target_level = 2; // Set target so thread doesn't immediately change
+			auto_cpu_state.current_level = 2; // Mark as applied
 			pthread_mutex_unlock(&auto_cpu_mutex);
 		}
 		auto_cpu_startThread();
@@ -1886,9 +1191,9 @@ static void updateAutoCPU(void) {
 		return;
 
 	// Startup grace period - don't scale during initial warmup
-	if (auto_cpu_startup_frames < AUTO_CPU_STARTUP_GRACE) {
-		auto_cpu_startup_frames++;
-		if (auto_cpu_startup_frames == AUTO_CPU_STARTUP_GRACE) {
+	if (auto_cpu_state.startup_frames < auto_cpu_config.startup_grace) {
+		auto_cpu_state.startup_frames++;
+		if (auto_cpu_state.startup_frames == auto_cpu_config.startup_grace) {
 			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
 		}
 		return;
@@ -1896,92 +1201,93 @@ static void updateAutoCPU(void) {
 
 	// Get current state (thread-safe read)
 	pthread_mutex_lock(&auto_cpu_mutex);
-	int current_idx = auto_cpu_target_index;
-	int current_level = auto_cpu_target_level;
+	int current_idx = auto_cpu_state.target_index;
+	int current_level = auto_cpu_state.target_level;
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
 	// Emergency: check for actual underruns (panic path)
 	unsigned underruns = SND_getUnderrunCount();
-	int max_idx = auto_cpu_freq_count - 1;
-	int at_max = auto_cpu_use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+	int max_idx = auto_cpu_state.freq_count - 1;
+	int at_max = auto_cpu_state.use_granular ? (current_idx >= max_idx) : (current_level >= 2);
 
-	if (underruns > auto_cpu_last_underrun && !at_max) {
+	if (underruns > auto_cpu_state.last_underrun && !at_max) {
 		// Underrun detected - boost by up to MAX_STEP (not straight to max)
-		if (auto_cpu_use_granular) {
-			int new_idx = current_idx + AUTO_CPU_MAX_STEP;
+		if (auto_cpu_state.use_granular) {
+			int new_idx = current_idx + auto_cpu_config.max_step;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
 			auto_cpu_setTargetIndex(new_idx);
 			LOG_warn("Auto CPU: PANIC - underrun, boosting %d→%d kHz\n",
-			         auto_cpu_frequencies[current_idx], auto_cpu_frequencies[new_idx]);
+			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx]);
 		} else {
-			int new_level = current_level + AUTO_CPU_MAX_STEP;
+			int new_level = current_level + auto_cpu_config.max_step;
 			if (new_level > 2)
 				new_level = 2;
 			auto_cpu_setTargetLevel(new_level);
 			LOG_warn("Auto CPU: PANIC - underrun, boosting to level %d\n", new_level);
 		}
-		auto_cpu_high_util_windows = 0;
-		auto_cpu_low_util_windows = 0;
+		auto_cpu_state.high_util_windows = 0;
+		auto_cpu_state.low_util_windows = 0;
 		// Cooldown: wait 8 windows (~4 seconds) before allowing reduction
-		auto_cpu_panic_cooldown = 8;
+		auto_cpu_state.panic_cooldown = 8;
 		SND_resetUnderrunCount();
-		auto_cpu_last_underrun = 0;
+		auto_cpu_state.last_underrun = 0;
 		return;
 	}
 	// Update underrun tracking (even if at max level)
-	if (underruns > auto_cpu_last_underrun) {
-		auto_cpu_last_underrun = underruns;
+	if (underruns > auto_cpu_state.last_underrun) {
+		auto_cpu_state.last_underrun = underruns;
 	}
 
 	// Count frames in current window
-	auto_cpu_frame_count++;
+	auto_cpu_state.frame_count++;
 
 	// Check if window is complete
-	if (auto_cpu_frame_count >= AUTO_CPU_WINDOW_FRAMES) {
+	if (auto_cpu_state.frame_count >= auto_cpu_config.window_frames) {
 		// Calculate 90th percentile frame time (ignores outliers like loading screens)
-		int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
-		                  ? auto_cpu_frame_time_index
-		                  : AUTO_CPU_WINDOW_FRAMES;
+		int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+		                  ? auto_cpu_state.frame_time_index
+		                  : auto_cpu_config.window_frames;
 		if (samples < 5) {
 			// Not enough samples yet - reset and wait
-			auto_cpu_frame_count = 0;
+			auto_cpu_state.frame_count = 0;
 			return;
 		}
 
-		uint64_t p90_time = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
+		uint64_t p90_time = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
 
 		// Calculate utilization as percentage of frame budget
 		unsigned util = 0;
-		if (auto_cpu_frame_budget_us > 0) {
-			util = (unsigned)((p90_time * 100) / auto_cpu_frame_budget_us);
+		if (auto_cpu_state.frame_budget_us > 0) {
+			util = (unsigned)((p90_time * 100) / auto_cpu_state.frame_budget_us);
 			if (util > 200)
 				util = 200; // Cap at 200% for sanity
 		}
 
-		if (auto_cpu_use_granular) {
+		if (auto_cpu_state.use_granular) {
 			// Granular mode: use linear performance scaling to find optimal frequency
 			// Performance scales linearly with frequency, so:
 			// new_util = current_util * (current_freq / new_freq)
 
-			int current_freq = auto_cpu_frequencies[current_idx];
+			int current_freq = auto_cpu_state.frequencies[current_idx];
 
 			// Decrement panic cooldown each window
-			if (auto_cpu_panic_cooldown > 0) {
-				auto_cpu_panic_cooldown--;
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > AUTO_CPU_UTIL_HIGH) {
+			if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
-				auto_cpu_high_util_windows++;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
 
-				if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_idx < max_idx) {
+				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+				    current_idx < max_idx) {
 					// Find next frequency that would bring util to target (sweet spot)
 					// Using: new_util = util * (current_freq / new_freq)
 					// So: new_freq = current_freq * util / target_util
 					// No step limit - linear scaling prediction is accurate, boost aggressively
-					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
+					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go higher
@@ -1991,24 +1297,26 @@ static void updateAutoCPU(void) {
 						new_idx = max_idx;
 
 					auto_cpu_setTargetIndex(new_idx);
-					auto_cpu_high_util_windows = 0;
+					auto_cpu_state.high_util_windows = 0;
 					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
-					         auto_cpu_frequencies[new_idx], util, AUTO_CPU_TARGET_UTIL);
+					         auto_cpu_state.frequencies[new_idx], util,
+					         auto_cpu_config.target_util);
 				}
-			} else if (util < AUTO_CPU_UTIL_LOW) {
+			} else if (util < auto_cpu_config.util_low) {
 				// Can reduce power - step down
-				auto_cpu_low_util_windows++;
-				auto_cpu_high_util_windows = 0;
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
 
 				// Only reduce if: enough consecutive low windows AND panic cooldown expired
-				int reduce_ok = (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS) &&
-				                (auto_cpu_panic_cooldown == 0) && (current_idx > 0);
+				int reduce_ok =
+				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
+				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0);
 
 				if (reduce_ok) {
 					// Find frequency that would bring util up to target (sweet spot)
 					// new_util = util * (current_freq / new_freq)
 					// new_freq = current_freq * util / target_util
-					int needed_freq = current_freq * (int)util / AUTO_CPU_TARGET_UTIL;
+					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
 					int new_idx = auto_cpu_findNearestIndex(needed_freq);
 
 					// Ensure we actually go lower
@@ -2018,23 +1326,23 @@ static void updateAutoCPU(void) {
 						new_idx = 0;
 
 					// Limit reduction to MAX_STEP indices at once
-					if (current_idx - new_idx > AUTO_CPU_MAX_STEP) {
-						new_idx = current_idx - AUTO_CPU_MAX_STEP;
+					if (current_idx - new_idx > auto_cpu_config.max_step) {
+						new_idx = current_idx - auto_cpu_config.max_step;
 					}
 
-					int new_freq = auto_cpu_frequencies[new_idx];
+					int new_freq = auto_cpu_state.frequencies[new_idx];
 					int predicted_util = util * current_freq / new_freq;
 
 					auto_cpu_setTargetIndex(new_idx);
-					auto_cpu_low_util_windows = 0;
+					auto_cpu_state.low_util_windows = 0;
 					LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
 					         current_freq, new_freq, util, predicted_util);
 					(void)predicted_util; // Used in LOG_info which may be compiled out
 				}
 			} else {
 				// In sweet spot - reset counters
-				auto_cpu_high_util_windows = 0;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 			}
 
 			// Sampled debug logging (every 4th window = ~2 seconds)
@@ -2049,15 +1357,15 @@ static void updateAutoCPU(void) {
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
-			if (util > AUTO_CPU_UTIL_HIGH) {
-				auto_cpu_high_util_windows++;
-				auto_cpu_low_util_windows = 0;
-			} else if (util < AUTO_CPU_UTIL_LOW) {
-				auto_cpu_low_util_windows++;
-				auto_cpu_high_util_windows = 0;
+			if (util > auto_cpu_config.util_high) {
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
+			} else if (util < auto_cpu_config.util_low) {
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
 			} else {
-				auto_cpu_high_util_windows = 0;
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 			}
 
 			// Sampled debug logging
@@ -2072,24 +1380,26 @@ static void updateAutoCPU(void) {
 			}
 
 			// Boost if sustained high utilization
-			if (auto_cpu_high_util_windows >= AUTO_CPU_BOOST_WINDOWS && current_level < 2) {
+			if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+			    current_level < 2) {
 				int new_level = current_level + 1;
 				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_high_util_windows = 0;
+				auto_cpu_state.high_util_windows = 0;
 				LOG_info("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
 			}
 
 			// Reduce if sustained low utilization
-			if (auto_cpu_low_util_windows >= AUTO_CPU_REDUCE_WINDOWS && current_level > 0) {
+			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
+			    current_level > 0) {
 				int new_level = current_level - 1;
 				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_low_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
 				LOG_info("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
 			}
 		}
 
 		// Reset window counter (frame times stay in ring buffer)
-		auto_cpu_frame_count = 0;
+		auto_cpu_state.frame_count = 0;
 	}
 }
 
@@ -2098,7 +1408,7 @@ static void Config_syncFrontend(char* key, int value) {
 	if (exactMatch(key, config.frontend.options[FE_OPT_SCALING].key)) {
 		screen_scaling = value;
 
-		if (screen_scaling == SCALE_NATIVE)
+		if (screen_scaling == MINARCH_SCALE_NATIVE)
 			GFX_setSharpness(SHARPNESS_SHARP);
 		else
 			GFX_setSharpness(screen_sharpness);
@@ -2113,7 +1423,7 @@ static void Config_syncFrontend(char* key, int value) {
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_SHARPNESS].key)) {
 		screen_sharpness = value;
 
-		if (screen_scaling == SCALE_NATIVE)
+		if (screen_scaling == MINARCH_SCALE_NATIVE)
 			GFX_setSharpness(SHARPNESS_SHARP);
 		else
 			GFX_setSharpness(screen_sharpness);
@@ -2132,10 +1442,11 @@ static void Config_syncFrontend(char* key, int value) {
 	}
 	if (i == -1)
 		return;
-	Option* option = &config.frontend.options[i];
+	MinArchOption* option = &config.frontend.options[i];
 	option->value = value;
 }
-static void OptionList_setOptionValue(OptionList* list, const char* key, const char* value);
+static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key,
+                                             const char* value);
 enum {
 	CONFIG_WRITE_ALL,
 	CONFIG_WRITE_GAME,
@@ -2204,23 +1515,18 @@ static void Config_init(void) {
 		tmp2 = strrchr(button_id, ':');
 		int remap = 0;
 		if (tmp2) {
-			for (int j = 0; button_label_mapping[j].name; j++) {
-				ButtonMapping* button = &button_label_mapping[j];
-				if (!strcmp(tmp2 + 1, button->name)) {
-					retro_id = button->retro;
-					break;
-				}
-			}
+			const MinArchButtonMapping* found =
+			    MinArchInput_findMappingByName(minarch_button_label_mapping, tmp2 + 1);
+			if (found)
+				retro_id = found->retro_id;
 			*tmp2 = '\0';
 		}
-		for (int j = 0; button_label_mapping[j].name; j++) {
-			ButtonMapping* button = &button_label_mapping[j];
-			if (!strcmp(button_id, button->name)) {
-				local_id = button->local;
-				if (retro_id == -1)
-					retro_id = button->retro;
-				break;
-			}
+		const MinArchButtonMapping* found =
+		    MinArchInput_findMappingByName(minarch_button_label_mapping, button_id);
+		if (found) {
+			local_id = found->local_id;
+			if (retro_id == -1)
+				retro_id = found->retro_id;
 		}
 
 		tmp += strlen(button_id); // prepare to continue search
@@ -2237,10 +1543,10 @@ static void Config_init(void) {
 			return;
 		}
 		strcpy(tmp2, button_name);
-		ButtonMapping* button = &core_button_mapping[i++];
+		MinArchButtonMapping* button = &core_button_mapping[i++];
 		button->name = tmp2;
-		button->retro = retro_id;
-		button->local = local_id;
+		button->retro_id = retro_id;
+		button->local_id = local_id;
 	};
 
 	config.initialized = 1;
@@ -2260,24 +1566,25 @@ static void Config_readOptionsString(char* cfg) {
 	char key[256];
 	char value[256];
 	for (int i = 0; config.frontend.options[i].key; i++) {
-		Option* option = &config.frontend.options[i];
-		if (!Config_getValue(cfg, option->key, value, &option->lock))
+		MinArchOption* option = &config.frontend.options[i];
+		if (!MinArchConfig_getValue(cfg, option->key, value, &option->lock))
 			continue;
-		OptionList_setOptionValue(&config.frontend, option->key, value);
+		MinArchOptionList_setOptionValue(&config.frontend, option->key, value);
 		Config_syncFrontend(option->key, option->value);
 	}
 
-	if (has_custom_controllers && Config_getValue(cfg, "minarch_gamepad_type", value, NULL)) {
+	if (has_custom_controllers &&
+	    MinArchConfig_getValue(cfg, "minarch_gamepad_type", value, NULL)) {
 		gamepad_type = strtol(value, NULL, 0);
-		int device = strtol(gamepad_values[gamepad_type], NULL, 0);
+		int device = strtol(minarch_gamepad_values[gamepad_type], NULL, 0);
 		core.set_controller_port_device(0, device);
 	}
 
 	for (int i = 0; config.core.options[i].key; i++) {
-		Option* option = &config.core.options[i];
-		if (!Config_getValue(cfg, option->key, value, &option->lock))
+		MinArchOption* option = &config.core.options[i];
+		if (!MinArchConfig_getValue(cfg, option->key, value, &option->lock))
 			continue;
-		OptionList_setOptionValue(&config.core, option->key, value);
+		MinArchOptionList_setOptionValue(&config.core, option->key, value);
 	}
 }
 static void Config_readControlsString(char* cfg) {
@@ -2290,18 +1597,18 @@ static void Config_readControlsString(char* cfg) {
 	char value[256];
 	char* tmp;
 	for (int i = 0; config.controls[i].name; i++) {
-		ButtonMapping* mapping = &config.controls[i];
+		MinArchButtonMapping* mapping = &config.controls[i];
 		sprintf(key, "bind %s", mapping->name);
 		sprintf(value, "NONE");
 
-		if (!Config_getValue(cfg, key, value, NULL))
+		if (!MinArchConfig_getValue(cfg, key, value, NULL))
 			continue;
 		if ((tmp = strrchr(value, ':')))
 			*tmp = '\0'; // this is a binding artifact in default.cfg, ignore
 
 		int id = -1;
-		for (int j = 0; button_labels[j]; j++) {
-			if (!strcmp(button_labels[j], value)) {
+		for (int j = 0; minarch_button_labels[j]; j++) {
+			if (!strcmp(minarch_button_labels[j], value)) {
 				id = j - 1;
 				break;
 			}
@@ -2314,21 +1621,21 @@ static void Config_readControlsString(char* cfg) {
 			mod = 1;
 		}
 
-		mapping->local = id;
-		mapping->mod = mod;
+		mapping->local_id = id;
+		mapping->modifier = mod;
 	}
 
 	for (int i = 0; config.shortcuts[i].name; i++) {
-		ButtonMapping* mapping = &config.shortcuts[i];
+		MinArchButtonMapping* mapping = &config.shortcuts[i];
 		sprintf(key, "bind %s", mapping->name);
 		sprintf(value, "NONE");
 
-		if (!Config_getValue(cfg, key, value, NULL))
+		if (!MinArchConfig_getValue(cfg, key, value, NULL))
 			continue;
 
 		int id = -1;
-		for (int j = 0; button_labels[j]; j++) {
-			if (!strcmp(button_labels[j], value)) {
+		for (int j = 0; minarch_button_labels[j]; j++) {
+			if (!strcmp(minarch_button_labels[j], value)) {
 				id = j - 1;
 				break;
 			}
@@ -2341,8 +1648,8 @@ static void Config_readControlsString(char* cfg) {
 		}
 		// LOG_info("shortcut %s:%s (%i:%i)", key,value, id, mod);
 
-		mapping->local = id;
-		mapping->mod = mod;
+		mapping->local_id = id;
+		mapping->modifier = mod;
 	}
 }
 static void Config_load(void) {
@@ -2352,11 +1659,11 @@ static void Config_load(void) {
 	LOG_info("config.device_tag %s", config.device_tag);
 
 	// update for crop overscan support
-	Option* scaling_option = &config.frontend.options[FE_OPT_SCALING];
+	MinArchOption* scaling_option = &config.frontend.options[FE_OPT_SCALING];
 	scaling_option->desc = getScreenScalingDesc();
 	scaling_option->count = getScreenScalingCount();
 	if (!GFX_supportsOverscan()) {
-		scaling_labels[3] = NULL;
+		minarch_scaling_labels[3] = NULL;
 	}
 
 	char* system_path = SYSTEM_PATH "/system.cfg";
@@ -2431,7 +1738,7 @@ static void Config_readOptions(void) {
 	Config_readOptionsString(config.default_cfg);
 	Config_readOptionsString(config.user_cfg);
 
-	// screen_scaling = SCALE_NATIVE; // TODO: tmp
+	// screen_scaling = MINARCH_SCALE_NATIVE; // TODO: tmp
 }
 static void Config_readControls(void) {
 	Config_readControlsString(config.default_cfg);
@@ -2454,11 +1761,11 @@ static void Config_write(int override) {
 		return;
 
 	for (int i = 0; config.frontend.options[i].key; i++) {
-		Option* option = &config.frontend.options[i];
+		MinArchOption* option = &config.frontend.options[i];
 		fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
 	}
 	for (int i = 0; config.core.options[i].key; i++) {
-		Option* option = &config.core.options[i];
+		MinArchOption* option = &config.core.options[i];
 		fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
 	}
 
@@ -2466,18 +1773,18 @@ static void Config_write(int override) {
 		fprintf(file, "%s = %i\n", "minarch_gamepad_type", gamepad_type);
 
 	for (int i = 0; config.controls[i].name; i++) {
-		ButtonMapping* mapping = &config.controls[i];
-		int j = mapping->local + 1;
-		if (mapping->mod)
+		MinArchButtonMapping* mapping = &config.controls[i];
+		int j = mapping->local_id + 1;
+		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
-		fprintf(file, "bind %s = %s\n", mapping->name, button_labels[j]);
+		fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
 	}
 	for (int i = 0; config.shortcuts[i].name; i++) {
-		ButtonMapping* mapping = &config.shortcuts[i];
-		int j = mapping->local + 1;
-		if (mapping->mod)
+		MinArchButtonMapping* mapping = &config.shortcuts[i];
+		int j = mapping->local_id + 1;
+		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
-		fprintf(file, "bind %s = %s\n", mapping->name, button_labels[j]);
+		fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
 	}
 
 	fclose(file);
@@ -2503,12 +1810,12 @@ static void Config_restore(void) {
 	config.loaded = CONFIG_NONE;
 
 	for (int i = 0; config.frontend.options[i].key; i++) {
-		Option* option = &config.frontend.options[i];
+		MinArchOption* option = &config.frontend.options[i];
 		option->value = option->default_value;
 		Config_syncFrontend(option->key, option->value);
 	}
 	for (int i = 0; config.core.options[i].key; i++) {
-		Option* option = &config.core.options[i];
+		MinArchOption* option = &config.core.options[i];
 		option->value = option->default_value;
 	}
 	config.core.changed = 1; // let the core know
@@ -2519,14 +1826,14 @@ static void Config_restore(void) {
 	}
 
 	for (int i = 0; config.controls[i].name; i++) {
-		ButtonMapping* mapping = &config.controls[i];
-		mapping->local = mapping->default_;
-		mapping->mod = 0;
+		MinArchButtonMapping* mapping = &config.controls[i];
+		mapping->local_id = mapping->default_id;
+		mapping->modifier = 0;
 	}
 	for (int i = 0; config.shortcuts[i].name; i++) {
-		ButtonMapping* mapping = &config.shortcuts[i];
-		mapping->local = BTN_ID_NONE;
-		mapping->mod = 0;
+		MinArchButtonMapping* mapping = &config.shortcuts[i];
+		mapping->local_id = BTN_ID_NONE;
+		mapping->modifier = 0;
 	}
 
 	Config_load();
@@ -2570,7 +1877,7 @@ static void Special_quit(void) {
 }
 ///////////////////////////////
 
-static int Option_getValueIndex(Option* item, const char* value) {
+static int MinArchOption_getValueIndex(MinArchOption* item, const char* value) {
 	if (!value)
 		return 0;
 	for (int i = 0; i < item->count; i++) {
@@ -2579,12 +1886,12 @@ static int Option_getValueIndex(Option* item, const char* value) {
 	}
 	return 0;
 }
-static void Option_setValue(Option* item, const char* value) {
+static void MinArchOption_setValue(MinArchOption* item, const char* value) {
 	// TODO: store previous value?
-	item->value = Option_getValueIndex(item, value);
+	item->value = MinArchOption_getValueIndex(item, value);
 }
 
-// TODO: does this also need to be applied to OptionList_vars()?
+// TODO: does this also need to be applied to MinArchOptionList_vars()?
 static const char* option_key_name[] = {"pcsx_rearmed_analog_combo", "DualShock Toggle Combo",
                                         NULL};
 static const char* getOptionNameFromKey(const char* key, const char* name) {
@@ -2596,9 +1903,9 @@ static const char* getOptionNameFromKey(const char* key, const char* name) {
 	return name;
 }
 
-// the following 3 functions always touch config.core, the rest can operate on arbitrary OptionLists
-static void OptionList_init(const struct retro_core_option_definition* defs) {
-	LOG_debug("OptionList_init");
+// the following 3 functions always touch config.core, the rest can operate on arbitrary MinArchOptionLists
+static void MinArchOptionList_init(const struct retro_core_option_definition* defs) {
+	LOG_debug("MinArchOptionList_init");
 	int count;
 	for (count = 0; defs[count].key; count++)
 		;
@@ -2609,12 +1916,12 @@ static void OptionList_init(const struct retro_core_option_definition* defs) {
 
 	config.core.count = count;
 	if (count) {
-		config.core.options = calloc(count + 1, sizeof(Option));
+		config.core.options = calloc(count + 1, sizeof(MinArchOption));
 
 		for (int i = 0; i < config.core.count; i++) {
 			int len;
 			const struct retro_core_option_definition* def = &defs[i];
-			Option* item = &config.core.options[i];
+			MinArchOption* item = &config.core.options[i];
 
 			// Defensive check - should never happen if core reports options correctly
 			if (!def->key) {
@@ -2672,7 +1979,7 @@ static void OptionList_init(const struct retro_core_option_definition* defs) {
 				// printf("\t%s\n", item->labels[j]);
 			}
 
-			item->value = Option_getValueIndex(item, def->default_value);
+			item->value = MinArchOption_getValueIndex(item, def->default_value);
 			item->default_value = item->value;
 
 			// LOG_info("\tINIT %s (%s) TO %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
@@ -2680,20 +1987,20 @@ static void OptionList_init(const struct retro_core_option_definition* defs) {
 	}
 	// fflush(stdout);
 }
-static void OptionList_vars(const struct retro_variable* vars) {
-	LOG_debug("OptionList_vars");
+static void MinArchOptionList_vars(const struct retro_variable* vars) {
+	LOG_debug("MinArchOptionList_vars");
 	int count;
 	for (count = 0; vars[count].key; count++)
 		;
 
 	config.core.count = count;
 	if (count) {
-		config.core.options = calloc(count + 1, sizeof(Option));
+		config.core.options = calloc(count + 1, sizeof(MinArchOption));
 
 		for (int i = 0; i < config.core.count; i++) {
 			int len;
 			const struct retro_variable* var = &vars[i];
-			Option* item = &config.core.options[i];
+			MinArchOption* item = &config.core.options[i];
 
 			len = strlen(var->key) + 1;
 			item->key = calloc(len, sizeof(char));
@@ -2739,12 +2046,12 @@ static void OptionList_vars(const struct retro_variable* vars) {
 	}
 	// fflush(stdout);
 }
-static void OptionList_reset(void) {
+static void MinArchOptionList_reset(void) {
 	if (!config.core.count)
 		return;
 
 	for (int i = 0; i < config.core.count; i++) {
-		Option* item = &config.core.options[i];
+		MinArchOption* item = &config.core.options[i];
 		if (item->var) {
 			// values/labels are all points to var
 			// so no need to free individually
@@ -2773,16 +2080,16 @@ static void OptionList_reset(void) {
 	free(config.core.options);
 }
 
-static Option* OptionList_getOption(OptionList* list, const char* key) {
+static MinArchOption* MinArchOptionList_getOption(MinArchOptionList* list, const char* key) {
 	for (int i = 0; i < list->count; i++) {
-		Option* item = &list->options[i];
+		MinArchOption* item = &list->options[i];
 		if (!strcmp(item->key, key))
 			return item;
 	}
 	return NULL;
 }
-static char* OptionList_getOptionValue(OptionList* list, const char* key) {
-	Option* item = OptionList_getOption(list, key);
+static char* MinArchOptionList_getOptionValue(MinArchOptionList* list, const char* key) {
+	MinArchOption* item = MinArchOptionList_getOption(list, key);
 	// if (item) LOG_info("\tGET %s (%s) = %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
 
 	if (item)
@@ -2791,8 +2098,9 @@ static char* OptionList_getOptionValue(OptionList* list, const char* key) {
 		LOG_warn("unknown option %s ", key);
 	return NULL;
 }
-static void OptionList_setOptionRawValue(OptionList* list, const char* key, int value) {
-	Option* item = OptionList_getOption(list, key);
+static void MinArchOptionList_setOptionRawValue(MinArchOptionList* list, const char* key,
+                                                int value) {
+	MinArchOption* item = MinArchOptionList_getOption(list, key);
 	if (item) {
 		item->value = value;
 		list->changed = 1;
@@ -2804,10 +2112,11 @@ static void OptionList_setOptionRawValue(OptionList* list, const char* key, int 
 	} else
 		LOG_warn("unknown option %s", key);
 }
-static void OptionList_setOptionValue(OptionList* list, const char* key, const char* value) {
-	Option* item = OptionList_getOption(list, key);
+static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key,
+                                             const char* value) {
+	MinArchOption* item = MinArchOptionList_getOption(list, key);
 	if (item) {
-		Option_setValue(item, value);
+		MinArchOption_setValue(item, value);
 		list->changed = 1;
 		// LOG_info("\tSET %s (%s) TO %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
 		// if (list->on_set) list->on_set(list, key);
@@ -2817,8 +2126,8 @@ static void OptionList_setOptionValue(OptionList* list, const char* key, const c
 	} else
 		LOG_warn("unknown option %s", key);
 }
-// static void OptionList_setOptionVisibility(OptionList* list, const char* key, int visible) {
-// 	Option* item = OptionList_getOption(list, key);
+// static void MinArchOptionList_setOptionVisibility(MinArchOptionList* list, const char* key, int visible) {
+// 	MinArchOption* item = MinArchOptionList_getOption(list, key);
 // 	if (item) item->visible = visible;
 // 	else printf("unknown option %s \n", key); fflush(stdout);
 // }
@@ -2827,8 +2136,9 @@ static void OptionList_setOptionValue(OptionList* list, const char* key, const c
 // Input Handling
 ///////////////////////////////////////
 
-static void Menu_beforeSleep(void);
-static void Menu_afterSleep(void);
+// Forward declarations for sleep handlers (defined later, used by PWR_update)
+void Menu_beforeSleep(void);
+void Menu_afterSleep(void);
 
 static void Menu_saveState(void);
 static void Menu_loadState(void);
@@ -2885,19 +2195,19 @@ static void input_poll_callback(void) {
 	static int toggled_ff_on =
 	    0; // this logic only works because TOGGLE_FF is before HOLD_FF in the menu...
 	for (int i = 0; i < SHORTCUT_COUNT; i++) {
-		ButtonMapping* mapping = &config.shortcuts[i];
-		int btn = 1 << mapping->local;
+		MinArchButtonMapping* mapping = &config.shortcuts[i];
+		int btn = 1 << mapping->local_id;
 		if (btn == BTN_NONE)
 			continue; // not bound
-		if (!mapping->mod || PAD_isPressed(BTN_MENU)) {
+		if (!mapping->modifier || PAD_isPressed(BTN_MENU)) {
 			if (i == SHORTCUT_TOGGLE_FF) {
 				if (PAD_justPressed(btn)) {
 					toggled_ff_on = setFastForward(!fast_forward);
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1;
 					break;
 				} else if (PAD_justReleased(btn)) {
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1;
 					break;
 				}
@@ -2906,7 +2216,7 @@ static void input_poll_callback(void) {
 				// if it was initially turned on with the toggle button
 				if (PAD_justPressed(btn) || (!toggled_ff_on && PAD_justReleased(btn))) {
 					fast_forward = setFastForward(PAD_isPressed(btn));
-					if (mapping->mod)
+					if (mapping->modifier)
 						ignore_menu = 1; // very unlikely but just in case
 				}
 			} else if (PAD_justPressed(btn)) {
@@ -2942,7 +2252,7 @@ static void input_poll_callback(void) {
 					break;
 				}
 
-				if (mapping->mod)
+				if (mapping->modifier)
 					ignore_menu = 1;
 			}
 		}
@@ -2963,8 +2273,8 @@ static void input_poll_callback(void) {
 
 	buttons = 0;
 	for (int i = 0; config.controls[i].name; i++) {
-		ButtonMapping* mapping = &config.controls[i];
-		int btn = 1 << mapping->local;
+		MinArchButtonMapping* mapping = &config.controls[i];
+		int btn = 1 << mapping->local_id;
 		if (btn == BTN_NONE)
 			continue; // present buttons can still be unbound
 		if (gamepad_type == 0) {
@@ -2983,9 +2293,9 @@ static void input_poll_callback(void) {
 				break;
 			}
 		}
-		if (PAD_isPressed(btn) && (!mapping->mod || PAD_isPressed(BTN_MENU))) {
-			buttons |= 1 << mapping->retro;
-			if (mapping->mod)
+		if (PAD_isPressed(btn) && (!mapping->modifier || PAD_isPressed(BTN_MENU))) {
+			buttons |= 1 << mapping->retro_id;
+			if (mapping->modifier)
 				ignore_menu = 1;
 		}
 		//  && !PWR_ignoreSettingInput(btn, show_setting)
@@ -3022,7 +2332,8 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	LOG_info("Input_init");
 
-	config.controls = core_button_mapping[0].name ? core_button_mapping : default_button_mapping;
+	config.controls =
+	    core_button_mapping[0].name ? core_button_mapping : minarch_default_button_mapping;
 
 	LOG_debug("---------------------------------");
 
@@ -3051,28 +2362,32 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	LOG_debug("---------------------------------");
 
-	for (int i = 0; default_button_mapping[i].name; i++) {
-		ButtonMapping* mapping = &default_button_mapping[i];
-		LOG_debug("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro], mapping->name,
-		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]));
-		if (core_button_names[mapping->retro])
-			mapping->name = (char*)core_button_names[mapping->retro];
+	for (int i = 0; minarch_default_button_mapping[i].name; i++) {
+		MinArchButtonMapping* mapping = &minarch_default_button_mapping[i];
+		LOG_debug("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro_id], mapping->name,
+		          (mapping->local_id == BTN_ID_NONE
+		               ? "NONE"
+		               : minarch_device_button_names[mapping->local_id]));
+		if (core_button_names[mapping->retro_id])
+			mapping->name = (char*)core_button_names[mapping->retro_id];
 	}
 
 	LOG_debug("---------------------------------");
 
 	for (int i = 0; config.controls[i].name; i++) {
-		ButtonMapping* mapping = &config.controls[i];
-		mapping->default_ = mapping->local;
+		MinArchButtonMapping* mapping = &config.controls[i];
+		mapping->default_id = mapping->local_id;
 
 		// ignore mappings that aren't available in this core
-		if (core_mapped && !present[mapping->retro]) {
+		if (core_mapped && !present[mapping->retro_id]) {
 			mapping->ignore = 1;
 			continue;
 		}
 		LOG_debug("%s: <%s> (%i:%i)", mapping->name,
-		          (mapping->local == BTN_ID_NONE ? "NONE" : device_button_names[mapping->local]),
-		          mapping->local, mapping->retro);
+		          (mapping->local_id == BTN_ID_NONE
+		               ? "NONE"
+		               : minarch_device_button_names[mapping->local_id]),
+		          mapping->local_id, mapping->retro_id);
 	}
 
 	LOG_debug("---------------------------------");
@@ -3116,30 +2431,21 @@ static void retro_log_callback(enum retro_log_level level, const char* fmt, ...)
 	}
 }
 
+// Helper for audio reinitialization used by SET_SYSTEM_AV_INFO handler
+static void env_reinit_audio(double old_rate, double new_rate, double fps) {
+	(void)old_rate; // unused, we just need to know it changed
+	SND_quit();
+	SND_init(new_rate, fps);
+}
+
 static bool environment_callback(unsigned cmd, void* data) { // copied from picoarch initially
 	// LOG_info("environment_callback: %i", cmd);
+	EnvResult result;
 
 	switch (cmd) {
 	case RETRO_ENVIRONMENT_SET_ROTATION: { /* 1 */
-		const unsigned* rotation = (const unsigned*)data;
-		if (!rotation) {
-			LOG_error("SET_ROTATION called with NULL data");
-			return false;
-		}
-
-		if (*rotation > 3) {
-			LOG_error("SET_ROTATION invalid value: %u (must be 0-3)", *rotation);
-			return false;
-		}
-
-		// Store rotation state and log it
-		video_state.rotation = *rotation;
-		LOG_info("SET_ROTATION: %u (%s)", *rotation,
-		         *rotation == 0   ? "0° (normal)"
-		         : *rotation == 1 ? "90° CCW"
-		         : *rotation == 2 ? "180°"
-		                          : "270° CCW");
-		break;
+		result = MinArchEnv_setRotation(&video_state, data);
+		return result.success;
 	}
 	case RETRO_ENVIRONMENT_GET_OVERSCAN: { /* 2 */
 		bool* out = (bool*)data;
@@ -3171,26 +2477,8 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: { /* 10 */
-		const enum retro_pixel_format* format = (enum retro_pixel_format*)data;
-
-		switch (*format) {
-		case RETRO_PIXEL_FORMAT_0RGB1555:
-			LOG_info("Core requested 0RGB1555 format (15-bit, conversion to RGB565)");
-			pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
-			break;
-		case RETRO_PIXEL_FORMAT_XRGB8888:
-			LOG_info("Core requested XRGB8888 format (32-bit, conversion to RGB565)");
-			pixel_format = RETRO_PIXEL_FORMAT_XRGB8888;
-			break;
-		case RETRO_PIXEL_FORMAT_RGB565:
-			LOG_info("Core requested RGB565 format (native, no conversion needed)");
-			pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-			break;
-		default:
-			LOG_error("Core requested unknown pixel format %d", *format);
-			return false;
-		}
-		break;
+		result = MinArchEnv_setPixelFormat(&pixel_format, data);
+		return result.success;
 	}
 	case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: { /* 11 */
 		// puts("RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS\n");
@@ -3198,13 +2486,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		return false;
 	} break;
 	case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: { /* 13 */
-		const struct retro_disk_control_callback* var =
-		    (const struct retro_disk_control_callback*)data;
-
-		if (var) {
-			memset(&disk_control_ext, 0, sizeof(struct retro_disk_control_ext_callback));
-			memcpy(&disk_control_ext, var, sizeof(struct retro_disk_control_callback));
-		}
+		MinArchEnv_setDiskControlInterface(&disk_control_ext, data);
 		break;
 	}
 
@@ -3213,7 +2495,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		// puts("RETRO_ENVIRONMENT_GET_VARIABLE ");
 		struct retro_variable* var = (struct retro_variable*)data;
 		if (var && var->key) {
-			var->value = OptionList_getOptionValue(&config.core, var->key);
+			var->value = MinArchOptionList_getOptionValue(&config.core, var->key);
 			// printf("\t%s = %s\n", var->key, var->value);
 		}
 		// fflush(stdout);
@@ -3226,8 +2508,8 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		// puts("RETRO_ENVIRONMENT_SET_VARIABLES");
 		const struct retro_variable* vars = (const struct retro_variable*)data;
 		if (vars) {
-			OptionList_reset();
-			OptionList_vars(vars);
+			MinArchOptionList_reset();
+			MinArchOptionList_vars(vars);
 		}
 		break;
 	}
@@ -3245,23 +2527,8 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK: { /* 21 */
-		const struct retro_frame_time_callback* cb = (const struct retro_frame_time_callback*)data;
-		if (!cb) {
-			LOG_error("SET_FRAME_TIME_CALLBACK called with NULL data");
-			return false;
-		}
-
-		if (!cb->callback) {
-			// NULL callback = unregister
-			video_state.frame_time_cb = NULL;
-			video_state.frame_time_ref = 0;
-			video_state.frame_time_last = 0;
-			break;
-		}
-
-		video_state.frame_time_cb = cb->callback;
-		video_state.frame_time_ref = cb->reference;
-		break;
+		result = MinArchEnv_setFrameTimeCallback(&video_state, data);
+		return result.success;
 	}
 	case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: { /* 22 */
 		// LOG_info("%i: RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK", cmd);
@@ -3293,77 +2560,18 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: { /* 32 */
-		const struct retro_system_av_info* av_info = (const struct retro_system_av_info*)data;
-		if (!av_info) {
-			LOG_error("SET_SYSTEM_AV_INFO called with NULL data");
-			return false;
-		}
-
-		LOG_debug("SET_SYSTEM_AV_INFO: %ux%u @ %.2f fps, %.0f Hz", av_info->geometry.base_width,
-		          av_info->geometry.base_height, av_info->timing.fps, av_info->timing.sample_rate);
-
-		// Update geometry
-		if (av_info->geometry.aspect_ratio > 0.0) {
-			core.aspect_ratio = av_info->geometry.aspect_ratio;
-		} else {
-			core.aspect_ratio =
-			    (double)av_info->geometry.base_width / av_info->geometry.base_height;
-		}
-
-		// Update timing
-		double old_sample_rate = core.sample_rate;
-		core.fps = av_info->timing.fps;
-		core.sample_rate = av_info->timing.sample_rate;
-
-		// Reinitialize audio if sample rate changed
-		if (old_sample_rate != core.sample_rate) {
-			SND_quit();
-			SND_init(core.sample_rate, core.fps);
-		}
-
-		// Force scaler recalculation
-		renderer.dst_p = 0;
-		video_state.av_info_changed = 1;
-		return true;
+		result =
+		    MinArchEnv_setSystemAVInfo(&video_state, &core.fps, &core.sample_rate,
+		                               &core.aspect_ratio, &renderer.dst_p, env_reinit_audio, data);
+		return result.success;
 	}
 	case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: { /* 35 */
-		// LOG_info("RETRO_ENVIRONMENT_SET_CONTROLLER_INFO");
-		const struct retro_controller_info* infos = (const struct retro_controller_info*)data;
-		if (infos) {
-			// TODO: store to gamepad_values/gamepad_labels for gamepad_device
-			const struct retro_controller_info* info = &infos[0];
-			for (unsigned int i = 0; i < info->num_types; i++) {
-				const struct retro_controller_description* type = &info->types[i];
-				if (exactMatch((char*)type->desc,
-				               "dualshock")) { // currently only enabled for PlayStation
-					has_custom_controllers = 1;
-					break;
-				}
-				// printf("\t%i: %s\n", type->id, type->desc);
-			}
-		}
-		return false; // TODO: tmp
-		break;
+		result = MinArchEnv_setControllerInfo(&has_custom_controllers, data);
+		return result.success; // Per libretro convention, returns false
 	}
 	case RETRO_ENVIRONMENT_SET_GEOMETRY: { /* 37 */
-		const struct retro_game_geometry* geometry = (const struct retro_game_geometry*)data;
-		if (!geometry) {
-			LOG_error("SET_GEOMETRY called with NULL data");
-			return false;
-		}
-
-		LOG_debug("SET_GEOMETRY: %ux%u aspect: %.3f", geometry->base_width, geometry->base_height,
-		          geometry->aspect_ratio);
-
-		// NOTE: Do NOT update core.aspect_ratio here!
-		// SET_GEOMETRY reports "display" dimensions which may differ from actual
-		// video_refresh frame dimensions (e.g. Stella reports 320 but sends 160).
-		// Aspect ratio should only be updated via SET_SYSTEM_AV_INFO.
-
-		// Force scaler recalculation on next video_refresh
-		renderer.dst_p = 0;
-		video_state.geometry_changed = 1;
-		return true;
+		result = MinArchEnv_setGeometry(&video_state, &renderer.dst_p, data);
+		return result.success;
 	}
 	// RETRO_ENVIRONMENT_SET_MEMORY_MAPS (36 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 	// RETRO_ENVIRONMENT_GET_LANGUAGE 39
@@ -3374,14 +2582,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 
 	case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
 		// fixes fbneo save state graphics corruption
-		// puts("RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE");
-		int* out_p = (int*)data;
-		if (out_p) {
-			int out = 0;
-			out |= RETRO_AV_ENABLE_VIDEO;
-			out |= RETRO_AV_ENABLE_AUDIO;
-			*out_p = out;
-		}
+		MinArchEnv_getAudioVideoEnable(data);
 		break;
 	}
 
@@ -3389,20 +2590,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	// RETRO_ENVIRONMENT_GET_VFS_INTERFACE (45 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 	// RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE (47 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 	case RETRO_ENVIRONMENT_GET_FASTFORWARDING: { /* 49 */
-		bool* out = (bool*)data;
-		if (out) {
-			*out = fast_forward;
-			return true;
-		}
-		return false;
+		result = MinArchEnv_getFastforwarding(fast_forward, data);
+		return result.success;
 	}
 	case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: { /* 50 | RETRO_ENVIRONMENT_EXPERIMENTAL */
-		float* out = (float*)data;
-		if (out) {
-			*out = (float)core.fps;
-			return true;
-		}
-		return false;
+		result = MinArchEnv_getTargetRefreshRate(core.fps, data);
+		return result.success;
 	}
 	// RETRO_ENVIRONMENT_GET_INPUT_BITMASKS (51 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 	case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: { /* 51 | RETRO_ENVIRONMENT_EXPERIMENTAL */
@@ -3421,8 +2614,8 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: { /* 53 */
 		// puts("RETRO_ENVIRONMENT_SET_CORE_OPTIONS");
 		if (data) {
-			OptionList_reset();
-			OptionList_init((const struct retro_core_option_definition*)data);
+			MinArchOptionList_reset();
+			MinArchOptionList_init((const struct retro_core_option_definition*)data);
 		}
 		break;
 	}
@@ -3430,15 +2623,15 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		// puts("RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL");
 		const struct retro_core_options_intl* options = (const struct retro_core_options_intl*)data;
 		if (options && options->us) {
-			OptionList_reset();
-			OptionList_init(options->us);
+			MinArchOptionList_reset();
+			MinArchOptionList_init(options->us);
 		}
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: { /* 55 */
 		// puts("RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY");
 		// const struct retro_core_option_display *display = (const struct retro_core_option_display *)data;
-		// 	if (display) OptionList_setOptionVisibility(&config.core, display->key, display->visible);
+		// 	if (display) MinArchOptionList_setOptionVisibility(&config.core, display->key, display->visible);
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: { /* 57 */
@@ -3448,20 +2641,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: { /* 58 */
-		const struct retro_disk_control_ext_callback* var =
-		    (const struct retro_disk_control_ext_callback*)data;
-
-		if (var) {
-			memcpy(&disk_control_ext, var, sizeof(struct retro_disk_control_ext_callback));
-		}
+		MinArchEnv_setDiskControlExtInterface(&disk_control_ext, data);
 		break;
 	}
 	// TODO: RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION 59
 	case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: { /* 62 */
-		const struct retro_audio_buffer_status_callback* cb =
-		    (const struct retro_audio_buffer_status_callback*)data;
-		core.audio_buffer_status = cb ? cb->callback : NULL;
-		LOG_info("SET_AUDIO_BUFFER_STATUS_CALLBACK: %s\n", cb ? "enabled" : "disabled");
+		MinArchEnv_setAudioBufferStatusCallback(&core.audio_buffer_status, data);
 		return true;
 	}
 	// TODO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY 63 (buffer size adjustment)
@@ -3481,7 +2666,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		const struct retro_variable* var = (const struct retro_variable*)data;
 		if (var && var->key) {
 			// printf("\t%s = %s\n", var->key, var->value);
-			OptionList_setOptionValue(&config.core, var->key, var->value);
+			MinArchOptionList_setOptionValue(&config.core, var->key, var->value);
 			break;
 		}
 
@@ -3492,21 +2677,9 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: { /* 71 | RETRO_ENVIRONMENT_EXPERIMENTAL */
-		struct retro_throttle_state* state = (struct retro_throttle_state*)data;
-		if (!state) {
-			return false;
-		}
-
-		// Determine current throttle mode (vsync always on, rate control handles sync)
-		if (fast_forward) {
-			state->mode = RETRO_THROTTLE_FAST_FORWARD;
-			state->rate = (float)(max_ff_speed + 1); // max_ff_speed+1: 0→1x, 1→2x, 2→3x, 3→4x
-		} else {
-			state->mode = RETRO_THROTTLE_VSYNC;
-			state->rate = 1.0f;
-		}
-
-		return true;
+		MinArchThrottleInfo throttle = {.fast_forward = fast_forward, .max_ff_speed = max_ff_speed};
+		result = MinArchEnv_getThrottleState(&throttle, data);
+		return result.success;
 	}
 
 		// unused
@@ -3532,7 +2705,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 
 ///////////////////////////////
 
-static void hdmimon(void) {
+void hdmimon(void) {
 	// handle HDMI change
 	static int had_hdmi = -1;
 	int has_hdmi = GetHDMI();
@@ -3956,375 +3129,14 @@ static int fit = 0; // Use hardware scaler
 // Helper macro: true if pixel format requires conversion to RGB565
 #define NEEDS_CONVERSION ((pixel_format) != RETRO_PIXEL_FORMAT_RGB565)
 
-// Buffer for pixel format conversion (0RGB1555/XRGB8888 -> RGB565)
-static void* convert_buffer = NULL;
-
-/**
- * Frees pixel format conversion buffer.
- */
-static void convert_buffer_free(void) {
-	if (!convert_buffer)
-		return;
-	free(convert_buffer);
-	convert_buffer = NULL;
-}
-
-/**
- * Allocates pixel format conversion buffer for RGB565 output.
- *
- * @param w Width in pixels
- * @param h Height in pixels
- */
-static void convert_buffer_alloc(int w, int h) {
-	convert_buffer_free();
-	size_t buffer_size = (w * FIXED_BPP) * h;
-	convert_buffer = malloc(buffer_size);
-	if (!convert_buffer) {
-		LOG_error("Failed to allocate conversion buffer: %dx%d (%zu bytes)", w, h, buffer_size);
-		LOG_error("Conversion disabled due to allocation failure");
-		// NOTE: Do not change pixel_format here - core will continue outputting
-		// in the original format, so changing it would cause color corruption
-		return;
-	}
-	LOG_debug("Allocated conversion buffer: %dx%d (%zu bytes)", w, h, buffer_size);
-}
-
-// ============================================================================
-// Pixel Format Conversion Functions
-//
-// Convert non-native formats to RGB565 for display. NEON-optimized versions
-// process multiple pixels at once (8 for 0RGB1555, 4 for XRGB8888) for ~3-4x
-// speedup on ARM devices.
-// ============================================================================
-
-#ifdef HAS_NEON
-#include <arm_neon.h>
-
-/**
- * Converts XRGB8888 to RGB565 using ARM NEON SIMD.
- *
- * Processes 4 pixels per iteration using 128-bit vector operations.
- * Input:  XXRRGGBB XXRRGGBB XXRRGGBB XXRRGGBB (4x32-bit)
- * Output: RRRRRGGGGGGBBBBB RRRRRGGGGGGBBBBB (4x16-bit packed)
- *
- * @param data Source XRGB8888 data
- * @param width Frame width
- * @param height Frame height
- * @param pitch Source pitch in bytes
- */
-static void convert_xrgb8888_neon(const void* data, unsigned width, unsigned height, size_t pitch) {
-	const uint32_t* input = data;
-	uint16_t* output = convert_buffer;
-	size_t extra = pitch / sizeof(uint32_t) - width;
-
-	// NEON mask constants for extracting RGB565 components from XRGB8888
-	const uint32x4_t mask_blue = vdupq_n_u32(0x000000F8); // Blue: bits 7-3
-	const uint32x4_t mask_green = vdupq_n_u32(0x0000FC00); // Green: bits 15-10
-	const uint32x4_t mask_red = vdupq_n_u32(0x00F80000); // Red: bits 23-19
-
-	for (unsigned y = 0; y < height; y++) {
-		unsigned x = 0;
-		const uint32_t* line_input = input;
-		uint16_t* line_output = output;
-
-		// NEON: process 4 pixels at a time
-		unsigned width_vec = width & ~3u;
-		for (; x < width_vec; x += 4) {
-			uint32x4_t pixels = vld1q_u32(line_input);
-			line_input += 4;
-
-			uint32x4_t blue = vshrq_n_u32(vandq_u32(pixels, mask_blue), 3);
-			uint32x4_t green = vshrq_n_u32(vandq_u32(pixels, mask_green), 5);
-			uint32x4_t red = vshrq_n_u32(vandq_u32(pixels, mask_red), 8);
-
-			uint32x4_t rgb565_32 = vorrq_u32(vorrq_u32(red, green), blue);
-			uint16x4_t rgb565 = vmovn_u32(rgb565_32);
-
-			vst1_u16(line_output, rgb565);
-			line_output += 4;
-		}
-
-		// Scalar tail
-		for (; x < width; x++) {
-			uint32_t pixel = *line_input++;
-			*line_output++ =
-			    ((pixel & 0xF80000) >> 8) | ((pixel & 0x00FC00) >> 5) | ((pixel & 0x0000F8) >> 3);
-		}
-
-		input += width + extra;
-		output += width;
-	}
-}
-
-/**
- * Converts 0RGB1555 to RGB565 using ARM NEON SIMD.
- *
- * Processes 8 pixels per iteration using 128-bit vector operations.
- * Input:  0RRRRRGGGGGBBBBB (5-5-5 with unused MSB)
- * Output: RRRRRGGGGGGBBBBB (5-6-5)
- *
- * The key difference from RGB565 is that green is only 5 bits in 1555,
- * so we need to expand it to 6 bits. We duplicate the MSB of green
- * into the LSB position: g6 = (g << 1) | (g >> 4)
- *
- * @param data Source 0RGB1555 data
- * @param width Frame width
- * @param height Frame height
- * @param pitch Source pitch in bytes
- */
-static void convert_0rgb1555_neon(const void* data, unsigned width, unsigned height, size_t pitch) {
-	const uint16_t* input = data;
-	uint16_t* output = convert_buffer;
-	size_t extra = pitch / sizeof(uint16_t) - width;
-
-	for (unsigned y = 0; y < height; y++) {
-		unsigned x = 0;
-		const uint16_t* line_input = input;
-		uint16_t* line_output = output;
-
-		// NEON: process 8 pixels at a time
-		unsigned width_vec = width & ~7u;
-		for (; x < width_vec; x += 8) {
-			uint16x8_t src = vld1q_u16(line_input);
-			line_input += 8;
-
-			// Extract 5-bit components from 0RRRRRGGGGGBBBBB
-			// R: bits 14-10, G: bits 9-5, B: bits 4-0
-			uint16x8_t r = vandq_u16(vshrq_n_u16(src, 10), vdupq_n_u16(0x1F));
-			uint16x8_t g = vandq_u16(vshrq_n_u16(src, 5), vdupq_n_u16(0x1F));
-			uint16x8_t b = vandq_u16(src, vdupq_n_u16(0x1F));
-
-			// Expand green from 5 to 6 bits: g6 = (g << 1) | (g >> 4)
-			// This duplicates the MSB into the new LSB for better color accuracy
-			uint16x8_t g6 = vorrq_u16(vshlq_n_u16(g, 1), vshrq_n_u16(g, 4));
-
-			// Pack to RGB565: RRRRRGGGGGGBBBBB
-			uint16x8_t rgb565 = vorrq_u16(vorrq_u16(vshlq_n_u16(r, 11), vshlq_n_u16(g6, 5)), b);
-
-			vst1q_u16(line_output, rgb565);
-			line_output += 8;
-		}
-
-		// Scalar tail
-		for (; x < width; x++) {
-			uint16_t px = *line_input++;
-			uint16_t r = (px >> 10) & 0x1F;
-			uint16_t g = (px >> 5) & 0x1F;
-			uint16_t b = px & 0x1F;
-			uint16_t g6 = (g << 1) | (g >> 4);
-			*line_output++ = (r << 11) | (g6 << 5) | b;
-		}
-
-		input += width + extra;
-		output += width;
-	}
-}
-#endif // HAS_NEON
-
-/**
- * Converts XRGB8888 to RGB565 (scalar fallback).
- *
- * @param data Source XRGB8888 data
- * @param width Frame width
- * @param height Frame height
- * @param pitch Source pitch in bytes
- */
-static void convert_xrgb8888_scalar(const void* data, unsigned width, unsigned height,
-                                    size_t pitch) {
-	const uint32_t* input = data;
-	uint16_t* output = convert_buffer;
-	size_t extra = pitch / sizeof(uint32_t) - width;
-
-	for (unsigned y = 0; y < height; y++) {
-		for (unsigned x = 0; x < width; x++) {
-			uint32_t pixel = *input++;
-			*output++ = ((pixel & 0xF80000) >> 8) | // Red: bits 23-19 -> 15-11
-			            ((pixel & 0x00FC00) >> 5) | // Green: bits 15-10 -> 10-5
-			            ((pixel & 0x0000F8) >> 3); // Blue: bits 7-3 -> 4-0
-		}
-		input += extra;
-	}
-}
-
-/**
- * Converts 0RGB1555 to RGB565 (scalar fallback).
- *
- * @param data Source 0RGB1555 data
- * @param width Frame width
- * @param height Frame height
- * @param pitch Source pitch in bytes
- */
-static void convert_0rgb1555_scalar(const void* data, unsigned width, unsigned height,
-                                    size_t pitch) {
-	const uint16_t* input = data;
-	uint16_t* output = convert_buffer;
-	size_t extra = pitch / sizeof(uint16_t) - width;
-
-	for (unsigned y = 0; y < height; y++) {
-		for (unsigned x = 0; x < width; x++) {
-			uint16_t px = *input++;
-			// Extract 5-bit components from 0RRRRRGGGGGBBBBB
-			uint16_t r = (px >> 10) & 0x1F;
-			uint16_t g = (px >> 5) & 0x1F;
-			uint16_t b = px & 0x1F;
-			// Expand green from 5 to 6 bits
-			uint16_t g6 = (g << 1) | (g >> 4);
-			// Pack to RGB565
-			*output++ = (r << 11) | (g6 << 5) | b;
-		}
-		input += extra;
-	}
-}
-
-/**
- * Converts pixel data to RGB565 format based on current pixel_format setting.
- *
- * Dispatches to the appropriate conversion function (NEON-optimized or scalar)
- * based on the source format. RGB565 input is a no-op (returns immediately).
- *
- * @param data Source pixel data
- * @param width Frame width in pixels
- * @param height Frame height in pixels
- * @param pitch Source pitch in bytes
- *
- * @note Writes converted data to convert_buffer global
- * @note convert_buffer_alloc() must be called first
- */
+// Pixel format conversion - implementation in minarch_video_convert.c
 static void pixel_convert(const void* data, unsigned width, unsigned height, size_t pitch) {
-	if (!convert_buffer) {
-		LOG_error("Conversion buffer not allocated - skipping frame");
-		return;
-	}
-
-	// Validate pitch based on pixel format
-	size_t bytes_per_pixel = (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) ? 4 : 2;
-	size_t min_pitch = width * bytes_per_pixel;
-
-	if (pitch < min_pitch) {
-		LOG_error("Invalid pitch %zu for width %u (format %d requires >= %zu)", pitch, width,
-		          pixel_format, min_pitch);
-		return;
-	}
-
-	switch (pixel_format) {
-	case RETRO_PIXEL_FORMAT_XRGB8888:
-#ifdef HAS_NEON
-		convert_xrgb8888_neon(data, width, height, pitch);
-#else
-		convert_xrgb8888_scalar(data, width, height, pitch);
-#endif
-		break;
-
-	case RETRO_PIXEL_FORMAT_0RGB1555:
-#ifdef HAS_NEON
-		convert_0rgb1555_neon(data, width, height, pitch);
-#else
-		convert_0rgb1555_scalar(data, width, height, pitch);
-#endif
-		break;
-
-	case RETRO_PIXEL_FORMAT_RGB565:
-		// Should never be called for RGB565, but handle it gracefully
-		LOG_warn("pixel_convert called for RGB565 (no conversion needed)");
-		break;
-
-	default:
-		LOG_error("Unknown pixel format %d", pixel_format);
-		break;
-	}
+	MinArchVideoConvert_convert(data, width, height, pitch, (MinArchPixelFormat)pixel_format);
 }
 
-/**
- * Allocate or resize rotation buffer.
- *
- * @param width Buffer width in pixels
- * @param height Buffer height in pixels
- * @param pitch Buffer pitch in bytes
- */
-static void rotation_buffer_alloc(uint32_t width, uint32_t height, uint32_t pitch) {
-	if (pitch == 0)
-		pitch = width * sizeof(uint16_t);
-
-	size_t required_size = pitch * height;
-
-	// Realloc only if size increased
-	if (required_size > rotation_buffer.size) {
-		void* new_buffer = realloc(rotation_buffer.buffer, required_size);
-		if (!new_buffer) {
-			LOG_error("Failed to allocate rotation buffer: %zu bytes", required_size);
-			return;
-		}
-		rotation_buffer.buffer = new_buffer;
-		rotation_buffer.size = required_size;
-		LOG_info("Allocated rotation buffer: %ux%u pitch=%u (%zu bytes)", width, height, pitch,
-		         required_size);
-	}
-
-	rotation_buffer.width = width;
-	rotation_buffer.height = height;
-	rotation_buffer.pitch = pitch;
-}
-
-/**
- * Free rotation buffer.
- */
-static void rotation_buffer_free(void) {
-	if (rotation_buffer.buffer) {
-		free(rotation_buffer.buffer);
-		rotation_buffer.buffer = NULL;
-		rotation_buffer.size = 0;
-		rotation_buffer.width = 0;
-		rotation_buffer.height = 0;
-		rotation_buffer.pitch = 0;
-	}
-}
-
-/**
- * Apply software rotation to frame.
- *
- * @param src Source frame (RGB565)
- * @param src_w Source width
- * @param src_h Source height
- * @param src_p Source pitch
- * @return Pointer to rotated frame (rotation_buffer.buffer), or src if rotation=0
- */
+// Wrapper function that passes video_state.rotation to the new module
 static void* apply_rotation(void* src, uint32_t src_w, uint32_t src_h, uint32_t src_p) {
-	unsigned rotation = video_state.rotation;
-
-	// Fast path: no rotation
-	if (rotation == ROTATION_0)
-		return src;
-
-	// Calculate rotated dimensions
-	uint32_t dst_w, dst_h, dst_p;
-	if (rotation == ROTATION_90 || rotation == ROTATION_270) {
-		dst_w = src_h; // Swap dimensions
-		dst_h = src_w;
-	} else {
-		dst_w = src_w;
-		dst_h = src_h;
-	}
-	dst_p = dst_w * sizeof(uint16_t);
-
-	LOG_debug("apply_rotation: rot=%u, src=%ux%u (pitch=%u) -> dst=%ux%u (pitch=%u)", rotation,
-	          src_w, src_h, src_p, dst_w, dst_h, dst_p);
-
-	// Allocate rotation buffer if needed
-	rotation_buffer_alloc(dst_w, dst_h, dst_p);
-
-	if (!rotation_buffer.buffer) {
-		LOG_error("Rotation buffer allocation failed, skipping rotation");
-		return src;
-	}
-
-	// Perform rotation (use NEON-optimized version when available)
-#ifdef HAS_NEON
-	rotate_n16(rotation, src, rotation_buffer.buffer, src_w, src_h, src_p, dst_p);
-#else
-	rotate_c16(rotation, src, rotation_buffer.buffer, src_w, src_h, src_p, dst_p);
-#endif
-
-	return rotation_buffer.buffer;
+	return MinArchRotation_apply(video_state.rotation, src, src_w, src_h, src_p);
 }
 
 /**
@@ -4335,10 +3147,10 @@ static void* apply_rotation(void* src, uint32_t src_w, uint32_t src_h, uint32_t 
  * calculates source/destination rectangles for optimal display.
  *
  * Scaling modes:
- * - SCALE_NATIVE: 1:1 pixel mapping (may be cropped if game > screen)
- * - SCALE_ASPECT: Maintain aspect ratio with letterboxing
+ * - MINARCH_SCALE_NATIVE: 1:1 pixel mapping (may be cropped if game > screen)
+ * - MINARCH_SCALE_ASPECT: Maintain aspect ratio with letterboxing
  * - SCALE_FULLSCREEN: Stretch to fill screen (may distort)
- * - SCALE_CROPPED: Crop to fill screen while maintaining aspect
+ * - MINARCH_SCALE_CROPPED: Crop to fill screen while maintaining aspect
  *
  * @param src_w Source width from core
  * @param src_h Source height from core
@@ -4347,274 +3159,64 @@ static void* apply_rotation(void* src, uint32_t src_w, uint32_t src_h, uint32_t 
  * @note Updates global 'renderer' structure with calculated values
  * @note Clears screen when scaler changes
  */
-static void selectScaler(int src_w, int src_h, int src_p) {
+void selectScaler(int src_w, int src_h, int src_p) {
 	if (NEEDS_CONVERSION)
-		convert_buffer_alloc(src_w, src_h);
+		MinArchVideoConvert_allocBuffer(src_w, src_h);
 
-	// ROTATION: Swap dimensions for 90°/270° rotations BEFORE scaling calculations
-	// Note: core.aspect_ratio is already for the ROTATED dimensions, so don't invert it
-	double rotated_aspect = core.aspect_ratio;
+	// Build input parameters for scaler calculation
+	MinArchScalerInput input = {.src_w = src_w,
+	                            .src_h = src_h,
+	                            .src_p = src_p,
+	                            .aspect_ratio = core.aspect_ratio,
+	                            .rotation = (MinArchRotation)video_state.rotation,
+	                            .mode = (MinArchScalerMode)screen_scaling,
+	                            .device_w = DEVICE_WIDTH,
+	                            .device_h = DEVICE_HEIGHT,
+	                            .device_p = DEVICE_PITCH,
+	                            .bpp = FIXED_BPP,
+	                            .fit = fit,
+	                            .buffer_w = VIDEO_BUFFER_WIDTH,
+	                            .buffer_h = VIDEO_BUFFER_HEIGHT,
+	                            .hdmi_width = HDMI_WIDTH};
 
-	if (video_state.rotation == ROTATION_90 || video_state.rotation == ROTATION_270) {
-		// Swap width ↔ height for rotated display
-		int temp = src_w;
-		src_w = src_h;
-		src_h = temp;
-		// Keep aspect ratio as-is (it's already for rotated dimensions)
-	}
+	// Calculate scaling parameters
+	MinArchScalerResult result;
+	MinArchScaler_calculate(&input, &result);
 
-	int src_x, src_y, dst_x, dst_y, dst_w, dst_h, dst_p, scale;
-	double aspect;
+	// Copy results to renderer
+	renderer.src_x = result.src_x;
+	renderer.src_y = result.src_y;
+	renderer.src_w = result.src_w;
+	renderer.src_h = result.src_h;
+	renderer.src_p = result.src_p;
+	renderer.dst_x = result.dst_x;
+	renderer.dst_y = result.dst_y;
+	renderer.dst_w = result.dst_w;
+	renderer.dst_h = result.dst_h;
+	renderer.dst_p = result.dst_p;
+	renderer.scale = result.scale;
+	renderer.aspect = result.aspect;
+	renderer.true_w = result.true_w;
+	renderer.true_h = result.true_h;
 
-	int aspect_w = src_w;
-	int aspect_h = CEIL_DIV(aspect_w, rotated_aspect);
+	LOG_debug("Scaler: %s %dx%d->%dx%d, scale=%d, aspect=%.2f", result.scaler_name, src_w, src_h,
+	          result.dst_w, result.dst_h, result.scale, result.aspect);
 
-	// TODO: make sure this doesn't break fit==1 devices
-	if (aspect_h < src_h) {
-		aspect_h = src_h;
-		aspect_w = aspect_h * rotated_aspect;
-		aspect_w += aspect_w % 2;
-	}
-
-	char scaler_name[16];
-
-	src_x = 0;
-	src_y = 0;
-	dst_x = 0;
-	dst_y = 0;
-
-	// unmodified by crop (reflects ROTATED dimensions after swap above)
-	renderer.true_w = src_w;
-	renderer.true_h = src_h;
-
-	// TODO: this is saving non-rgb30 devices from themselves...or rather, me
-	int scaling = screen_scaling;
-	if (scaling == SCALE_CROPPED && DEVICE_WIDTH == HDMI_WIDTH) {
-		scaling = SCALE_NATIVE;
-	}
-
-	if (scaling == SCALE_NATIVE || scaling == SCALE_CROPPED) {
-		// this is the same whether fit or oversized
-		scale = MIN(DEVICE_WIDTH / src_w, DEVICE_HEIGHT / src_h);
-		if (!scale) {
-			sprintf(scaler_name, "forced crop");
-			dst_w = DEVICE_WIDTH;
-			dst_h = DEVICE_HEIGHT;
-			dst_p = DEVICE_PITCH;
-
-			int ox = (DEVICE_WIDTH - src_w) / 2; // may be negative
-			int oy = (DEVICE_HEIGHT - src_h) / 2; // may be negative
-
-			if (ox < 0)
-				src_x = -ox;
-			else
-				dst_x = ox;
-
-			if (oy < 0)
-				src_y = -oy;
-			else
-				dst_y = oy;
-		}
-		// TODO: this is all kinds of messed up
-		// TODO: is this blowing up because the smart has to rotate before scaling?
-		// TODO: or is it just that I'm trying to cram 4 logical rects into 2 rect arguments
-		// TODO: eg. src.size + src.clip + dst.size + dst.clip
-		else if (scaling == SCALE_CROPPED) {
-			int scale_x = CEIL_DIV(DEVICE_WIDTH, src_w);
-			int scale_y = CEIL_DIV(DEVICE_HEIGHT, src_h);
-			scale = MIN(scale_x, scale_y);
-
-			sprintf(scaler_name, "cropped");
-			dst_w = DEVICE_WIDTH;
-			dst_h = DEVICE_HEIGHT;
-			dst_p = DEVICE_PITCH;
-
-			int scaled_w = src_w * scale;
-			int scaled_h = src_h * scale;
-
-			int ox = (DEVICE_WIDTH - scaled_w) / 2; // may be negative
-			int oy = (DEVICE_HEIGHT - scaled_h) / 2; // may be negative
-
-			if (ox < 0) {
-				src_x = -ox / scale;
-				src_w -= src_x * 2;
-			} else {
-				dst_x = ox;
-				// dst_w -= ox * 2;
-			}
-
-			if (oy < 0) {
-				src_y = -oy / scale;
-				src_h -= src_y * 2;
-			} else {
-				dst_y = oy;
-				// dst_h -= oy * 2;
-			}
-		} else {
-			sprintf(scaler_name, "integer");
-			int scaled_w = src_w * scale;
-			int scaled_h = src_h * scale;
-			dst_w = DEVICE_WIDTH;
-			dst_h = DEVICE_HEIGHT;
-			dst_p = DEVICE_PITCH;
-			dst_x = (DEVICE_WIDTH - scaled_w) / 2; // should always be positive
-			dst_y = (DEVICE_HEIGHT - scaled_h) / 2; // should always be positive
-		}
-	} else if (fit) {
-		// these both will use a generic nn scaler
-		if (scaling == SCALE_FULLSCREEN) {
-			sprintf(scaler_name, "full fit");
-			dst_w = DEVICE_WIDTH;
-			dst_h = DEVICE_HEIGHT;
-			dst_p = DEVICE_PITCH;
-			scale = -1; // nearest neighbor
-		} else {
-			double scale_f =
-			    MIN(((double)DEVICE_WIDTH) / aspect_w, ((double)DEVICE_HEIGHT) / aspect_h);
-			LOG_info("scale_f:%f", scale_f);
-
-			sprintf(scaler_name, "aspect fit");
-			dst_w = aspect_w * scale_f;
-			dst_h = aspect_h * scale_f;
-			dst_p = DEVICE_PITCH;
-			dst_x = (DEVICE_WIDTH - dst_w) / 2;
-			dst_y = (DEVICE_HEIGHT - dst_h) / 2;
-			scale = (scale_f == 1.0 && dst_w == src_w && dst_h == src_h) ? 1 : -1;
-		}
-	} else {
-		int scale_x = CEIL_DIV(DEVICE_WIDTH, src_w);
-		int scale_y = CEIL_DIV(DEVICE_HEIGHT, src_h);
-
-		// odd resolutions (eg. PS1 Rayman: 320x239) is throwing this off, need to snap to eights
-		int r = (DEVICE_HEIGHT - src_h) % 8;
-		if (r) // r is always < 8 (result of % 8)
-			scale_y -= 1;
-
-		scale = MAX(scale_x, scale_y);
-		// if (scale>4) scale = 4;
-		// if (scale>2) scale = 4; // TODO: restore, requires sanity checking
-
-		int scaled_w = src_w * scale;
-		int scaled_h = src_h * scale;
-
-		if (scaling == SCALE_FULLSCREEN) {
-			sprintf(scaler_name, "full%i", scale);
-			// type = 'full (oversized)';
-			dst_w = scaled_w;
-			dst_h = scaled_h;
-			dst_p = dst_w * FIXED_BPP;
-		} else {
-			// double core_aspect_ratio
-			double fixed_aspect_ratio = ((double)DEVICE_WIDTH) / DEVICE_HEIGHT;
-			int core_aspect = core.aspect_ratio * 1000;
-			int fixed_aspect = fixed_aspect_ratio * 1000;
-
-			// still having trouble with FC's 1.306 (13/10? wtf) on 4:3 devices
-			// specifically I think it has trouble when src, core, and fixed
-			// ratios don't match
-
-			// it handles src and core matching but fixed not, eg. GB and GBA
-			// or core and fixed matching but not src, eg. odd PS resolutions
-
-			// we need to transform the src size to core aspect
-			// then to fixed aspect
-
-			if (core_aspect > fixed_aspect) {
-				sprintf(scaler_name, "aspect%iL", scale);
-				// letterbox
-				// dst_w = scaled_w;
-				// dst_h = scaled_w / fixed_aspect_ratio;
-				// dst_h += dst_h%2;
-				int letterbox_h = DEVICE_WIDTH / core.aspect_ratio;
-				double aspect_hr = ((double)letterbox_h) / DEVICE_HEIGHT;
-				dst_w = scaled_w;
-				dst_h = scaled_h / aspect_hr;
-
-				dst_y = (dst_h - scaled_h) / 2;
-			} else if (core_aspect < fixed_aspect) {
-				sprintf(scaler_name, "aspect%iP", scale);
-				// pillarbox
-				// dst_w = scaled_h * fixed_aspect_ratio;
-				// dst_w += dst_w%2;
-				// dst_h = scaled_h;
-				aspect_w = DEVICE_HEIGHT * core.aspect_ratio;
-				double aspect_wr = ((double)aspect_w) / DEVICE_WIDTH;
-				dst_w = scaled_w / aspect_wr;
-				dst_h = scaled_h;
-
-				dst_w = (dst_w / 8) * 8;
-				dst_x = (dst_w - scaled_w) / 2;
-			} else {
-				sprintf(scaler_name, "aspect%iM", scale);
-				// perfect match
-				dst_w = scaled_w;
-				dst_h = scaled_h;
-			}
-			dst_p = dst_w * FIXED_BPP;
-		}
-	}
-
-	// Bounds check: ensure scaled output fits in video buffer
-	// VIDEO_BUFFER_WIDTH/HEIGHT are derived from screen size * 1.5 aspect correction
-	if (dst_w > VIDEO_BUFFER_WIDTH || dst_h > VIDEO_BUFFER_HEIGHT) {
-		LOG_warn("Scaler output %dx%d exceeds buffer %dx%d, capping", dst_w, dst_h,
-		         VIDEO_BUFFER_WIDTH, VIDEO_BUFFER_HEIGHT);
-
-		// Calculate scale factor to fit within buffer
-		float cap_w = (float)VIDEO_BUFFER_WIDTH / dst_w;
-		float cap_h = (float)VIDEO_BUFFER_HEIGHT / dst_h;
-		float cap = (cap_w < cap_h) ? cap_w : cap_h;
-
-		dst_w = (int)(dst_w * cap);
-		dst_h = (int)(dst_h * cap);
-		dst_p = dst_w * FIXED_BPP;
-
-		// Adjust dst offsets proportionally
-		dst_x = (int)(dst_x * cap);
-		dst_y = (int)(dst_y * cap);
-	}
-
-	// LOG_info("aspect: %ix%i (%f)", aspect_w,aspect_h,core.aspect_ratio);
-
-	renderer.src_x = src_x;
-	renderer.src_y = src_y;
-	renderer.src_w = src_w;
-	renderer.src_h = src_h;
-	renderer.src_p = src_p;
-	renderer.dst_x = dst_x;
-	renderer.dst_y = dst_y;
-	renderer.dst_w = dst_w;
-	renderer.dst_h = dst_h;
-	renderer.dst_p = dst_p;
-	renderer.scale = scale;
-	renderer.aspect = (scaling == SCALE_NATIVE || scaling == SCALE_CROPPED)
-	                      ? 0
-	                      : (scaling == SCALE_FULLSCREEN ? -1 : rotated_aspect);
-	LOG_debug("Scaler: %dx%d->%dx%d, scale=%d, aspect=%.2f", src_w, src_h, dst_w, dst_h, scale,
-	          renderer.aspect);
 	renderer.blit = GFX_getScaler(&renderer);
 
-	// LOG_info("coreAR:%0.3f fixedAR:%0.3f srcAR: %0.3f\nname:%s\nfit:%i scale:%i\nsrc_x:%i src_y:%i src_w:%i src_h:%i src_p:%i\ndst_x:%i dst_y:%i dst_w:%i dst_h:%i dst_p:%i\naspect_w:%i aspect_h:%i",
-	// 	core.aspect_ratio, ((double)DEVICE_WIDTH) / DEVICE_HEIGHT, ((double)src_w) / src_h,
-	// 	scaler_name,
-	// 	fit,scale,
-	// 	src_x,src_y,src_w,src_h,src_p,
-	// 	dst_x,dst_y,dst_w,dst_h,dst_p,
-	// 	aspect_w,aspect_h
-	// );
-
+	// Adjust screen size for fit mode
+	int final_w = result.dst_w;
+	int final_h = result.dst_h;
 	if (fit) {
-		dst_w = DEVICE_WIDTH;
-		dst_h = DEVICE_HEIGHT;
+		final_w = DEVICE_WIDTH;
+		final_h = DEVICE_HEIGHT;
 	}
 
-	// if (screen->w!=dst_w || screen->h!=dst_w || screen->pitch!=dst_p) {
-	screen = GFX_resize(dst_w, dst_h, dst_p);
-	// }
+	screen = GFX_resize(final_w, final_h, result.dst_p);
 }
 // Flag to indicate a frame was rendered and is ready for flip
 // Set by video_refresh_callback, cleared after flip in main loop
-static int frame_ready_for_flip = 0;
+int frame_ready_for_flip = 0;
 static uint32_t last_blit_time = 0; // For FF frame skip (blit cost savings)
 
 static void video_refresh_callback_main(const void* data, unsigned width, unsigned height,
@@ -4693,7 +3295,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 	if (NEEDS_CONVERSION) {
 		pixel_convert(data, width, height, pitch);
-		frame_data = convert_buffer;
+		frame_data = MinArchVideoConvert_getBuffer();
 		frame_pitch = rgb565_pitch;
 	} else {
 		frame_data = (void*)data;
@@ -4706,7 +3308,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	// Update pitch in renderer if rotation was applied
 	// The rotation buffer always uses tightly-packed pitch regardless of rotation angle
 	if (rotated_data != frame_data) {
-		renderer.src_p = rotation_buffer.pitch;
+		renderer.src_p = MinArchRotation_getBuffer()->pitch;
 	}
 
 	renderer.src = rotated_data;
@@ -4735,7 +3337,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 		if (rotated_data != frame_data) {
 			// Use rotation buffer pitch when rotation was applied
-			pitch_in_pixels = rotation_buffer.pitch / sizeof(uint16_t);
+			pitch_in_pixels = MinArchRotation_getBuffer()->pitch / sizeof(uint16_t);
 			if (video_state.rotation == ROTATION_90 || video_state.rotation == ROTATION_270) {
 				// Swap dimensions for 90°/270° rotations
 				debug_width = height;
@@ -4768,25 +3370,26 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 		if (overclock == 3) {
 			// Auto CPU mode: show frequency/level, utilization, and buffer fill
 			pthread_mutex_lock(&auto_cpu_mutex);
-			int current_idx = auto_cpu_current_index;
-			int level = auto_cpu_current_level;
+			int current_idx = auto_cpu_state.current_index;
+			int level = auto_cpu_state.current_level;
 			pthread_mutex_unlock(&auto_cpu_mutex);
 
 			// Calculate current utilization from most recent frame times
 			unsigned util = 0;
-			int samples = (auto_cpu_frame_time_index < AUTO_CPU_WINDOW_FRAMES)
-			                  ? auto_cpu_frame_time_index
-			                  : AUTO_CPU_WINDOW_FRAMES;
-			if (samples >= 5 && auto_cpu_frame_budget_us > 0) {
-				uint64_t p90 = percentileUint64(auto_cpu_frame_times, samples, 0.90f);
-				util = (unsigned)((p90 * 100) / auto_cpu_frame_budget_us);
+			int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+			                  ? auto_cpu_state.frame_time_index
+			                  : auto_cpu_config.window_frames;
+			if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
+				uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
+				util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
 				if (util > 200)
 					util = 200;
 			}
 
-			if (auto_cpu_use_granular && current_idx >= 0 && current_idx < auto_cpu_freq_count) {
+			if (auto_cpu_state.use_granular && current_idx >= 0 &&
+			    current_idx < auto_cpu_state.freq_count) {
 				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
-				int freq_mhz = auto_cpu_frequencies[current_idx] / 1000;
+				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
 				sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
 			} else {
 				// Fallback mode: show level
@@ -4825,8 +3428,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  *
  * @note This is a libretro callback, invoked by core after rendering a frame
  */
-static void video_refresh_callback(const void* data, unsigned width, unsigned height,
-                                   size_t pitch) {
+void video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
 	if (!data)
 		return;
 
@@ -4907,13 +3509,14 @@ void Core_getName(char* in_name, char* out_name) {
  */
 void MinArch_selectBiosPath(const char* tag, char* bios_dir) {
 	char tag_bios_dir[MAX_PATH];
-	sprintf(tag_bios_dir, SDCARD_PATH "/Bios/%s", tag);
+	MinArchPaths_getTagBios(SDCARD_PATH "/Bios", tag, tag_bios_dir);
 
-	if (MinUI_hasNonHiddenFiles(tag_bios_dir)) {
-		strcpy(bios_dir, tag_bios_dir);
+	int has_files = MinUI_hasNonHiddenFiles(tag_bios_dir);
+	MinArchPaths_chooseBios(SDCARD_PATH "/Bios", tag, bios_dir, has_files);
+
+	if (has_files) {
 		LOG_info("Using tag-specific BIOS directory: %s", bios_dir);
 	} else {
-		sprintf(bios_dir, SDCARD_PATH "/Bios");
 		LOG_info("Tag directory empty, falling back to root BIOS directory: %s", bios_dir);
 	}
 }
@@ -5008,10 +3611,8 @@ void Core_init(void) {
 void Core_load(void) {
 	LOG_info("Core_load");
 	struct retro_game_info game_info;
-	game_info.path = game.tmp_path[0] ? game.tmp_path : game.path;
-	game_info.data = game.data;
-	game_info.size = game.size;
-	LOG_info("game path: %s (%i)", game_info.path, game.size);
+	MinArchCore_buildGameInfo(&game, &game_info);
+	LOG_info("game path: %s (%i)", game_info.path, game_info.size);
 
 	core.load_game(&game_info);
 
@@ -5024,14 +3625,14 @@ void Core_load(void) {
 	core.set_controller_port_device(
 	    0, RETRO_DEVICE_JOYPAD); // set a default, may update after loading configs
 
-	core.fps = av_info.timing.fps;
-	core.sample_rate = av_info.timing.sample_rate;
-	double a = av_info.geometry.aspect_ratio;
-	if (a <= 0)
-		a = (double)av_info.geometry.base_width / av_info.geometry.base_height;
-	core.aspect_ratio = a;
+	// Process AV info
+	MinArchCoreAVInfo info;
+	MinArchCore_processAVInfo(&av_info, &info);
+	core.fps = info.fps;
+	core.sample_rate = info.sample_rate;
+	core.aspect_ratio = info.aspect_ratio;
 
-	LOG_info("aspect_ratio: %f (%ix%i) fps: %f", a, av_info.geometry.base_width,
+	LOG_info("aspect_ratio: %f (%ix%i) fps: %f", info.aspect_ratio, av_info.geometry.base_width,
 	         av_info.geometry.base_height, core.fps);
 }
 void Core_reset(void) {
@@ -5054,10 +3655,10 @@ void Core_close(void) {
 	auto_cpu_stopThread();
 
 	// Free pixel format conversion buffer
-	convert_buffer_free();
+	MinArchVideoConvert_freeBuffer();
 
 	// Free rotation buffer
-	rotation_buffer_free();
+	MinArchRotation_freeBuffer();
 
 	// Reset pixel format to default for next core
 	pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
@@ -5067,170 +3668,32 @@ void Core_close(void) {
 }
 
 ///////////////////////////////////////
-
-#define MENU_ITEM_COUNT 5
-#define MENU_SLOT_COUNT 8
-
-enum {
-	ITEM_CONT,
-	ITEM_SAVE,
-	ITEM_LOAD,
-	ITEM_OPTS,
-	ITEM_QUIT,
-};
-
-enum {
-	STATUS_CONT = 0,
-	STATUS_SAVE = 1,
-	STATUS_LOAD = 11,
-	STATUS_OPTS = 23,
-	STATUS_DISC = 24,
-	STATUS_QUIT = 30,
-	STATUS_RESET = 31,
-};
-
-// TODO: I don't love how overloaded this has become
-static struct {
-	SDL_Surface* bitmap;
-	SDL_Surface* overlay;
-	char* items[MENU_ITEM_COUNT];
-	char* disc_paths[9]; // up to 9 paths, Arc the Lad Collection is 7 discs
-	char minui_dir[256];
-	char slot_path[256];
-	char base_path[256];
-	char bmp_path[256];
-	char txt_path[256];
-	int disc;
-	int total_discs;
-	int slot;
-	int save_exists;
-	int preview_exists;
-} menu = {.bitmap = NULL,
-          .overlay = NULL,
-          .items =
-              {
-                  [ITEM_CONT] = "Continue",
-                  [ITEM_SAVE] = "Save",
-                  [ITEM_LOAD] = "Load",
-                  [ITEM_OPTS] = "Options",
-                  [ITEM_QUIT] = "Quit",
-              },
-          .disc_paths = {NULL},
-          .minui_dir = {0},
-          .slot_path = {0},
-          .base_path = {0},
-          .bmp_path = {0},
-          .txt_path = {0},
-          .disc = -1,
-          .total_discs = 0,
-          .slot = 0,
-          .save_exists = 0,
-          .preview_exists = 0};
+// Menu init/quit wrappers (implementation in minarch_menu.c)
+///////////////////////////////////////
 
 void Menu_init(void) {
-	menu.overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, DEVICE_WIDTH, DEVICE_HEIGHT, FIXED_DEPTH,
-	                                    RGBA_MASK_AUTO);
-	SDLX_SetAlpha(menu.overlay, SDL_SRCALPHA, 0x80);
-	SDL_FillRect(menu.overlay, NULL, 0);
-
-	char emu_name[256];
-	getEmuName(game.path, emu_name);
-	sprintf(menu.minui_dir, SHARED_USERDATA_PATH "/.minui/%s", emu_name);
-	mkdir(menu.minui_dir, 0755);
-
-	sprintf(menu.slot_path, "%s/%s.txt", menu.minui_dir, game.name);
-
-	if (simple_mode)
-		menu.items[ITEM_OPTS] = "Reset";
-
-	if (game.m3u_path[0]) {
-		char* tmp;
-		strcpy(menu.base_path, game.m3u_path);
-		tmp = strrchr(menu.base_path, '/') + 1;
-		tmp[0] = '\0';
-
-		//read m3u file
-		FILE* file = fopen(game.m3u_path, "r");
-		if (file) {
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
-
-				char disc_path[256];
-				strcpy(disc_path, menu.base_path);
-				tmp = disc_path + strlen(disc_path);
-				strcpy(tmp, line);
-
-				// found a valid disc path
-				if (exists(disc_path)) {
-					menu.disc_paths[menu.total_discs] = strdup(disc_path);
-					// matched our current disc
-					if (exactMatch(disc_path, game.path)) {
-						menu.disc = menu.total_discs;
-					}
-					menu.total_discs += 1;
-				}
-			}
-			fclose(file);
-		}
-	}
+	MinArchMenu_init(MinArchContext_get());
 }
+
 void Menu_quit(void) {
-	SDL_FreeSurface(menu.overlay);
+	MinArchMenu_quit(MinArchContext_get());
 }
+
+///////////////////////////////////////
+// Sleep handlers - delegate to minarch_menu.c (which uses callbacks)
+///////////////////////////////////////
+
 void Menu_beforeSleep(void) {
-	// LOG_info("beforeSleep");
-	SRAM_write();
-	RTC_write();
-	State_autosave();
-	putFile(AUTO_RESUME_PATH, game.path + strlen(SDCARD_PATH));
-	PWR_setCPUSpeed(CPU_SPEED_IDLE);
+	MinArchMenu_beforeSleep(MinArchContext_get());
 }
+
 void Menu_afterSleep(void) {
-	// LOG_info("beforeSleep");
-	unlink(AUTO_RESUME_PATH);
-	setOverclock(overclock);
+	MinArchMenu_afterSleep(MinArchContext_get());
 }
 
-typedef struct MenuList MenuList;
-typedef struct MenuItem MenuItem;
-enum {
-	MENU_CALLBACK_NOP,
-	MENU_CALLBACK_EXIT,
-	MENU_CALLBACK_NEXT_ITEM,
-};
-typedef int (*MenuList_callback_t)(MenuList* list, int i);
-typedef struct MenuItem {
-	char* name;
-	char* desc;
-	char** values;
-	char* key; // optional, used by options
-	int id; // optional, used by bindings
-	int value;
-	MenuList* submenu;
-	MenuList_callback_t on_confirm;
-	MenuList_callback_t on_change;
-} MenuItem;
+// Menu types defined in minarch_menu_types.h
 
-enum {
-	MENU_LIST, // eg. save and main menu
-	MENU_VAR, // eg. frontend
-	MENU_FIXED, // eg. emulator
-	MENU_INPUT, // eg. renders like but MENU_VAR but handles input differently
-};
-typedef struct MenuList {
-	int type;
-	int max_width; // cached on first draw
-	char* desc;
-	MenuItem* items;
-	MenuList_callback_t on_confirm;
-	MenuList_callback_t on_change;
-} MenuList;
-
-static int Menu_message(char* message, char** pairs) {
+int Menu_message(const char* message, char** pairs) {
 	GFX_setMode(MODE_MAIN);
 	int dirty = 1;
 	while (1) {
@@ -5259,12 +3722,89 @@ static int Menu_message(char* message, char** pairs) {
 	return MENU_CALLBACK_NOP; // TODO: this should probably be an arg
 }
 
-static int Menu_options(MenuList* list);
+int Menu_options(MenuList* list);
 
 static int MenuList_freeItems(MenuList* list, int i) {
 	// TODO: what calls this? do menu's register for needing it? then call it on quit for each?
 	if (list->items)
 		free(list->items);
+	return MENU_CALLBACK_NOP;
+}
+
+///////////////////////////////
+// Generic option menu helper (reduces duplication)
+///////////////////////////////
+
+/**
+ * Build and display an options menu from an MinArchOptionList.
+ *
+ * Handles the common pattern of:
+ * 1. Lazy initialization of enabled_options (filtering locked options)
+ * 2. Creating/updating MenuItems from options
+ * 3. Displaying Menu_options() or showing "no options" message
+ *
+ * This consolidates the identical code in OptionFrontend_openMenu
+ * and OptionEmulator_openMenu.
+ *
+ * @param source MinArchOptionList to build menu from (config.frontend or config.core)
+ * @param menu MenuList to populate/update
+ * @param no_options_msg Message to show if no options available (NULL to skip check)
+ * @return MENU_CALLBACK_NOP
+ */
+static int OptionsMenu_buildAndShow(MinArchOptionList* source, MenuList* menu,
+                                    const char* no_options_msg) {
+	// Build enabled_options list if not already built
+	if (!source->enabled_count) {
+		int enabled_count = 0;
+		for (int idx = 0; idx < source->count; idx++) {
+			if (!source->options[idx].lock)
+				enabled_count += 1;
+		}
+		source->enabled_count = enabled_count;
+		source->enabled_options = calloc(enabled_count + 1, sizeof(MinArchOption*));
+		int j = 0;
+		for (int idx = 0; idx < source->count; idx++) {
+			MinArchOption* item = &source->options[idx];
+			if (item->lock)
+				continue;
+			source->enabled_options[j] = item;
+			j += 1;
+		}
+	}
+
+	// Create MenuItems on first call
+	if (menu->items == NULL) {
+		menu->items = calloc(source->enabled_count + 1, sizeof(MenuItem));
+		if (!menu->items)
+			return MENU_CALLBACK_NOP;
+
+		for (int j = 0; j < source->enabled_count; j++) {
+			MinArchOption* option = source->enabled_options[j];
+			MenuItem* item = &menu->items[j];
+			item->key = option->key;
+			item->name = option->name;
+			item->desc = option->desc;
+			item->value = option->value;
+			item->values = option->labels;
+		}
+	} else {
+		// Update values on subsequent calls
+		for (int j = 0; j < source->enabled_count; j++) {
+			MinArchOption* option = source->enabled_options[j];
+			MenuItem* item = &menu->items[j];
+			item->value = option->value;
+		}
+	}
+
+	// Show menu or "no options" message
+	if (no_options_msg && menu->items[0].name == NULL) {
+		Menu_message(no_options_msg, (char*[]){"B", "BACK", NULL});
+	} else if (menu->items[0].name) {
+		Menu_options(menu);
+	} else if (no_options_msg) {
+		Menu_message(no_options_msg, (char*[]){"B", "BACK", NULL});
+	}
+
 	return MENU_CALLBACK_NOP;
 }
 
@@ -5282,64 +3822,26 @@ static MenuList OptionFrontend_menu = {
     .on_change = OptionFrontend_optionChanged,
 };
 static int OptionFrontend_openMenu(MenuList* list, int i) {
-	if (OptionFrontend_menu.items == NULL) {
-		// TODO: where do I free this? I guess I don't :sweat_smile:
-		if (!config.frontend.enabled_count) {
-			int enabled_count = 0;
-			for (int idx = 0; idx < config.frontend.count; idx++) {
-				if (!config.frontend.options[idx].lock)
-					enabled_count += 1;
-			}
-			config.frontend.enabled_count = enabled_count;
-			config.frontend.enabled_options = calloc(enabled_count + 1, sizeof(Option*));
-			int j = 0;
-			for (int idx = 0; idx < config.frontend.count; idx++) {
-				Option* item = &config.frontend.options[idx];
-				if (item->lock)
-					continue;
-				config.frontend.enabled_options[j] = item;
-				j += 1;
-			}
-		}
-
-		OptionFrontend_menu.items = calloc(config.frontend.enabled_count + 1, sizeof(MenuItem));
-		for (int j = 0; j < config.frontend.enabled_count; j++) {
-			Option* option = config.frontend.enabled_options[j];
-			MenuItem* item = &OptionFrontend_menu.items[j];
-			item->key = option->key;
-			item->name = option->name;
-			item->desc = option->desc;
-			item->value = option->value;
-			item->values = option->labels;
-		}
-	} else {
-		// update values
-		for (int j = 0; j < config.frontend.enabled_count; j++) {
-			Option* option = config.frontend.enabled_options[j];
-			MenuItem* item = &OptionFrontend_menu.items[j];
-			item->value = option->value;
-		}
-	}
-
-	Menu_options(&OptionFrontend_menu);
-	return MENU_CALLBACK_NOP;
+	(void)list;
+	(void)i;
+	return OptionsMenu_buildAndShow(&config.frontend, &OptionFrontend_menu, NULL);
 }
 
 static int OptionEmulator_optionChanged(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
 	// NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores) - option IS used in LOG_info below
-	Option* option = OptionList_getOption(&config.core, item->key);
+	MinArchOption* option = MinArchOptionList_getOption(&config.core, item->key);
 	if (option) {
 		LOG_info("%s (%s) changed from `%s` (%s) to `%s` (%s)", item->name, item->key,
 		         item->values[option->value], option->values[option->value],
 		         item->values[item->value], option->values[item->value]);
 	}
-	OptionList_setOptionRawValue(&config.core, item->key, item->value);
+	MinArchOptionList_setOptionRawValue(&config.core, item->key, item->value);
 	return MENU_CALLBACK_NOP;
 }
 static int OptionEmulator_optionDetail(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	Option* option = OptionList_getOption(&config.core, item->key);
+	MinArchOption* option = MinArchOptionList_getOption(&config.core, item->key);
 	if (option && option->full)
 		return Menu_message(option->full, (char*[]){"B", "BACK", NULL});
 	else
@@ -5354,64 +3856,20 @@ static MenuList OptionEmulator_menu = {
     .on_change = OptionEmulator_optionChanged,
 };
 static int OptionEmulator_openMenu(MenuList* list, int i) {
-	if (OptionEmulator_menu.items == NULL) {
-		// TODO: where do I free this? I guess I don't :sweat_smile:
-		if (!config.core.enabled_count) {
-			int enabled_count = 0;
-			for (int idx = 0; idx < config.core.count; idx++) {
-				if (!config.core.options[idx].lock)
-					enabled_count += 1;
-			}
-			config.core.enabled_count = enabled_count;
-			config.core.enabled_options = calloc(enabled_count + 1, sizeof(Option*));
-			int j = 0;
-			for (int idx = 0; idx < config.core.count; idx++) {
-				Option* item = &config.core.options[idx];
-				if (item->lock)
-					continue;
-				config.core.enabled_options[j] = item;
-				j += 1;
-			}
-		}
-
-		OptionEmulator_menu.items = calloc(config.core.enabled_count + 1, sizeof(MenuItem));
-		if (!OptionEmulator_menu.items)
-			return MENU_CALLBACK_NOP;
-		for (int j = 0; j < config.core.enabled_count; j++) {
-			Option* option = config.core.enabled_options[j];
-			MenuItem* item = &OptionEmulator_menu.items[j];
-			item->key = option->key;
-			item->name = option->name;
-			item->desc = option->desc;
-			item->value = option->value;
-			item->values = option->labels;
-		}
-	} else {
-		// update values
-		for (int j = 0; j < config.core.enabled_count; j++) {
-			Option* option = config.core.enabled_options[j];
-			MenuItem* item = &OptionEmulator_menu.items[j];
-			item->value = option->value;
-		}
-	}
-
-	if (OptionEmulator_menu.items[0].name) { // TODO: why doesn't this just use (enabled_)count?
-		Menu_options(&OptionEmulator_menu);
-	} else {
-		Menu_message("This core has no options.", (char*[]){"B", "BACK", NULL});
-	}
-
-	return MENU_CALLBACK_NOP;
+	(void)list;
+	(void)i;
+	return OptionsMenu_buildAndShow(&config.core, &OptionEmulator_menu,
+	                                "This core has no options.");
 }
 
 int OptionControls_bind(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	if (item->values != button_labels) {
+	if (item->values != minarch_button_labels) {
 		// LOG_info("changed gamepad_type");
 		return MENU_CALLBACK_NOP;
 	}
 
-	ButtonMapping* button = &config.controls[item->id];
+	MinArchButtonMapping* button = &config.controls[item->id];
 
 	int bound = 0;
 	while (!bound) {
@@ -5422,12 +3880,12 @@ int OptionControls_bind(MenuList* list, int i) {
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
 			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
-				button->local = id - 1;
+				button->local_id = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
 					item->value += LOCAL_BUTTON_COUNT;
-					button->mod = 1;
+					button->modifier = 1;
 				} else {
-					button->mod = 0;
+					button->modifier = 0;
 				}
 				bound = 1;
 				break;
@@ -5440,22 +3898,22 @@ int OptionControls_bind(MenuList* list, int i) {
 }
 static int OptionControls_unbind(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	if (item->values != button_labels)
+	if (item->values != minarch_button_labels)
 		return MENU_CALLBACK_NOP;
 
-	ButtonMapping* button = &config.controls[item->id];
-	button->local = -1;
-	button->mod = 0;
+	MinArchButtonMapping* button = &config.controls[item->id];
+	button->local_id = -1;
+	button->modifier = 0;
 	return MENU_CALLBACK_NOP;
 }
 static int OptionControls_optionChanged(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	if (item->values != gamepad_labels)
+	if (item->values != minarch_gamepad_labels)
 		return MENU_CALLBACK_NOP;
 
 	if (has_custom_controllers) {
 		gamepad_type = item->value;
-		int device = strtol(gamepad_values[item->value], NULL, 0);
+		int device = strtol(minarch_gamepad_values[item->value], NULL, 0);
 		core.set_controller_port_device(0, device);
 	}
 	return MENU_CALLBACK_NOP;
@@ -5484,25 +3942,25 @@ static int OptionControls_openMenu(MenuList* list, int i) {
 			item->name = "Controller";
 			item->desc = "Select the type of controller.";
 			item->value = gamepad_type;
-			item->values = gamepad_labels;
+			item->values = minarch_gamepad_labels;
 			item->on_change = OptionControls_optionChanged;
 		}
 
 		for (int j = 0; config.controls[j].name; j++) {
-			ButtonMapping* button = &config.controls[j];
+			MinArchButtonMapping* button = &config.controls[j];
 			if (button->ignore)
 				continue;
 
-			LOG_info("\t%s (%i:%i)", button->name, button->local, button->retro);
+			LOG_info("\t%s (%i:%i)", button->name, button->local_id, button->retro_id);
 
 			MenuItem* item = &OptionControls_menu.items[k++];
 			item->id = j;
 			item->name = button->name;
 			item->desc = NULL;
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
-			item->values = button_labels;
+			item->values = minarch_button_labels;
 		}
 	} else {
 		// update values
@@ -5514,13 +3972,13 @@ static int OptionControls_openMenu(MenuList* list, int i) {
 		}
 
 		for (int j = 0; config.controls[j].name; j++) {
-			ButtonMapping* button = &config.controls[j];
+			MinArchButtonMapping* button = &config.controls[j];
 			if (button->ignore)
 				continue;
 
 			MenuItem* item = &OptionControls_menu.items[k++];
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 		}
 	}
@@ -5530,7 +3988,7 @@ static int OptionControls_openMenu(MenuList* list, int i) {
 
 static int OptionShortcuts_bind(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	ButtonMapping* button = &config.shortcuts[item->id];
+	MinArchButtonMapping* button = &config.shortcuts[item->id];
 	int bound = 0;
 	while (!bound) {
 		GFX_startFrame();
@@ -5540,12 +3998,12 @@ static int OptionShortcuts_bind(MenuList* list, int i) {
 		for (int id = 0; id <= LOCAL_BUTTON_COUNT; id++) {
 			if (id > 0 && PAD_justPressed(1 << (id - 1))) {
 				item->value = id;
-				button->local = id - 1;
+				button->local_id = id - 1;
 				if (PAD_isPressed(BTN_MENU)) {
 					item->value += LOCAL_BUTTON_COUNT;
-					button->mod = 1;
+					button->modifier = 1;
 				} else {
-					button->mod = 0;
+					button->modifier = 0;
 				}
 				bound = 1;
 				break;
@@ -5558,9 +4016,9 @@ static int OptionShortcuts_bind(MenuList* list, int i) {
 }
 static int OptionShortcuts_unbind(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
-	ButtonMapping* button = &config.shortcuts[item->id];
-	button->local = -1;
-	button->mod = 0;
+	MinArchButtonMapping* button = &config.shortcuts[item->id];
+	button->local_id = -1;
+	button->modifier = 0;
 	return MENU_CALLBACK_NOP;
 }
 static MenuList OptionShortcuts_menu = {
@@ -5574,41 +4032,30 @@ static MenuList OptionShortcuts_menu = {
     .on_confirm = OptionShortcuts_bind,
     .on_change = OptionShortcuts_unbind};
 static char* getSaveDesc(void) {
-	switch (config.loaded) {
-	case CONFIG_NONE:
-		return "Using defaults.";
-		break;
-	case CONFIG_CONSOLE:
-		return "Using console config.";
-		break;
-	case CONFIG_GAME:
-		return "Using game config.";
-		break;
-	}
-	return NULL;
+	return (char*)MinArchConfig_getStateDesc(config.loaded);
 }
 static int OptionShortcuts_openMenu(MenuList* list, int i) {
 	if (OptionShortcuts_menu.items == NULL) {
 		// TODO: where do I free this? I guess I don't :sweat_smile:
 		OptionShortcuts_menu.items = calloc(SHORTCUT_COUNT + 1, sizeof(MenuItem));
 		for (int j = 0; config.shortcuts[j].name; j++) {
-			ButtonMapping* button = &config.shortcuts[j];
+			MinArchButtonMapping* button = &config.shortcuts[j];
 			MenuItem* item = &OptionShortcuts_menu.items[j];
 			item->id = j;
 			item->name = button->name;
 			item->desc = NULL;
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
-			item->values = button_labels;
+			item->values = minarch_button_labels;
 		}
 	} else {
 		// update values
 		for (int j = 0; config.shortcuts[j].name; j++) {
-			ButtonMapping* button = &config.shortcuts[j];
+			MinArchButtonMapping* button = &config.shortcuts[j];
 			MenuItem* item = &OptionShortcuts_menu.items[j];
-			item->value = button->local + 1;
-			if (button->mod)
+			item->value = button->local_id + 1;
+			if (button->modifier)
 				item->value += LOCAL_BUTTON_COUNT;
 		}
 	}
@@ -5700,86 +4147,86 @@ static int OptionQuicksave_onConfirm(MenuList* list, int i) {
 	return MENU_CALLBACK_NOP; // Never reached (device powers off)
 }
 
-static MenuList options_menu = {.type = MENU_LIST,
-                                .max_width = 0,
-                                .desc = NULL,
-                                .items =
-                                    (MenuItem[]){
-                                        {.name = "Frontend",
-                                         .desc = "MinUI (" BUILD_DATE " " BUILD_HASH ")",
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = OptionFrontend_openMenu,
-                                         .on_change = NULL},
-                                        {.name = "Emulator",
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = OptionEmulator_openMenu,
-                                         .on_change = NULL},
-                                        {.name = "Controls",
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = OptionControls_openMenu,
-                                         .on_change = NULL},
-                                        {.name = "Shortcuts",
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = OptionShortcuts_openMenu,
-                                         .on_change = NULL},
-                                        {.name = "Save Changes",
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = OptionSaveChanges_openMenu,
-                                         .on_change = NULL},
-                                        {.name = NULL,
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = NULL,
-                                         .on_change = NULL},
-                                        {.name = NULL,
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = NULL,
-                                         .on_change = NULL},
-                                        {.name = NULL,
-                                         .desc = NULL,
-                                         .values = NULL,
-                                         .key = NULL,
-                                         .id = 0,
-                                         .value = 0,
-                                         .submenu = NULL,
-                                         .on_confirm = NULL,
-                                         .on_change = NULL},
-                                    },
-                                .on_confirm = NULL,
-                                .on_change = NULL};
+MenuList options_menu = {.type = MENU_LIST,
+                         .max_width = 0,
+                         .desc = NULL,
+                         .items =
+                             (MenuItem[]){
+                                 {.name = "Frontend",
+                                  .desc = "MinUI (" BUILD_DATE " " BUILD_HASH ")",
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = OptionFrontend_openMenu,
+                                  .on_change = NULL},
+                                 {.name = "Emulator",
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = OptionEmulator_openMenu,
+                                  .on_change = NULL},
+                                 {.name = "Controls",
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = OptionControls_openMenu,
+                                  .on_change = NULL},
+                                 {.name = "Shortcuts",
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = OptionShortcuts_openMenu,
+                                  .on_change = NULL},
+                                 {.name = "Save Changes",
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = OptionSaveChanges_openMenu,
+                                  .on_change = NULL},
+                                 {.name = NULL,
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = NULL,
+                                  .on_change = NULL},
+                                 {.name = NULL,
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = NULL,
+                                  .on_change = NULL},
+                                 {.name = NULL,
+                                  .desc = NULL,
+                                  .values = NULL,
+                                  .key = NULL,
+                                  .id = 0,
+                                  .value = 0,
+                                  .submenu = NULL,
+                                  .on_confirm = NULL,
+                                  .on_change = NULL},
+                             },
+                         .on_confirm = NULL,
+                         .on_change = NULL};
 
 static void OptionSaveChanges_updateDesc(void) {
 	options_menu.items[4].desc = getSaveDesc();
@@ -5839,14 +4286,12 @@ static void calculateProportionalWidths(const char* label_text, const char* valu
 	}
 }
 
-static int Menu_options(MenuList* list) {
+int Menu_options(MenuList* list) {
 	MenuItem* items = list->items;
 	int type = list->type;
 
-	int dirty = 1;
 	int show_options = 1;
 	int show_settings = 0;
-	int await_input = 0;
 
 	// dependent on option list offset top and bottom, eg. the gray triangles
 	int max_visible_options = (ui.screen_height - (ui.edge_padding + ui.pill_height) * 2) /
@@ -5855,161 +4300,122 @@ static int Menu_options(MenuList* list) {
 	int count;
 	for (count = 0; items[count].name; count++)
 		;
-	int selected = 0;
-	int start = 0;
-	int end = MIN(count, max_visible_options);
-	int visible_rows = end;
+
+	// Initialize navigation state using extracted function
+	MinArchMenuNavState nav;
+	MinArchMenuNav_init(&nav, count, max_visible_options);
 
 	OptionSaveChanges_updateDesc();
 
 	int defer_menu = false;
 	while (show_options) {
-		if (await_input) {
+		if (nav.await_input) {
 			defer_menu = true;
-			list->on_confirm(list, selected);
+			if (list->on_confirm)
+				list->on_confirm(list, nav.selected);
 
-			selected += 1;
-			if (selected >= count) {
-				selected = 0;
-				start = 0;
-				end = visible_rows;
-			} else if (selected >= end) {
-				start += 1;
-				end += 1;
-			}
-			dirty = 1;
-			await_input = false;
+			MinArchMenuNav_advanceItem(&nav);
+			nav.dirty = 1;
+			nav.await_input = 0;
 		}
 
 		GFX_startFrame();
 		PAD_poll();
 
+		// Navigation input (up/down)
 		if (PAD_justRepeated(BTN_UP)) {
-			selected -= 1;
-			if (selected < 0) {
-				selected = count - 1;
-				start = MAX(0, count - max_visible_options);
-				end = count;
-			} else if (selected < start) {
-				start -= 1;
-				end -= 1;
-			}
-			dirty = 1;
+			if (MinArchMenuNav_navigate(&nav, -1))
+				nav.dirty = 1;
 		} else if (PAD_justRepeated(BTN_DOWN)) {
-			selected += 1;
-			if (selected >= count) {
-				selected = 0;
-				start = 0;
-				end = visible_rows;
-			} else if (selected >= end) {
-				start += 1;
-				end += 1;
-			}
-			dirty = 1;
+			if (MinArchMenuNav_navigate(&nav, +1))
+				nav.dirty = 1;
 		} else {
-			MenuItem* item = &items[selected];
-			if (item->values && item->values != button_labels) { // not an input binding
+			// Value cycling (left/right)
+			MenuItem* item = &items[nav.selected];
+			if (item->values && item->values != minarch_button_labels) { // not an input binding
 				if (PAD_justRepeated(BTN_LEFT)) {
-					if (item->value > 0)
-						item->value -= 1;
-					else {
-						int j;
-						for (j = 0; item->values[j]; j++)
-							;
-						item->value = j - 1;
+					if (MinArchMenuNav_cycleValue(item, -1)) {
+						if (item->on_change)
+							item->on_change(list, nav.selected);
+						else if (list->on_change)
+							list->on_change(list, nav.selected);
+						nav.dirty = 1;
 					}
-
-					if (item->on_change)
-						item->on_change(list, selected);
-					else if (list->on_change)
-						list->on_change(list, selected);
-
-					dirty = 1;
 				} else if (PAD_justRepeated(BTN_RIGHT)) {
-					if (item->values[item->value + 1])
-						item->value += 1;
-					else
-						item->value = 0;
-
-					if (item->on_change)
-						item->on_change(list, selected);
-					else if (list->on_change)
-						list->on_change(list, selected);
-
-					dirty = 1;
+					if (MinArchMenuNav_cycleValue(item, +1)) {
+						if (item->on_change)
+							item->on_change(list, nav.selected);
+						else if (list->on_change)
+							list->on_change(list, nav.selected);
+						nav.dirty = 1;
+					}
 				}
 			}
 		}
 
-		// uint32_t now = SDL_GetTicks();
-		if (PAD_justPressed(BTN_B)) { // || PAD_tappedMenu(now)
+		// Action buttons (A/B/X)
+		MenuItem* item = &items[nav.selected];
+		MinArchMenuAction action = MinArchMenuNav_getAction(
+		    list, item, type, PAD_justPressed(BTN_A), PAD_justPressed(BTN_B),
+		    PAD_justPressed(BTN_X), minarch_button_labels);
+
+		switch (action) {
+		case MENU_ACTION_EXIT:
 			show_options = 0;
-		} else if (PAD_justPressed(BTN_A)) {
-			MenuItem* item = &items[selected];
+			break;
+
+		case MENU_ACTION_CONFIRM: {
 			int result = MENU_CALLBACK_NOP;
 			if (item->on_confirm)
-				result = item->on_confirm(list,
-				                          selected); // item-specific action, eg. Save for all games
-			else if (item->submenu)
-				result = Menu_options(item->submenu); // drill down, eg. main options menu
-			// TODO: is there a way to defer on_confirm for MENU_INPUT so we can clear the currently set value to indicate it is awaiting input?
-			// eg. set a flag to call on_confirm at the beginning of the next frame?
-			else if (list->on_confirm) {
-				if (item->values == button_labels)
-					await_input = 1; // button binding
-				else
-					result = list->on_confirm(
-					    list,
-					    selected); // list-specific action, eg. show item detail view or input binding
-			}
+				result = item->on_confirm(list, nav.selected);
+			else if (list->on_confirm)
+				result = list->on_confirm(list, nav.selected);
+
 			if (result == MENU_CALLBACK_EXIT)
 				show_options = 0;
 			else {
-				if (result == MENU_CALLBACK_NEXT_ITEM) {
-					// copied from PAD_justRepeated(BTN_DOWN) above
-					selected += 1;
-					if (selected >= count) {
-						selected = 0;
-						start = 0;
-						end = visible_rows;
-					} else if (selected >= end) {
-						start += 1;
-						end += 1;
-					}
-				}
-				dirty = 1;
+				if (result == MENU_CALLBACK_NEXT_ITEM)
+					MinArchMenuNav_advanceItem(&nav);
+				nav.dirty = 1;
 			}
-		} else if (type == MENU_INPUT) {
-			if (PAD_justPressed(BTN_X)) {
-				MenuItem* item = &items[selected];
-				item->value = 0;
+			break;
+		}
 
-				if (item->on_change)
-					item->on_change(list, selected);
-				else if (list->on_change)
-					list->on_change(list, selected);
+		case MENU_ACTION_SUBMENU: {
+			int result = Menu_options(item->submenu);
+			if (result == MENU_CALLBACK_EXIT)
+				show_options = 0;
+			else
+				nav.dirty = 1;
+			break;
+		}
 
-				// copied from PAD_justRepeated(BTN_DOWN) above
-				selected += 1;
-				if (selected >= count) {
-					selected = 0;
-					start = 0;
-					end = visible_rows;
-				} else if (selected >= end) {
-					start += 1;
-					end += 1;
-				}
-				dirty = 1;
-			}
+		case MENU_ACTION_AWAIT_INPUT:
+			nav.await_input = 1;
+			break;
+
+		case MENU_ACTION_CLEAR_INPUT:
+			item->value = 0;
+			if (item->on_change)
+				item->on_change(list, nav.selected);
+			else if (list->on_change)
+				list->on_change(list, nav.selected);
+			MinArchMenuNav_advanceItem(&nav);
+			nav.dirty = 1;
+			break;
+
+		case MENU_ACTION_NONE:
+		default:
+			break;
 		}
 
 		if (!defer_menu)
-			PWR_update(&dirty, &show_settings, Menu_beforeSleep, Menu_afterSleep);
+			PWR_update(&nav.dirty, &show_settings, Menu_beforeSleep, Menu_afterSleep);
 
 		if (defer_menu && PAD_justReleased(BTN_MENU))
 			defer_menu = false;
 
-		if (dirty) {
+		if (nav.dirty) {
 			GFX_clear(screen);
 			GFX_blitHardwareGroup(screen, show_settings);
 
@@ -6020,10 +4426,10 @@ static int Menu_options(MenuList* list) {
 				int mw = list->max_width;
 				if (!mw) {
 					// get the width of the widest item
-					for (int i = 0; i < count; i++) {
-						MenuItem* item = &items[i];
+					for (int i = 0; i < nav.count; i++) {
+						MenuItem* loop_item = &items[i];
 						int w = 0;
-						TTF_SizeUTF8(font.medium, item->name, &w, NULL);
+						TTF_SizeUTF8(font.medium, loop_item->name, &w, NULL);
 						w += DP(OPTION_PADDING * 2);
 						if (w > mw)
 							mw = w;
@@ -6034,16 +4440,16 @@ static int Menu_options(MenuList* list) {
 
 				int ox = DP_CENTER_PX(ui.screen_width, mw);
 				int oy = DP(ui.edge_padding + ui.pill_height);
-				int selected_row = selected - start;
-				for (int i = start, j = 0; i < end; i++, j++) {
-					MenuItem* item = &items[i];
+				int selected_row = nav.selected - nav.start;
+				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
+					MenuItem* loop_item = &items[i];
 					SDL_Color text_color = COLOR_WHITE;
 
 					// int ox = (screen->w - w) / 2; // if we're centering these (but I don't think we should after seeing it)
 					if (j == selected_row) {
 						// move out of conditional if centering
 						int w = 0;
-						TTF_SizeUTF8(font.medium, item->name, &w, NULL);
+						TTF_SizeUTF8(font.medium, loop_item->name, &w, NULL);
 						w += DP(OPTION_PADDING * 2);
 
 						GFX_blitPill(
@@ -6051,10 +4457,10 @@ static int Menu_options(MenuList* list) {
 						    &(SDL_Rect){ox, oy + DP(j * ui.option_size), w, DP(ui.option_size)});
 						text_color = COLOR_BLACK;
 
-						if (item->desc)
-							desc = item->desc;
+						if (loop_item->desc)
+							desc = loop_item->desc;
 					}
-					text = TTF_RenderUTF8_Blended(font.medium, item->name, text_color);
+					text = TTF_RenderUTF8_Blended(font.medium, loop_item->name, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
 					                            oy + DP(j * ui.option_size + ui.option_baseline)});
@@ -6067,9 +4473,9 @@ static int Menu_options(MenuList* list) {
 				ox = oy = DP(ui.edge_padding);
 				oy += DP(ui.pill_height);
 
-				int selected_row = selected - start;
-				for (int i = start, j = 0; i < end; i++, j++) {
-					MenuItem* item = &items[i];
+				int selected_row = nav.selected - nav.start;
+				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
+					MenuItem* loop_item = &items[i];
 					SDL_Color text_color = COLOR_WHITE;
 
 					if (j == selected_row) {
@@ -6082,16 +4488,17 @@ static int Menu_options(MenuList* list) {
 					// Calculate optimal widths using proportional truncation
 					int label_text_w, value_text_w;
 					int total_available = mw - DP(OPTION_PADDING * 3);
-					const char* value_str = (item->value >= 0) ? item->values[item->value] : NULL;
-					calculateProportionalWidths(item->name, value_str, total_available,
+					const char* value_str =
+					    (loop_item->value >= 0) ? loop_item->values[loop_item->value] : NULL;
+					calculateProportionalWidths(loop_item->name, value_str, total_available,
 					                            &label_text_w, &value_text_w);
 
 					int label_w = label_text_w + DP(OPTION_PADDING * 2);
 
 					// Render value text
-					if (item->value >= 0) {
+					if (loop_item->value >= 0) {
 						char truncated[256];
-						GFX_truncateText(font.small, item->values[item->value], truncated,
+						GFX_truncateText(font.small, loop_item->values[loop_item->value], truncated,
 						                 value_text_w, 0);
 						text = TTF_RenderUTF8_Blended(font.small, truncated, COLOR_WHITE);
 						SDL_BlitSurface(
@@ -6108,12 +4515,13 @@ static int Menu_options(MenuList* list) {
 						                         DP(ui.option_size)});
 						text_color = COLOR_BLACK;
 
-						if (item->desc)
-							desc = item->desc;
+						if (loop_item->desc)
+							desc = loop_item->desc;
 					}
 					// Render label text
 					char label_truncated[256];
-					GFX_truncateText(font.medium, item->name, label_truncated, label_text_w, 0);
+					GFX_truncateText(font.medium, loop_item->name, label_truncated, label_text_w,
+					                 0);
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
@@ -6125,18 +4533,18 @@ static int Menu_options(MenuList* list) {
 				if (!mw) {
 					// get the width of the widest row
 					int mrw = 0;
-					for (int i = 0; i < count; i++) {
-						MenuItem* item = &items[i];
+					for (int i = 0; i < nav.count; i++) {
+						MenuItem* loop_item = &items[i];
 						int w = 0;
 						int lw = 0;
 						int rw = 0;
-						TTF_SizeUTF8(font.medium, item->name, &lw, NULL);
+						TTF_SizeUTF8(font.medium, loop_item->name, &lw, NULL);
 
 						// every value list in an input table is the same
 						// so only calculate rw for the first item...
 						if (!mrw || type != MENU_INPUT) {
-							for (int j = 0; item->values[j]; j++) {
-								TTF_SizeUTF8(font.small, item->values[j], &rw, NULL);
+							for (int k = 0; loop_item->values[k]; k++) {
+								TTF_SizeUTF8(font.small, loop_item->values[k], &rw, NULL);
 								if (lw + rw > w)
 									w = lw + rw;
 								if (rw > mrw)
@@ -6155,16 +4563,17 @@ static int Menu_options(MenuList* list) {
 
 				int ox = DP_CENTER_PX(ui.screen_width, mw);
 				int oy = DP(ui.edge_padding + ui.pill_height);
-				int selected_row = selected - start;
-				for (int i = start, j = 0; i < end; i++, j++) {
-					MenuItem* item = &items[i];
+				int selected_row = nav.selected - nav.start;
+				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
+					MenuItem* loop_item = &items[i];
 					SDL_Color text_color = COLOR_WHITE;
 
 					// Calculate optimal widths using proportional truncation
 					int label_text_w, value_text_w;
 					int total_available = mw - DP(OPTION_PADDING * 3);
-					const char* value_str = (item->value >= 0) ? item->values[item->value] : NULL;
-					calculateProportionalWidths(item->name, value_str, total_available,
+					const char* value_str =
+					    (loop_item->value >= 0) ? loop_item->values[loop_item->value] : NULL;
+					calculateProportionalWidths(loop_item->name, value_str, total_available,
 					                            &label_text_w, &value_text_w);
 
 					int label_w = label_text_w + DP(OPTION_PADDING * 2);
@@ -6181,24 +4590,25 @@ static int Menu_options(MenuList* list) {
 						                         DP(ui.option_size)});
 						text_color = COLOR_BLACK;
 
-						if (item->desc)
-							desc = item->desc;
+						if (loop_item->desc)
+							desc = loop_item->desc;
 					}
 					// Render label text
 					char label_truncated[256];
-					GFX_truncateText(font.medium, item->name, label_truncated, label_text_w, 0);
+					GFX_truncateText(font.medium, loop_item->name, label_truncated, label_text_w,
+					                 0);
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
 					                            oy + DP(j * ui.option_size + ui.option_baseline)});
 					SDL_FreeSurface(text);
 
-					if (await_input && j == selected_row) {
+					if (nav.await_input && j == selected_row) {
 						// buh
-					} else if (item->value >= 0) {
+					} else if (loop_item->value >= 0) {
 						// Render value text
 						char truncated[256];
-						GFX_truncateText(font.small, item->values[item->value], truncated,
+						GFX_truncateText(font.small, loop_item->values[loop_item->value], truncated,
 						                 value_text_w, 0);
 						text = TTF_RenderUTF8_Blended(font.small, truncated, COLOR_WHITE);
 						SDL_BlitSurface(
@@ -6210,7 +4620,7 @@ static int Menu_options(MenuList* list) {
 				}
 			}
 
-			if (count > max_visible_options) {
+			if (nav.count > max_visible_options) {
 #define SCROLL_WIDTH 24
 #define SCROLL_HEIGHT 4
 #define SCROLL_MARGIN 4 // Tight spacing anchored to option list
@@ -6218,10 +4628,10 @@ static int Menu_options(MenuList* list) {
 				int options_top = DP(ui.edge_padding + ui.pill_height);
 				int options_bottom = options_top + DP(max_visible_options * ui.option_size);
 
-				if (start > 0)
+				if (nav.start > 0)
 					GFX_blitAsset(ASSET_SCROLL_UP, NULL, screen,
 					              &(SDL_Rect){ox, options_top - DP(SCROLL_HEIGHT + SCROLL_MARGIN)});
-				if (end < count)
+				if (nav.end < nav.count)
 					GFX_blitAsset(ASSET_SCROLL_DOWN, NULL, screen,
 					              &(SDL_Rect){ox, options_bottom + DP(SCROLL_MARGIN)});
 			}
@@ -6238,7 +4648,7 @@ static int Menu_options(MenuList* list) {
 			}
 
 			GFX_flip(screen);
-			dirty = 0;
+			nav.dirty = 0;
 		} else
 			GFX_sync();
 		hdmimon();
@@ -6250,260 +4660,28 @@ static int Menu_options(MenuList* list) {
 	return 0;
 }
 
-static void Menu_scale(SDL_Surface* src, SDL_Surface* dst) {
-	// LOG_info("Menu_scale src: %ix%i dst: %ix%i", src->w,src->h,dst->w,dst->h);
-
-	uint16_t* s = src->pixels;
-	uint16_t* d = dst->pixels;
-
-	int sw = src->w;
-	int sh = src->h;
-	int sp = src->pitch / FIXED_BPP;
-
-	int dw = dst->w;
-	int dh = dst->h;
-	int dp = dst->pitch / FIXED_BPP;
-
-	int rx = 0;
-	int ry = 0;
-	int rw = dw;
-	int rh = dh;
-
-	int scaling = screen_scaling;
-	if (scaling == SCALE_CROPPED && DEVICE_WIDTH == HDMI_WIDTH) {
-		scaling = SCALE_NATIVE;
-	}
-	if (scaling == SCALE_NATIVE) {
-		// LOG_info("native");
-
-		rx = renderer.dst_x;
-		ry = renderer.dst_y;
-		rw = renderer.src_w;
-		rh = renderer.src_h;
-		if (renderer.scale) {
-			// LOG_info("scale: %i", renderer.scale);
-			rw *= renderer.scale;
-			rh *= renderer.scale;
-		} else {
-			// LOG_info("forced crop"); // eg. fc on nano, vb on smart
-			rw -= renderer.src_x * 2;
-			rh -= renderer.src_y * 2;
-			sw = rw;
-			sh = rh;
-		}
-
-		if (dw == DEVICE_WIDTH / 2) {
-			// LOG_info("halve");
-			rx /= 2;
-			ry /= 2;
-			rw /= 2;
-			rh /= 2;
-		}
-	} else if (scaling == SCALE_CROPPED) {
-		// LOG_info("cropped");
-		sw -= renderer.src_x * 2;
-		sh -= renderer.src_y * 2;
-
-		rx = renderer.dst_x;
-		ry = renderer.dst_y;
-		rw = sw * renderer.scale;
-		rh = sh * renderer.scale;
-
-		if (dw == DEVICE_WIDTH / 2) {
-			// LOG_info("halve");
-			rx /= 2;
-			ry /= 2;
-			rw /= 2;
-			rh /= 2;
-		}
-	}
-
-	if (scaling == SCALE_ASPECT || rw > dw || rh > dh) {
-		// LOG_info("aspect");
-		double fixed_aspect_ratio = ((double)DEVICE_WIDTH) / DEVICE_HEIGHT;
-		int core_aspect = core.aspect_ratio * 1000;
-		int fixed_aspect = fixed_aspect_ratio * 1000;
-
-		if (core_aspect > fixed_aspect) {
-			// LOG_info("letterbox");
-			rw = dw;
-			rh = rw / core.aspect_ratio;
-			rh += rh % 2;
-		} else if (core_aspect < fixed_aspect) {
-			// LOG_info("pillarbox");
-			rh = dh;
-			rw = rh * core.aspect_ratio;
-			rw += rw % 2;
-			rw = (rw / 8) * 8; // probably necessary here since we're not scaling by an integer
-		} else {
-			// LOG_info("perfect match");
-			rw = dw;
-			rh = dh;
-		}
-
-		rx = (dw - rw) / 2;
-		ry = (dh - rh) / 2;
-	}
-
-	// LOG_info("Menu_scale (r): %i,%i %ix%i",rx,ry,rw,rh);
-	// LOG_info("offset: %i,%i", renderer.src_x, renderer.src_y);
-
-	// dumb nearest neighbor scaling
-	int mx = (sw << 16) / rw;
-	int my = (sh << 16) / rh;
-	int ox = (renderer.src_x << 16);
-	int sx;
-	int sy = (renderer.src_y << 16);
-	int lr = -1;
-	int sr = 0;
-	int dr = ry * dp;
-	int cp = dp * FIXED_BPP;
-
-	// LOG_info("Menu_scale (s): %i,%i %ix%i",sx,sy,sw,sh);
-	// LOG_info("mx:%i my:%i sx>>16:%i sy>>16:%i",mx,my,((sx+mx) >> 16),((sy+my) >> 16));
-
-	for (int dy = 0; dy < rh; dy++) {
-		sx = ox;
-		sr = (sy >> 16) * sp;
-		if (sr == lr) {
-			memcpy(d + dr, d + dr - dp, cp);
-		} else {
-			for (int dx = 0; dx < rw; dx++) {
-				d[dr + rx + dx] = s[sr + (sx >> 16)];
-				sx += mx;
-			}
-		}
-		lr = sr;
-		sy += my;
-		dr += dp;
-	}
-
-	// LOG_info("successful");
-}
+///////////////////////////////
+// Menu state wrappers (implementation in minarch_menu.c)
+///////////////////////////////
 
 static void Menu_initState(void) {
-	if (exists(menu.slot_path))
-		menu.slot = getInt(menu.slot_path);
-	if (menu.slot == 8)
-		menu.slot = 0;
-
-	menu.save_exists = 0;
-	menu.preview_exists = 0;
+	MinArchMenu_initState(MinArchContext_get());
 }
+
 static void Menu_updateState(void) {
-	// LOG_info("Menu_updateState");
-
-	int last_slot = state_slot;
-	state_slot = menu.slot;
-
-	char save_path[256];
-	State_getPath(save_path);
-
-	state_slot = last_slot;
-
-	sprintf(menu.bmp_path, "%s/%s.%d.bmp", menu.minui_dir, game.name, menu.slot);
-	sprintf(menu.txt_path, "%s/%s.%d.txt", menu.minui_dir, game.name, menu.slot);
-
-	menu.save_exists = exists(save_path);
-	menu.preview_exists = menu.save_exists && exists(menu.bmp_path);
-
-	// LOG_info("save_path: %s (%i)", save_path, menu.save_exists);
-	// LOG_info("bmp_path: %s txt_path: %s (%i)", menu.bmp_path, menu.txt_path, menu.preview_exists);
+	MinArchMenu_updateState(MinArchContext_get());
 }
+
 static void Menu_saveState(void) {
-	// LOG_info("Menu_saveState");
-
-	Menu_updateState();
-
-	if (menu.total_discs) {
-		char* disc_path = menu.disc_paths[menu.disc];
-		putFile(menu.txt_path, disc_path + strlen(menu.base_path));
-	}
-
-	SDL_Surface* bitmap = menu.bitmap;
-	if (!bitmap)
-		bitmap = SDL_CreateRGBSurfaceFrom(renderer.src, renderer.true_w, renderer.true_h,
-		                                  FIXED_DEPTH, renderer.src_p, RGBA_MASK_565);
-	SDL_RWops* out = SDL_RWFromFile(menu.bmp_path, "wb");
-	SDL_SaveBMP_RW(bitmap, out, 1);
-
-	// LOG_info("%s %ix%i", menu.bmp_path, bitmap->w,bitmap->h);
-
-	if (bitmap != menu.bitmap)
-		SDL_FreeSurface(bitmap);
-
-	state_slot = menu.slot;
-	putInt(menu.slot_path, menu.slot);
-	State_write();
+	MinArchMenu_saveState(MinArchContext_get());
 }
+
 static void Menu_loadState(void) {
-	// LOG_info("Menu_loadState");
-
-	Menu_updateState();
-
-	if (menu.save_exists) {
-		if (menu.total_discs) {
-			char slot_disc_name[256];
-			getFile(menu.txt_path, slot_disc_name, 256);
-
-			char slot_disc_path[256];
-			if (slot_disc_name[0] == '/')
-				strcpy(slot_disc_path, slot_disc_name);
-			else
-				sprintf(slot_disc_path, "%s%s", menu.base_path, slot_disc_name);
-
-			char* disc_path = menu.disc_paths[menu.disc];
-			if (!exactMatch(slot_disc_path, disc_path)) {
-				Game_changeDisc(slot_disc_path);
-			}
-		}
-
-		state_slot = menu.slot;
-		putInt(menu.slot_path, menu.slot);
-		State_read();
-	}
+	MinArchMenu_loadState(MinArchContext_get());
 }
 
-static void getAlias(char* path, char* alias) {
-	// LOG_info("alias path: %s", path);
-	char* tmp;
-	char map_path[256];
-	strcpy(map_path, path);
-	tmp = strrchr(map_path, '/');
-	if (tmp) {
-		tmp += 1;
-		strcpy(tmp, "map.txt");
-		// LOG_info("map_path: %s", map_path);
-	}
-	char* file_name = strrchr(path, '/');
-	if (file_name)
-		file_name += 1;
-	// LOG_info("file_name: %s", file_name);
-
-	if (exists(map_path)) {
-		FILE* file = fopen(map_path, "r");
-		if (file) {
-			char line[256];
-			while (fgets(line, 256, file) != NULL) {
-				normalizeNewline(line);
-				trimTrailingNewlines(line);
-				if (strlen(line) == 0)
-					continue; // skip empty lines
-
-				tmp = strchr(line, '\t');
-				if (tmp) {
-					tmp[0] = '\0';
-					char* key = line;
-					char* value = tmp + 1;
-					if (exactMatch(file_name, key)) {
-						strcpy(alias, value);
-						break;
-					}
-				}
-			}
-			fclose(file);
-		}
-	}
+static void Menu_scale(SDL_Surface* src, SDL_Surface* dst) {
+	MinArchMenu_scale(MinArchContext_get(), src, dst);
 }
 
 ///////////////////////////////////////
@@ -6533,348 +4711,7 @@ static void getAlias(char* path, char* alias) {
  * @note Changes are saved to config file on menu exit
  */
 static void Menu_loop(void) {
-	menu.bitmap = SDL_CreateRGBSurfaceFrom(renderer.src, renderer.true_w, renderer.true_h,
-	                                       FIXED_DEPTH, renderer.src_p, RGBA_MASK_565);
-	// LOG_info("Menu_loop:menu.bitmap %ix%i", menu.bitmap->w,menu.bitmap->h);
-
-	SDL_Surface* backing = SDL_CreateRGBSurface(SDL_SWSURFACE, DEVICE_WIDTH, DEVICE_HEIGHT,
-	                                            FIXED_DEPTH, RGBA_MASK_565);
-	Menu_scale(menu.bitmap, backing);
-
-	int restore_w = screen->w;
-	int restore_h = screen->h;
-	int restore_p = screen->pitch;
-	if (restore_w != DEVICE_WIDTH || restore_h != DEVICE_HEIGHT) {
-		screen = GFX_resize(DEVICE_WIDTH, DEVICE_HEIGHT, DEVICE_PITCH);
-	}
-
-	SRAM_write();
-	RTC_write();
-	PWR_warn(0);
-	if (!HAS_POWER_BUTTON)
-		PWR_enableSleep();
-	PWR_setCPUSpeed(CPU_SPEED_IDLE); // set Hz directly
-	GFX_setEffect(EFFECT_NONE);
-
-	int rumble_strength = VIB_getStrength();
-	VIB_setStrength(0);
-
-	PWR_enableAutosleep();
-	PAD_reset();
-
-	// if (!HAS_POWER_BUTTON && !HAS_POWEROFF_BUTTON) {
-	// 	MenuItem* item = &options_menu.items[5];
-	// 	item->name = "Quicksave";
-	// 	item->desc = "Automatically resume current state next power on.";
-	// 	item->on_confirm = OptionQuicksave_onConfirm;
-	// }
-
-	// path and string things
-	char* tmp;
-	char rom_name[256]; // without extension or cruft
-	getDisplayName(game.name, rom_name);
-	getAlias(game.path, rom_name);
-
-	int rom_disc = -1;
-	char disc_name[16];
-	if (menu.total_discs) {
-		rom_disc = menu.disc;
-		sprintf(disc_name, "Disc %i", menu.disc + 1);
-	}
-
-	int selected = 0; // resets every launch
-	Menu_initState();
-
-	int status = STATUS_CONT; // TODO: no longer used?
-	int show_setting = 0;
-	int dirty = 1;
-	int menu_input_blocked = 0;
-	int menu_start = 0;
-
-	SDL_Surface* preview =
-	    SDL_CreateRGBSurface(SDL_SWSURFACE, DEVICE_WIDTH / 2, DEVICE_HEIGHT / 2, FIXED_DEPTH,
-	                         RGBA_MASK_565); // TODO: retain until changed?
-
-	while (show_menu) {
-		GFX_startFrame();
-		uint32_t now = SDL_GetTicks();
-
-		PAD_poll();
-
-		if (PAD_justPressed(BTN_UP)) {
-			selected -= 1;
-			if (selected < 0)
-				selected += MENU_ITEM_COUNT;
-			dirty = 1;
-		} else if (PAD_justPressed(BTN_DOWN)) {
-			selected += 1;
-			if (selected >= MENU_ITEM_COUNT)
-				selected -= MENU_ITEM_COUNT;
-			dirty = 1;
-		} else if (PAD_justPressed(BTN_LEFT)) {
-			if (menu.total_discs > 1 && selected == ITEM_CONT) {
-				menu.disc -= 1;
-				if (menu.disc < 0)
-					menu.disc += menu.total_discs;
-				dirty = 1;
-				sprintf(disc_name, "Disc %i", menu.disc + 1);
-			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
-				menu.slot -= 1;
-				if (menu.slot < 0)
-					menu.slot += MENU_SLOT_COUNT;
-				dirty = 1;
-			}
-		} else if (PAD_justPressed(BTN_RIGHT)) {
-			if (menu.total_discs > 1 && selected == ITEM_CONT) {
-				menu.disc += 1;
-				if (menu.disc == menu.total_discs)
-					menu.disc -= menu.total_discs;
-				dirty = 1;
-				sprintf(disc_name, "Disc %i", menu.disc + 1);
-			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
-				menu.slot += 1;
-				if (menu.slot >= MENU_SLOT_COUNT)
-					menu.slot -= MENU_SLOT_COUNT;
-				dirty = 1;
-			}
-		}
-
-		if (dirty && (selected == ITEM_SAVE || selected == ITEM_LOAD)) {
-			Menu_updateState();
-		}
-
-		if (PAD_justPressed(BTN_B) || (BTN_WAKE != BTN_MENU && PAD_tappedMenu(now))) {
-			show_menu = 0;
-		} else if (PAD_justPressed(BTN_A)) {
-			switch (selected) {
-			case ITEM_CONT:
-				if (menu.total_discs && rom_disc != menu.disc) {
-					char* disc_path = menu.disc_paths[menu.disc];
-					Game_changeDisc(disc_path);
-				}
-				show_menu = 0;
-				break;
-
-			case ITEM_SAVE: {
-				Menu_saveState();
-				show_menu = 0;
-			} break;
-			case ITEM_LOAD: {
-				Menu_loadState();
-				show_menu = 0;
-			} break;
-			case ITEM_OPTS: {
-				if (simple_mode) {
-					core.reset();
-					show_menu = 0;
-				} else {
-					int old_scaling = screen_scaling;
-					Menu_options(&options_menu);
-					if (screen_scaling != old_scaling) {
-						selectScaler(renderer.true_w, renderer.true_h, renderer.src_p);
-
-						restore_w = screen->w;
-						restore_h = screen->h;
-						restore_p = screen->pitch;
-						screen = GFX_resize(DEVICE_WIDTH, DEVICE_HEIGHT, DEVICE_PITCH);
-
-						SDL_FillRect(backing, NULL, 0);
-						Menu_scale(menu.bitmap, backing);
-					}
-					dirty = 1;
-				}
-			} break;
-			case ITEM_QUIT:
-				show_menu = 0;
-				quit = 1; // TODO: tmp?
-				break;
-			}
-			if (!show_menu)
-				break;
-		}
-
-		PWR_update(&dirty, &show_setting, Menu_beforeSleep, Menu_afterSleep);
-
-		if (dirty) {
-			GFX_clear(screen);
-
-			SDL_BlitSurface(backing, NULL, screen, NULL);
-			SDL_BlitSurface(menu.overlay, NULL, screen, NULL);
-
-			int ox, oy;
-			int ow = GFX_blitHardwareGroup(screen, show_setting);
-			int max_width = DP(ui.screen_width) - DP(ui.edge_padding * 2) - ow;
-
-			char display_name[256];
-			int text_width = GFX_truncateText(font.large, rom_name, display_name, max_width,
-			                                  DP(ui.button_padding * 2));
-			max_width = MIN(max_width, text_width);
-
-			SDL_Surface* text;
-			text = TTF_RenderUTF8_Blended(font.large, display_name, COLOR_WHITE);
-			GFX_blitPill(ASSET_BLACK_PILL, screen,
-			             &(SDL_Rect){DP(ui.edge_padding), DP(ui.edge_padding), max_width,
-			                         DP(ui.pill_height)});
-			SDL_BlitSurface(text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
-			                screen,
-			                &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-			                            DP(ui.edge_padding + ui.text_baseline)});
-			SDL_FreeSurface(text);
-
-			if (show_setting && !GetHDMI())
-				GFX_blitHardwareHints(screen, show_setting);
-			else
-				GFX_blitButtonGroup(
-				    (char*[]){BTN_SLEEP == BTN_POWER ? "POWER" : "MENU", "SLEEP", NULL}, 0, screen,
-				    0);
-			GFX_blitButtonGroup((char*[]){"B", "BACK", "A", "OKAY", NULL}, 1, screen, 1);
-
-			// Vertically center menu items between header and footer (all in DP)
-			int header_offset = ui.edge_padding + ui.pill_height;
-			int footer_offset = ui.screen_height - ui.edge_padding - ui.pill_height;
-			int content_area_height = footer_offset - header_offset;
-			int menu_height_dp = MENU_ITEM_COUNT * ui.pill_height;
-			oy = header_offset + (content_area_height - menu_height_dp) / 2 - ui.padding;
-
-			for (int i = 0; i < MENU_ITEM_COUNT; i++) {
-				char* item = menu.items[i];
-				SDL_Color text_color = COLOR_WHITE;
-
-				if (i == selected) {
-					// disc change
-					if (menu.total_discs > 1 && i == ITEM_CONT) {
-						GFX_blitPill(ASSET_DARK_GRAY_PILL, screen,
-						             &(SDL_Rect){DP(ui.edge_padding), DP(oy + ui.padding),
-						                         DP(ui.screen_width - ui.edge_padding * 2),
-						                         DP(ui.pill_height)});
-						text = TTF_RenderUTF8_Blended(font.large, disc_name, COLOR_WHITE);
-						SDL_BlitSurface(
-						    text, NULL, screen,
-						    &(SDL_Rect){DP(ui.screen_width - ui.edge_padding - ui.button_padding) -
-						                    text->w,
-						                DP(oy + ui.padding + ui.text_baseline)});
-						SDL_FreeSurface(text);
-					}
-
-					TTF_SizeUTF8(font.large, item, &ow, NULL);
-					ow += DP(ui.button_padding * 2);
-
-					// pill
-					GFX_blitPill(ASSET_WHITE_PILL, screen,
-					             &(SDL_Rect){DP(ui.edge_padding),
-					                         DP(oy + ui.padding + (i * ui.pill_height)), ow,
-					                         DP(ui.pill_height)});
-					text_color = COLOR_BLACK;
-				} else {
-					// shadow
-					text = TTF_RenderUTF8_Blended(font.large, item, COLOR_BLACK);
-					SDL_BlitSurface(text, NULL, screen,
-					                &(SDL_Rect){DP(2 + ui.edge_padding + ui.button_padding),
-					                            DP(1 + ui.padding + oy + (i * ui.pill_height) +
-					                               ui.text_baseline)});
-					SDL_FreeSurface(text);
-				}
-
-				// text
-				text = TTF_RenderUTF8_Blended(font.large, item, text_color);
-				SDL_BlitSurface(
-				    text, NULL, screen,
-				    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-				                DP(oy + ui.padding + (i * ui.pill_height) + ui.text_baseline)});
-				SDL_FreeSurface(text);
-			}
-
-			// slot preview
-			if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
-#define WINDOW_RADIUS 4 // TODO: this logic belongs in blitRect?
-#define PAGINATION_HEIGHT 6
-				// unscaled
-				int hw = DEVICE_WIDTH / 2;
-				int hh = DEVICE_HEIGHT / 2;
-				int pw = hw + DP(WINDOW_RADIUS * 2);
-				int ph = hh + DP(WINDOW_RADIUS * 2 + PAGINATION_HEIGHT + WINDOW_RADIUS);
-				ox = DEVICE_WIDTH - pw - DP(ui.edge_padding);
-				oy = (DEVICE_HEIGHT - ph) / 2;
-
-				// window
-				GFX_blitRect(ASSET_STATE_BG, screen, &(SDL_Rect){ox, oy, pw, ph});
-				ox += DP(WINDOW_RADIUS);
-				oy += DP(WINDOW_RADIUS);
-
-				if (menu.preview_exists) { // has save, has preview
-					// lotta memory churn here
-					SDL_Surface* bmp = IMG_Load(menu.bmp_path);
-					SDL_Surface* raw_preview =
-					    SDL_ConvertSurface(bmp, screen->format, SDL_SWSURFACE);
-
-					// LOG_info("raw_preview %ix%i", raw_preview->w,raw_preview->h);
-
-					SDL_FillRect(preview, NULL, 0);
-					Menu_scale(raw_preview, preview);
-					SDL_BlitSurface(preview, NULL, screen, &(SDL_Rect){ox, oy});
-					SDL_FreeSurface(raw_preview);
-					SDL_FreeSurface(bmp);
-				} else {
-					SDL_Rect preview_rect = {ox, oy, hw, hh};
-					SDL_FillRect(screen, &preview_rect, 0);
-					if (menu.save_exists)
-						GFX_blitMessage(font.large, "No Preview", screen, &preview_rect);
-					else
-						GFX_blitMessage(font.large, "Empty Slot", screen, &preview_rect);
-				}
-
-				// pagination
-				ox += (pw - DP(15 * MENU_SLOT_COUNT)) / 2;
-				oy += hh + DP(WINDOW_RADIUS);
-				for (int i = 0; i < MENU_SLOT_COUNT; i++) {
-					if (i == menu.slot)
-						GFX_blitAsset(ASSET_PAGE, NULL, screen, &(SDL_Rect){ox + DP(i * 15), oy});
-					else
-						GFX_blitAsset(ASSET_DOT, NULL, screen,
-						              &(SDL_Rect){ox + DP(i * 15) + 4, oy + DP(2)});
-				}
-			}
-
-			GFX_flip(screen);
-			dirty = 0;
-		} else
-			GFX_sync();
-		hdmimon();
-	}
-
-	SDL_FreeSurface(preview);
-
-	PAD_reset();
-
-	GFX_clearAll();
-	PWR_warn(1);
-
-	if (!quit) {
-		if (restore_w != DEVICE_WIDTH || restore_h != DEVICE_HEIGHT) {
-			screen = GFX_resize(restore_w, restore_h, restore_p);
-		}
-		GFX_setEffect(screen_effect);
-		GFX_clear(screen);
-		video_refresh_callback(renderer.src, renderer.true_w, renderer.true_h, renderer.src_p);
-		// Flip immediately since we're outside main loop (restoring game after menu)
-		if (frame_ready_for_flip) {
-			GFX_flip(screen);
-			frame_ready_for_flip = 0;
-		}
-
-		setOverclock(overclock); // restore overclock value
-		if (rumble_strength)
-			VIB_setStrength(rumble_strength);
-
-		if (!HAS_POWER_BUTTON)
-			PWR_disableSleep();
-	} else if (exists(NOUI_PATH))
-		PWR_powerOff();
-
-	SDL_FreeSurface(menu.bitmap);
-	menu.bitmap = NULL;
-	SDL_FreeSurface(backing);
-	PWR_disableAutosleep();
+	MinArchMenu_loop(MinArchContext_get());
 }
 
 ///////////////////////////////////////
@@ -7034,6 +4871,64 @@ static void limitFF(void) {
 int main(int argc, char* argv[]) {
 	LOG_info("MinArch");
 
+	// Initialize context with pointers to globals
+	// This enables functions to be migrated to context-based signatures
+	MinArchContext* ctx = MinArchContext_get();
+	ctx->core = &core;
+	ctx->game = &game;
+	ctx->screen = &screen;
+	ctx->renderer = &renderer;
+	ctx->video_state = &video_state;
+	ctx->pixel_format = (int*)&pixel_format;
+	ctx->screen_scaling = &screen_scaling;
+	ctx->screen_sharpness = &screen_sharpness;
+	ctx->screen_effect = &screen_effect;
+	ctx->device_width = &DEVICE_WIDTH;
+	ctx->device_height = &DEVICE_HEIGHT;
+	ctx->device_pitch = &DEVICE_PITCH;
+	ctx->fit = &fit;
+	ctx->quit = &quit;
+	ctx->show_menu = &show_menu;
+	ctx->simple_mode = &simple_mode;
+	ctx->show_debug = &show_debug;
+	ctx->fast_forward = &fast_forward;
+	ctx->max_ff_speed = &max_ff_speed;
+	ctx->overclock = &overclock;
+	ctx->state_slot = &state_slot;
+	ctx->buttons = &buttons;
+	ctx->ignore_menu = &ignore_menu;
+	ctx->config = &config;
+	ctx->auto_cpu_state = &auto_cpu_state;
+	ctx->auto_cpu_config = &auto_cpu_config;
+	ctx->disk_control = &disk_control_ext;
+	ctx->menu = MinArchMenu_getState();
+	MinArchContext_initGlobals(ctx);
+
+	// Initialize callbacks for menu module to call back into minarch.c
+	// This eliminates extern dependencies in minarch_menu.c
+	MinArchCallbacks callbacks = {
+	    .sram_write = SRAM_write,
+	    .rtc_write = RTC_write,
+	    .state_get_path = State_getPath,
+	    .state_read = State_read,
+	    .state_write = State_write,
+	    .state_autosave = State_autosave,
+	    .game_change_disc = Game_changeDisc,
+	    .select_scaler = selectScaler,
+	    .video_refresh = video_refresh_callback,
+	    .set_overclock = setOverclock,
+	    .menu_options = Menu_options,
+	    .options_menu = &options_menu,
+	    .get_hdmi = GetHDMI,
+	    .hdmi_mon = hdmimon,
+	    .frame_ready_for_flip = &frame_ready_for_flip,
+	};
+	MinArchContext_initCallbacks(ctx, &callbacks);
+
+	// Initialize auto CPU scaling config with defaults
+	MinArchCPU_initConfig(&auto_cpu_config);
+	MinArchCPU_initState(&auto_cpu_state);
+
 	setOverclock(overclock); // default to normal
 	// force a stack overflow to ensure asan is linked and actually working
 	// char tmp[2];
@@ -7156,8 +5051,10 @@ int main(int argc, char* argv[]) {
 		// Store frame time for auto CPU scaling analysis
 		uint64_t frame_time = getMicroseconds() - frame_start;
 		if (overclock == 3 && !fast_forward && !show_menu) {
-			auto_cpu_frame_times[auto_cpu_frame_time_index % AUTO_CPU_WINDOW_FRAMES] = frame_time;
-			auto_cpu_frame_time_index++;
+			auto_cpu_state
+			    .frame_times[auto_cpu_state.frame_time_index % MINARCH_CPU_FRAME_BUFFER_SIZE] =
+			    frame_time;
+			auto_cpu_state.frame_time_index++;
 		}
 
 		// Flip to display - vsync happens HERE, after core.run() completes
@@ -7200,7 +5097,7 @@ finish:
 	PAD_quit();
 	GFX_quit();
 
-	convert_buffer_free();
+	MinArchVideoConvert_freeBuffer();
 
 	return EXIT_SUCCESS;
 }
