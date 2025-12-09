@@ -191,7 +191,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common 
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/integration_workflows_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_zip_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/integration_workflows_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -279,6 +279,11 @@ tests/recent_parser_test: tests/unit/all/common/test_recent_parser.c workspace/a
 # Build recent.txt writer tests (uses real temp files, no --wrap needed)
 tests/recent_writer_test: tests/unit/all/common/test_recent_writer.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building recent.txt writer tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+
+# Build recent runtime tests (Recent struct and array operations)
+tests/recent_runtime_test: tests/unit/all/common/test_recent_runtime.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building recent runtime tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build directory utility tests (uses real temp directories, no --wrap needed)
@@ -415,6 +420,49 @@ tests/minarch_core_test: tests/unit/all/common/test_minarch_core.c \
 	$(TEST_UNITY)
 	@echo "Building core AV info tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS)
+
+# Build MinUI directory building tests (uses real temp directories, no --wrap needed)
+tests/minui_directory_test: tests/unit/all/common/test_minui_directory.c \
+	workspace/all/minui/minui_directory.c \
+	workspace/all/minui/minui_file_utils.c \
+	workspace/all/minui/minui_entry.c \
+	workspace/all/minui/minui_str_compare.c \
+	workspace/all/common/collections.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI directory tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build MinUI navigation tests (pure navigation logic, uses real temp dirs)
+tests/minui_navigation_test: tests/unit/all/common/test_minui_navigation.c \
+	workspace/all/minui/minui_navigation.c \
+	workspace/all/minui/minui_context.c \
+	workspace/all/minui/minui_launcher.c \
+	workspace/all/minui/minui_entry.c \
+	workspace/all/minui/minui_str_compare.c \
+	workspace/all/common/collections.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI navigation tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build MinUI thumbnail cache tests (pure cache logic and fade animation math)
+tests/minui_thumbnail_test: tests/unit/all/common/test_minui_thumbnail.c \
+	workspace/all/minui/minui_thumbnail.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI thumbnail cache tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build MinUI context tests (context lifecycle and accessor functions)
+tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
+	workspace/all/minui/minui_context.c \
+	$(TEST_UNITY)
+	@echo "Building MinUI context tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \

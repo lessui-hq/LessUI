@@ -133,3 +133,58 @@ void Recent_freeEntries(Recent_Entry** entries, int count) {
 	}
 	free(entries);
 }
+
+///////////////////////////////
+// Recent runtime operations
+///////////////////////////////
+
+Recent* Recent_new(char* path, char* alias, const char* sdcard_path, Recent_HasEmuFunc has_emu) {
+	Recent* self = malloc(sizeof(Recent));
+	if (!self)
+		return NULL;
+
+	// Need full path to determine emulator
+	char sd_path[256];
+	snprintf(sd_path, sizeof(sd_path), "%s%s", sdcard_path, path);
+
+	char emu_name[256];
+	getEmuName(sd_path, emu_name);
+
+	self->path = strdup(path);
+	if (!self->path) {
+		free(self);
+		return NULL;
+	}
+	self->alias = alias ? strdup(alias) : NULL;
+	if (alias && !self->alias) {
+		free(self->path);
+		free(self);
+		return NULL;
+	}
+	self->available = has_emu ? has_emu(emu_name) : 1;
+	return self;
+}
+
+void Recent_free(Recent* self) {
+	if (!self)
+		return;
+	free(self->path);
+	if (self->alias)
+		free(self->alias);
+	free(self);
+}
+
+int RecentArray_indexOf(void** self, int count, char* str) {
+	for (int i = 0; i < count; i++) {
+		Recent* item = (Recent*)self[i];
+		if (exactMatch(item->path, str))
+			return i;
+	}
+	return -1;
+}
+
+void RecentArray_free(void** self, int count) {
+	for (int i = 0; i < count; i++) {
+		Recent_free((Recent*)self[i]);
+	}
+}

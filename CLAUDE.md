@@ -455,6 +455,9 @@ See `.clang-format` for complete style definition.
 | MinUI state persistence | `workspace/all/minui/minui_state.c` |
 | MinUI file utilities | `workspace/all/minui/minui_file_utils.c` |
 | MinUI misc utilities | `workspace/all/minui/minui_utils.c` |
+| MinUI directory building | `workspace/all/minui/minui_directory.c` |
+| MinUI context (state mgmt) | `workspace/all/minui/minui_context.c` |
+| MinUI navigation | `workspace/all/minui/minui_navigation.c` |
 | Directory indexing | `workspace/all/minui/directory_index.c` |
 | Collection parsing | `workspace/all/minui/collection_parser.c` |
 | Recent games | `workspace/all/minui/recent_file.c` |
@@ -482,7 +485,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 1064 tests across 38 test suites** ✅
+**Total: 1253 tests across 41 test suites** ✅
 
 ### Extracted and Tested Modules
 
@@ -491,6 +494,7 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | Module | Tests | Extracted From | Purpose |
 |--------|-------|----------------|---------|
 | utils.c (split into 6 modules) | 123 | (original) | String, file, name, date, math utilities |
+| minui_thumbnail.c | 72 | minui.c | Thumbnail cache, fade animation, preload hints |
 | minarch_env.c | 51 | minarch.c | Libretro environment callback handlers |
 | minarch_game.c | 46 | minarch.c | ZIP parsing, extension matching, M3U detection |
 | minarch_scaler.c | 26 | minarch.c | Video scaling geometry calculations |
@@ -501,6 +505,7 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | minarch_menu.c | 41 | minarch.c | In-game menu, context pattern validation |
 | nointro_parser.c | 39 | (original) | No-Intro ROM naming conventions |
 | directory_index.c | 38 | minui.c | Alias application, duplicate detection, alpha indexing |
+| minui_directory.c | 32 | minui.c | Console detection, entry types, collation, scanning |
 | minarch_options.c | 36 | minarch.c | Option list search and manipulation |
 | pad.c | 36 | api.c | Button state machine, analog input |
 | minui_launcher.c | 32 | minui.c | Shell command construction, quote escaping |
@@ -516,7 +521,8 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | ui_layout.c | 20 | api.c | UI layout calculations (DP system) |
 | minarch_config.c | 19 | minarch.c | Config path generation, option mapping |
 | minui_file_utils.c | 18 | minui.c | File/dir checking utilities |
-| recent_file.c | 18 | minui.c | Recent games read/write |
+| recent_file.c | 31 | minui.c | Recent games I/O + Recent struct & array ops |
+| minui_navigation.c | 30 | minui.c | Navigation logic, entry dispatch, auto-launch, mock context tests |
 | minui_utils.c | 17 | minui.c | Index char, console dir detection |
 | minarch_memory.c | 16 | minarch.c | SRAM/RTC persistence with mock core |
 | minarch_state.c | 16 | minarch.c | Save state read/write, auto-resume |

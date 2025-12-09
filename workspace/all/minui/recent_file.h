@@ -14,12 +14,24 @@
 #define __RECENT_FILE_H__
 
 /**
- * Recent game entry
+ * Recent game entry (for file I/O)
  */
 typedef struct Recent_Entry {
 	char* path; // ROM path (relative to SDCARD_PATH, starts with /)
 	char* alias; // Custom display name (NULL if no alias)
 } Recent_Entry;
+
+/**
+ * Recent game (runtime representation)
+ *
+ * Paths are stored relative to SDCARD_PATH for platform portability.
+ * This allows the same SD card to work across different devices.
+ */
+typedef struct Recent {
+	char* path; // Path relative to SDCARD_PATH (without prefix)
+	char* alias; // Optional custom display name
+	int available; // 1 if emulator exists, 0 if not
+} Recent;
 
 /**
  * Parses recent.txt and returns all valid entries.
@@ -62,5 +74,51 @@ int Recent_save(char* recent_path, Recent_Entry** entries, int count);
  * @param count Number of entries in array
  */
 void Recent_freeEntries(Recent_Entry** entries, int count);
+
+///////////////////////////////
+// Recent runtime operations
+///////////////////////////////
+
+// Forward declaration - hasEmu implementation stays in minui.c (depends on globals)
+// Callers provide this function pointer when creating Recent instances
+typedef int (*Recent_HasEmuFunc)(char* emu_name);
+
+/**
+ * Creates a new recent entry.
+ *
+ * @param path ROM path relative to SDCARD_PATH (without prefix)
+ * @param alias Optional custom display name, or NULL
+ * @param sdcard_path SDCARD_PATH constant (e.g., "/mnt/SDCARD")
+ * @param has_emu Function to check if emulator exists
+ * @return Pointer to allocated Recent
+ *
+ * @warning Caller must free with Recent_free()
+ */
+Recent* Recent_new(char* path, char* alias, const char* sdcard_path, Recent_HasEmuFunc has_emu);
+
+/**
+ * Frees a recent entry.
+ *
+ * @param self Recent to free
+ */
+void Recent_free(Recent* self);
+
+/**
+ * Finds a recent by path in a recent array.
+ *
+ * @param self Array of Recent pointers (as void**)
+ * @param count Array size
+ * @param str Path to search for (relative to SDCARD_PATH)
+ * @return Index of matching recent, or -1 if not found
+ */
+int RecentArray_indexOf(void** self, int count, char* str);
+
+/**
+ * Frees a recent array and all recents it contains.
+ *
+ * @param self Array of Recent pointers (as void**)
+ * @param count Array size
+ */
+void RecentArray_free(void** self, int count);
 
 #endif // __RECENT_FILE_H__

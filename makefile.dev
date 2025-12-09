@@ -52,16 +52,17 @@ CC = gcc
 INCDIR = -I workspace/all/minui -I workspace/all/common -I workspace/desktop/platform $(SDL_INCLUDES)
 # Use LOG_FLAGS from parent Makefile, or default to full logging for dev builds
 LOG_FLAGS ?= -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
-CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) -Ofast -std=gnu99
+CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) -O3 -std=gnu99
 CFLAGS += -DDEV_SCREEN_WIDTH=$(SCREEN_WIDTH) -DDEV_SCREEN_HEIGHT=$(SCREEN_HEIGHT)
 CFLAGS += -fsanitize=address -fno-common
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
+CFLAGS += -Wno-deprecated-declarations -Wno-incompatible-pointer-types-discards-qualifiers
 LDFLAGS = -ldl -flto $(SDL_LIBS) -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address
 
-# Source files (from workspace/all/minui/makefile)
+# Source files (synced with workspace/all/minui/makefile)
 MINUI_SOURCE = workspace/all/minui/minui.c \
                workspace/all/common/scaler.c \
                workspace/all/common/utils.c \
@@ -71,12 +72,28 @@ MINUI_SOURCE = workspace/all/minui/minui.c \
                workspace/all/common/collections.c \
                workspace/all/common/pad.c \
                workspace/all/common/gfx_text.c \
-               workspace/all/common/str_compare.c \
+               workspace/all/common/platform_variant.c \
+               workspace/all/minui/minui_entry.c \
+               workspace/all/minui/minui_launcher.c \
+               workspace/all/minui/directory_index.c \
+               workspace/all/minui/minui_str_compare.c \
+               workspace/all/minui/minui_state.c \
+               workspace/all/minui/minui_m3u.c \
+               workspace/all/minui/minui_map.c \
+               workspace/all/minui/minui_file_utils.c \
+               workspace/all/minui/minui_directory.c \
+               workspace/all/minui/minui_context.c \
+               workspace/all/minui/minui_navigation.c \
+               workspace/all/minui/minui_thumbnail.c \
+               workspace/all/minui/recent_file.c \
+               workspace/all/common/effect_system.c \
+               workspace/all/common/render_common.c \
+               workspace/all/common/render_sdl2.c \
                workspace/all/common/effect_utils.c \
                workspace/desktop/platform/platform.c
 
 # Header files (dependencies)
-MINUI_HEADERS = $(wildcard workspace/all/common/*.h) $(wildcard workspace/desktop/platform/*.h)
+MINUI_HEADERS = $(wildcard workspace/all/common/*.h) $(wildcard workspace/all/minui/*.h) $(wildcard workspace/desktop/platform/*.h)
 
 # Build output
 BUILD_DIR = workspace/all/minui/build/desktop

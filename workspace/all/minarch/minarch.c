@@ -635,18 +635,16 @@ static inline int getScreenScalingCount(void) {
 
 
 // Config instance (struct defined in minarch_internal.h)
-static struct Config config =
-    {
-        .system_cfg = NULL,
-        .default_cfg = NULL,
-        .user_cfg = NULL,
-        .device_tag = NULL,
-        .frontend =
-            {
-                // (MinArchOptionList)
-                .count = FE_OPT_COUNT,
-                .changed = 0,
-                .options = (MinArchOption[]){[FE_OPT_SCALING] =
+static struct Config config = {
+    .system_cfg = NULL,
+    .default_cfg = NULL,
+    .user_cfg = NULL,
+    .device_tag = NULL,
+    .frontend =
+        {// (MinArchOptionList)
+         .count = FE_OPT_COUNT,
+         .changed = 0,
+         .options = (MinArchOption[]){[FE_OPT_SCALING] =
                                           {
                                               .key = "minarch_screen_scaling",
                                               .name = "Screen Scaling",
@@ -753,87 +751,87 @@ static struct Config config =
                                               .lock = 0,
                                               .values = NULL,
                                               .labels = NULL}},
-                .enabled_count = 0,
-                .enabled_options = NULL},
-        .core =
-            {
-                // (MinArchOptionList)
-                .count = 0,
-                .changed = 0,
-                .options =
-                    (MinArchOption[]){
-                        {.key = NULL,
-                         .name = NULL,
-                         .desc = NULL,
-                         .full = NULL,
-                         .var = NULL,
-                         .default_value = 0,
-                         .value = 0,
-                         .count = 0,
-                         .lock = 0,
-                         .values = NULL,
-                         .labels = NULL},
-                    },
-                .enabled_count = 0,
-                .enabled_options = NULL,
-            },
-        .controls = minarch_default_button_mapping,
-        .shortcuts = (MinArchButtonMapping[]){[SHORTCUT_SAVE_STATE] = {.name = "Save State",
-                                                                .retro_id = -1,
-                                                                .local_id = BTN_ID_NONE,
-                                                                .modifier = 0,
-                                                                .default_id = 0,
-                                                                .ignore = 0},
-                                       [SHORTCUT_LOAD_STATE] = {.name = "Load State",
-                                                                .retro_id = -1,
-                                                                .local_id = BTN_ID_NONE,
-                                                                .modifier = 0,
-                                                                .default_id = 0,
-                                                                .ignore = 0},
-                                       [SHORTCUT_RESET_GAME] = {.name = "Reset Game",
-                                                                .retro_id = -1,
-                                                                .local_id = BTN_ID_NONE,
-                                                                .modifier = 0,
-                                                                .default_id = 0,
-                                                                .ignore = 0},
-                                       [SHORTCUT_SAVE_QUIT] = {.name = "Save & Quit",
-                                                               .retro_id = -1,
-                                                               .local_id = BTN_ID_NONE,
-                                                               .modifier = 0,
-                                                               .default_id = 0,
-                                                               .ignore = 0},
-                                       [SHORTCUT_CYCLE_SCALE] = {.name = "Cycle Scaling",
-                                                                 .retro_id = -1,
-                                                                 .local_id = BTN_ID_NONE,
-                                                                 .modifier = 0,
-                                                                 .default_id = 0,
-                                                                 .ignore = 0},
-                                       [SHORTCUT_CYCLE_EFFECT] = {.name = "Cycle Effect",
+         .enabled_count = 0,
+         .enabled_options = NULL},
+    .core =
+        {
+            // (MinArchOptionList)
+            .count = 0,
+            .changed = 0,
+            .options =
+                (MinArchOption[]){
+                    {.key = NULL,
+                     .name = NULL,
+                     .desc = NULL,
+                     .full = NULL,
+                     .var = NULL,
+                     .default_value = 0,
+                     .value = 0,
+                     .count = 0,
+                     .lock = 0,
+                     .values = NULL,
+                     .labels = NULL},
+                },
+            .enabled_count = 0,
+            .enabled_options = NULL,
+        },
+    .controls = minarch_default_button_mapping,
+    .shortcuts = (MinArchButtonMapping[]){[SHORTCUT_SAVE_STATE] = {.name = "Save State",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_LOAD_STATE] = {.name = "Load State",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_RESET_GAME] = {.name = "Reset Game",
+                                                                   .retro_id = -1,
+                                                                   .local_id = BTN_ID_NONE,
+                                                                   .modifier = 0,
+                                                                   .default_id = 0,
+                                                                   .ignore = 0},
+                                          [SHORTCUT_SAVE_QUIT] = {.name = "Save & Quit",
                                                                   .retro_id = -1,
                                                                   .local_id = BTN_ID_NONE,
                                                                   .modifier = 0,
                                                                   .default_id = 0,
                                                                   .ignore = 0},
-                                       [SHORTCUT_TOGGLE_FF] = {.name = "Toggle FF",
-                                                               .retro_id = -1,
-                                                               .local_id = BTN_ID_NONE,
-                                                               .modifier = 0,
-                                                               .default_id = 0,
-                                                               .ignore = 0},
-                                       [SHORTCUT_HOLD_FF] = {.name = "Hold FF",
-                                                             .retro_id = -1,
-                                                             .local_id = BTN_ID_NONE,
-                                                             .modifier = 0,
-                                                             .default_id = 0,
-                                                             .ignore = 0},
-                                       {.name = NULL,
-                                        .retro_id = 0,
-                                        .local_id = 0,
-                                        .modifier = 0,
-                                        .default_id = 0,
-                                        .ignore = 0}},
-        .loaded = 0,
-        .initialized = 0,
+                                          [SHORTCUT_CYCLE_SCALE] = {.name = "Cycle Scaling",
+                                                                    .retro_id = -1,
+                                                                    .local_id = BTN_ID_NONE,
+                                                                    .modifier = 0,
+                                                                    .default_id = 0,
+                                                                    .ignore = 0},
+                                          [SHORTCUT_CYCLE_EFFECT] = {.name = "Cycle Effect",
+                                                                     .retro_id = -1,
+                                                                     .local_id = BTN_ID_NONE,
+                                                                     .modifier = 0,
+                                                                     .default_id = 0,
+                                                                     .ignore = 0},
+                                          [SHORTCUT_TOGGLE_FF] = {.name = "Toggle FF",
+                                                                  .retro_id = -1,
+                                                                  .local_id = BTN_ID_NONE,
+                                                                  .modifier = 0,
+                                                                  .default_id = 0,
+                                                                  .ignore = 0},
+                                          [SHORTCUT_HOLD_FF] = {.name = "Hold FF",
+                                                                .retro_id = -1,
+                                                                .local_id = BTN_ID_NONE,
+                                                                .modifier = 0,
+                                                                .default_id = 0,
+                                                                .ignore = 0},
+                                          {.name = NULL,
+                                           .retro_id = 0,
+                                           .local_id = 0,
+                                           .modifier = 0,
+                                           .default_id = 0,
+                                           .ignore = 0}},
+    .loaded = 0,
+    .initialized = 0,
 };
 // Config_getValue moved to minarch_config.c as MinArchConfig_getValue
 
@@ -1447,7 +1445,8 @@ static void Config_syncFrontend(char* key, int value) {
 	MinArchOption* option = &config.frontend.options[i];
 	option->value = value;
 }
-static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key, const char* value);
+static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key,
+                                             const char* value);
 enum {
 	CONFIG_WRITE_ALL,
 	CONFIG_WRITE_GAME,
@@ -2099,7 +2098,8 @@ static char* MinArchOptionList_getOptionValue(MinArchOptionList* list, const cha
 		LOG_warn("unknown option %s ", key);
 	return NULL;
 }
-static void MinArchOptionList_setOptionRawValue(MinArchOptionList* list, const char* key, int value) {
+static void MinArchOptionList_setOptionRawValue(MinArchOptionList* list, const char* key,
+                                                int value) {
 	MinArchOption* item = MinArchOptionList_getOption(list, key);
 	if (item) {
 		item->value = value;
@@ -2112,7 +2112,8 @@ static void MinArchOptionList_setOptionRawValue(MinArchOptionList* list, const c
 	} else
 		LOG_warn("unknown option %s", key);
 }
-static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key, const char* value) {
+static void MinArchOptionList_setOptionValue(MinArchOptionList* list, const char* key,
+                                             const char* value) {
 	MinArchOption* item = MinArchOptionList_getOption(list, key);
 	if (item) {
 		MinArchOption_setValue(item, value);
@@ -2331,7 +2332,8 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	LOG_info("Input_init");
 
-	config.controls = core_button_mapping[0].name ? core_button_mapping : minarch_default_button_mapping;
+	config.controls =
+	    core_button_mapping[0].name ? core_button_mapping : minarch_default_button_mapping;
 
 	LOG_debug("---------------------------------");
 
@@ -2362,9 +2364,10 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 
 	for (int i = 0; minarch_default_button_mapping[i].name; i++) {
 		MinArchButtonMapping* mapping = &minarch_default_button_mapping[i];
-		LOG_debug(
-		    "DEFAULT %s (%s): <%s>", core_button_names[mapping->retro_id], mapping->name,
-		    (mapping->local_id == BTN_ID_NONE ? "NONE" : minarch_device_button_names[mapping->local_id]));
+		LOG_debug("DEFAULT %s (%s): <%s>", core_button_names[mapping->retro_id], mapping->name,
+		          (mapping->local_id == BTN_ID_NONE
+		               ? "NONE"
+		               : minarch_device_button_names[mapping->local_id]));
 		if (core_button_names[mapping->retro_id])
 			mapping->name = (char*)core_button_names[mapping->retro_id];
 	}
@@ -2380,10 +2383,11 @@ static void Input_init(const struct retro_input_descriptor* vars) {
 			mapping->ignore = 1;
 			continue;
 		}
-		LOG_debug(
-		    "%s: <%s> (%i:%i)", mapping->name,
-		    (mapping->local_id == BTN_ID_NONE ? "NONE" : minarch_device_button_names[mapping->local_id]),
-		    mapping->local_id, mapping->retro_id);
+		LOG_debug("%s: <%s> (%i:%i)", mapping->name,
+		          (mapping->local_id == BTN_ID_NONE
+		               ? "NONE"
+		               : minarch_device_button_names[mapping->local_id]),
+		          mapping->local_id, mapping->retro_id);
 	}
 
 	LOG_debug("---------------------------------");
@@ -4350,9 +4354,9 @@ int Menu_options(MenuList* list) {
 
 		// Action buttons (A/B/X)
 		MenuItem* item = &items[nav.selected];
-		MinArchMenuAction action =
-		    MinArchMenuNav_getAction(list, item, type, PAD_justPressed(BTN_A),
-		                             PAD_justPressed(BTN_B), PAD_justPressed(BTN_X), minarch_button_labels);
+		MinArchMenuAction action = MinArchMenuNav_getAction(
+		    list, item, type, PAD_justPressed(BTN_A), PAD_justPressed(BTN_B),
+		    PAD_justPressed(BTN_X), minarch_button_labels);
 
 		switch (action) {
 		case MENU_ACTION_EXIT:
