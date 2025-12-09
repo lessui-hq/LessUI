@@ -14,13 +14,14 @@
 # The main makefile forwards to this file for test/lint/format targets.
 # Run 'make -f makefile.qa help' for complete target list.
 
-.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report
+.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
 help:
 	@echo "LessUI Quality Assurance Tools"
 	@echo ""
 	@echo "Main targets (use these):"
 	@echo "  make test          - Run unit tests (Docker, recommended)"
+	@echo "  make coverage      - Run tests with coverage analysis (Docker)"
 	@echo "  make lint          - Run ALL linting checks (clang-tidy, format-check, shellcheck)"
 	@echo "  make format        - Format code with clang-format (MODIFIES FILES)"
 	@echo ""
@@ -32,18 +33,20 @@ help:
 	@echo "  make lint-shell    - Run shellcheck on shell scripts"
 	@echo ""
 	@echo "Docker targets:"
-	@echo "  make docker-test    - Run tests in Docker container (Ubuntu 24.04)"
-	@echo "  make docker-analyze - Run static analysis in Docker container"
-	@echo "  make docker-build   - Build Docker image"
-	@echo "  make docker-shell   - Enter Docker container for debugging"
+	@echo "  make docker-test     - Run tests in Docker container (Ubuntu 24.04)"
+	@echo "  make docker-coverage - Run coverage analysis in Docker container"
+	@echo "  make docker-analyze  - Run static analysis in Docker container"
+	@echo "  make docker-build    - Build Docker image"
+	@echo "  make docker-shell    - Enter Docker container for debugging"
 	@echo ""
 	@echo "Other:"
 	@echo "  make test-native   - Run tests natively (not recommended on macOS)"
 	@echo "  make clean-qa      - Clean QA artifacts"
+	@echo "  make clean-coverage - Clean coverage data and reports"
 	@echo ""
 	@echo "Installing tools:"
 	@echo "  macOS:  brew install llvm shellcheck sdl2 sdl2_image sdl2_ttf"
-	@echo "  Ubuntu: sudo apt-get install clang-tidy clang-format shellcheck libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev"
+	@echo "  Ubuntu: sudo apt-get install clang-tidy clang-format shellcheck libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev lcov"
 
 # clang-tidy configuration
 # Checks for: bugs, performance issues, readability, security
@@ -638,3 +641,29 @@ lint-native: check-clang-tidy check-clang-format check-shellcheck
 	echo "=================================" && \
 	echo "✓ All linting checks passed" && \
 	echo "================================="
+
+###########################################################
+# Code Coverage Analysis
+# Uses gcov/lcov to measure test coverage
+# Runs in Docker by default for consistency
+
+# Coverage output directory
+COVERAGE_DIR = coverage
+
+# Default: use Docker for coverage
+coverage: docker-coverage
+
+# Docker coverage target
+docker-coverage: docker-build
+	@echo "Running coverage analysis in Docker container..."
+	@echo ""
+	$(DEV_RUN) ./scripts/run-coverage.sh
+
+# Clean coverage artifacts
+clean-coverage:
+	@echo "Cleaning coverage data..."
+	rm -rf $(COVERAGE_DIR)
+	find . -name "*.gcno" -delete 2>/dev/null || true
+	find . -name "*.gcda" -delete 2>/dev/null || true
+	find . -name "*.gcov" -delete 2>/dev/null || true
+	@echo "✓ Coverage data cleaned"

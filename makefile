@@ -63,7 +63,7 @@ RELEASE_NAME=$(RELEASE_BASE)$(RELEASE_SUFFIX)
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 export LOG_FLAGS
 
-.PHONY: build test lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup dev-deploy dev-build-deploy
+.PHONY: build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup dev-deploy dev-build-deploy
 
 export MAKEFLAGS=--no-print-directory
 
@@ -81,6 +81,9 @@ name:
 # QA convenience targets (forward to makefile.qa)
 test:
 	@make -f makefile.qa test
+
+coverage:
+	@make -f makefile.qa coverage
 
 lint:
 	@make -f makefile.qa lint
