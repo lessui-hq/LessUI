@@ -39,7 +39,7 @@ FAKESD_PATH = $(shell pwd -P)/workspace/desktop/FAKESD
 # Can be overridden: ASPECT_RATIO=16x9 make dev-run
 ASPECT_RATIO ?= 4x3
 
-ifneq (,$(filter $(ASPECT_RATIO),16x9 16:9))
+ifneq (,$(filter $(ASPECT_RATIO),16x9 16: 9))
     SCREEN_WIDTH = 854
     SCREEN_HEIGHT = 480
 else

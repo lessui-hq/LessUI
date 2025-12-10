@@ -1,6 +1,6 @@
 # LessUI Development Container
 # Ubuntu 24.04 LTS - matches GitHub Actions runners
-# Provides: clang-tidy, clang-format, scan-build, gcc, shellcheck for QA tasks
+# Provides: clang-tidy, clang-format, scan-build, gcc, shellcheck, shfmt, mbake, prettier for QA tasks
 
 FROM ubuntu:24.04
 
@@ -14,11 +14,21 @@ RUN apt-get update && apt-get install -y \
     make \
     perl \
     shellcheck \
+    shfmt \
+    pipx \
+    nodejs \
+    npm \
     lcov \
     libsdl2-dev \
     libsdl2-image-dev \
     libsdl2-ttf-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pipx install mbake \
+    && pipx ensurepath \
+    && npm install -g prettier
+
+# Add pipx binaries to PATH
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Set working directory
 WORKDIR /lessui

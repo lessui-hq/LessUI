@@ -3,7 +3,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -12,7 +12,7 @@ endif
 
 ###########################################################
 
-REQUIRES_COMMANDER=other/DinguxCommander-sdl2
+REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
 all: readmes
 	cd bl && $(MAKE)
@@ -24,7 +24,7 @@ early: $(REQUIRES_COMMANDER)
 clean:
 	cd bl && $(MAKE) clean
 	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
-	
+
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 https://github.com/shauninman/DinguxCommander-sdl2.git $(REQUIRES_COMMANDER)
 

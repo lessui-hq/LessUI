@@ -6,7 +6,7 @@ LessUI is a focused, custom launcher and libretro frontend for [a variety of ret
 
 <img src="docs/images/screenshots/minui-main.png" width=320 /> <img src="docs/images/screenshots/minui-menu-gbc.png" width=320 />
 
-*See [all screenshots](docs/screenshots.md)*
+_See [all screenshots](docs/screenshots.md)_
 
 ## Features
 
@@ -53,6 +53,7 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 ## Supported Consoles
 
 **Base consoles** (included with every release):
+
 - Game Boy
 - Game Boy Color
 - Game Boy Advance
@@ -62,6 +63,7 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 - PlayStation
 
 **Extra consoles** (optional download):
+
 - Neo Geo Pocket (and Color)
 - Pico-8
 - Pokémon mini
@@ -73,31 +75,31 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 
 ## Supported Devices
 
-| Manufacturer | Device | Released | Status |
-|--------------|--------|----------|--------|
-| **Anbernic** | RG35XX | December 2022 | ✓ |
-| **Anbernic** | RG35XX Plus | November 2023 | ✓ |
-| **Anbernic** | RG35XXH | January 2024 | ✓ |
-| **Anbernic** | RG28XX | April 2024 | ✓ |
-| **Anbernic** | RG35XXSP | May 2024 | ✓ |
-| **Anbernic** | RG40XXH | July 2024 | ✓ |
-| **Anbernic** | RG40XXV | August 2024 | ✓ |
-| **Anbernic** | RG CubeXX | October 2024 | ✓ |
-| **Anbernic** | RG34XX | December 2024 | ✓ |
-| **Anbernic** | RG34XXSP | May 2025 | ✓ |
-| **Miyoo** | Mini | December 2021 | ✓ |
-| **Miyoo** | Mini Plus | February 2023 | ✓ |
-| **Miyoo** | A30 | May 2024 | ✓ |
-| **Miyoo** | Mini Flip | October 2024 | ✓ |
-| **Miyoo** | Flip | January 2025 | ✓ |
-| **Trimui** | Smart | October 2022 | ✓ |
-| **Trimui** | Smart Pro | November 2023 | ✓ |
-| **Trimui** | Brick | October 2024 | ✓ |
-| **Powkiddy** | RGB30 | August 2023 | ✓ |
-| **MagicX** | Mini Zero 28 | January 2025 | ✓ |
-| **GKD** | Pixel | January 2024 | Deprecated |
-| **Generic** | M17 | October 2023 | Deprecated |
-| **MagicX** | XU Mini M | May 2024 | Deprecated |
+| Manufacturer | Device       | Released      | Status     |
+| ------------ | ------------ | ------------- | ---------- |
+| **Anbernic** | RG35XX       | December 2022 | ✓          |
+| **Anbernic** | RG35XX Plus  | November 2023 | ✓          |
+| **Anbernic** | RG35XXH      | January 2024  | ✓          |
+| **Anbernic** | RG28XX       | April 2024    | ✓          |
+| **Anbernic** | RG35XXSP     | May 2024      | ✓          |
+| **Anbernic** | RG40XXH      | July 2024     | ✓          |
+| **Anbernic** | RG40XXV      | August 2024   | ✓          |
+| **Anbernic** | RG CubeXX    | October 2024  | ✓          |
+| **Anbernic** | RG34XX       | December 2024 | ✓          |
+| **Anbernic** | RG34XXSP     | May 2025      | ✓          |
+| **Miyoo**    | Mini         | December 2021 | ✓          |
+| **Miyoo**    | Mini Plus    | February 2023 | ✓          |
+| **Miyoo**    | A30          | May 2024      | ✓          |
+| **Miyoo**    | Mini Flip    | October 2024  | ✓          |
+| **Miyoo**    | Flip         | January 2025  | ✓          |
+| **Trimui**   | Smart        | October 2022  | ✓          |
+| **Trimui**   | Smart Pro    | November 2023 | ✓          |
+| **Trimui**   | Brick        | October 2024  | ✓          |
+| **Powkiddy** | RGB30        | August 2023   | ✓          |
+| **MagicX**   | Mini Zero 28 | January 2025  | ✓          |
+| **GKD**      | Pixel        | January 2024  | Deprecated |
+| **Generic**  | M17          | October 2023  | Deprecated |
+| **MagicX**   | XU Mini M    | May 2024      | Deprecated |
 
 > [!NOTE]
 > Deprecated devices will continue to work with current LessUI releases but will not receive new features or platform-specific fixes.

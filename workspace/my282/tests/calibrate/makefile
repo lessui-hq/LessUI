@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -15,7 +15,7 @@ endif
 ###########################################################
 
 include ../../$(PLATFORM)/platform/makefile.env
-SDL?=SDL
+SDL ?= SDL
 
 ###########################################################
 
@@ -24,12 +24,12 @@ INCDIR = -I. -I../../all/common/ -I../platform/
 SOURCE = $(TARGET).c ../../all/common/utils.c ../../all/common/api.c ../../all/common/scaler.c ../platform/platform.c
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS   = $(ARCH) -fomit-frame-pointer
-CFLAGS  += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL)  -Ofast 
-LDFLAGS	 = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+CFLAGS = $(ARCH) -fomit-frame-pointer
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL)  -Ofast
+LDFLAGS = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 LDFLAGS += -lmsettings
 
-PRODUCT= $(TARGET).elf
+PRODUCT = $(TARGET).elf
 
 all: $(PREFIX)/include/msettings.h
 	$(CC) $(SOURCE) -o $(PRODUCT) $(CFLAGS) $(LDFLAGS)

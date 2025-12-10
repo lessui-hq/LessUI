@@ -22,9 +22,9 @@ zip -r data.zip installing updating
 mv data.zip data
 
 # encode and add to end of boot.sh
-cat ../boot.sh > $TARGET
-echo BINARY >> $TARGET
-uuencode data data >> $TARGET
+cat ../boot.sh >$TARGET
+echo BINARY >>$TARGET
+uuencode data data >>$TARGET
 
 # tar missing libs from toolchain
 if [ ! -f libpng16.so.16 ] || [ ! -f libSDL2_ttf-2.0.so.0 ]; then

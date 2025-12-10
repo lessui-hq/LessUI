@@ -2,17 +2,17 @@
 
 ## Quick Reference
 
-| Need | Use |
-|------|-----|
-| Screen dimensions for UI | `ui.screen_width`, `ui.screen_height` (DP) |
-| Screen dimensions in pixels | `ui.screen_width_px`, `ui.screen_height_px` |
-| Convert DP to pixels | `DP(value)` or `DP_RECT(x,y,w,h)` |
-| Convert pixels to DP | `PX_TO_DP(value)` |
-| Draw pill at DP coords | `GFX_blitPill_DP(asset, dst, x_dp, y_dp, w_dp, h_dp)` |
-| Draw rect at DP coords | `GFX_blitRect_DP(asset, dst, x_dp, y_dp, w_dp, h_dp)` |
-| Draw message at DP coords | `GFX_blitMessage_DP(font, msg, dst, x, y, w, h)` |
-| Get text size in DP | `TTF_SizeUTF8_DP(font, text, &w_dp, &h_dp)` |
-| Blit at DP position | `SDL_BlitSurface_DP(src, srcrect, dst, x_dp, y_dp)` |
+| Need                        | Use                                                   |
+| --------------------------- | ----------------------------------------------------- |
+| Screen dimensions for UI    | `ui.screen_width`, `ui.screen_height` (DP)            |
+| Screen dimensions in pixels | `ui.screen_width_px`, `ui.screen_height_px`           |
+| Convert DP to pixels        | `DP(value)` or `DP_RECT(x,y,w,h)`                     |
+| Convert pixels to DP        | `PX_TO_DP(value)`                                     |
+| Draw pill at DP coords      | `GFX_blitPill_DP(asset, dst, x_dp, y_dp, w_dp, h_dp)` |
+| Draw rect at DP coords      | `GFX_blitRect_DP(asset, dst, x_dp, y_dp, w_dp, h_dp)` |
+| Draw message at DP coords   | `GFX_blitMessage_DP(font, msg, dst, x, y, w, h)`      |
+| Get text size in DP         | `TTF_SizeUTF8_DP(font, text, &w_dp, &h_dp)`           |
+| Blit at DP position         | `SDL_BlitSurface_DP(src, srcrect, dst, x_dp, y_dp)`   |
 
 ## Overview
 
@@ -41,7 +41,7 @@ The baseline density of 144 PPI was chosen for two key reasons:
 At typical handheld viewing distances (25-30cm), 144 PPI produces ideal text sizes:
 
 | 16dp text height | Visual angle @ 27cm |
-|------------------|---------------------|
+| ---------------- | ------------------- |
 | 2.83mm           | ~36 arcmin          |
 
 ISO recommends 20-22 arcmin minimum for comfortable reading. 36 arcmin is well within the "super readable" zone while remaining compact for small screens.
@@ -56,12 +56,12 @@ ISO recommends 20-22 arcmin minimum for comfortable reading. 36 arcmin is well w
 
 This yields clean conversions to standard typographic sizes:
 
-| DP  | Points | Common Use        |
-|-----|--------|-------------------|
-| 16  | 8 pt   | Small text        |
-| 24  | 12 pt  | Body text         |
-| 32  | 16 pt  | Headers           |
-| 48  | 24 pt  | Large titles      |
+| DP  | Points | Common Use   |
+| --- | ------ | ------------ |
+| 16  | 8 pt   | Small text   |
+| 24  | 12 pt  | Body text    |
+| 32  | 16 pt  | Headers      |
+| 48  | 24 pt  | Large titles |
 
 ## The Fundamental Rule
 
@@ -72,12 +72,14 @@ This is non-negotiable. Any UI element that should maintain consistent physical 
 ## The Rules
 
 ### Rule 1: UI Layout MUST Use DP
+
 **If it needs to scale across devices, it MUST use DP-based values.**
 
 - ✅ Use `ui.screen_width` and `ui.screen_height` (in DP)
 - ❌ Don't use `screen->w` and `screen->h` (raw pixels) for UI layout
 
 ### Rule 2: Pixels and DP are Compatible
+
 **DP() converts to pixels, so you can mix them in calculations.**
 
 ```c
@@ -85,6 +87,7 @@ int total_px = DP(ui.padding) + text_width_px;  // Both are pixels ✓
 ```
 
 ### Rule 3: Mark Your Units Clearly
+
 **Use variable naming to show what units you're working in.**
 
 - `menu_height_dp` - In DP units
@@ -92,11 +95,13 @@ int total_px = DP(ui.padding) + text_width_px;  // Both are pixels ✓
 - `centered_x_px` - In pixels (result of pixel-based calculation)
 
 ### Rule 4: Screen Dimensions
+
 **For UI layout:**
+
 - ✅ Use `ui.screen_width` and `ui.screen_height` (DP)
 - ❌ Don't use `screen->w` and `screen->h` (raw pixels)
 
-**Exception:** Emulation rendering, video scaling, DEVICE_* constants can use raw pixels.
+**Exception:** Emulation rendering, video scaling, DEVICE\_\* constants can use raw pixels.
 
 ## Correct Patterns
 
@@ -113,6 +118,7 @@ GFX_blitPill_DP(ASSET_WHITE_PILL, screen, ui.padding, item_y_dp, width_dp, ui.pi
 ```
 
 **Why this is best:**
+
 - Clearest code - no manual DP() conversions
 - Matches Android/iOS pattern
 - Impossible to accidentally mix units
@@ -130,6 +136,7 @@ GFX_blitPill(asset, screen, &rect);
 ```
 
 **When to use:**
+
 - Wrapper function doesn't exist yet
 - Working with direct SDL calls
 
@@ -145,6 +152,7 @@ SDL_Rect rect = {DP(centered_x_dp), DP(centered_y_dp), DP(element_width_dp), DP(
 ```
 
 **Why this works:**
+
 - `ui.screen_width` and `ui.screen_height` are provided in DP
 - All centering math stays in DP
 - Clean separation of concerns
@@ -167,6 +175,7 @@ SDL_Rect rect = {centered_x_px, DP(y_dp), item_width_px, DP(ui.button_size)};
 ```
 
 **Why this works:**
+
 - `DP()` converts to pixels, so `DP(ui.button_padding * 2)` is pixels
 - Variables clearly marked with `_px` suffix
 - All pixel math is valid (pixels + pixels, pixels - pixels)
@@ -189,6 +198,7 @@ int centered_y_dp = (ui.screen_height - menu_height_dp) / 2;
 ```
 
 **Why the first is wrong:**
+
 - `screen->w` and `screen->h` are raw pixel dimensions
 - They don't scale properly - a calculation using raw screen pixels will give different results on 480p vs 720p
 - **The fundamental rule is violated**: UI layout must scale, so it must use DP
@@ -206,6 +216,7 @@ int offset_dp = (ui.screen_height - menu_height_dp) / 2;
 ```
 
 **Why the first is wrong:**
+
 - Introduces rounding errors
 - Convoluted logic
 - Signal that you started with wrong units
@@ -223,6 +234,7 @@ SDL_Rect rect = {0, DP(oy_dp + ui.padding), ...};
 ```
 
 **Why the first is wrong:**
+
 - Double conversion causes incorrect scaling
 - Variables with `_px` suffix shouldn't go inside DP()
 
@@ -485,6 +497,7 @@ You can work in pixels for calculations when:
 3. **The layout is still driven by DP** (DP values converted to pixels early)
 
 **Example:**
+
 ```c
 // Layout driven by DP, calculations in pixels (acceptable)
 int text_width_px;
@@ -512,6 +525,7 @@ When writing or reviewing UI code:
 ### Q: When should I use `screen->w` and `screen->h`?
 
 **A:** Only for:
+
 - Emulation video positioning/scaling
 - Backing up/restoring screen state
 - Setting `DEVICE_WIDTH`/`DEVICE_HEIGHT` constants
@@ -522,6 +536,7 @@ For all UI layout, use `ui.screen_width` and `ui.screen_height`.
 ### Q: What if I need the screen size in pixels?
 
 **A:** Convert it:
+
 ```c
 int screen_width_px = DP(ui.screen_width);
 int screen_height_px = DP(ui.screen_height);
@@ -530,6 +545,7 @@ int screen_height_px = DP(ui.screen_height);
 ### Q: Can I do arithmetic inside DP()?
 
 **A:** Yes! These are equivalent:
+
 ```c
 // Both valid
 int total_px = DP(ui.padding) + DP(ui.pill_height);
@@ -541,12 +557,14 @@ However, the second is preferred (fewer conversions, cleaner).
 ### Q: What about constants like SCROLL_WIDTH?
 
 **A:** If they represent physical UI sizes, they should be in DP:
+
 ```c
 #define SCROLL_WIDTH_DP 24
 int x_px = DP((ui.screen_width - SCROLL_WIDTH_DP) / 2);
 ```
 
 If they're pixel-specific (rare), document clearly:
+
 ```c
 #define WINDOW_RADIUS_PX 4  // Pixel-specific, not scaled
 ```

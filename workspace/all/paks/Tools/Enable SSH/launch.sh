@@ -21,7 +21,7 @@ fi
 
 	# switch language from mandarin to english since we require a reboot anyway
 	locale-gen "en_US.UTF-8"
-	echo "LANG=en_US.UTF-8" > /etc/default/locale
+	echo "LANG=en_US.UTF-8" >/etc/default/locale
 
 	shui progress "Downloading SSH server..." --value 30
 
@@ -34,17 +34,17 @@ fi
 
 	shui progress "Configuring SSH..." --value 80
 
-	echo "d /run/sshd 0755 root root" > /etc/tmpfiles.d/sshd.conf
+	echo "d /run/sshd 0755 root root" >/etc/tmpfiles.d/sshd.conf
 
 	# enable login root:root
-	echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+	echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
 	printf "root\nroot" | passwd root
 
 	shui progress "Complete!" --value 100
 	sleep 0.5
 
 	echo "Success"
-} > ./log.txt 2>&1
+} >./log.txt 2>&1
 
 if grep -q "Success" ./log.txt; then
 	# Self-destruct before reboot

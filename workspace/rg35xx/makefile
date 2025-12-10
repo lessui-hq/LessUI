@@ -3,7 +3,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -12,7 +12,7 @@ endif
 
 ###########################################################
 
-REQUIRES_COMMANDER=other/DinguxCommander
+REQUIRES_COMMANDER = other/DinguxCommander
 
 all: readmes
 	cd ./overclock && $(MAKE)
@@ -26,7 +26,7 @@ clean:
 	cd ./boot && rm -rf ./output
 	cd other/DinguxCommander && $(MAKE) clean
 	rm -f ./boot/*.bmp ./boot/boot_logo.png
-	
+
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch minui-rg35xx https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
 

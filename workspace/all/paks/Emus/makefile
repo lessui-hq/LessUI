@@ -21,7 +21,7 @@ CORES_DIR = $(CURDIR)/cores
 setup:
 	@BUILD_CORES_DIR="$(DESTDIR)/../../../.system/cores"; \
 	mkdir -p "$$BUILD_CORES_DIR/a7" "$$BUILD_CORES_DIR/a53" "$(CORES_DIR)"; \
-	\
+ \
 	if [ -f "$(CORES_DIR)/override/linux-arm32.zip" ]; then \
 		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm32.zip" 2>/dev/null || echo "unknown"); \
 		if [ -f "$(CORES_DIR)/extracted/override/.version-a7" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-a7)" = "$$OVERRIDE_VERSION" ]; then \
@@ -51,7 +51,7 @@ setup:
 			rsync -a "$(CORES_DIR)/extracted/remote/a7/" "$$BUILD_CORES_DIR/a7/"; \
 		fi; \
 	fi; \
-	\
+ \
 	if [ -f "$(CORES_DIR)/override/linux-arm64.zip" ]; then \
 		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm64.zip" 2>/dev/null || echo "unknown"); \
 		if [ -f "$(CORES_DIR)/extracted/override/.version-a53" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-a53)" = "$$OVERRIDE_VERSION" ]; then \
@@ -81,7 +81,7 @@ setup:
 			rsync -a "$(CORES_DIR)/extracted/remote/a53/" "$$BUILD_CORES_DIR/a53/"; \
 		fi; \
 	fi; \
-	\
+ \
 	echo "Cores deployed successfully:"; \
 	echo "  a7:  $$(ls "$$BUILD_CORES_DIR/a7"/*.so 2>/dev/null | wc -l | tr -d ' ') cores (ARM32)"; \
 	echo "  a53: $$(ls "$$BUILD_CORES_DIR/a53"/*.so 2>/dev/null | wc -l | tr -d ' ') cores (ARM64)"

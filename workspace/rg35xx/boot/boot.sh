@@ -17,7 +17,7 @@ LOG_FILE="${SDCARD_PATH}/lessui-install.log"
 # before SD card is mounted and .system is accessible. Cannot source shared log.sh.
 # Keep format in sync with skeleton/SYSTEM/common/log.sh
 log_write() {
-	echo "[$1] $2" >> "$LOG_FILE"
+	echo "[$1] $2" >>"$LOG_FILE"
 }
 log_info() { log_write "INFO" "$*"; }
 log_error() { log_write "ERROR" "$*"; }
@@ -61,8 +61,8 @@ if [ -f $UPDATE_PATH ]; then
 	fi
 
 	# extract the zip file appended to the end of this script to tmp
-	# and display one of the two images it contains 
-	CUT=$((`busybox grep -n '^BINARY' $0 | busybox cut -d ':' -f 1 | busybox tail -1` + 1))
+	# and display one of the two images it contains
+	CUT=$(($(busybox grep -n '^BINARY' $0 | busybox cut -d ':' -f 1 | busybox tail -1) + 1))
 	busybox tail -n +$CUT "$0" | busybox uudecode -o /tmp/data
 	busybox unzip -o /tmp/data -d /tmp
 	busybox fbset -g 640 480 640 480 16
@@ -70,7 +70,7 @@ if [ -f $UPDATE_PATH ]; then
 	sync
 
 	log_info "Starting LessUI $ACTION..."
-	if busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH >> "$LOG_FILE" 2>&1; then
+	if busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH >>"$LOG_FILE" 2>&1; then
 		log_info "Unzip complete"
 	else
 		EXIT_CODE=$?
@@ -81,7 +81,7 @@ if [ -f $UPDATE_PATH ]; then
 	# the updated system finishes the install/update
 	if [ -f $SYSTEM_PATH/bin/install.sh ]; then
 		log_info "Running install.sh..."
-		if $SYSTEM_PATH/bin/install.sh >> "$LOG_FILE" 2>&1; then
+		if $SYSTEM_PATH/bin/install.sh >>"$LOG_FILE" 2>&1; then
 			log_info "Installation complete"
 		else
 			EXIT_CODE=$?
@@ -99,7 +99,7 @@ if [ ! -f $ROOTFS_IMAGE ]; then
 	while [ -f $CMD ]; do
 		if $CMD; then
 			if [ -f "$ACT" ]; then
-				if  ! sh $ACT; then
+				if ! sh $ACT; then
 					echo
 				fi
 				rm -f "$ACT"
@@ -117,8 +117,7 @@ mount -r -w -o loop -t ext4 $LOOPDEVICE $ROOTFS_MOUNTPOINT
 rm -rf $ROOTFS_MOUNTPOINT/tmp/*
 mkdir $ROOTFS_MOUNTPOINT/mnt/mmc
 mkdir $ROOTFS_MOUNTPOINT/mnt/sdcard
-for f in dev dev/pts proc sys mnt/mmc mnt/sdcard # tmp doesn't work for some reason?
-do
+for f in dev dev/pts proc sys mnt/mmc mnt/sdcard; do # tmp doesn't work for some reason?
 	mount -o bind /$f $ROOTFS_MOUNTPOINT/$f
 done
 
@@ -132,4 +131,3 @@ busybox losetup --detach $LOOPDEVICE
 sync && reboot -p
 
 exit 0
-

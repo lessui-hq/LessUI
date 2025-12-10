@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -10,8 +10,8 @@ endif
 
 ###########################################################
 
-REQUIRES_SDL=other/sdl
-REQUIRES_COMMANDER=other/DinguxCommander
+REQUIRES_SDL = other/sdl
+REQUIRES_COMMANDER = other/DinguxCommander
 
 # Platform-specific binaries (can run in parallel)
 PLATFORM_TARGETS = blank batmon lumon overclock

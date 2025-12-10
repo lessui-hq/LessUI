@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -10,10 +10,10 @@ endif
 
 ###########################################################
 
-REQUIRES_EVTEST=other/evtest
-REQUIRES_JSTEST=other/jstest
-REQUIRES_UNZIP60=other/unzip60
-REQUIRES_COMMANDER=other/DinguxCommander-sdl2
+REQUIRES_EVTEST = other/evtest
+REQUIRES_JSTEST = other/jstest
+REQUIRES_UNZIP60 = other/unzip60
+REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
 all: readmes
 

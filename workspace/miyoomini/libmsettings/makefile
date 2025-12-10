@@ -5,20 +5,20 @@ ifeq (,$(PREFIX))
 $(error missing PREFIX for this toolchain)
 endif
 
-TARGET=msettings
+TARGET = msettings
 
 .PHONY: build
 .PHONY: clean
 
 CC = $(CROSS_COMPILE)gcc
 
-SYSROOT     := $(shell $(CC) --print-sysroot)
+SYSROOT := $(shell $(CC) --print-sysroot)
 
 INCLUDEDIR = $(SYSROOT)/usr/include
 CFLAGS = -I$(INCLUDEDIR) -I../../all/common
 LDFLAGS = -lcam_os_wrapper -lmi_sys -lmi_ao -ldl -lrt -lpthread -s
 
-OPTM=-Ofast
+OPTM = -Ofast
 
 build:
 	$(CC) -c -Werror -fpic "$(TARGET).c" -Wl,--no-as-needed $(CFLAGS)

@@ -7,22 +7,22 @@ endif
 
 include ../platform/makefile.env
 
-TARGET=mstick
+TARGET = mstick
 
 .PHONY: build
 .PHONY: clean
 
 CC = $(CROSS_COMPILE)gcc
 
-SYSROOT     := $(shell $(CC) --print-sysroot)
+SYSROOT := $(shell $(CC) --print-sysroot)
 
 INCLUDEDIR = $(SYSROOT)/usr/include
 CFLAGS = -I$(INCLUDEDIR) $(ARCH)
 LDFLAGS = -ldl -lpthread -lrt -s
 
-OPTM=-Ofast
+OPTM = -Ofast
 
-build: 
+build:
 	$(CC) -c -Werror -fpic "$(TARGET).c" $(CFLAGS) -Wl,--no-as-needed $(LDFLAGS)
 	$(CC) -shared -o "lib$(TARGET).so" "$(TARGET).o" $(CFLAGS) $(LDFLAGS)
 	cp "$(TARGET).h" "$(PREFIX)/include"

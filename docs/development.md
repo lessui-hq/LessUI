@@ -15,11 +15,13 @@ LessUI uses Docker to cross-compile for ARM devices. You don't need the actual h
 ### Quick Start
 
 Build everything:
+
 ```bash
 make
 ```
 
 Build for one platform:
+
 ```bash
 make PLATFORM=miyoomini
 ```
@@ -41,6 +43,7 @@ make dev-run
 ```
 
 This gives you:
+
 - **Instant builds** (native compiler, no Docker overhead)
 - **Live debugging** with AddressSanitizer
 - **Visual testing** in SDL2 window (640×480 or 854×480)
@@ -48,12 +51,14 @@ This gives you:
 - **Quit**: Hold Backspace/Delete
 
 The fake SD card lives at `workspace/desktop/FAKESD/`. Add test ROMs there:
+
 ```bash
 mkdir -p workspace/desktop/FAKESD/Roms/GB
 cp ~/Downloads/game.gb workspace/desktop/FAKESD/Roms/GB/
 ```
 
 **Development commands:**
+
 ```bash
 make dev        # Build minui for macOS
 make dev-run    # Build and run minui
@@ -61,6 +66,7 @@ make dev-clean  # Clean macOS build artifacts
 ```
 
 **Limitations:**
+
 - macOS platform is for **launcher (minui) development only**
 - Cannot test libretro cores (minarch) - use actual hardware
 - Hardware features stubbed (brightness, volume, power)
@@ -68,11 +74,13 @@ make dev-clean  # Clean macOS build artifacts
 ### Platform Shell (for development)
 
 Drop into a build environment for interactive development:
+
 ```bash
 make PLATFORM=miyoomini shell
 ```
 
 Inside the container you can build components individually:
+
 ```bash
 cd /root/workspace/all/minui
 make
@@ -91,6 +99,7 @@ make format      # Auto-format code
 ### Static Analysis
 
 Find bugs before they ship:
+
 ```bash
 make lint        # Check common code
 ```
@@ -100,6 +109,7 @@ This runs `clang-tidy` on `workspace/all/` which contains all the platform-indep
 ### Unit Tests
 
 LessUI uses Unity for testing:
+
 ```bash
 make test
 ```
@@ -109,6 +119,7 @@ Tests live in `tests/unit/` and mirror the structure of `workspace/all/`. For ex
 #### Writing Tests
 
 Here's an example test:
+
 ```c
 #include "unity.h"
 #include "utils.h"
@@ -121,6 +132,7 @@ void test_getDisplayName_stripsExtension(void) {
 ```
 
 Add your test function to the `main()` function in your test file:
+
 ```c
 int main(void) {
     UNITY_BEGIN();
@@ -134,12 +146,14 @@ Run tests: `make test`
 ### Code Formatting
 
 LessUI uses `clang-format` with tabs and K&R-style braces:
+
 ```bash
 make format            # Format all code
 make format-check      # Check without changing
 ```
 
 Settings in `.clang-format`:
+
 - Tabs for indentation (width: 4)
 - Opening braces on same line
 - Left-aligned pointers (`char* name`)
@@ -148,6 +162,7 @@ Settings in `.clang-format`:
 ### Shell Script Linting
 
 Check shell scripts with `shellcheck`:
+
 ```bash
 make lint-shell
 ```
@@ -181,15 +196,18 @@ LessUI/
 LessUI uses a **platform abstraction layer** so one codebase supports 20+ devices:
 
 **Common code** (`workspace/all/`) calls abstract APIs like:
+
 - `GFX_clear()` - Clear screen
 - `PAD_poll()` - Read buttons
 - `PWR_getBatteryLevel()` - Get battery %
 
 **Platform code** (`workspace/<platform>/platform/`) implements these for specific hardware:
+
 - `platform.h` - Hardware constants (screen size, button codes)
 - `platform.c` - Hardware functions (if needed)
 
 Example from `platform.h`:
+
 ```c
 #define FIXED_WIDTH 640
 #define FIXED_HEIGHT 480
@@ -217,6 +235,7 @@ The common code compiles once, then links with different platform definitions fo
 ### Testing Your Changes
 
 Build for a specific platform:
+
 ```bash
 make PLATFORM=miyoomini build
 ```
@@ -228,6 +247,7 @@ Output goes to `build/` directory. Copy to SD card and test on device.
 ### Before You Submit
 
 1. Run all checks:
+
 ```bash
 make test lint format
 ```
@@ -242,6 +262,7 @@ make test lint format
 ### Commit Messages
 
 Keep it simple:
+
 ```
 Add battery percentage to status bar
 
@@ -278,10 +299,12 @@ See [paks-architecture.md](paks-architecture.md) for pak generation system docum
 LessUI uses a **source + generated** asset system for easy maintenance.
 
 **Source assets** live in `skeleton/SYSTEM/res-src/`:
+
 - `assets.png` - UI sprite sheet (512×512)
 - `installing.png`, `updating.png`, `bootlogo.png`, `charging.png` - Boot screens (640×480)
 
 **To update assets:**
+
 ```bash
 # 1. Edit source file in skeleton/SYSTEM/res-src/
 # 2. Regenerate all variants:
@@ -302,11 +325,13 @@ Check Docker Desktop is running. Restart if needed.
 ### Build Fails
 
 Try cleaning:
+
 ```bash
 make clean
 ```
 
 Then rebuild:
+
 ```bash
 make PLATFORM=miyoomini
 ```
@@ -316,6 +341,7 @@ make PLATFORM=miyoomini
 Tests run in Docker. Check test output carefully. Tests are strict about memory and undefined behavior.
 
 Common issues:
+
 - Buffer too small
 - Uninitialized variables
 - Off-by-one errors
@@ -325,6 +351,7 @@ Common issues:
 Check `workspace/<platform>/install/boot.sh` for errors. Boot scripts are platform-specific and finicky.
 
 Enable verbose logging by editing boot script to redirect output:
+
 ```bash
 ./minui.elf > /tmp/minui.log 2>&1
 ```

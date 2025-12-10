@@ -4,9 +4,7 @@
   "description": "Reset analog stick calibration",
   "version": "1.0.0",
 
-  "platforms": [
-    "my282"
-  ],
+  "platforms": ["my282"],
 
   "build": {
     "type": "shell-only"

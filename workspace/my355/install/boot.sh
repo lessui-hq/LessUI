@@ -2,7 +2,7 @@
 # NOTE: becomes .tmp_update/my355.sh
 
 touch /tmp/fbdisplay_exit
-cat /dev/zero > /dev/fb0
+cat /dev/zero >/dev/fb0
 
 PLATFORM="my355"
 SDCARD_PATH="/mnt/SDCARD"
@@ -14,7 +14,7 @@ LOG_FILE="$SDCARD_PATH/lessui-install.log"
 . "$(dirname "$0")/install/update-functions.sh"
 
 CPU_PATH=/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
-echo performance > "$CPU_PATH"
+echo performance >"$CPU_PATH"
 
 # install/update
 if [ -f "$UPDATE_PATH" ]; then
@@ -39,7 +39,7 @@ fi
 
 # or launch (and keep launched)
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
-while [ -f "$LAUNCH_PATH" ] ; do
+while [ -f "$LAUNCH_PATH" ]; do
 	"$LAUNCH_PATH"
 done
 

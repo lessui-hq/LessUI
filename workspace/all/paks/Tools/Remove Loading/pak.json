@@ -4,11 +4,7 @@
   "description": "Remove boot loading screen",
   "version": "1.0.0",
 
-  "platforms": [
-    "miyoomini",
-    "my282",
-    "tg5040"
-  ],
+  "platforms": ["miyoomini", "my282", "tg5040"],
 
   "build": {
     "type": "shell-only"

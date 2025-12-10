@@ -59,22 +59,22 @@ See `workspace/all/paks/Emus/cores/override/README.md` for details.
 
 LessUI ships with 43 emulator cores covering systems from the NES to PlayStation:
 
-| Core | System | Extensions |
-|------|--------|------------|
-| fceumm | Nintendo Entertainment System | `.nes`, `.fds`, `.unf` |
-| gambatte | Game Boy / Game Boy Color | `.gb`, `.gbc`, `.dmg` |
-| gpsp | Game Boy Advance | `.gba` |
-| mgba | Game Boy Advance (cycle-accurate) | `.gba` |
-| picodrive | Sega Genesis, Sega CD, 32X | `.md`, `.bin`, `.smd`, `.gen`, `.cue` |
-| snes9x2005_plus | Super Nintendo | `.smc`, `.sfc`, `.swc`, `.fig` |
-| mednafen_supafaust | Super Nintendo (accuracy) | `.sfc`, `.smc` |
-| pcsx_rearmed | PlayStation | `.cue`, `.m3u`, `.pbp`, `.chd` |
-| mednafen_pce_fast | TurboGrafx-16 / PC Engine | `.pce`, `.cue` |
-| pokemini | Pokémon Mini | `.min` |
-| race | Neo Geo Pocket / Neo Geo Pocket Color | `.ngp`, `.ngc` |
-| mednafen_vb | Virtual Boy | `.vb` |
-| fake-08 | PICO-8 | `.p8`, `.p8.png` |
-| ... | *(see minarch-cores for full list)* | |
+| Core               | System                                | Extensions                            |
+| ------------------ | ------------------------------------- | ------------------------------------- |
+| fceumm             | Nintendo Entertainment System         | `.nes`, `.fds`, `.unf`                |
+| gambatte           | Game Boy / Game Boy Color             | `.gb`, `.gbc`, `.dmg`                 |
+| gpsp               | Game Boy Advance                      | `.gba`                                |
+| mgba               | Game Boy Advance (cycle-accurate)     | `.gba`                                |
+| picodrive          | Sega Genesis, Sega CD, 32X            | `.md`, `.bin`, `.smd`, `.gen`, `.cue` |
+| snes9x2005_plus    | Super Nintendo                        | `.smc`, `.sfc`, `.swc`, `.fig`        |
+| mednafen_supafaust | Super Nintendo (accuracy)             | `.sfc`, `.smc`                        |
+| pcsx_rearmed       | PlayStation                           | `.cue`, `.m3u`, `.pbp`, `.chd`        |
+| mednafen_pce_fast  | TurboGrafx-16 / PC Engine             | `.pce`, `.cue`                        |
+| pokemini           | Pokémon Mini                          | `.min`                                |
+| race               | Neo Geo Pocket / Neo Geo Pocket Color | `.ngp`, `.ngc`                        |
+| mednafen_vb        | Virtual Boy                           | `.vb`                                 |
+| fake-08            | PICO-8                                | `.p8`, `.p8.png`                      |
+| ...                | _(see minarch-cores for full list)_   |                                       |
 
 All cores are included in the base install via the pak template system.
 
@@ -211,12 +211,12 @@ void Core_open(const char* core_path, const char* tag_name) {
 
 For Game Boy with Gambatte core on Miyoo Mini:
 
-| Purpose | Path | Shared Across Platforms? |
-|---------|------|--------------------------|
-| Config | `/mnt/SDCARD/.userdata/miyoomini/GB-gambatte/` | No (platform-specific) |
-| Save States | `/mnt/SDCARD/.userdata/shared/GB-gambatte/` | **Yes** (architecture-compatible) |
-| SRAM Saves | `/mnt/SDCARD/Saves/GB/` | Yes (universal format) |
-| BIOS | `/mnt/SDCARD/Bios/GB/` | Yes (universal format) |
+| Purpose     | Path                                           | Shared Across Platforms?          |
+| ----------- | ---------------------------------------------- | --------------------------------- |
+| Config      | `/mnt/SDCARD/.userdata/miyoomini/GB-gambatte/` | No (platform-specific)            |
+| Save States | `/mnt/SDCARD/.userdata/shared/GB-gambatte/`    | **Yes** (architecture-compatible) |
+| SRAM Saves  | `/mnt/SDCARD/Saves/GB/`                        | Yes (universal format)            |
+| BIOS        | `/mnt/SDCARD/Bios/GB/`                         | Yes (universal format)            |
 
 **Key Insight**: Save states are stored in `.userdata/shared/` so they work across all platforms with the same CPU architecture!
 
@@ -308,6 +308,7 @@ nice -20 minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" \
 ```
 
 Environment variables (set by `LessUI.pak/launch.sh`):
+
 - `PLATFORM`: `"miyoomini"`, `"trimuismart"`, `"rgb30"`, etc.
 - `SDCARD_PATH`: `"/mnt/SDCARD"`
 - `SYSTEM_PATH`: `"$SDCARD_PATH/.system/$PLATFORM"`
@@ -347,11 +348,13 @@ bind Next Palette = NONE:R1
 MinArch uses a three-tier configuration system:
 
 1. **System-wide defaults** (`SYSTEM/<platform>/system.cfg`):
+
    ```ini
    -minarch_screen_sharpness = Crisp
    -minarch_prevent_tearing = Lenient
    -minarch_thread_video = Off
    ```
+
    (The `-` prefix means "hidden from in-game menu")
 
 2. **Emulator defaults** (`.pak/default.cfg`):
@@ -568,47 +571,47 @@ static bool environment_callback(unsigned cmd, void* data) {
 
 ### Core Distribution
 
-| File | Purpose |
-|------|---------|
-| `Makefile` | Main orchestration makefile, includes `cores-download` target |
-| `workspace/all/paks/Emus/cores-override/` | Local override directory for development |
+| File                                      | Purpose                                                       |
+| ----------------------------------------- | ------------------------------------------------------------- |
+| `Makefile`                                | Main orchestration makefile, includes `cores-download` target |
+| `workspace/all/paks/Emus/cores-override/` | Local override directory for development                      |
 
 ### Core Loading and Management
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `workspace/all/minarch/minarch.c` | 3399-3518 | `Core_open()` - Dynamic loading of .so files |
+| File                              | Lines     | Purpose                                                |
+| --------------------------------- | --------- | ------------------------------------------------------ |
+| `workspace/all/minarch/minarch.c` | 3399-3518 | `Core_open()` - Dynamic loading of .so files           |
 | `workspace/all/minarch/minarch.c` | 2241-2680 | `environment_callback()` - Core-frontend communication |
-| `workspace/all/minarch/minarch.c` | 3951-4052 | `Core_init()`, `Core_load()` - Initialization |
-| `workspace/all/minarch/minarch.c` | 4530-4580 | Main loop - calls `core.run()` |
+| `workspace/all/minarch/minarch.c` | 3951-4052 | `Core_init()`, `Core_load()` - Initialization          |
+| `workspace/all/minarch/minarch.c` | 4530-4580 | Main loop - calls `core.run()`                         |
 
 ### Libretro API
 
-| File | Purpose |
-|------|---------|
+| File                                                       | Purpose                             |
+| ---------------------------------------------------------- | ----------------------------------- |
 | `workspace/all/minarch/libretro-common/include/libretro.h` | Official libretro API specification |
 
 ### Configuration
 
-| File | Purpose |
-|------|---------|
+| File                                         | Purpose                                  |
+| -------------------------------------------- | ---------------------------------------- |
 | `workspace/all/paks/Emus/launch.sh.template` | Launch script template for all emulators |
-| `workspace/all/paks/Emus/configs/<core>.cfg` | Default options and bindings per core |
-| `skeleton/SYSTEM/<platform>/system.cfg` | System-wide frontend defaults |
+| `workspace/all/paks/Emus/configs/<core>.cfg` | Default options and bindings per core    |
+| `skeleton/SYSTEM/<platform>/system.cfg`      | System-wide frontend defaults            |
 
 ### Utilities
 
-| File | Lines | Purpose |
-|------|-------|---------|
+| File                           | Lines   | Purpose                                             |
+| ------------------------------ | ------- | --------------------------------------------------- |
 | `workspace/all/common/utils.c` | 429-467 | `getEmuName()` - Extract emulator tag from ROM path |
-| `workspace/all/common/utils.c` | 469-525 | `getEmuPath()` - Find .pak directory for emulator |
+| `workspace/all/common/utils.c` | 469-525 | `getEmuPath()` - Find .pak directory for emulator   |
 
 ### Platform Definitions
 
-| File | Purpose |
-|------|---------|
+| File                                       | Purpose                                   |
+| ------------------------------------------ | ----------------------------------------- |
 | `workspace/<platform>/platform/platform.h` | Hardware constants (buttons, screen size) |
-| `workspace/all/common/defines.h` | Derived path constants |
+| `workspace/all/common/defines.h`           | Derived path constants                    |
 
 ## Adding a Core to LessUI
 

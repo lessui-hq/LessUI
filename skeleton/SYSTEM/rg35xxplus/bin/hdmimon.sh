@@ -31,47 +31,47 @@ mkdir -p $ALSA_CONF_DIR
 
 enable_hdmi() {
 	echo 'enabling HDMI'
-	
-	echo 4 > $BLANK_PATH
-	cat /dev/zero > /dev/fb0 2>/dev/null
-	
-	echo disp0 > $DISP_PATH/name
-	echo switch > $DISP_PATH/command
-	echo "4 10 0 0 0x4 0x101 0 0 0 8" > $DISP_PATH/param
-	echo 1 > $DISP_PATH/start
-	
+
+	echo 4 >$BLANK_PATH
+	cat /dev/zero >/dev/fb0 2>/dev/null
+
+	echo disp0 >$DISP_PATH/name
+	echo switch >$DISP_PATH/command
+	echo "4 10 0 0 0x4 0x101 0 0 0 8" >$DISP_PATH/param
+	echo 1 >$DISP_PATH/start
+
 	fbset -fb /dev/fb0 -g 0 0 0 0 32
 	sleep 0.25
 	fbset -fb /dev/fb0 -g $HDMI_WIDTH $HDMI_HEIGHT $HDMI_WIDTH $((HDMI_HEIGHT * 2)) 32
 	sleep 0.25
-	echo 0 > $BLANK_PATH
-	
-	echo "export AUDIODEV='hw:2,0'" > $HDMI_EXPORT_PATH
-	echo "export DEVICE=hdmi" >> $HDMI_EXPORT_PATH
+	echo 0 >$BLANK_PATH
+
+	echo "export AUDIODEV='hw:2,0'" >$HDMI_EXPORT_PATH
+	echo "export DEVICE=hdmi" >>$HDMI_EXPORT_PATH
 }
 
 disable_hdmi() {
 	echo 'disabling HDMI'
-	
-	echo 4 > $BLANK_PATH
-	cat /dev/zero > /dev/fb0 2>/dev/null
-	
-	echo disp0 > $DISP_PATH/name
-	echo switch > $DISP_PATH/command
-	echo "1 0" > $DISP_PATH/param
-	echo 1 > $DISP_PATH/start
-	
+
+	echo 4 >$BLANK_PATH
+	cat /dev/zero >/dev/fb0 2>/dev/null
+
+	echo disp0 >$DISP_PATH/name
+	echo switch >$DISP_PATH/command
+	echo "1 0" >$DISP_PATH/param
+	echo 1 >$DISP_PATH/start
+
 	fbset -fb /dev/fb0 -g 0 0 0 0 32
 	sleep 0.25
 	fbset -fb /dev/fb0 -g $DEVICE_WIDTH $DEVICE_HEIGHT $DEVICE_WIDTH $((DEVICE_HEIGHT * 2)) 32
 	sleep 0.25
-	echo 0 > $BLANK_PATH
-	
-	echo "unset AUDIODEV" > $HDMI_EXPORT_PATH
+	echo 0 >$BLANK_PATH
+
+	echo "unset AUDIODEV" >$HDMI_EXPORT_PATH
 	if [ -n "$DEVICE" ]; then
-		echo "export DEVICE=$DEVICE" >> $HDMI_EXPORT_PATH
+		echo "export DEVICE=$DEVICE" >>$HDMI_EXPORT_PATH
 	else
-		echo "unset DEVICE" >> $HDMI_EXPORT_PATH
+		echo "unset DEVICE" >>$HDMI_EXPORT_PATH
 	fi
 }
 

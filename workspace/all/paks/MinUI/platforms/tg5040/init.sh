@@ -20,30 +20,30 @@ elif [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
 fi
 
 # Rumble motor GPIO (PH3)
-echo 227 > /sys/class/gpio/export
-printf "%s" out > /sys/class/gpio/gpio227/direction
-printf "%s" 0 > /sys/class/gpio/gpio227/value
+echo 227 >/sys/class/gpio/export
+printf "%s" out >/sys/class/gpio/gpio227/direction
+printf "%s" 0 >/sys/class/gpio/gpio227/value
 
 # Left/Right Pad GPIO for Smart Pro (PD14/PD18)
 if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
-	echo 110 > /sys/class/gpio/export
-	printf "%s" out > /sys/class/gpio/gpio110/direction
-	printf "%s" 1 > /sys/class/gpio/gpio110/value
+	echo 110 >/sys/class/gpio/export
+	printf "%s" out >/sys/class/gpio/gpio110/direction
+	printf "%s" 1 >/sys/class/gpio/gpio110/value
 
-	echo 114 > /sys/class/gpio/export
-	printf "%s" out > /sys/class/gpio/gpio114/direction
-	printf "%s" 1 > /sys/class/gpio/gpio114/value
+	echo 114 >/sys/class/gpio/export
+	printf "%s" out >/sys/class/gpio/gpio114/direction
+	printf "%s" 1 >/sys/class/gpio/gpio114/value
 fi
 
 # DIP Switch GPIO (PH19)
-echo 243 > /sys/class/gpio/export
-printf "%s" in > /sys/class/gpio/gpio243/direction
+echo 243 >/sys/class/gpio/export
+printf "%s" in >/sys/class/gpio/gpio243/direction
 
 # Turn off LEDs
-echo 0 > /sys/class/led_anim/max_scale
+echo 0 >/sys/class/led_anim/max_scale
 if [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
-	echo 0 > /sys/class/led_anim/max_scale_lr
-	echo 0 > /sys/class/led_anim/max_scale_f1f2
+	echo 0 >/sys/class/led_anim/max_scale_lr
+	echo 0 >/sys/class/led_anim/max_scale_f1f2
 fi
 
 # Set default USB mode
@@ -54,7 +54,12 @@ tinymix set 9 1
 tinymix set 1 0
 
 # Run stock keymon briefly
-( keymon & PID=$!; sleep 1; kill -s TERM $PID ) &
+(
+	keymon &
+	PID=$!
+	sleep 1
+	kill -s TERM $PID
+) &
 
 # Start stock GPIO input daemon
 mkdir -p /tmp/trimui_inputd
@@ -64,12 +69,12 @@ trimui_inputd &
 hardwareservice &
 
 # CPU setup
-echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 CPU_SPEED_PERF=2000000
 
 cpu_restore() {
-	echo $CPU_SPEED_PERF > $CPU_PATH
+	echo $CPU_SPEED_PERF >$CPU_PATH
 }
 cpu_restore
 

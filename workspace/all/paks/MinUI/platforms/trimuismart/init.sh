@@ -6,15 +6,15 @@ export PATH="$PATH:/usr/trimui/bin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
 
 # Button configuration
-echo A,B,X,Y,L,R > /sys/module/gpio_keys_polled/parameters/button_config
+echo A,B,X,Y,L,R >/sys/module/gpio_keys_polled/parameters/button_config
 
 # CPU setup
-echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 CPU_SPEED_PERF=1536000
 
 cpu_restore() {
-	echo $CPU_SPEED_PERF > $CPU_PATH
+	echo $CPU_SPEED_PERF >$CPU_PATH
 }
 cpu_restore
 
@@ -40,7 +40,7 @@ loop_tail_hook() {
 		rm -f "/tmp/poweroff"
 		killall keymon.elf
 		shutdown
-		echo 60000 > $CPU_PATH
+		echo 60000 >$CPU_PATH
 		LED_ON=true
 		while :; do
 			if $LED_ON; then

@@ -36,13 +36,13 @@ if [ "$DTB_MAGIC" != "d00dfeed" ]; then
 fi
 
 # var
-SIZE_OFFSET=$((DTB_OFFSET+4))
+SIZE_OFFSET=$((DTB_OFFSET + 4))
 DTB_SIZE=$((0x$(xxd -s "$SIZE_OFFSET" -l4 -ps "$DEV_PATH")))
 
 shui progress "Extracting configuration..." --value 20
 
 dd if="$DEV_PATH" of="$DT_NAME.dtb" bs=1 skip="$DTB_OFFSET" count="$DTB_SIZE" 2>/dev/null # extract
-dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null # decompile
+dtc -I dtb -O dts -o "$DT_NAME.dts" "$DT_NAME.dtb" 2>/dev/null                            # decompile
 
 if [ ! -f "$DT_NAME.dts" ]; then
 	shui message "Unable to read device configuration." \
@@ -67,9 +67,9 @@ sed -i "/keyMenu {/,/};/s/linux,code = <0x[^>]*>/linux,code = <${KEY_SELECT}>/g"
 
 shui progress "Compiling new configuration..." --value 70
 
-dtc -I dts -O dtb -o "$DT_NAME-mod.dtb" "$DT_NAME-mod.dts" 2>/dev/null # recompile
+dtc -I dts -O dtb -o "$DT_NAME-mod.dtb" "$DT_NAME-mod.dts" 2>/dev/null                         # recompile
 dd if="$DT_NAME.dtb" of="$DT_NAME-mod.dtb" bs=1 skip=4 seek=4 count=4 conv=notrunc 2>/dev/null # inject original size
-fallocate -l "$DTB_SIZE" "$DT_NAME-mod.dtb" # zero fill empty space
+fallocate -l "$DTB_SIZE" "$DT_NAME-mod.dtb"                                                    # zero fill empty space
 
 shui progress "Writing to device..." --value 85
 

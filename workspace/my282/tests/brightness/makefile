@@ -7,8 +7,8 @@ endif
 TARGET = brightness
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS	= -Os -lrt -ldl -Wl,--gc-sections -s
-CFLAGS  += -I.
+CFLAGS = -Os -lrt -ldl -Wl,--gc-sections -s
+CFLAGS += -I.
 
 all:
 	$(CC) $(TARGET).c -o $(TARGET).elf $(CFLAGS)

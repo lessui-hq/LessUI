@@ -2,12 +2,12 @@
 # rgb30 initialization
 
 # CPU setup
-echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+echo userspace >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed
 CPU_SPEED_PERF=1992000
 
 cpu_restore() {
-	echo $CPU_SPEED_PERF > $CPU_PATH
+	echo $CPU_SPEED_PERF >$CPU_PATH
 }
 cpu_restore
 

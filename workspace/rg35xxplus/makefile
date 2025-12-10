@@ -3,7 +3,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -12,10 +12,10 @@ endif
 
 ###########################################################
 
-REQUIRES_UNZIP60=other/unzip60
-REQUIRES_SDL2=other/sdl2
-REQUIRES_DTC=other/dtc
-REQUIRES_FBSET=other/fbset
+REQUIRES_UNZIP60 = other/unzip60
+REQUIRES_SDL2 = other/sdl2
+REQUIRES_DTC = other/dtc
+REQUIRES_FBSET = other/fbset
 
 # Platform-specific binaries (can run in parallel after readmes)
 # show.elf is now built in workspace/all/utils/show
@@ -76,7 +76,7 @@ clean:
 	cd $(REQUIRES_UNZIP60) && $(MAKE) -f unix/Makefile.trimuismart clean
 	cd $(REQUIRES_FBSET) && $(MAKE) clean
 	rm -f ./boot/*.bmp
-	
+
 $(REQUIRES_UNZIP60):
 	git clone --depth 1 https://github.com/shauninman/unzip60.git $(REQUIRES_UNZIP60)
 

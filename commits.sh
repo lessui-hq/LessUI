@@ -12,7 +12,7 @@
 # Output format: NAME          HASH      DATE        USER/REPO
 #
 
-set -euo pipefail  # Exit on error, undefined variables, pipe failures
+set -euo pipefail # Exit on error, undefined variables, pipe failures
 
 # Global counters for summary
 TOTAL_DEPS=0
@@ -35,7 +35,7 @@ show() {
 	fi
 
 	# Change to directory and extract git info
-	if ! pushd "$dir" >> /dev/null 2>&1; then
+	if ! pushd "$dir" >>/dev/null 2>&1; then
 		return 0
 	fi
 
@@ -51,7 +51,7 @@ show() {
 	# Clean up repo URL (remove git@github.com:, https://github.com/, .git suffix)
 	repo=$(sed -E "s,(^git@github.com:)|(^https?://github.com/)|(.git$)|(/$),,g" <<<"$repo")
 
-	popd >> /dev/null
+	popd >>/dev/null
 
 	printf '\055 %-24s%-10s%-12s%s\n' "$name" "$hash" "$date" "$repo"
 
@@ -69,7 +69,7 @@ list() {
 		return 0
 	fi
 
-	if ! pushd "$dir" >> /dev/null 2>&1; then
+	if ! pushd "$dir" >>/dev/null 2>&1; then
 		return 0
 	fi
 
@@ -80,7 +80,7 @@ list() {
 		fi
 	done
 
-	popd >> /dev/null
+	popd >>/dev/null
 }
 
 # Print separator line

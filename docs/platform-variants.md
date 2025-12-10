@@ -41,6 +41,7 @@ This global struct is populated once during `PLAT_initVideo()` and accessed thro
 Each platform with variants implements three static const arrays:
 
 #### 1. Device Registry
+
 Lists all known devices for this platform:
 
 ```c
@@ -54,6 +55,7 @@ static const DeviceInfo rg35xxplus_devices[] = {
 ```
 
 #### 2. Variant Configuration Table
+
 Defines hardware characteristics for each variant:
 
 ```c
@@ -77,6 +79,7 @@ static const VariantConfig rg35xxplus_variants[] = {
 ```
 
 #### 3. Device-to-Variant Mapping
+
 **The key self-documenting table** - shows which devices share configurations:
 
 ```c
@@ -129,6 +132,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 ```
 
 Check at runtime:
+
 ```c
 if (platform_variant.hw_features & HW_FEATURE_PMIC) {
     // Use PMIC-based battery monitoring
@@ -140,6 +144,7 @@ if (platform_variant.hw_features & HW_FEATURE_PMIC) {
 ### Accessing Variant Information
 
 **Screen properties** (always use direct access):
+
 ```c
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
@@ -147,6 +152,7 @@ if (platform_variant.hw_features & HW_FEATURE_PMIC) {
 ```
 
 **Variant checks** (use `VARIANT_IS()` helper):
+
 ```c
 // Check if specific variant
 if (VARIANT_IS(VARIANT_TG5040_BRICK))
@@ -162,6 +168,7 @@ int PLAT_supportsOverscan(void) {
 ```
 
 **Feature checks** (use `HAS_FEATURE()` helper):
+
 ```c
 // Check for hardware features
 if (HAS_FEATURE(HW_FEATURE_PMIC))
@@ -174,6 +181,7 @@ if (HAS_FEATURE(HW_FEATURE_PMIC))
 ### Before vs After
 
 **Before (verbose checks):**
+
 ```c
 if (platform_variant.variant == VARIANT_TG5040_BRICK)
     SetRawBrightness(8);
@@ -186,6 +194,7 @@ if (platform_variant.hw_features & HW_FEATURE_PMIC)
 ```
 
 **After (clean helpers):**
+
 ```c
 if (VARIANT_IS(VARIANT_TG5040_BRICK))
     SetRawBrightness(8);
@@ -207,6 +216,7 @@ if (HAS_FEATURE(HW_FEATURE_PMIC))
 To add a device to an **existing variant**:
 
 1. Add to device registry:
+
    ```c
    {.device_id = "rg40xxv", .display_name = "RG40XX V", .manufacturer = "Anbernic"}
    ```
@@ -223,11 +233,13 @@ Done! If it shares an existing variant, no other changes needed.
 If a device has truly different hardware:
 
 1. Define constant in `platform.h`:
+
    ```c
    #define VARIANT_NEW (VARIANT_PLATFORM_BASE + 3)
    ```
 
 2. Add to variant config table:
+
    ```c
    {
      .variant = VARIANT_NEW,
@@ -243,11 +255,13 @@ If a device has truly different hardware:
 ## Implementation Status
 
 **Multi-variant platforms** (use full variant system):
+
 - rg35xxplus - 9 devices, 3 variants
 - miyoomini - 4 devices, 3 variants
 - tg5040 - 2 devices, 2 variants
 
 **Single-device platforms** (no variant detection needed):
+
 - m17, magicmini, my282, my355, rgb30, rg35xx, trimuismart, zero28
 
 ## Files

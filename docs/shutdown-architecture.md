@@ -108,39 +108,39 @@ fi
 
 Each platform has a `shutdown` script in `skeleton/SYSTEM/<platform>/bin/`:
 
-| Platform | Method |
-|----------|--------|
-| miyoomini | Plus: `sync && poweroff`; Non-plus: `sync && reboot` |
-| tg5040 | AXP register writes for hardware power-off |
-| rg35xxplus | `reboot -f` |
-| rg35xx | `sync && poweroff` |
-| rgb30 | `poweroff` |
-| zero28 | Clear framebuffer, `poweroff` |
-| my282 | `poweroff` |
-| my355 | `poweroff` |
-| magicmini | `poweroff` |
-| trimuismart | Just saves datetime (physical switch) |
-| m17 | Just saves datetime (physical switch) |
+| Platform    | Method                                               |
+| ----------- | ---------------------------------------------------- |
+| miyoomini   | Plus: `sync && poweroff`; Non-plus: `sync && reboot` |
+| tg5040      | AXP register writes for hardware power-off           |
+| rg35xxplus  | `reboot -f`                                          |
+| rg35xx      | `sync && poweroff`                                   |
+| rgb30       | `poweroff`                                           |
+| zero28      | Clear framebuffer, `poweroff`                        |
+| my282       | `poweroff`                                           |
+| my355       | `poweroff`                                           |
+| magicmini   | `poweroff`                                           |
+| trimuismart | Just saves datetime (physical switch)                |
+| m17         | Just saves datetime (physical switch)                |
 
 ## Who Calls PWR_update()
 
-| Context | Calls PWR_update()? |
-|---------|---------------------|
-| minui main loop | Yes |
-| minarch game loop | Yes |
-| minarch in-game menu | Yes |
-| shui ui_list | Yes |
-| shui ui_message | Yes |
-| shui ui_keyboard | Yes |
-| shui daemon idle loop | No |
+| Context                | Calls PWR_update()?       |
+| ---------------------- | ------------------------- |
+| minui main loop        | Yes                       |
+| minarch game loop      | Yes                       |
+| minarch in-game menu   | Yes                       |
+| shui ui_list           | Yes                       |
+| shui ui_message        | Yes                       |
+| shui ui_keyboard       | Yes                       |
+| shui daemon idle loop  | No                        |
 | Tool pak shell scripts | No (they're shell, not C) |
 
 ## Summary
 
-| Trigger | Path | Works everywhere? |
-|---------|------|-------------------|
-| MENU+POWER | keymon → system("shutdown") | Yes |
-| Power hold in minui | PWR_powerOff() → PLAT_powerOff() | Yes |
-| Power hold in minarch | PWR_powerOff() → PLAT_powerOff() | Yes |
-| Power hold in shui | PWR_powerOff() → PLAT_powerOff() | Yes |
-| 2 min sleep timeout | PWR_powerOff() → PLAT_powerOff() | Yes |
+| Trigger               | Path                             | Works everywhere? |
+| --------------------- | -------------------------------- | ----------------- |
+| MENU+POWER            | keymon → system("shutdown")      | Yes               |
+| Power hold in minui   | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| Power hold in minarch | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| Power hold in shui    | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| 2 min sleep timeout   | PWR_powerOff() → PLAT_powerOff() | Yes               |

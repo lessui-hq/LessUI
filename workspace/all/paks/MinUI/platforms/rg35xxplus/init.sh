@@ -3,8 +3,8 @@
 
 # CPU governor
 systemctl disable ondemand
-echo userspace > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor
-echo 0 > /sys/class/power_supply/axp2202-battery/work_led
+echo userspace >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+echo 0 >/sys/class/power_supply/axp2202-battery/work_led
 
 # Detect model
 RGXX_MODEL=$(strings /mnt/vendor/bin/dmenu.bin | grep ^RG)

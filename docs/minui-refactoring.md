@@ -10,16 +10,16 @@
 
 ## Progress Summary
 
-| Metric | Before | Current | Target |
-|--------|--------|---------|--------|
-| **minui.c lines** | ~3,500+ | ~2,450 | ~1,500 |
-| **Extracted modules** | 0 | 15 | 15-18 ✅ |
-| **Lines in modules** | 0 | ~2,800 | ~2,500 ✅ |
-| **Unit tests** | 0 | 448 | 300+ ✅ |
+| Metric                | Before  | Current | Target    |
+| --------------------- | ------- | ------- | --------- |
+| **minui.c lines**     | ~3,500+ | ~2,450  | ~1,500    |
+| **Extracted modules** | 0       | 15      | 15-18 ✅  |
+| **Lines in modules**  | 0       | ~2,800  | ~2,500 ✅ |
+| **Unit tests**        | 0       | 448     | 300+ ✅   |
 
-*Note: minui.c decreased after thumbnail + type extraction.*
-*Test target exceeded! 448 minui-specific tests across 18 test files.*
-*State is now fully typed - MinUIContext uses Directory** and Array of Recent* instead of void*.*
+_Note: minui.c decreased after thumbnail + type extraction._
+_Test target exceeded! 448 minui-specific tests across 18 test files._
+_State is now fully typed - MinUIContext uses Directory\*\* and Array of Recent_ instead of void*.*
 
 ---
 
@@ -68,51 +68,55 @@ minui.c (orchestration, main loop, SDL integration)
 
 ### Data Types Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minui_entry.c` | ~204 | Entry type management, IntArray, alphabetical indexing | 25 |
-| `minui_state.c` | ~269 | Path decomposition, collation, resume state | 27 |
+| Module          | Lines | Responsibility                                         | Tests |
+| --------------- | ----- | ------------------------------------------------------ | ----- |
+| `minui_entry.c` | ~204  | Entry type management, IntArray, alphabetical indexing | 25    |
+| `minui_state.c` | ~269  | Path decomposition, collation, resume state            | 27    |
 
 **Key decisions:**
+
 - Entry type is foundational - used throughout UI system
 - State persistence separated from file I/O
 - IntArray provides efficient index storage
 
 ### File Operations Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minui_file_utils.c` | ~169 | Emulator detection, file type checking | 18 |
-| `minui_m3u.c` | ~165 | M3U playlist parsing for multi-disc games | 20 |
-| `minui_map.c` | ~86 | Display name aliasing from map.txt | 22 |
-| `collection_parser.c` | ~92 | Custom ROM list parsing | 11 |
-| `recent_file.c` | ~190 | Recent games file I/O + Recent struct operations | 31 |
+| Module                | Lines | Responsibility                                   | Tests |
+| --------------------- | ----- | ------------------------------------------------ | ----- |
+| `minui_file_utils.c`  | ~169  | Emulator detection, file type checking           | 18    |
+| `minui_m3u.c`         | ~165  | M3U playlist parsing for multi-disc games        | 20    |
+| `minui_map.c`         | ~86   | Display name aliasing from map.txt               | 22    |
+| `collection_parser.c` | ~92   | Custom ROM list parsing                          | 11    |
+| `recent_file.c`       | ~190  | Recent games file I/O + Recent struct operations | 31    |
 
 **Key decisions:**
+
 - File checking is pure (testable without real files)
 - Parsing logic separated from file I/O where possible
 - Map aliasing uses simple key=value format
 
 ### String Processing Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minui_str_compare.c` | ~119 | Natural string sorting (articles, numeric) | 28 |
-| `minui_utils.c` | ~51 | Console directory detection, misc utilities | 17 |
+| Module                | Lines | Responsibility                              | Tests |
+| --------------------- | ----- | ------------------------------------------- | ----- |
+| `minui_str_compare.c` | ~119  | Natural string sorting (articles, numeric)  | 28    |
+| `minui_utils.c`       | ~51   | Console directory detection, misc utilities | 17    |
 
 **Key decisions:**
+
 - Sorting handles "The", "A", "An" prefixes
 - Numeric sorting: "Game 2" before "Game 10"
 - Utilities are pure functions
 
 ### Directory Building Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `directory_index.c` | ~206 | Alias application, hidden filtering, duplicates, alpha index | 38 |
-| `minui_directory.c` | ~360 | Console detection, entry types, collation, scanning, Directory type | 32 |
+| Module              | Lines | Responsibility                                                      | Tests |
+| ------------------- | ----- | ------------------------------------------------------------------- | ----- |
+| `directory_index.c` | ~206  | Alias application, hidden filtering, duplicates, alpha index        | 38    |
+| `minui_directory.c` | ~360  | Console detection, entry types, collation, scanning, Directory type | 32    |
 
 **Key decisions:**
+
 - Index building is deterministic and testable
 - Hidden entries (starting with `.`) filtered
 - Duplicate detection for multi-file games
@@ -125,11 +129,12 @@ minui.c (orchestration, main loop, SDL integration)
 
 ### UI State Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minui_thumbnail.c` | ~190 | Thumbnail cache, fade animation, preload hints | 72 |
+| Module              | Lines | Responsibility                                 | Tests |
+| ------------------- | ----- | ---------------------------------------------- | ----- |
+| `minui_thumbnail.c` | ~190  | Thumbnail cache, fade animation, preload hints | 72    |
 
 **Key decisions:**
+
 - Cache uses opaque `void*` data pointer for SDL independence
 - FIFO eviction policy (oldest entry removed when full)
 - Smoothstep easing for smooth fade-in animation
@@ -137,11 +142,12 @@ minui.c (orchestration, main loop, SDL integration)
 
 ### Launch Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minui_launcher.c` | ~118 | ROM/PAK command construction, shell quoting | 32 |
+| Module             | Lines | Responsibility                              | Tests |
+| ------------------ | ----- | ------------------------------------------- | ----- |
+| `minui_launcher.c` | ~118  | ROM/PAK command construction, shell quoting | 32    |
 
 **Key decisions:**
+
 - Command strings properly escaped for shell
 - Path construction is pure (testable)
 - Separates command building from execution
@@ -151,39 +157,49 @@ minui.c (orchestration, main loop, SDL integration)
 ## What Remains in minui.c
 
 ### Orchestration (Should Stay)
+
 - `main()` - Entry point, argument parsing, main loop
 - Event loop - Input handling, state machine
 - SDL initialization and cleanup
 
 ### Thumbnail System (~200 lines) - Partially Extracted
+
 **Extracted to `minui_thumbnail.c`:**
+
 - Cache data structure and operations (find, add, evict, clear)
 - Fade animation state and smoothstep calculation
 - Preload hint index calculation
 
 **Still in minui.c (SDL/threading dependent):**
+
 - `thumbnail_thread()` - Async background loading
 - `ThumbLoader_*()` - Thread management and synchronization
 - SDL wrapper functions for surface allocation/freeing
 
 ### Directory Structures (~150 lines) - ✅ Extracted
+
 **Extracted to module headers:**
+
 - `Directory` struct → `minui_directory.h`
 - `Recent` struct → `recent_file.h`
 - Pure functions → `minui_directory.c` and `recent_file.c`
 
 **Still in minui.c (global dependent):**
-- `Directory_new()` - Uses globals (simple_mode, recents, get* functions)
+
+- `Directory_new()` - Uses globals (simple_mode, recents, get\* functions)
 - `Directory_index()` - Uses globals (COLLECTIONS_PATH, map loading)
 
 ### Directory Building (~400 lines) - Partially Extracted
+
 **Extracted to `minui_directory.c`:**
+
 - `isConsoleDir()` - Console directory detection
 - `hasRoms()` - Check if directory has ROMs (wrapper)
 - `hasCollections()` - Check if collections exist (wrapper)
 - Entry type determination in `addEntries()`
 
 **Still in minui.c (global state dependent):**
+
 - `hasRecents()` - Modifies global recents array
 - `getRoot()` - Uses global simple_mode
 - `getRecents()` - Uses global recents array
@@ -192,6 +208,7 @@ minui.c (orchestration, main loop, SDL integration)
 - `getEntries()` - Main entry point for directory loading
 
 ### Navigation Logic (~200 lines) - Candidate for Extraction
+
 - `queueNext()` - Queue command for execution
 - `readyResumePath()` / `readyResume()` / `autoResume()` - Auto-resume
 - `openPak()` - Launch application packages
@@ -202,12 +219,14 @@ minui.c (orchestration, main loop, SDL integration)
 - `saveLast()` / `loadLast()` - State persistence
 
 ### Menu/UI System (~100 lines) - Hard to Extract
+
 - `Menu_init()` - Initialize UI resources
 - `Menu_quit()` - Cleanup
 - Text cache management
 - List rendering
 
 ### Main Event Loop (~700 lines) - Hard to Extract
+
 - Input handling
 - Thumbnail rendering
 - Text truncation and caching
@@ -220,26 +239,26 @@ minui.c (orchestration, main loop, SDL integration)
 
 ### Completed (High Priority)
 
-| Function Group | Lines | Status | Notes |
-|----------------|-------|--------|-------|
-| Directory building | ~400 | ✅ Done | Core helpers extracted (minui_directory.c) |
-| Navigation dispatch | ~200 | ✅ Done | Context pattern (minui_navigation.c) |
-| Thumbnail cache | ~150 | ✅ Done | Cache + fade logic (minui_thumbnail.c) |
+| Function Group      | Lines | Status  | Notes                                      |
+| ------------------- | ----- | ------- | ------------------------------------------ |
+| Directory building  | ~400  | ✅ Done | Core helpers extracted (minui_directory.c) |
+| Navigation dispatch | ~200  | ✅ Done | Context pattern (minui_navigation.c)       |
+| Thumbnail cache     | ~150  | ✅ Done | Cache + fade logic (minui_thumbnail.c)     |
 
 ### Medium Priority
 
-| Function Group | Lines | Extractable? | Notes |
-|----------------|-------|--------------|-------|
-| Directory struct | ~150 | ✅ Yes | Data structures, no SDL dependency |
-| Recent array ops | ~50 | ✅ Yes | Already simple, could consolidate |
+| Function Group   | Lines | Extractable? | Notes                              |
+| ---------------- | ----- | ------------ | ---------------------------------- |
+| Directory struct | ~150  | ✅ Yes       | Data structures, no SDL dependency |
+| Recent array ops | ~50   | ✅ Yes       | Already simple, could consolidate  |
 
 ### Low Priority (SDL-Dependent)
 
-| Function Group | Lines | Extractable? | Notes |
-|----------------|-------|--------------|-------|
-| Text cache | ~100 | ⚠️ Partial | Cache logic maybe, rendering no |
-| Main event loop | ~700 | ❌ No | Tightly coupled to SDL/input |
-| Menu init/quit | ~100 | ❌ No | SDL resource management |
+| Function Group  | Lines | Extractable? | Notes                           |
+| --------------- | ----- | ------------ | ------------------------------- |
+| Text cache      | ~100  | ⚠️ Partial   | Cache logic maybe, rendering no |
+| Main event loop | ~700  | ❌ No        | Tightly coupled to SDL/input    |
+| Menu init/quit  | ~100  | ❌ No        | SDL resource management         |
 
 ---
 
@@ -293,6 +312,7 @@ int MinUIM3U_parse(const char* content, M3UEntry* entries, int max_entries);
 **Completed:** Created `minui_directory.c` with ~335 lines, 32 tests
 
 **Extracted functions:**
+
 - `MinUIDir_isConsoleDir()` - Console directory detection
 - `MinUIDir_determineEntryType()` - Entry type determination
 - `MinUIDir_hasRoms()` - ROM system availability check (wrapper)
@@ -303,11 +323,13 @@ int MinUIM3U_parse(const char* content, M3UEntry* entries, int max_entries);
 - `MinUIDir_scanCollated()` - Multi-directory collated scanning
 
 **Integrated into minui.c:**
+
 - `getEntries()` now uses `MinUIDir_buildCollationPrefix()` and `MinUIDir_matchesCollation()`
 - `isConsoleDir()` is a thin wrapper around `MinUIDir_isConsoleDir()`
 - `addEntries()` uses `MinUIDir_determineEntryType()`
 
 **Remaining (global state dependent):**
+
 - `getRoot()`, `getRecents()`, `getCollection()` - Use global arrays
 - Full context pattern would be needed for complete extraction
 
@@ -316,6 +338,7 @@ int MinUIM3U_parse(const char* content, M3UEntry* entries, int max_entries);
 **Completed:** Created `minui_context.c` (~50 lines) and `minui_navigation.c` (~200 lines), 30 tests
 
 **New modules:**
+
 - `minui_context.h/c` - Context pattern for testability (same as MinArch)
   - `MinUIContext` structure with pointers to globals
   - `MinUICallbacks` for service function pointers
@@ -327,12 +350,14 @@ int MinUIM3U_parse(const char* content, M3UEntry* entries, int max_entries);
   - `MinUINav_buildRomCommand()` - ROM launch command building
 
 **Context wiring complete:**
+
 - `MinUIContext_setup()` added to minui.c
 - All globals wired: `top`, `stack`, `recents`, `quit`, `can_resume`, `should_resume`, etc.
 - Callbacks initialized: `addRecent`, `saveRecents`, `queueNext`, `saveLast`, etc.
-- `MinUIRestoreState` struct replaces individual restore_* globals (with macros for compatibility)
+- `MinUIRestoreState` struct replaces individual restore\_\* globals (with macros for compatibility)
 
 **Navigation functions migrated to context pattern:**
+
 - `openPak_ctx()` / `openPak()` - Pak application launching
 - `openRom_ctx()` / `openRom()` - ROM launching with multi-disc/resume support
 - `openDirectory_ctx()` / `openDirectory()` - Directory browsing with auto-launch
@@ -343,6 +368,7 @@ All functions now have `_ctx` versions that take `MinUIContext*` as first parame
 Legacy wrappers call the `_ctx` versions with `MinUIContext_get()` for backward compatibility.
 
 **Tests added for context-aware functions:**
+
 - Mock callback infrastructure for testing navigation in isolation
 - `MinUINav_openPak` tests: callback invocation, command building, null safety
 - `MinUINav_openDirectory` tests: callback invocation, null safety
@@ -354,6 +380,7 @@ Legacy wrappers call the `_ctx` versions with `MinUIContext_get()` for backward 
 **Completed:** Created `minui_thumbnail.c` (~175 lines), 72 tests
 
 **New module:**
+
 - `minui_thumbnail.h/c` - Thumbnail cache and fade animation
   - `ThumbCache` - FIFO cache with fixed capacity (3 slots)
   - `ThumbCacheSlot` - Opaque data pointer for SDL_Surface abstraction
@@ -361,18 +388,21 @@ Legacy wrappers call the `_ctx` versions with `MinUIContext_get()` for backward 
   - `ThumbPreload_getHintIndex()` - Scroll direction preload calculation
 
 **Extracted functions:**
+
 - `ThumbCache_init/find/add/evict/clear()` - Pure cache operations
 - `ThumbCache_isFull/getEvictSlot/getData/getSlot()` - Cache queries
 - `ThumbFade_init/start/reset/update/isActive()` - Fade state management
 - `ThumbFade_calculateAlpha()` - Smoothstep easing math
 
 **Integrated into minui.c:**
+
 - `thumb_cache_push()` - SDL wrapper that handles eviction and surface freeing
 - `thumb_cache_clear()` - SDL wrapper that frees all cached surfaces
 - `ThumbCache` replaces old `CacheItem[]` array
 - `ThumbFadeState` replaces `thumb_alpha` and `thumb_fade_start_ms` variables
 
 **Design decisions:**
+
 - Cache uses `void*` data pointer for SDL independence and testability
 - SDL_Surface allocation/freeing stays in minui.c wrappers
 - Async thumbnail loader thread management unchanged (stays in minui.c)
@@ -383,6 +413,7 @@ Legacy wrappers call the `_ctx` versions with `MinUIContext_get()` for backward 
 **Completed:** Extracted Directory and Recent types to proper headers, fully typed MinUIContext
 
 **Type extractions:**
+
 - `Directory` struct moved to `minui_directory.h`
   - `Directory_free()` moved to minui_directory.c (pure cleanup)
   - `DirectoryArray_pop/free()` moved to minui_directory.c (pure operations)
@@ -394,19 +425,22 @@ Legacy wrappers call the `_ctx` versions with `MinUIContext_get()` for backward 
   - `Recent_new_local()` wrapper in minui.c for convenience
 
 **MinUIContext improvements:**
+
 - Changed from `void** top` to `Directory** top` (properly typed)
-- `Array** recents` now properly documented as Array of Recent*
+- `Array** recents` now properly documented as Array of Recent\*
 - `ctx_getTop()` now returns `Directory*` instead of `void*`
 - Added `ctx_getRecents()` accessor
 - Removed all `void*` casts from context initialization
 
 **Benefits:**
+
 - State structure is now self-documenting (types show intent)
 - Can create mock contexts with proper types for testing
 - Compiler enforces type safety instead of runtime casts
 - Matches MinArch pattern (fully typed context)
 
 **Tests added:**
+
 - 13 new tests for Recent runtime operations (Recent_new, array ops)
 - Tests use mock hasEmu callback to verify emulator availability checking
 
@@ -456,16 +490,17 @@ tests/unit/all/common/           # Unit tests
 
 ## Comparison with MinArch Refactoring
 
-| Aspect | MinArch | MinUI |
-|--------|---------|-------|
-| Original size | ~7,000 lines | ~3,500 lines |
-| Current size | 5,098 lines | ~2,544 lines |
-| Reduction | 27% | 27% |
-| Extracted modules | 18 | 14 |
-| Unit tests | 1,106 | 363 |
-| Complexity | Higher (libretro, video, audio) | Lower (file browser, UI) |
+| Aspect            | MinArch                         | MinUI                    |
+| ----------------- | ------------------------------- | ------------------------ |
+| Original size     | ~7,000 lines                    | ~3,500 lines             |
+| Current size      | 5,098 lines                     | ~2,544 lines             |
+| Reduction         | 27%                             | 27%                      |
+| Extracted modules | 18                              | 14                       |
+| Unit tests        | 1,106                           | 363                      |
+| Complexity        | Higher (libretro, video, audio) | Lower (file browser, UI) |
 
 **Key Differences:**
+
 - MinArch has more complex domain (emulator frontend)
 - MinUI has simpler I/O patterns (file browsing)
 - MinArch needed more extensive callback abstractions

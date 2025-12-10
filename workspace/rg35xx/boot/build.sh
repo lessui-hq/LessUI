@@ -23,6 +23,6 @@ mv data.zip data
 
 cp ~/buildroot/output/images/rootfs.ext2 ./
 
-cat ../boot.sh > $TARGET
-echo BINARY >> $TARGET
-uuencode data data >> $TARGET
+cat ../boot.sh >$TARGET
+echo BINARY >>$TARGET
+uuencode data data >>$TARGET

@@ -15,6 +15,7 @@ This document describes the unified pak architecture for LessUI, enabling self-c
 ### Solution
 
 A unified directory structure where each pak is fully self-contained in `workspace/all/paks/`:
+
 - Metadata (`pak.json`)
 - Source code (if native)
 - Shell scripts (cross-platform with platform branching)
@@ -103,24 +104,24 @@ workspace/all/paks/
 
 ### Schema Fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Display name of the pak |
-| `type` | Yes | One of: `tool`, `emulator`, `app` |
-| `description` | No | Brief description |
-| `version` | No | Semantic version |
-| `platforms` | Yes | Array of supported platform IDs |
-| `build` | No | Native code build configuration |
-| `build.type` | - | `native` (compile C), `download` (fetch binaries), `none` |
-| `build.source` | - | Path to source directory |
-| `build.output` | - | Output path pattern (supports `{{PLATFORM}}`) |
-| `build.makefile` | - | Path to makefile |
-| `dependencies` | No | External binaries to download |
-| `dependencies.<name>.version` | - | Version to download |
-| `dependencies.<name>.arch_binary` | - | `true` if binary varies by arch (arm/arm64) |
-| `dependencies.<name>.platform_binary` | - | `true` if binary varies by platform |
-| `dependencies.<name>.url_template` | - | Download URL with placeholders |
-| `launch` | Yes | Entry point script |
+| Field                                 | Required | Description                                               |
+| ------------------------------------- | -------- | --------------------------------------------------------- |
+| `name`                                | Yes      | Display name of the pak                                   |
+| `type`                                | Yes      | One of: `tool`, `emulator`, `app`                         |
+| `description`                         | No       | Brief description                                         |
+| `version`                             | No       | Semantic version                                          |
+| `platforms`                           | Yes      | Array of supported platform IDs                           |
+| `build`                               | No       | Native code build configuration                           |
+| `build.type`                          | -        | `native` (compile C), `download` (fetch binaries), `none` |
+| `build.source`                        | -        | Path to source directory                                  |
+| `build.output`                        | -        | Output path pattern (supports `{{PLATFORM}}`)             |
+| `build.makefile`                      | -        | Path to makefile                                          |
+| `dependencies`                        | No       | External binaries to download                             |
+| `dependencies.<name>.version`         | -        | Version to download                                       |
+| `dependencies.<name>.arch_binary`     | -        | `true` if binary varies by arch (arm/arm64)               |
+| `dependencies.<name>.platform_binary` | -        | `true` if binary varies by platform                       |
+| `dependencies.<name>.url_template`    | -        | Download URL with placeholders                            |
+| `launch`                              | Yes      | Entry point script                                        |
 
 ## Pak Types
 
@@ -137,6 +138,7 @@ Bootlogo.pak/
 ```
 
 **pak.json:**
+
 ```json
 {
   "name": "Bootlogo",
@@ -160,6 +162,7 @@ Clock.pak/
 ```
 
 **pak.json:**
+
 ```json
 {
   "name": "Clock",
@@ -175,6 +178,7 @@ Clock.pak/
 ```
 
 **launch.sh:**
+
 ```sh
 #!/bin/sh
 cd "$(dirname "$0")"
@@ -195,6 +199,7 @@ FTP.Server.pak/
 ```
 
 **pak.json:**
+
 ```json
 {
   "name": "FTP Server",
@@ -231,6 +236,7 @@ Files.pak/
 ```
 
 **launch.sh:**
+
 ```sh
 #!/bin/sh
 cd "$(dirname "$0")"
@@ -273,6 +279,7 @@ GB.pak/
 ```
 
 **pak.json:**
+
 ```json
 {
   "name": "GB",
@@ -287,6 +294,7 @@ GB.pak/
 ```
 
 **launch.sh.template:**
+
 ```sh
 #!/bin/sh
 
@@ -305,6 +313,7 @@ cd "$HOME"
 ### Pattern 1: Environment Variables
 
 Scripts can use environment variables set by MinUI:
+
 - `$PLATFORM` - Platform ID (e.g., "miyoomini", "rg35xxplus")
 - `$DEVICE` - Device variant (e.g., "miyoominiplus", "brick")
 - `$SDCARD_PATH` - SD card mount point
@@ -330,6 +339,7 @@ esac
 ### Pattern 3: Platform-Specific Files
 
 Use directory structure for platform-specific assets:
+
 ```
 bin/
 ├── service-on              # Cross-platform script
@@ -340,6 +350,7 @@ bin/
 ```
 
 **Loading pattern:**
+
 ```sh
 export PATH="$PAK_DIR/bin/$ARCH:$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
@@ -348,6 +359,7 @@ export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
 ### Pattern 4: Template Overrides
 
 For config files, use base + override pattern:
+
 ```
 res/
 ├── wpa_supplicant.conf.tmpl           # Base template
@@ -356,6 +368,7 @@ res/
 ```
 
 **Selection logic:**
+
 ```sh
 template="$PAK_DIR/res/wpa_supplicant.conf.tmpl"
 if [ -f "$PAK_DIR/res/wpa_supplicant.conf.$PLATFORM.tmpl" ]; then
@@ -389,6 +402,7 @@ make system PLATFORM=miyoomini
 ### Key Design Decision
 
 Tool paks are constructed entirely during `make system`, not `make setup`. This means:
+
 - No duplicate copy steps (everything happens once)
 - Binary and assets are assembled together
 - Platform filtering happens at construction time
@@ -405,12 +419,12 @@ Tool paks are constructed entirely during `make system`, not `make setup`. This 
 
 All high and medium priority tool paks have been successfully migrated:
 
-| Pak | Type | Old Location | New Location | Highlights |
-|-----|------|--------------|--------------|------------|
-| **Clock** | Native | `workspace/all/clock/` | `workspace/all/paks/Clock/src/` | First migration, 11 duplicates eliminated |
-| **Input** | Native | `workspace/all/minput/` | `workspace/all/paks/Input/src/` | Second native pak, validates pattern |
-| **Bootlogo** | Hybrid | (was duplicated ×7) | `workspace/all/paks/Bootlogo/` | Native for miyoomini, shell for others; platform-specific resources; minui-presenter integration |
-| **Files** | Platform-Specific Binaries | (was duplicated ×10) | `workspace/all/paks/Files/` | Multiple file managers (DinguxCommander, 351Files); `bin/<platform>/` pattern |
+| Pak          | Type                       | Old Location            | New Location                    | Highlights                                                                                       |
+| ------------ | -------------------------- | ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Clock**    | Native                     | `workspace/all/clock/`  | `workspace/all/paks/Clock/src/` | First migration, 11 duplicates eliminated                                                        |
+| **Input**    | Native                     | `workspace/all/minput/` | `workspace/all/paks/Input/src/` | Second native pak, validates pattern                                                             |
+| **Bootlogo** | Hybrid                     | (was duplicated ×7)     | `workspace/all/paks/Bootlogo/`  | Native for miyoomini, shell for others; platform-specific resources; minui-presenter integration |
+| **Files**    | Platform-Specific Binaries | (was duplicated ×10)    | `workspace/all/paks/Files/`     | Multiple file managers (DinguxCommander, 351Files); `bin/<platform>/` pattern                    |
 
 ### Migration Steps (Template)
 
@@ -433,6 +447,7 @@ The emulator pak templates in `workspace/all/paks/Emus/` remain largely unchange
 3. **Core-based** - Variation is in libretro core, not pak structure
 
 However, emulator pak metadata could move to individual pak directories:
+
 ```
 paks/
 ├── GB.pak/

@@ -13,7 +13,7 @@ LOG_FILE="$SDCARD_PATH/lessui-install.log"
 # before SD card is mounted and .system is accessible. Cannot source shared log.sh.
 # Keep format in sync with skeleton/SYSTEM/common/log.sh
 log_write() {
-	echo "[$1] $2" >> "$LOG_FILE"
+	echo "[$1] $2" >>"$LOG_FILE"
 }
 log_info() { log_write "INFO" "$*"; }
 log_error() { log_write "ERROR" "$*"; }
@@ -29,10 +29,10 @@ if [ -f "$UPDATE_PATH" ]; then
 	fi
 
 	# initialize fb0
-	cat /sys/class/graphics/fb0/modes > /sys/class/graphics/fb0/mode
+	cat /sys/class/graphics/fb0/modes >/sys/class/graphics/fb0/mode
 
 	# extract the zip file appended to the end of this script to tmp
-	CUT=$((`grep -n '^BINARY' $0 | cut -d ':' -f 1 | tail -1` + 1))
+	CUT=$(($(grep -n '^BINARY' $0 | cut -d ':' -f 1 | tail -1) + 1))
 	tail -n +$CUT "$0" | uudecode -o /tmp/data
 
 	# unzip and display one of the two images it contains
@@ -41,7 +41,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	sync
 
 	log_info "Starting LessUI $ACTION_NOUN..."
-	if unzip -o "$UPDATE_PATH" -d "$SDCARD_PATH" >> "$LOG_FILE" 2>&1; then
+	if unzip -o "$UPDATE_PATH" -d "$SDCARD_PATH" >>"$LOG_FILE" 2>&1; then
 		log_info "Unzip complete"
 	else
 		EXIT_CODE=$?
@@ -53,7 +53,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	# the updated system finishes the install/update
 	if [ -f $SYSTEM_PATH/$PLATFORM/bin/install.sh ]; then
 		log_info "Running install.sh..."
-		if $SYSTEM_PATH/$PLATFORM/bin/install.sh >> "$LOG_FILE" 2>&1; then
+		if $SYSTEM_PATH/$PLATFORM/bin/install.sh >>"$LOG_FILE" 2>&1; then
 			log_info "Installation complete"
 		else
 			EXIT_CODE=$?
@@ -64,11 +64,10 @@ if [ -f "$UPDATE_PATH" ]; then
 fi
 
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
-while [ -f "$LAUNCH_PATH" ] ; do
+while [ -f "$LAUNCH_PATH" ]; do
 	taskset 8 "$LAUNCH_PATH"
 done
 
 poweroff # under no circumstances should stock be allowed to touch this card
 
 exit 0
-

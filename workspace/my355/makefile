@@ -3,7 +3,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -12,10 +12,10 @@ endif
 
 ###########################################################
 
-REQUIRES_EVTEST=other/evtest
-REQUIRES_MKBOOTIMG=other/mkbootimg
-REQUIRES_RSCEGO=other/rsce-go
-REQUIRES_COMMANDER=other/DinguxCommander-sdl2
+REQUIRES_EVTEST = other/evtest
+REQUIRES_MKBOOTIMG = other/mkbootimg
+REQUIRES_RSCEGO = other/rsce-go
+REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
 # show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes

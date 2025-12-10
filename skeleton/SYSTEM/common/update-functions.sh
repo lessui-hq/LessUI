@@ -63,7 +63,7 @@ atomic_system_update() {
 	fi
 
 	# Extract update
-	if "$_unzip_cmd" -o "$_update_zip" -d "$_sdcard" >> "$_log" 2>&1; then
+	if "$_unzip_cmd" -o "$_update_zip" -d "$_sdcard" >>"$_log" 2>&1; then
 		# SUCCESS: Unzip completed successfully
 		log_info "Unzip complete"
 		rm -f "$_update_zip"
@@ -123,7 +123,7 @@ run_platform_install() {
 
 	if [ -f "$_install_script" ]; then
 		log_info "Running install.sh..."
-		if "$_install_script" >> "$_log_file" 2>&1; then
+		if "$_install_script" >>"$_log_file" 2>&1; then
 			log_info "Installation complete"
 			return 0
 		else
