@@ -144,8 +144,8 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL 2.4f // Physical screen diagonal in inches
-#define SCALE_MODIFIER 0.88f // Reduce UI size to fit more content on small screen
-#define EDGE_PADDING 0 // No edge padding needed - bezel provides visual margin
+#define SCALE_MODIFIER 0.84f // Reduce UI size to fit more content on small screen
+#define EDGE_PADDING 5 // Add padding to prevent clipping at screen edges
 #define FIXED_WIDTH 320 // Screen width in pixels
 #define FIXED_HEIGHT 240 // Screen height in pixels (QVGA)
 
