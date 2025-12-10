@@ -276,9 +276,9 @@ First line is summary (imperative mood). Body explains why and what changed.
 
 ### Adding a New Libretro Core
 
-Cores are built externally in the [minarch-cores repository](https://github.com/nchapman/minarch-cores). To add a core to LessUI:
+Cores are built externally in the [LessUI-Cores repository](https://github.com/lessui-hq/LessUI-Cores). To add a core to LessUI:
 
-1. Add core to minarch-cores repository (core build system)
+1. Add core to LessUI-Cores repository (core build system)
 2. Add core configuration to `workspace/all/paks/Emus/cores.json`
 3. Create core config file `workspace/all/paks/Emus/configs/base/<core>/default.cfg`
 4. Run `./scripts/generate-paks.sh all` to generate platform paks

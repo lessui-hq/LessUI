@@ -16,7 +16,7 @@ LessUI uses **libretro cores** to emulate different gaming systems. Libretro is 
 
 ## Core Distribution
 
-Cores are **built externally** in the [minarch-cores repository](https://github.com/nchapman/minarch-cores) and distributed as pre-compiled binaries via GitHub releases.
+Cores are **built externally** in the [LessUI-Cores repository](https://github.com/lessui-hq/LessUI-Cores) and distributed as pre-compiled binaries via GitHub releases.
 
 ### Architecture-Based Distribution
 
@@ -32,9 +32,9 @@ All platforms using the same CPU architecture share the same core binaries.
 The main LessUI Makefile downloads cores during the build:
 
 ```makefile
-# Pre-built cores from minarch-cores repository (versioned releases)
+# Pre-built cores from LessUI-Cores repository (versioned releases)
 MINARCH_CORES_VERSION ?= 20251130-1
-CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
+CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
 
 cores-download:
 	@mkdir -p build/.system/cores/a7 build/.system/cores/a53
@@ -617,7 +617,7 @@ static bool environment_callback(unsigned cmd, void* data) {
 
 Since cores are built externally, adding a core to LessUI involves:
 
-1. **Add to minarch-cores** - Core must be built in the external minarch-cores repository
+1. **Add to LessUI-Cores** - Core must be built in the external LessUI-Cores repository
 2. **Create pak template** - Add core configuration to `workspace/all/paks/Emus/cores.json`
 3. **Add core config** - Create `workspace/all/paks/Emus/configs/<core>.cfg`
 4. **Generate paks** - Run `./scripts/generate-paks.sh all` to create platform paks
@@ -630,5 +630,5 @@ See `docs/paks-architecture.md` for comprehensive pak generation documentation.
 - [Architecture Guide](architecture.md) - How LessUI works internally
 - [Development Guide](development.md) - Building and testing
 - [Pak Architecture](paks-architecture.md) - Pak generation system
-- [minarch-cores Repository](https://github.com/nchapman/minarch-cores) - Core build system
+- [LessUI-Cores Repository](https://github.com/lessui-hq/LessUI-Cores) - Core build system
 - [CLAUDE.md](../CLAUDE.md) - Comprehensive technical reference

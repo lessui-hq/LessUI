@@ -1,6 +1,6 @@
 ###########################################################
 # Emus - Emulator paks
-# Downloads libretro cores from minarch-cores repository
+# Downloads libretro cores from LessUI-Cores repository
 #
 # Hook interface:
 #   setup   - Download cores for both architectures
@@ -10,7 +10,7 @@
 ###########################################################
 
 MINARCH_CORES_VERSION ?= 20251130-2
-CORES_BASE = https://github.com/nchapman/minarch-cores/releases/download/$(MINARCH_CORES_VERSION)
+CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
 
 # All core management happens in cores/ directory
 CORES_DIR = $(CURDIR)/cores
@@ -40,7 +40,7 @@ setup:
 			echo "Using cached remote a7 cores ($(MINARCH_CORES_VERSION))..."; \
 			rsync -a "$(CORES_DIR)/extracted/remote/a7/" "$$BUILD_CORES_DIR/a7/"; \
 		else \
-			echo "Downloading remote a7 cores (ARM32) from minarch-cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote a7 cores (ARM32) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
 			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-a7.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/a7"; \
@@ -70,7 +70,7 @@ setup:
 			echo "Using cached remote a53 cores ($(MINARCH_CORES_VERSION))..."; \
 			rsync -a "$(CORES_DIR)/extracted/remote/a53/" "$$BUILD_CORES_DIR/a53/"; \
 		else \
-			echo "Downloading remote a53 cores (ARM64) from minarch-cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote a53 cores (ARM64) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
 			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-a53.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/a53"; \

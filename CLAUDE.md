@@ -184,7 +184,7 @@ make system PLATFORM=miyoomini  # Constructs complete tool paks
 
 **Adding a new emulator core:**
 
-1. Build core in external [minarch-cores repository](https://github.com/nchapman/minarch-cores)
+1. Build core in external [LessUI-Cores repository](https://github.com/lessui-hq/LessUI-Cores)
 2. Add to `workspace/all/paks/Emus/cores.json`
 3. Create `workspace/all/paks/Emus/configs/base/<CORE>/default.cfg`
 4. Run `./scripts/generate-paks.sh all`
