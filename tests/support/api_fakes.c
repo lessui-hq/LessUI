@@ -29,7 +29,16 @@ UILayout ui = {
     .button_padding = 8,
     .padding = 4,
     .pill_height = 32,
-    .text_baseline = 8,
+    .text_baseline = 8, // DEPRECATED
+    .button_size = 20,
+    .option_size = 24,
+    .option_baseline = 2, // DEPRECATED
+    .option_value_baseline = 4, // DEPRECATED
+    .text_offset_px = 12, // Typical value for 32dp pill with font.large
+    .option_offset_px = 8, // Typical value for 24dp option with font.medium
+    .option_value_offset_px = 6, // Typical value for 24dp option with font.small
+    .button_text_offset_px = 6, // Typical value for button hints
+    .button_label_offset_px = 5, // Typical value for button labels
 };
 
 ///////////////////////////////

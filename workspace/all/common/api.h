@@ -152,12 +152,20 @@ typedef struct UI_Layout {
 	int row_count; // Number of visible menu rows (6-8)
 	int padding; // Internal spacing between UI elements in dp
 	int edge_padding; // Distance from screen edges in dp (reduced on devices with bezels)
-	int text_baseline; // Vertical offset for text centering in pill
+	int text_baseline; // Vertical offset for text centering in pill (DEPRECATED: use text_offset_px)
 	int button_size; // Size of button icons in dp
 	int button_margin; // Margin around buttons in dp
 	int option_size; // Height of submenu option rows in dp
-	int option_baseline; // Vertical offset for label text (font.medium) in option rows
-	int option_value_baseline; // Vertical offset for value text (font.small) in option rows
+	int option_baseline; // Vertical offset for label text (font.medium) in option rows (DEPRECATED)
+	int option_value_baseline; // Vertical offset for value text (font.small) in option rows (DEPRECATED)
+
+	// Pixel-based text centering offsets (computed from font metrics after font load)
+	// These are the Y offsets in pixels to center text in the respective row types
+	int text_offset_px; // Y offset in pixels to center font.large in pill_height
+	int option_offset_px; // Y offset in pixels to center font.medium in option_size
+	int option_value_offset_px; // Y offset in pixels to center font.small in option_size
+	int button_text_offset_px; // Y offset in pixels to center font.small in button_size (hints)
+	int button_label_offset_px; // Y offset in pixels to center font.tiny in button_size (MENU, POWER)
 	int button_padding; // Padding inside buttons in dp
 	int settings_size; // Size of setting indicators in dp
 	int settings_width; // Width of setting indicators in dp
@@ -666,6 +674,28 @@ int GFX_blitButtonGroup(char** hints, int primary, SDL_Surface* dst, int align_r
  * @param h Output: height in pixels (may be NULL)
  */
 void GFX_sizeText(TTF_Font* font, char* str, int leading, int* w, int* h);
+
+/**
+ * Calculate Y offset to visually center text in a container.
+ *
+ * Uses font metrics to center the visual "mass" of typical text (uppercase letters,
+ * lowercase without descenders) rather than the full font height which includes
+ * space for descenders that most menu text doesn't use.
+ *
+ * This gives much better visual centering than simply centering the text surface
+ * height, which would appear too low because of unused descender space.
+ *
+ * @param font TTF_Font to measure
+ * @param container_height Container height in pixels
+ * @return Y offset in pixels to use when blitting text
+ *
+ * @note Results are cached internally - first call measures, subsequent calls return cached value
+ *
+ * Example:
+ *   int y_offset = GFX_centerTextY(font.large, DP(ui.pill_height));
+ *   SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){x, y_offset, 0, 0});
+ */
+int GFX_centerTextY(TTF_Font* font, int container_height);
 
 /**
  * Blits multi-line text with custom leading.

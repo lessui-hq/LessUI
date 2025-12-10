@@ -71,12 +71,17 @@ UI_Layout ui = {
     .row_count = 6,
     .padding = 10,
     .edge_padding = 10,
-    .text_baseline = 6, // (30 * 2) / 10 = 6 for 30dp pill
+    .text_baseline = 6, // DEPRECATED: use text_offset_px (set after font load)
     .button_size = 20, // (30 * 2) / 3 = 20 for 30dp pill (button icons)
     .button_margin = 5,
     .option_size = 22, // (30 * 3) / 4 = 22 for 30dp pill (submenu rows)
-    .option_baseline = 2, // (22 * 1) / 10 = 2 for 22dp option (font.medium)
-    .option_value_baseline = 4, // ~18% - slightly lower for smaller font.small
+    .option_baseline = 2, // DEPRECATED: use option_offset_px (set after font load)
+    .option_value_baseline = 4, // DEPRECATED: use option_value_offset_px (set after font load)
+    .text_offset_px = 0, // Set by GFX_init after font load
+    .option_offset_px = 0, // Set by GFX_init after font load
+    .option_value_offset_px = 0, // Set by GFX_init after font load
+    .button_text_offset_px = 0, // Set by GFX_init after font load
+    .button_label_offset_px = 0, // Set by GFX_init after font load
     .button_padding = 12,
 };
 
@@ -727,6 +732,14 @@ SDL_Surface* GFX_init(int mode) {
 	font.small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
 	font.tiny = TTF_OpenFont(FONT_PATH, DP(FONT_TINY));
 
+	// Pre-calculate pixel-based text centering offsets now that fonts are loaded
+	// These use actual font metrics for perfect visual centering
+	ui.text_offset_px = GFX_centerTextY(font.large, DP(ui.pill_height));
+	ui.option_offset_px = GFX_centerTextY(font.medium, DP(ui.option_size));
+	ui.option_value_offset_px = GFX_centerTextY(font.small, DP(ui.option_size));
+	ui.button_text_offset_px = GFX_centerTextY(font.small, DP(ui.button_size));
+	ui.button_label_offset_px = GFX_centerTextY(font.tiny, DP(ui.button_size));
+
 	return gfx.screen;
 }
 
@@ -1320,18 +1333,23 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 		ox += DP(ui.button_size);
 		SDL_FreeSurface(text);
 	} else {
-		text = TTF_RenderUTF8_Blended(special_case ? font.large : font.tiny, button,
-		                              COLOR_BUTTON_TEXT);
+		// Multi-char button labels: font.tiny for normal (MENU, POWER), font.large for brightness icon
+		int label_offset;
+		if (special_case) {
+			text = TTF_RenderUTF8_Blended(font.large, button, COLOR_BUTTON_TEXT);
+			label_offset = GFX_centerTextY(font.large, DP(ui.button_size)); // Rare case, use cached
+		} else {
+			text = TTF_RenderUTF8_Blended(font.tiny, button, COLOR_BUTTON_TEXT);
+			label_offset = ui.button_label_offset_px; // Pre-computed
+		}
 		GFX_blitPill(ASSET_BUTTON, dst,
 		             &(SDL_Rect){dst_rect->x, dst_rect->y, DP(ui.button_size) / 2 + text->w,
 		                         DP(ui.button_size)});
 		ox += DP(ui.button_size) / 4;
 
-		int oy = special_case ? DP(-2) : 0;
-		SDL_BlitSurface(text, NULL, dst,
-		                &(SDL_Rect){ox + dst_rect->x,
-		                            oy + dst_rect->y + DP_CENTER_PX(ui.button_size, text->h),
-		                            text->w, text->h});
+		SDL_BlitSurface(
+		    text, NULL, dst,
+		    &(SDL_Rect){ox + dst_rect->x, dst_rect->y + label_offset, text->w, text->h});
 		ox += text->w;
 		ox += DP(ui.button_size) / 4;
 		SDL_FreeSurface(text);
@@ -1339,13 +1357,84 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 
 	ox += DP(ui.button_margin);
 
-	// hint text
+	// hint text - use pre-computed offset for proper vertical centering
 	text = TTF_RenderUTF8_Blended(font.small, hint, COLOR_WHITE);
-	SDL_BlitSurface(text, NULL, dst,
-	                &(SDL_Rect){ox + dst_rect->x,
-	                            dst_rect->y + DP_CENTER_PX(ui.button_size, text->h), text->w,
-	                            text->h});
+	SDL_BlitSurface(
+	    text, NULL, dst,
+	    &(SDL_Rect){ox + dst_rect->x, dst_rect->y + ui.button_text_offset_px, text->w, text->h});
 	SDL_FreeSurface(text);
+}
+
+// Cache for text centering calculations
+// Key: (font pointer, container_height) -> Y offset
+// Simple fixed-size cache - we only use ~6 combinations max
+#define TEXT_CENTER_CACHE_SIZE 8
+static struct {
+	TTF_Font* font;
+	int container_height;
+	int y_offset;
+} text_center_cache[TEXT_CENTER_CACHE_SIZE];
+static int text_center_cache_count = 0;
+
+/**
+ * Calculate Y offset to visually center text in a container.
+ *
+ * Uses font metrics to center the visual "mass" of typical text (uppercase letters,
+ * lowercase without descenders) rather than the full font height which includes
+ * descender space that most menu text doesn't use.
+ *
+ * The algorithm:
+ * 1. Get metrics for a representative uppercase character ('X')
+ * 2. Calculate where that glyph's visual bounds sit in the rendered surface
+ * 3. Center those bounds in the container
+ *
+ * This matches how GFX_centerGlyph works for button labels, giving consistent
+ * visual centering across all text in the UI.
+ *
+ * @param ttf_font TTF_Font to measure (must not be NULL)
+ * @param container_height Container height in pixels
+ * @return Y offset in pixels to use when blitting text
+ */
+int GFX_centerTextY(TTF_Font* ttf_font, int container_height) {
+	if (!ttf_font || container_height <= 0)
+		return 0;
+
+	// Check cache first
+	for (int i = 0; i < text_center_cache_count; i++) {
+		if (text_center_cache[i].font == ttf_font &&
+		    text_center_cache[i].container_height == container_height) {
+			return text_center_cache[i].y_offset;
+		}
+	}
+
+	// Get metrics for representative character 'X' (uppercase, no descenders)
+	// This represents the typical visual bounds of menu text
+	int minx, maxx, miny, maxy, advance;
+	if (TTF_GlyphMetrics(ttf_font, (Uint16)'X', &minx, &maxx, &miny, &maxy, &advance) != 0) {
+		// Fallback: center based on font height if glyph metrics unavailable
+		int font_height = TTF_FontHeight(ttf_font);
+		return (container_height - font_height + 1) / 2;
+	}
+
+	// Calculate visual bounds
+	int glyph_h = maxy - miny; // Actual visible height of 'X'
+
+	// In the rendered surface, the glyph starts at (ascent - maxy) from top
+	int ascent = TTF_FontAscent(ttf_font);
+	int glyph_top_in_surface = ascent - maxy;
+
+	// Calculate Y offset to center the glyph's visual bounds in the container
+	int y_offset = (container_height - glyph_h + 1) / 2 - glyph_top_in_surface;
+
+	// Cache the result
+	if (text_center_cache_count < TEXT_CENTER_CACHE_SIZE) {
+		text_center_cache[text_center_cache_count].font = ttf_font;
+		text_center_cache[text_center_cache_count].container_height = container_height;
+		text_center_cache[text_center_cache_count].y_offset = y_offset;
+		text_center_cache_count++;
+	}
+
+	return y_offset;
 }
 
 /**

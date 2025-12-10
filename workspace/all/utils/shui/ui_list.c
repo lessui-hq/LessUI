@@ -387,7 +387,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 							title_x = screen->w - title_text->w - DP(ui.edge_padding);
 						}
 					}
-					SDL_Rect pos = {title_x, y + DP(ui.option_baseline), title_text->w, title_text->h};
+					SDL_Rect pos = {title_x, y + ui.option_offset_px, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
 				}
@@ -439,7 +439,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 					SDL_Surface* text = TTF_RenderUTF8_Blended(font.medium, item->name, label_color);
 					if (text) {
 						int text_x = ox + DP(OPTION_PADDING);
-						int text_y = y + DP(ui.option_baseline);
+						int text_y = y + ui.option_offset_px;
 						SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){text_x, text_y, text->w, text->h});
 						SDL_FreeSurface(text);
 					}
@@ -452,7 +452,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 						SDL_Surface* opt_text = TTF_RenderUTF8_Blended(font.small, opt_str, value_color);
 						if (opt_text) {
 							int opt_x = ox + row_width - opt_text->w - DP(OPTION_PADDING);
-							int opt_y = y + DP(ui.option_value_baseline);
+							int opt_y = y + ui.option_value_offset_px;
 							SDL_BlitSurface(opt_text, NULL, screen, &(SDL_Rect){opt_x, opt_y, opt_text->w, opt_text->h});
 							SDL_FreeSurface(opt_text);
 						}

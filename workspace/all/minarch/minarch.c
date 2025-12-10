@@ -4463,7 +4463,7 @@ int Menu_options(MenuList* list) {
 					text = TTF_RenderUTF8_Blended(font.medium, loop_item->name, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size + ui.option_baseline)});
+					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 				}
 			} else if (type == MENU_FIXED) {
@@ -4504,7 +4504,7 @@ int Menu_options(MenuList* list) {
 						SDL_BlitSurface(
 						    text, NULL, screen,
 						    &(SDL_Rect){ox + mw - text->w - DP(OPTION_PADDING),
-						                oy + DP(j * ui.option_size + ui.option_value_baseline)});
+						                oy + DP(j * ui.option_size) + ui.option_value_offset_px});
 						SDL_FreeSurface(text);
 					}
 
@@ -4525,7 +4525,7 @@ int Menu_options(MenuList* list) {
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size + ui.option_baseline)});
+					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 				}
 			} else if (type == MENU_VAR || type == MENU_INPUT) {
@@ -4600,7 +4600,7 @@ int Menu_options(MenuList* list) {
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
 					SDL_BlitSurface(text, NULL, screen,
 					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size + ui.option_baseline)});
+					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 
 					if (nav.await_input && j == selected_row) {
@@ -4614,7 +4614,7 @@ int Menu_options(MenuList* list) {
 						SDL_BlitSurface(
 						    text, NULL, screen,
 						    &(SDL_Rect){ox + mw - text->w - DP(OPTION_PADDING),
-						                oy + DP(j * ui.option_size + ui.option_value_baseline)});
+						                oy + DP(j * ui.option_size) + ui.option_value_offset_px});
 						SDL_FreeSurface(text);
 					}
 				}

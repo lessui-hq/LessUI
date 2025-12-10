@@ -627,7 +627,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 			SDL_BlitSurface(text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 			                *scr,
 			                &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-			                            DP(ui.edge_padding + ui.text_baseline)});
+			                            DP(ui.edge_padding) + ui.text_offset_px});
 			SDL_FreeSurface(text);
 
 			if (show_setting && !cb->get_hdmi())
@@ -660,7 +660,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 						    text, NULL, *scr,
 						    &(SDL_Rect){DP(ui.screen_width - ui.edge_padding - ui.button_padding) -
 						                    text->w,
-						                DP(oy + ui.padding + ui.text_baseline)});
+						                DP(oy + ui.padding) + ui.text_offset_px});
 						SDL_FreeSurface(text);
 					}
 
@@ -676,8 +676,8 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 					text = TTF_RenderUTF8_Blended(font.large, item, COLOR_BLACK);
 					SDL_BlitSurface(text, NULL, *scr,
 					                &(SDL_Rect){DP(2 + ui.edge_padding + ui.button_padding),
-					                            DP(1 + ui.padding + oy + (i * ui.pill_height) +
-					                               ui.text_baseline)});
+					                            DP(1 + ui.padding + oy + i * ui.pill_height) +
+					                                ui.text_offset_px});
 					SDL_FreeSurface(text);
 				}
 
@@ -685,7 +685,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				SDL_BlitSurface(
 				    text, NULL, *scr,
 				    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-				                DP(oy + ui.padding + (i * ui.pill_height) + ui.text_baseline)});
+				                DP(oy + ui.padding + i * ui.pill_height) + ui.text_offset_px});
 				SDL_FreeSurface(text);
 			}
 

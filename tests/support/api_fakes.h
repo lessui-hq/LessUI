@@ -40,7 +40,16 @@ typedef struct {
 	int button_padding;
 	int padding;
 	int pill_height;
-	int text_baseline;
+	int text_baseline; // DEPRECATED: use text_offset_px
+	int button_size;
+	int option_size;
+	int option_baseline; // DEPRECATED: use option_offset_px
+	int option_value_baseline; // DEPRECATED: use option_value_offset_px
+	int text_offset_px; // Y offset in pixels to center font.large in pill_height
+	int option_offset_px; // Y offset in pixels to center font.medium in option_size
+	int option_value_offset_px; // Y offset in pixels to center font.small in option_size
+	int button_text_offset_px; // Y offset in pixels to center font.small in button_size
+	int button_label_offset_px; // Y offset in pixels to center font.tiny in button_size
 } UILayout;
 
 /**

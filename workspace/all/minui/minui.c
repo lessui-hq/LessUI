@@ -2268,8 +2268,8 @@ int main(int argc, char* argv[]) {
 									                text_cache[cache_slot].unique_surface->h},
 									    screen,
 									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-									                DP(ui.edge_padding + (j * ui.pill_height) +
-									                   ui.text_baseline),
+									                DP(ui.edge_padding + j * ui.pill_height) +
+									                    ui.text_offset_px,
 									                0, 0});
 								}
 								LOG_debug("text cache: HIT row=%d slot=%d", j, cache_slot);
@@ -2291,8 +2291,8 @@ int main(int argc, char* argv[]) {
 									                unique_text->h},
 									    screen,
 									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-									                DP(ui.edge_padding + (j * ui.pill_height) +
-									                   ui.text_baseline),
+									                DP(ui.edge_padding + j * ui.pill_height) +
+									                    ui.text_offset_px,
 									                0, 0});
 									// Re-truncate display_name for main text
 									GFX_truncateText(font.large, entry_name, display_name,
@@ -2334,10 +2334,10 @@ int main(int argc, char* argv[]) {
 						SDL_BlitSurface(
 						    text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 						    screen,
-						    &(SDL_Rect){
-						        DP(ui.edge_padding + ui.button_padding),
-						        DP(ui.edge_padding + (j * ui.pill_height) + ui.text_baseline), 0,
-						        0});
+						    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
+						                DP(ui.edge_padding + j * ui.pill_height) +
+						                    ui.text_offset_px,
+						                0, 0});
 
 						// Only free if not cached (selected row)
 						if (is_selected)

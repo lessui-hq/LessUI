@@ -246,12 +246,12 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 
 			GFX_clear(screen);
 
-			// Title (centered, using font.medium like other shui screens)
-			int title_y = DP(ui.edge_padding);
+			// Title (centered horizontally, vertically centered in title_area)
 			if (opts && opts->title) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);
 				if (title_text) {
-					SDL_Rect pos = {(screen->w - title_text->w) / 2, title_y + DP(ui.option_baseline), title_text->w, title_text->h};
+					int title_y = GFX_centerTextY(font.medium, DP(ui.pill_height));
+					SDL_Rect pos = {(screen->w - title_text->w) / 2, title_y, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
 				}
@@ -270,7 +270,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			SDL_Surface* text_surf = TTF_RenderUTF8_Blended(font.medium, display_text, COLOR_WHITE);
 			if (text_surf) {
 				int text_x = input_x + DP(OPTION_PADDING);
-				int text_y = input_y + DP(ui.option_baseline);
+				int text_y = input_y + GFX_centerTextY(font.medium, input_h);
 				// Clip text if too wide
 				int max_text_w = input_w - DP(OPTION_PADDING * 2);
 				SDL_Rect src = {0, 0, text_surf->w > max_text_w ? max_text_w : text_surf->w, text_surf->h};
@@ -345,7 +345,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 					SDL_Surface* key_text = TTF_RenderUTF8_Blended(key_font, key, text_color);
 					if (key_text) {
 						int tx = x + (kw - key_text->w) / 2;
-						int ty = y + (key_size - key_text->h) / 2;
+						int ty = y + GFX_centerTextY(key_font, key_size);
 						SDL_BlitSurface(key_text, NULL, screen, &(SDL_Rect){tx, ty, key_text->w, key_text->h});
 						SDL_FreeSurface(key_text);
 					}

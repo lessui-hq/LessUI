@@ -20,10 +20,15 @@ typedef struct UI_Layout {
 	int pill_height;
 	int row_count;
 	int padding;
-	int text_baseline;
+	int text_baseline; // DEPRECATED: use text_offset_px
 	int button_size;
 	int button_margin;
 	int button_padding;
+	int option_size;
+	int option_baseline; // DEPRECATED: use option_offset_px
+	int option_value_baseline; // DEPRECATED: use option_value_offset_px
+	// Note: text_offset_px, option_offset_px, option_value_offset_px are
+	// computed from font metrics in GFX_init, not tested here
 } UI_Layout;
 
 // External globals and function (implemented in api.c, but we'll redefine for testing)
