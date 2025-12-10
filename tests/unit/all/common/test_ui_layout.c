@@ -103,7 +103,6 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	ui.button_size = (best_pill * 2) / 3;
 	ui.button_margin = (best_pill - ui.button_size) / 2;
 	ui.button_padding = (best_pill * 2) / 5;
-	ui.text_baseline = (best_pill * 2) / 10;
 }
 
 void setUp(void) {
@@ -115,7 +114,6 @@ void setUp(void) {
 	ui.button_size = 20;
 	ui.button_margin = 5;
 	ui.button_padding = 12;
-	ui.text_baseline = 6;
 }
 
 void tearDown(void) {
@@ -271,15 +269,6 @@ void test_button_padding_proportional(void) {
 	TEST_ASSERT_EQUAL_INT(expected_padding, ui.button_padding);
 }
 
-void test_text_baseline_proportional(void) {
-	UI_initLayout(640, 480, 2.8f);
-
-	// text_baseline = (pill_height * 2) / 10, per UI_initLayout implementation
-	// For 30dp pill: (30 * 2) / 10 = 6
-	int expected_baseline = (ui.pill_height * 2) / 10;
-	TEST_ASSERT_EQUAL_INT(expected_baseline, ui.text_baseline);
-}
-
 ///////////////////////////////
 // Padding Tests
 ///////////////////////////////
@@ -368,7 +357,6 @@ int main(void) {
 	RUN_TEST(test_button_size_proportional);
 	RUN_TEST(test_button_margin_centers_button);
 	RUN_TEST(test_button_padding_proportional);
-	RUN_TEST(test_text_baseline_proportional);
 
 	// Padding
 	RUN_TEST(test_padding_consistent);

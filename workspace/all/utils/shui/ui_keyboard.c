@@ -111,11 +111,11 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 
 	// Dynamic layout calculation
 	// Available vertical space: between input area and button hints
-	int title_area = DP(ui.pill_height);  // Title row
-	int input_area = DP(ui.pill_height);  // Input field
-	int button_area = DP(ui.pill_height + ui.edge_padding);  // Button hints at bottom
+	int title_area = ui.pill_height_px;  // Title row
+	int input_area = ui.pill_height_px;  // Input field
+	int button_area = ui.pill_height_px + ui.edge_padding_px;  // Button hints at bottom
 	int spacing = DP(2);
-	int edge_padding = DP(ui.edge_padding);
+	int edge_padding = ui.edge_padding_px;
 
 	// Calculate key size from available height (square keys)
 	int available_height = screen->h - title_area - input_area - button_area - edge_padding;
@@ -250,7 +250,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			if (opts && opts->title) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);
 				if (title_text) {
-					int title_y = GFX_centerTextY(font.medium, DP(ui.pill_height));
+					int title_y = GFX_centerTextY(font.medium, ui.pill_height_px);
 					SDL_Rect pos = {(screen->w - title_text->w) / 2, title_y, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
@@ -259,7 +259,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 
 			// Text input area (pill-style like list items)
 			int input_y = title_area;
-			int input_h = DP(ui.pill_height);
+			int input_h = ui.pill_height_px;
 			int input_x = kb_start_x;
 			int input_w = kb_width;
 			SDL_FillRect(screen, &(SDL_Rect){input_x, input_y, input_w, input_h}, color_input_bg);

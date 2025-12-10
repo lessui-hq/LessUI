@@ -4439,7 +4439,7 @@ int Menu_options(MenuList* list) {
 				}
 
 				int ox = DP_CENTER_PX(ui.screen_width, mw);
-				int oy = DP(ui.edge_padding + ui.pill_height);
+				int oy = ui.edge_padding_px + ui.pill_height_px;
 				int selected_row = nav.selected - nav.start;
 				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
 					MenuItem* loop_item = &items[i];
@@ -4454,24 +4454,25 @@ int Menu_options(MenuList* list) {
 
 						GFX_blitPill(
 						    ASSET_OPTION_WHITE, screen,
-						    &(SDL_Rect){ox, oy + DP(j * ui.option_size), w, DP(ui.option_size)});
+						    &(SDL_Rect){ox, oy + (j * ui.option_size_px), w, ui.option_size_px});
 						text_color = COLOR_BLACK;
 
 						if (loop_item->desc)
 							desc = loop_item->desc;
 					}
 					text = TTF_RenderUTF8_Blended(font.medium, loop_item->name, text_color);
-					SDL_BlitSurface(text, NULL, screen,
-					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
+					SDL_BlitSurface(
+					    text, NULL, screen,
+					    &(SDL_Rect){ox + DP(OPTION_PADDING),
+					                oy + (j * ui.option_size_px) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 				}
 			} else if (type == MENU_FIXED) {
 				// NOTE: no need to calculate max width
 				int mw = DP(ui.screen_width - ui.edge_padding * 2);
 				int ox, oy;
-				ox = oy = DP(ui.edge_padding);
-				oy += DP(ui.pill_height);
+				ox = oy = ui.edge_padding_px;
+				oy += ui.pill_height_px;
 
 				int selected_row = nav.selected - nav.start;
 				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
@@ -4482,7 +4483,7 @@ int Menu_options(MenuList* list) {
 						// gray pill
 						GFX_blitPill(
 						    ASSET_OPTION, screen,
-						    &(SDL_Rect){ox, oy + DP(j * ui.option_size), mw, DP(ui.option_size)});
+						    &(SDL_Rect){ox, oy + (j * ui.option_size_px), mw, ui.option_size_px});
 					}
 
 					// Calculate optimal widths using proportional truncation
@@ -4504,15 +4505,15 @@ int Menu_options(MenuList* list) {
 						SDL_BlitSurface(
 						    text, NULL, screen,
 						    &(SDL_Rect){ox + mw - text->w - DP(OPTION_PADDING),
-						                oy + DP(j * ui.option_size) + ui.option_value_offset_px});
+						                oy + (j * ui.option_size_px) + ui.option_value_offset_px});
 						SDL_FreeSurface(text);
 					}
 
 					if (j == selected_row) {
 						// white pill
 						GFX_blitPill(ASSET_OPTION_WHITE, screen,
-						             &(SDL_Rect){ox, oy + DP(j * ui.option_size), label_w,
-						                         DP(ui.option_size)});
+						             &(SDL_Rect){ox, oy + (j * ui.option_size_px), label_w,
+						                         ui.option_size_px});
 						text_color = COLOR_BLACK;
 
 						if (loop_item->desc)
@@ -4523,9 +4524,10 @@ int Menu_options(MenuList* list) {
 					GFX_truncateText(font.medium, loop_item->name, label_truncated, label_text_w,
 					                 0);
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
-					SDL_BlitSurface(text, NULL, screen,
-					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
+					SDL_BlitSurface(
+					    text, NULL, screen,
+					    &(SDL_Rect){ox + DP(OPTION_PADDING),
+					                oy + (j * ui.option_size_px) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 				}
 			} else if (type == MENU_VAR || type == MENU_INPUT) {
@@ -4562,7 +4564,7 @@ int Menu_options(MenuList* list) {
 				}
 
 				int ox = DP_CENTER_PX(ui.screen_width, mw);
-				int oy = DP(ui.edge_padding + ui.pill_height);
+				int oy = ui.edge_padding_px + ui.pill_height_px;
 				int selected_row = nav.selected - nav.start;
 				for (int i = nav.start, j = 0; i < nav.end; i++, j++) {
 					MenuItem* loop_item = &items[i];
@@ -4582,12 +4584,12 @@ int Menu_options(MenuList* list) {
 						// gray pill
 						GFX_blitPill(
 						    ASSET_OPTION, screen,
-						    &(SDL_Rect){ox, oy + DP(j * ui.option_size), mw, DP(ui.option_size)});
+						    &(SDL_Rect){ox, oy + (j * ui.option_size_px), mw, ui.option_size_px});
 
 						// white pill
 						GFX_blitPill(ASSET_OPTION_WHITE, screen,
-						             &(SDL_Rect){ox, oy + DP(j * ui.option_size), label_w,
-						                         DP(ui.option_size)});
+						             &(SDL_Rect){ox, oy + (j * ui.option_size_px), label_w,
+						                         ui.option_size_px});
 						text_color = COLOR_BLACK;
 
 						if (loop_item->desc)
@@ -4598,9 +4600,10 @@ int Menu_options(MenuList* list) {
 					GFX_truncateText(font.medium, loop_item->name, label_truncated, label_text_w,
 					                 0);
 					text = TTF_RenderUTF8_Blended(font.medium, label_truncated, text_color);
-					SDL_BlitSurface(text, NULL, screen,
-					                &(SDL_Rect){ox + DP(OPTION_PADDING),
-					                            oy + DP(j * ui.option_size) + ui.option_offset_px});
+					SDL_BlitSurface(
+					    text, NULL, screen,
+					    &(SDL_Rect){ox + DP(OPTION_PADDING),
+					                oy + (j * ui.option_size_px) + ui.option_offset_px});
 					SDL_FreeSurface(text);
 
 					if (nav.await_input && j == selected_row) {
@@ -4614,7 +4617,7 @@ int Menu_options(MenuList* list) {
 						SDL_BlitSurface(
 						    text, NULL, screen,
 						    &(SDL_Rect){ox + mw - text->w - DP(OPTION_PADDING),
-						                oy + DP(j * ui.option_size) + ui.option_value_offset_px});
+						                oy + (j * ui.option_size_px) + ui.option_value_offset_px});
 						SDL_FreeSurface(text);
 					}
 				}
@@ -4625,8 +4628,8 @@ int Menu_options(MenuList* list) {
 #define SCROLL_HEIGHT 4
 #define SCROLL_MARGIN 4 // Tight spacing anchored to option list
 				int ox = (DP(ui.screen_width) - DP(SCROLL_WIDTH)) / 2;
-				int options_top = DP(ui.edge_padding + ui.pill_height);
-				int options_bottom = options_top + DP(max_visible_options * ui.option_size);
+				int options_top = ui.edge_padding_px + ui.pill_height_px;
+				int options_bottom = options_top + (max_visible_options * ui.option_size_px);
 
 				if (nav.start > 0)
 					GFX_blitAsset(ASSET_SCROLL_UP, NULL, screen,

@@ -621,13 +621,13 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 
 			SDL_Surface* text;
 			text = TTF_RenderUTF8_Blended(font.large, display_name, COLOR_WHITE);
-			GFX_blitPill(ASSET_BLACK_PILL, *scr,
-			             &(SDL_Rect){DP(ui.edge_padding), DP(ui.edge_padding), max_width,
-			                         DP(ui.pill_height)});
+			GFX_blitPill(
+			    ASSET_BLACK_PILL, *scr,
+			    &(SDL_Rect){ui.edge_padding_px, ui.edge_padding_px, max_width, ui.pill_height_px});
 			SDL_BlitSurface(text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 			                *scr,
-			                &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-			                            DP(ui.edge_padding) + ui.text_offset_px});
+			                &(SDL_Rect){ui.edge_padding_px + DP(ui.button_padding),
+			                            ui.edge_padding_px + ui.text_offset_px});
 			SDL_FreeSurface(text);
 
 			if (show_setting && !cb->get_hdmi())
@@ -638,12 +638,13 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				    0);
 			GFX_blitButtonGroup((char*[]){"B", "BACK", "A", "OKAY", NULL}, 1, *scr, 1);
 
-			// Vertically center menu items
-			int header_offset = ui.edge_padding + ui.pill_height;
-			int footer_offset = ui.screen_height - ui.edge_padding - ui.pill_height;
-			int content_area_height = footer_offset - header_offset;
-			int menu_height_dp = MENU_ITEM_COUNT * ui.pill_height;
-			oy = header_offset + (content_area_height - menu_height_dp) / 2 - ui.padding;
+			// Vertically center menu items (calculate in pixel space to avoid rounding accumulation)
+			int header_offset_px = ui.edge_padding_px + ui.pill_height_px;
+			int footer_offset_px = ui.screen_height_px - ui.edge_padding_px - ui.pill_height_px;
+			int content_area_height_px = footer_offset_px - header_offset_px;
+			int menu_height_px = MENU_ITEM_COUNT * ui.pill_height_px;
+			int oy_px =
+			    header_offset_px + (content_area_height_px - menu_height_px) / 2 - DP(ui.padding);
 
 			for (int i = 0; i < MENU_ITEM_COUNT; i++) {
 				char* item = m->items[i];
@@ -652,15 +653,15 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				if (i == selected) {
 					if (m->total_discs > 1 && i == ITEM_CONT) {
 						GFX_blitPill(ASSET_DARK_GRAY_PILL, *scr,
-						             &(SDL_Rect){DP(ui.edge_padding), DP(oy + ui.padding),
+						             &(SDL_Rect){ui.edge_padding_px, oy_px + DP(ui.padding),
 						                         DP(ui.screen_width - ui.edge_padding * 2),
-						                         DP(ui.pill_height)});
+						                         ui.pill_height_px});
 						text = TTF_RenderUTF8_Blended(font.large, disc_name, COLOR_WHITE);
 						SDL_BlitSurface(
 						    text, NULL, *scr,
 						    &(SDL_Rect){DP(ui.screen_width - ui.edge_padding - ui.button_padding) -
 						                    text->w,
-						                DP(oy + ui.padding) + ui.text_offset_px});
+						                oy_px + DP(ui.padding) + ui.text_offset_px});
 						SDL_FreeSurface(text);
 					}
 
@@ -668,24 +669,24 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 					ow += DP(ui.button_padding * 2);
 
 					GFX_blitPill(ASSET_WHITE_PILL, *scr,
-					             &(SDL_Rect){DP(ui.edge_padding),
-					                         DP(oy + ui.padding + (i * ui.pill_height)), ow,
-					                         DP(ui.pill_height)});
+					             &(SDL_Rect){ui.edge_padding_px,
+					                         oy_px + DP(ui.padding) + (i * ui.pill_height_px), ow,
+					                         ui.pill_height_px});
 					text_color = COLOR_BLACK;
 				} else {
 					text = TTF_RenderUTF8_Blended(font.large, item, COLOR_BLACK);
 					SDL_BlitSurface(text, NULL, *scr,
 					                &(SDL_Rect){DP(2 + ui.edge_padding + ui.button_padding),
-					                            DP(1 + ui.padding + oy + i * ui.pill_height) +
-					                                ui.text_offset_px});
+					                            oy_px + DP(1 + ui.padding) +
+					                                (i * ui.pill_height_px) + ui.text_offset_px});
 					SDL_FreeSurface(text);
 				}
 
 				text = TTF_RenderUTF8_Blended(font.large, item, text_color);
-				SDL_BlitSurface(
-				    text, NULL, *scr,
-				    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-				                DP(oy + ui.padding + i * ui.pill_height) + ui.text_offset_px});
+				SDL_BlitSurface(text, NULL, *scr,
+				                &(SDL_Rect){ui.edge_padding_px + DP(ui.button_padding),
+				                            oy_px + DP(ui.padding) + (i * ui.pill_height_px) +
+				                                ui.text_offset_px});
 				SDL_FreeSurface(text);
 			}
 
