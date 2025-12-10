@@ -588,7 +588,8 @@ format-shell-check: check-shfmt
 # Makefile Formatting (mbake)
 
 # Find all makefiles we maintain (exclude third-party)
-MAKEFILES = $(shell find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) 2>/dev/null | \
+# Note: Don't use MAKEFILES as variable name - it's special in GNU make
+MAKEFILE_PATHS = $(shell find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) 2>/dev/null | \
               grep -v "./workspace/.*/other/" | \
               grep -v "./workspace/.*/toolchains/" | \
               grep -v "./workspace/.*/cores/" | \
@@ -633,8 +634,9 @@ format-make-check: check-mbake
 check-prettier:
 	@which prettier > /dev/null || (echo "Error: prettier not installed" && exit 1)
 
-# Files to format with prettier (exclude third-party and build outputs)
-PRETTIER_PATTERNS = "workspace/all/paks/**/*.json" "skeleton/**/*.json" ".github/**/*.yml" "*.md" "docs/**/*.md"
+# Files to format with prettier (exclude third-party, build outputs, and templates)
+PRETTIER_PATTERNS = "workspace/all/paks/**/*.json" ".github/**/*.yml" "*.md" "docs/**/*.md" \
+                    "!workspace/all/paks/Tools/Wifi/res/**"
 PRETTIER_IGNORE = --ignore-path .gitignore
 
 # Format JSON, YAML, and Markdown in-place
@@ -646,7 +648,7 @@ format-prettier: check-prettier
 # Check prettier formatting (no modifications)
 format-prettier-check: check-prettier
 	@echo "Checking JSON, YAML, and Markdown formatting..."
-	@prettier --check $(PRETTIER_IGNORE) $(PRETTIER_PATTERNS) 2>/dev/null || \
+	@prettier --check $(PRETTIER_IGNORE) $(PRETTIER_PATTERNS) || \
 		(echo "✗ Files not formatted. Run 'make -f makefile.qa format-prettier' to fix." && exit 1)
 	@echo "✓ JSON, YAML, and Markdown properly formatted"
 
@@ -748,7 +750,7 @@ docker-shell: docker-build
 	docker run --rm -it -v $(shell pwd):/lessui -w /lessui $(DEV_IMAGE) /bin/bash
 
 # Native targets (runs directly on host)
-lint-native: check-clang-tidy check-clang-format check-shellcheck
+lint-native: check-clang-tidy check-clang-format check-shellcheck check-shfmt check-mbake check-prettier
 	@echo "=================================" && \
 	echo "Running ALL linting checks..." && \
 	echo "=================================" && \
@@ -756,6 +758,12 @@ lint-native: check-clang-tidy check-clang-format check-shellcheck
 	$(MAKE) -f makefile.qa lint-code && \
 	echo "" && \
 	$(MAKE) -f makefile.qa format-check && \
+	echo "" && \
+	$(MAKE) -f makefile.qa format-shell-check && \
+	echo "" && \
+	$(MAKE) -f makefile.qa format-make-check && \
+	echo "" && \
+	$(MAKE) -f makefile.qa format-prettier-check && \
 	echo "" && \
 	$(MAKE) -f makefile.qa lint-shell && \
 	echo "" && \
