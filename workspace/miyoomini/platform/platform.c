@@ -90,12 +90,12 @@ static const VariantConfig miyoomini_variants[] = {
     {.variant = VARIANT_MINI_PLUS,
      .screen_width = 640,
      .screen_height = 480,
-     .screen_diagonal_default = 2.8f,
+     .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
     {.variant = VARIANT_MINI_PLUS_560P,
      .screen_width = 752,
      .screen_height = 560,
-     .screen_diagonal_default = 2.8f,
+     .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
     {.variant = VARIANT_NONE} // Sentinel
 };
