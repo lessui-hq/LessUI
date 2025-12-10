@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: sprinters:aws:ubuntu-24.04-arm:c7gd.xlarge
 
     steps:
       - name: Checkout code
