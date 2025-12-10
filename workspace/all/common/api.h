@@ -213,24 +213,30 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches);
  */
 
 /**
- * Aspect ratio correction factor.
+ * Buffer scale factor for CPU/hardware integer scaling.
  *
- * When core aspect ratio differs from screen aspect ratio, one buffer
- * dimension expands. Worst case is 16:9 content on 4:3 screen (or vice versa):
- *   16:9 / 4:3 = 1.78 / 1.33 = 1.34x expansion
+ * Platforms using CPU or hardware scaling (not SDL2 GPU) need oversized
+ * buffers to enable crisp integer scaling. The technique:
+ * 1. Core renders to a buffer that's an integer multiple of source size
+ * 2. CPU scaler enlarges using nearest-neighbor (crisp pixels)
+ * 3. Hardware scales the oversized buffer down to fit screen
  *
- * We use 1.5 for safety margin to handle edge cases.
+ * Example: Game Boy (160x144) on 320x240 screen needs 2x scale = 320x288 buffer
+ *
+ * Platforms define their own factor based on worst-case core dimensions.
+ * SDL2 GPU platforms use 1.0 (GPU handles scaling, no overallocation needed).
  */
-#define VIDEO_ASPECT_CORRECTION 1.5f
+#ifndef BUFFER_SCALE_FACTOR
+#define BUFFER_SCALE_FACTOR 1.0f
+#endif
 
 /**
  * Derived video buffer dimensions.
  *
- * Buffer is screen size * aspect correction factor, providing enough
- * space for any scaling scenario without manual configuration.
+ * Buffer is screen size * scale factor, sized for integer scaling scenarios.
  */
-#define VIDEO_BUFFER_WIDTH ((int)(FIXED_WIDTH * VIDEO_ASPECT_CORRECTION + 0.5f))
-#define VIDEO_BUFFER_HEIGHT ((int)(FIXED_HEIGHT * VIDEO_ASPECT_CORRECTION + 0.5f))
+#define VIDEO_BUFFER_WIDTH ((int)(FIXED_WIDTH * BUFFER_SCALE_FACTOR + 0.5f))
+#define VIDEO_BUFFER_HEIGHT ((int)(FIXED_HEIGHT * BUFFER_SCALE_FACTOR + 0.5f))
 #define VIDEO_BUFFER_PITCH (VIDEO_BUFFER_WIDTH * FIXED_BPP)
 #define VIDEO_BUFFER_SIZE (VIDEO_BUFFER_PITCH * VIDEO_BUFFER_HEIGHT)
 

@@ -24,6 +24,15 @@
 #define PLATFORM "trimuismart"
 
 ///////////////////////////////
+// Video Buffer Scaling
+///////////////////////////////
+
+// CPU integer scaling requires oversized buffers to hold scaled core output.
+// Worst case: NDS (256x384) @ 2x = 512x768 (factor 3.20).
+// Run scripts/calculate-buffer-scale.py to recalculate.
+#define BUFFER_SCALE_FACTOR 3.2f
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 

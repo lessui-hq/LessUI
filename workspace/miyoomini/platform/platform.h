@@ -23,6 +23,15 @@
 #define PLATFORM_MIYOOMINI 1 // For conditional compilation (show.c uses direct framebuffer)
 
 ///////////////////////////////
+// Video Buffer Scaling
+///////////////////////////////
+
+// Hardware scaling requires oversized buffers to hold scaled core output.
+// Worst case: NDS (256x384) @ 3x = 768x1152 (factor 2.40).
+// Run scripts/calculate-buffer-scale.py to recalculate.
+#define BUFFER_SCALE_FACTOR 2.4f
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 
