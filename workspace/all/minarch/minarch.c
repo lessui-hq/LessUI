@@ -4629,7 +4629,7 @@ int Menu_options(MenuList* list) {
 #define SCROLL_MARGIN 4 // Tight spacing anchored to option list
 				int ox = (DP(ui.screen_width) - DP(SCROLL_WIDTH)) / 2;
 				int options_top = ui.edge_padding_px + ui.pill_height_px;
-				int options_bottom = options_top + DP(max_visible_options * ui.option_size);
+				int options_bottom = options_top + (max_visible_options * ui.option_size_px);
 
 				if (nav.start > 0)
 					GFX_blitAsset(ASSET_SCROLL_UP, NULL, screen,

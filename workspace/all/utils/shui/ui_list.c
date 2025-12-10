@@ -396,7 +396,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 
 			// List items (matching minarch menu style)
 			int item_height = ui.option_size_px;
-			int row_width = screen->w - DP(ui.edge_padding * 2);
+			int row_width = screen->w - (ui.edge_padding_px * 2);
 
 			for (int i = first_visible; i < opts->item_count && i < first_visible + visible_count; i++) {
 				ListItem* item = &opts->items[i];

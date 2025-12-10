@@ -2267,7 +2267,7 @@ int main(int argc, char* argv[]) {
 									    &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2),
 									                text_cache[cache_slot].unique_surface->h},
 									    screen,
-									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
+									    &(SDL_Rect){ui.edge_padding_px + DP(ui.button_padding),
 									                ui.edge_padding_px + (j * ui.pill_height_px) +
 									                    ui.text_offset_px,
 									                0, 0});
@@ -2290,7 +2290,7 @@ int main(int argc, char* argv[]) {
 									    &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2),
 									                unique_text->h},
 									    screen,
-									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
+									    &(SDL_Rect){ui.edge_padding_px + DP(ui.button_padding),
 									                ui.edge_padding_px + (j * ui.pill_height_px) +
 									                    ui.text_offset_px,
 									                0, 0});
@@ -2334,7 +2334,7 @@ int main(int argc, char* argv[]) {
 						SDL_BlitSurface(
 						    text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 						    screen,
-						    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
+						    &(SDL_Rect){ui.edge_padding_px + DP(ui.button_padding),
 						                ui.edge_padding_px + (j * ui.pill_height_px) +
 						                    ui.text_offset_px,
 						                0, 0});
