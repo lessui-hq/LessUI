@@ -568,7 +568,8 @@ SDL_Surface* GFX_init(int mode) {
 	// - SCALE_OPTION: Scale to option_px, placed in virtual area (submenu option rows)
 	// - SCALE_PROPORTIONAL: Scale proportionally with dp_scale
 	// - SCALE_CENTERED: Scale proportionally, ensure even offset from pill_px for centering
-	enum { SCALE_PROPORTIONAL, SCALE_PILL, SCALE_BUTTON, SCALE_OPTION, SCALE_CENTERED };
+	// - SCALE_EVEN: Scale proportionally but ensure even pixel dimensions (for GFX_blitRect)
+	enum { SCALE_PROPORTIONAL, SCALE_PILL, SCALE_BUTTON, SCALE_OPTION, SCALE_CENTERED, SCALE_EVEN };
 
 	// Define scaling behavior for each asset
 	// Assets with SCALE_OPTION need virtual area (they're scaled differently than source)
@@ -594,6 +595,9 @@ SDL_Surface* GFX_init(int mode) {
 	asset_scale_type[ASSET_VOLUME_MUTE] = SCALE_CENTERED;
 	asset_scale_type[ASSET_VOLUME] = SCALE_CENTERED;
 	asset_scale_type[ASSET_WIFI] = SCALE_CENTERED;
+
+	// Assets used by GFX_blitRect need even dimensions (d/2 must divide evenly)
+	asset_scale_type[ASSET_STATE_BG] = SCALE_EVEN;
 
 	// Count virtual assets to calculate extra space needed
 	int virtual_asset_count = 0;
@@ -658,6 +662,16 @@ SDL_Surface* GFX_init(int mode) {
 				if ((pill_px - target_w) % 2 != 0)
 					target_w++;
 				if ((pill_px - target_h) % 2 != 0)
+					target_h++;
+				break;
+
+			case SCALE_EVEN:
+				// Proportional but ensure even pixel dimensions (for GFX_blitRect)
+				target_w = (int)(src_rect.w * scale_ratio + 0.5f);
+				target_h = (int)(src_rect.h * scale_ratio + 0.5f);
+				if (target_w % 2 != 0)
+					target_w++;
+				if (target_h % 2 != 0)
 					target_h++;
 				break;
 

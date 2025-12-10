@@ -731,7 +731,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 						GFX_blitAsset(ASSET_PAGE, NULL, *scr, &(SDL_Rect){ox + DP(i * 15), oy});
 					else
 						GFX_blitAsset(ASSET_DOT, NULL, *scr,
-						              &(SDL_Rect){ox + DP(i * 15) + 4, oy + DP(2)});
+						              &(SDL_Rect){ox + DP(i * 15) + DP(2), oy + DP(2)});
 				}
 			}
 
