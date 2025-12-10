@@ -372,35 +372,35 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 		if (redraw) {
 			GFX_clear(screen);
 
-			int y = DP(ui.edge_padding);
+			int y = ui.edge_padding_px;
 
 			// Title (using font.medium like minarch)
 			if (opts->title) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);
 				if (title_text) {
-					int title_x = DP(ui.edge_padding);
+					int title_x = ui.edge_padding_px;
 					// Handle title alignment
 					if (opts->title_alignment) {
 						if (strcmp(opts->title_alignment, "center") == 0) {
 							title_x = (screen->w - title_text->w) / 2;
 						} else if (strcmp(opts->title_alignment, "right") == 0) {
-							title_x = screen->w - title_text->w - DP(ui.edge_padding);
+							title_x = screen->w - title_text->w - ui.edge_padding_px;
 						}
 					}
 					SDL_Rect pos = {title_x, y + ui.option_offset_px, title_text->w, title_text->h};
 					SDL_BlitSurface(title_text, NULL, screen, &pos);
 					SDL_FreeSurface(title_text);
 				}
-				y += DP(ui.pill_height);
+				y += ui.pill_height_px;
 			}
 
 			// List items (matching minarch menu style)
-			int item_height = DP(ui.option_size);
+			int item_height = ui.option_size_px;
 			int row_width = screen->w - DP(ui.edge_padding * 2);
 
 			for (int i = first_visible; i < opts->item_count && i < first_visible + visible_count; i++) {
 				ListItem* item = &opts->items[i];
-				int ox = DP(ui.edge_padding);
+				int ox = ui.edge_padding_px;
 
 				// Determine text colors
 				SDL_Color label_color = COLOR_WHITE;

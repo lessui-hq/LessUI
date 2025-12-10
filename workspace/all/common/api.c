@@ -67,16 +67,20 @@ float gfx_dp_scale = 2.0f; // Default to 2x until UI_initLayout is called
 
 // Runtime-calculated UI layout parameters
 UI_Layout ui = {
+    .screen_width = 320, // Default (updated by UI_initLayout)
+    .screen_height = 240, // Default (updated by UI_initLayout)
+    .screen_width_px = 640, // Default: 320dp * 2.0 scale = 640px (updated by UI_initLayout)
+    .screen_height_px = 480, // Default: 240dp * 2.0 scale = 480px (updated by UI_initLayout)
     .pill_height = 30,
+    .pill_height_px = 60, // Default: 30dp * 2.0 scale = 60px (updated by UI_initLayout)
     .row_count = 6,
     .padding = 10,
     .edge_padding = 10,
-    .text_baseline = 6, // DEPRECATED: use text_offset_px (set after font load)
+    .edge_padding_px = 20, // Default: 10dp * 2.0 scale = 20px (updated by UI_initLayout)
     .button_size = 20, // (30 * 2) / 3 = 20 for 30dp pill (button icons)
     .button_margin = 5,
     .option_size = 22, // (30 * 3) / 4 = 22 for 30dp pill (submenu rows)
-    .option_baseline = 2, // DEPRECATED: use option_offset_px (set after font load)
-    .option_value_baseline = 4, // DEPRECATED: use option_value_offset_px (set after font load)
+    .option_size_px = 44, // Default: 22dp * 2.0 scale = 44px (updated by UI_initLayout)
     .text_offset_px = 0, // Set by GFX_init after font load
     .option_offset_px = 0, // Set by GFX_init after font load
     .option_value_offset_px = 0, // Set by GFX_init after font load
@@ -141,98 +145,148 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	const int edge_padding = internal_padding;
 #endif
 
-	int screen_height_dp = (int)(screen_height / gfx_dp_scale + 0.5f);
-	int available_dp = screen_height_dp - (edge_padding * 2);
+	// ============================================================================
+	// PIXEL-ACCURATE ROW FITTING
+	// ============================================================================
+	// We calculate in PIXEL space (not DP space) to prevent rounding accumulation.
+	//
+	// WHY THIS MATTERS:
+	//   The old approach calculated row count in DP, then converted to pixels for
+	//   layout. Each DP() conversion rounds to the nearest integer. When laying out
+	//   multiple rows (e.g., y = DP(edge_padding) + DP(row * pill_height)), these
+	//   rounding errors accumulate and can cause the last content row to overlap
+	//   with the footer row.
+	//
+	// THE FIX:
+	//   1. Convert DP bounds to pixels ONCE at the start
+	//   2. Calculate row count and pill size entirely in pixels
+	//   3. Store exact pixel values in ui.*_px fields for layout
+	//   4. Convert back to DP only for proportional calculations
+	//
+	// This ensures layout uses exact pixel arithmetic with no rounding drift.
+	// ============================================================================
 
-	// Calculate maximum possible rows (no arbitrary limit)
-	int max_possible_rows = (available_dp / MIN_PILL) - 1; // -1 for footer
-	if (max_possible_rows < 1)
-		max_possible_rows = 1;
+	// Convert DP constraints to pixel space (once)
+	int edge_padding_px = DP(edge_padding);
+	int min_pill_px = DP(MIN_PILL);
+	int max_pill_px = DP(MAX_PILL);
+	int available_px = screen_height - (2 * edge_padding_px);
 
-	// Try different row counts, starting from maximum (prefer more content)
-	// Prefer even pixels but accept odd if needed
-	int best_pill = 0;
+	// Search for the best row count
+	// Priority: 1) Most rows (prefer more content), 2) Even pixels (cleaner rendering)
+	int best_pill_px = 0;
 	int best_rows = 0;
 	int best_is_even = 0;
 
-	for (int content_rows = max_possible_rows; content_rows >= 1; content_rows--) {
-		int total_rows = content_rows + 1; // +1 for footer
-		int pill = available_dp / total_rows;
+	// Calculate maximum possible rows (upper bound for search)
+	int max_search_rows = (available_px / min_pill_px);
+	if (max_search_rows < 1)
+		max_search_rows = 1;
 
-		// Early exit: pills only get larger as rows decrease
-		if (pill > MAX_PILL)
-			break;
+	// Search from maximum rows down to 1 (prefer more content)
+	for (int content_rows = max_search_rows; content_rows >= 1; content_rows--) {
+		int total_rows = content_rows + 1; // +1 for footer row
+		int pill_px = available_px / total_rows;
 
-		int pill_px = DP(pill);
+		// Skip pills outside acceptable range (with ±2px tolerance for edge cases)
+		if (pill_px < min_pill_px - 2 || pill_px > max_pill_px + 2)
+			continue;
+
 		int is_even = (pill_px % 2 == 0);
+		int in_range = (pill_px >= min_pill_px && pill_px <= max_pill_px);
 
-		if (pill >= MIN_PILL) {
-			if (is_even) {
-				// Perfect: in range AND even pixels
-				best_pill = pill;
-				best_rows = content_rows;
-				best_is_even = 1;
-				LOG_info("Row calc: %d rows → pill=%ddp (%dpx even) ✓\n", content_rows, pill,
-				         pill_px);
-				break;
-			} else if (best_rows == 0) {
-				// Acceptable but odd pixels - keep as backup
-				best_pill = pill;
-				best_rows = content_rows;
-				LOG_info("Row calc: %d rows → pill=%ddp (%dpx odd) - backup\n", content_rows, pill,
-				         pill_px);
-			}
+		// Scoring logic: prefer in-range, then even pixels
+		if (in_range && is_even) {
+			// Perfect: in range AND even pixels
+			best_pill_px = pill_px;
+			best_rows = content_rows;
+			best_is_even = 1;
+			LOG_info("Row calc: %d rows → %dpx (even, in range) ✓\n", content_rows, pill_px);
+			break; // Can't do better than this
+		} else if (in_range && best_rows == 0) {
+			// Good: in range but odd pixels (keep as backup)
+			best_pill_px = pill_px;
+			best_rows = content_rows;
+			LOG_info("Row calc: %d rows → %dpx (odd, in range) - backup\n", content_rows, pill_px);
+		} else if (!in_range && best_rows == 0) {
+			// Acceptable: outside range but within tolerance (last resort)
+			best_pill_px = pill_px;
+			best_rows = content_rows;
+			LOG_info("Row calc: %d rows → %dpx (outside range) - fallback\n", content_rows,
+			         pill_px);
 		}
 	}
 
-	if (best_is_even) {
-		LOG_info("Row calc: Using even-pixel configuration\n");
-	} else if (best_rows > 0) {
-		LOG_info("Row calc: Using odd-pixel fallback (no even option in range)\n");
-	} else {
+	// Verify we found a valid configuration
+	if (best_rows == 0) {
 		// Emergency fallback (should never happen with reasonable MIN_PILL)
-		best_pill = MIN_PILL;
+		best_pill_px = min_pill_px;
 		best_rows = 1;
-		LOG_info("Row calc: EMERGENCY FALLBACK to %ddp, 1 row\n", MIN_PILL);
+		LOG_warn("Row calc: EMERGENCY FALLBACK to %dpx, 1 row\n", min_pill_px);
+	} else if (best_is_even) {
+		LOG_info("Row calc: Using even-pixel configuration\n");
+	} else {
+		LOG_info("Row calc: Using odd-pixel fallback (no even option available)\n");
 	}
 
+	// ============================================================================
+	// STORE CALCULATED VALUES
+	// ============================================================================
+	// Store both pixel and DP values for different use cases:
+	//   - *_px fields: Use for exact layout positioning
+	//   - non-px fields: Use for proportional calculations
+	// ============================================================================
+
+	int screen_height_dp = (int)(screen_height / gfx_dp_scale + 0.5f);
+
+	// Screen dimensions
 	ui.screen_width = (int)(screen_width / gfx_dp_scale + 0.5f);
 	ui.screen_height = screen_height_dp;
 	ui.screen_width_px = screen_width;
 	ui.screen_height_px = screen_height;
-	ui.pill_height = best_pill;
+
+	// Layout values - store BOTH pixel and DP versions
+	ui.pill_height_px = best_pill_px; // EXACT pixels for layout positioning
+	ui.pill_height = (int)(best_pill_px / gfx_dp_scale + 0.5f); // DP for proportional calculations
 	ui.row_count = best_rows;
-	ui.padding = internal_padding;
 	ui.edge_padding = edge_padding;
+	ui.edge_padding_px = edge_padding_px; // EXACT pixels for layout positioning
+	ui.padding = internal_padding;
 
-	int used_dp = (ui.row_count + 1) * ui.pill_height;
-	(void)used_dp; // Used in LOG_info below
-	LOG_info("Row calc: FINAL rows=%d, pill=%ddp (%dpx), using %d/%d dp (%.1f%%)\n", ui.row_count,
-	         ui.pill_height, DP(ui.pill_height), used_dp, available_dp,
-	         (used_dp * 100.0f) / available_dp);
+	// Verify layout is correct (no overlap between content and footer)
+	int content_bottom_px = edge_padding_px + (ui.row_count * best_pill_px);
+	int footer_top_px = screen_height - edge_padding_px - best_pill_px;
+	int gap_px = footer_top_px - content_bottom_px;
+	(void)gap_px; // Used in LOG_info below
 
-	// Derived proportional sizes (also ensure even pixels where needed)
-	ui.button_size = (ui.pill_height * 2) / 3; // ~20 for 30dp pill (button icons)
+	LOG_info("Row calc: FINAL → %d rows, %ddp (%dpx) pills, %dpx gap\n", ui.row_count,
+	         ui.pill_height, ui.pill_height_px, gap_px);
+
+	// ============================================================================
+	// DERIVED PROPORTIONAL SIZES
+	// ============================================================================
+	// Calculate secondary UI element sizes proportionally from pill_height.
+	// These use DP values for calculation, then convert to pixels once.
+	// We prefer even pixel sizes for cleaner rendering.
+	// ============================================================================
+
+	// Button icons (smaller square elements within pills)
+	ui.button_size = (ui.pill_height * 2) / 3; // ~20dp for 30dp pill
 	int button_px = DP(ui.button_size);
 	if (button_px % 2 != 0)
-		ui.button_size++; // Buttons look better even
+		ui.button_size++; // Adjust to even pixels for cleaner rendering
 
 	ui.button_margin = (ui.pill_height - ui.button_size) / 2; // Center button in pill
-	ui.button_padding = (ui.pill_height * 2) / 5; // ~12 for 30dp pill
+	ui.button_padding = (ui.pill_height * 2) / 5; // ~12dp for 30dp pill
 
-	// Submenu option rows - larger than button icons
-	ui.option_size = (ui.pill_height * 3) / 4; // ~22 for 30dp pill
-	int option_px = DP(ui.option_size);
-	if (option_px % 2 != 0)
-		ui.option_size++; // Options look better even
+	// Submenu option rows (smaller than main pills, used in settings menus)
+	ui.option_size = (ui.pill_height * 3) / 4; // ~22dp for 30dp pill
+	ui.option_size_px = DP(ui.option_size);
+	if (ui.option_size_px % 2 != 0) {
+		ui.option_size++; // Adjust to even pixels for cleaner rendering
+		ui.option_size_px = DP(ui.option_size); // Recalculate after adjustment
+	}
 
-	// Text baseline offset - positions text slightly above center to account for
-	// visual weight of font glyphs (most text sits above baseline, descenders are rare)
-	// Gives ~6dp for 30dp pill, scales proportionally with pill height
-	ui.text_baseline = (ui.pill_height * 2) / 10;
-	// Option baselines for submenu rows (smaller fonts need different positioning)
-	ui.option_baseline = (ui.option_size * 10 + 5) / 100; // ~10% with rounding (2dp for 22dp)
-	ui.option_value_baseline = (ui.option_size * 18 + 5) / 100; // ~18% with rounding (4dp for 22dp)
 
 	// Settings indicators
 	ui.settings_size = ui.pill_height / 8; // ~4dp for 30dp pill
@@ -561,11 +615,16 @@ SDL_Surface* GFX_init(int mode) {
 	asset_rects[ASSET_WIFI] = (SDL_Rect){ASSET_SCALE4(95, 39, 14, 10)};
 	asset_rects[ASSET_HOLE] = (SDL_Rect){ASSET_SCALE4(1, 63, 20, 20)};
 
-	// Calculate target pixel sizes for UI elements
+	// ============================================================================
+	// ASSET SCALING SETUP
+	// ============================================================================
+	// Calculate target pixel sizes for scaling UI element assets.
+	// IMPORTANT: Use pre-calculated *_px values to avoid DP rounding drift.
+	// ============================================================================
 	float scale_ratio = gfx_dp_scale / (float)asset_scale;
-	int pill_px = DP(ui.pill_height);
+	int pill_px = ui.pill_height_px; // Use EXACT pixel value (not DP(ui.pill_height))
 	int button_px = DP(ui.button_size);
-	int option_px = DP(ui.option_size);
+	int option_px = ui.option_size_px; // Use EXACT pixel value (not DP(ui.option_size))
 
 	// Asset scaling categories:
 	// - SCALE_PILL: Scale to pill_px (main menu pills)
@@ -732,11 +791,16 @@ SDL_Surface* GFX_init(int mode) {
 	font.small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
 	font.tiny = TTF_OpenFont(FONT_PATH, DP(FONT_TINY));
 
-	// Pre-calculate pixel-based text centering offsets now that fonts are loaded
-	// These use actual font metrics for perfect visual centering
-	ui.text_offset_px = GFX_centerTextY(font.large, DP(ui.pill_height));
-	ui.option_offset_px = GFX_centerTextY(font.medium, DP(ui.option_size));
-	ui.option_value_offset_px = GFX_centerTextY(font.small, DP(ui.option_size));
+	// ============================================================================
+	// PIXEL-PERFECT TEXT CENTERING
+	// ============================================================================
+	// Pre-calculate text centering offsets using actual font metrics.
+	// IMPORTANT: Use pre-calculated *_px container heights (not DP conversions)
+	// to ensure text centers perfectly in the exact pixel-accurate containers.
+	// ============================================================================
+	ui.text_offset_px = GFX_centerTextY(font.large, ui.pill_height_px);
+	ui.option_offset_px = GFX_centerTextY(font.medium, ui.option_size_px);
+	ui.option_value_offset_px = GFX_centerTextY(font.small, ui.option_size_px);
 	ui.button_text_offset_px = GFX_centerTextY(font.small, DP(ui.button_size));
 	ui.button_label_offset_px = GFX_centerTextY(font.tiny, DP(ui.button_size));
 
@@ -1214,12 +1278,12 @@ void GFX_blitBattery(SDL_Surface* dst, const SDL_Rect* dst_rect) {
 		y = dst_rect->y;
 	}
 	SDL_Rect rect = asset_rects[ASSET_BATTERY];
-	int x_off = (DP(ui.pill_height) - rect.w) / 2;
-	int y_off = (DP(ui.pill_height) - rect.h) / 2;
+	int x_off = (ui.pill_height_px - rect.w) / 2;
+	int y_off = (ui.pill_height_px - rect.h) / 2;
 
 	static int logged = 0;
 	if (!logged) {
-		LOG_info("GFX_blitBattery: pill=%dpx, battery=%dx%d, offset=(%d,%d)\n", DP(ui.pill_height),
+		LOG_info("GFX_blitBattery: pill=%dpx, battery=%dx%d, offset=(%d,%d)\n", ui.pill_height_px,
 		         rect.w, rect.h, x_off, y_off);
 		logged = 1;
 	}
@@ -1514,10 +1578,10 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 
 	if (show_setting && !GetHDMI()) {
 		ow = DP(ui.pill_height + ui.settings_width + ui.padding + 4);
-		ox = ui.screen_width_px - DP(ui.edge_padding) - ow;
-		oy = DP(ui.edge_padding);
+		ox = ui.screen_width_px - ui.edge_padding_px - ow;
+		oy = ui.edge_padding_px;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-		             &(SDL_Rect){ox, oy, ow, DP(ui.pill_height)});
+		             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 
 		int setting_value;
 		int setting_min;
@@ -1538,8 +1602,8 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 		int ay = oy + (show_setting == 1 ? DP(5) : DP(7));
 		GFX_blitAsset(asset, NULL, dst, &(SDL_Rect){ax, ay});
 
-		ox += DP(ui.pill_height);
-		oy += (DP(ui.pill_height) - DP(ui.settings_size)) / 2;
+		ox += ui.pill_height_px;
+		oy += (ui.pill_height_px - DP(ui.settings_size)) / 2;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_BAR_BG : ASSET_BAR_BG_MENU, dst,
 		             &(SDL_Rect){ox, oy, DP(ui.settings_width), DP(ui.settings_size)});
 
@@ -1553,21 +1617,21 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 		// TODO: handle wifi
 		int show_wifi = PLAT_isOnline(); // NOOOOO! not every frame!
 
-		int ww = DP(ui.pill_height - 3);
-		ow = DP(ui.pill_height);
+		int ww = ui.pill_height_px - DP(3);
+		ow = ui.pill_height_px;
 		if (show_wifi)
 			ow += ww;
 
-		ox = ui.screen_width_px - DP(ui.edge_padding) - ow;
-		oy = DP(ui.edge_padding);
+		ox = ui.screen_width_px - ui.edge_padding_px - ow;
+		oy = ui.edge_padding_px;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-		             &(SDL_Rect){ox, oy, ow, DP(ui.pill_height)});
+		             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 		if (show_wifi) {
 			SDL_Rect rect = asset_rects[ASSET_WIFI];
 			int x = ox;
 			int y = oy;
-			x += (DP(ui.pill_height) - rect.w) / 2;
-			y += (DP(ui.pill_height) - rect.h) / 2;
+			x += (ui.pill_height_px - rect.w) / 2;
+			y += (ui.pill_height_px - rect.h) / 2;
 
 			GFX_blitAsset(ASSET_WIFI, NULL, dst, &(SDL_Rect){x, y});
 			ox += ww;
@@ -1628,8 +1692,8 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
 	int w = 0; // individual button dimension
 	int h = 0; // hints index
 	ow = 0; // full pill width
-	ox = align_right ? dst->w - DP(ui.edge_padding) : DP(ui.edge_padding);
-	oy = dst->h - DP(ui.edge_padding + ui.pill_height);
+	ox = align_right ? dst->w - ui.edge_padding_px : ui.edge_padding_px;
+	oy = dst->h - ui.edge_padding_px - ui.pill_height_px;
 
 	for (int i = 0; i < 2; i++) {
 		if (!pairs[i * 2])
@@ -1651,7 +1715,7 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
 	if (align_right)
 		ox -= ow;
 	GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-	             &(SDL_Rect){ox, oy, ow, DP(ui.pill_height)});
+	             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 
 	ox += DP(ui.button_margin);
 	oy += DP(ui.button_margin);
@@ -2706,7 +2770,7 @@ static SDL_Surface* fallback_overlay = NULL;
  * @return SDL surface for overlay
  */
 FALLBACK_IMPLEMENTATION SDL_Surface* PLAT_initOverlay(void) {
-	int overlay_size = DP(ui.pill_height);
+	int overlay_size = ui.pill_height_px;
 	fallback_overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, 16,
 	                                        0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000); // ARGB
 	return fallback_overlay;

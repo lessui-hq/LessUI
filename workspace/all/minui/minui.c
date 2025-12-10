@@ -2233,9 +2233,9 @@ int main(int argc, char* argv[]) {
 						int is_selected = (j == selected_row);
 						if (is_selected) {
 							GFX_blitPill(ASSET_WHITE_PILL, screen,
-							             &(SDL_Rect){DP(ui.edge_padding),
-							                         DP(ui.edge_padding + (j * ui.pill_height)),
-							                         max_width, DP(ui.pill_height)});
+							             &(SDL_Rect){ui.edge_padding_px,
+							                         ui.edge_padding_px + (j * ui.pill_height_px),
+							                         max_width, ui.pill_height_px});
 						}
 
 						// Text Rendering with Caching
@@ -2268,7 +2268,7 @@ int main(int argc, char* argv[]) {
 									                text_cache[cache_slot].unique_surface->h},
 									    screen,
 									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-									                DP(ui.edge_padding + j * ui.pill_height) +
+									                ui.edge_padding_px + (j * ui.pill_height_px) +
 									                    ui.text_offset_px,
 									                0, 0});
 								}
@@ -2291,7 +2291,7 @@ int main(int argc, char* argv[]) {
 									                unique_text->h},
 									    screen,
 									    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-									                DP(ui.edge_padding + j * ui.pill_height) +
+									                ui.edge_padding_px + (j * ui.pill_height_px) +
 									                    ui.text_offset_px,
 									                0, 0});
 									// Re-truncate display_name for main text
@@ -2335,7 +2335,7 @@ int main(int argc, char* argv[]) {
 						    text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 						    screen,
 						    &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-						                DP(ui.edge_padding + j * ui.pill_height) +
+						                ui.edge_padding_px + (j * ui.pill_height_px) +
 						                    ui.text_offset_px,
 						                0, 0});
 

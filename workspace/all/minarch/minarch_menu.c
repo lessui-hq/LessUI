@@ -621,13 +621,13 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 
 			SDL_Surface* text;
 			text = TTF_RenderUTF8_Blended(font.large, display_name, COLOR_WHITE);
-			GFX_blitPill(ASSET_BLACK_PILL, *scr,
-			             &(SDL_Rect){DP(ui.edge_padding), DP(ui.edge_padding), max_width,
-			                         DP(ui.pill_height)});
+			GFX_blitPill(
+			    ASSET_BLACK_PILL, *scr,
+			    &(SDL_Rect){ui.edge_padding_px, ui.edge_padding_px, max_width, ui.pill_height_px});
 			SDL_BlitSurface(text, &(SDL_Rect){0, 0, max_width - DP(ui.button_padding * 2), text->h},
 			                *scr,
 			                &(SDL_Rect){DP(ui.edge_padding + ui.button_padding),
-			                            DP(ui.edge_padding) + ui.text_offset_px});
+			                            ui.edge_padding_px + ui.text_offset_px});
 			SDL_FreeSurface(text);
 
 			if (show_setting && !cb->get_hdmi())
@@ -652,9 +652,9 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				if (i == selected) {
 					if (m->total_discs > 1 && i == ITEM_CONT) {
 						GFX_blitPill(ASSET_DARK_GRAY_PILL, *scr,
-						             &(SDL_Rect){DP(ui.edge_padding), DP(oy + ui.padding),
+						             &(SDL_Rect){ui.edge_padding_px, DP(oy + ui.padding),
 						                         DP(ui.screen_width - ui.edge_padding * 2),
-						                         DP(ui.pill_height)});
+						                         ui.pill_height_px});
 						text = TTF_RenderUTF8_Blended(font.large, disc_name, COLOR_WHITE);
 						SDL_BlitSurface(
 						    text, NULL, *scr,
@@ -668,9 +668,9 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 					ow += DP(ui.button_padding * 2);
 
 					GFX_blitPill(ASSET_WHITE_PILL, *scr,
-					             &(SDL_Rect){DP(ui.edge_padding),
+					             &(SDL_Rect){ui.edge_padding_px,
 					                         DP(oy + ui.padding + (i * ui.pill_height)), ow,
-					                         DP(ui.pill_height)});
+					                         ui.pill_height_px});
 					text_color = COLOR_BLACK;
 				} else {
 					text = TTF_RenderUTF8_Blended(font.large, item, COLOR_BLACK);
