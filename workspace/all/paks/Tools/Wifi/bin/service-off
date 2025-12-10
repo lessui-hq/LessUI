@@ -18,12 +18,12 @@ main() {
 
 	# Update system.json for platforms that use it
 	case "$PLATFORM" in
-		miyoomini|my282|my355|tg5040)
+		miyoomini | my282 | my355 | tg5040)
 			case "$PLATFORM" in
 				miyoomini) SYSTEM_JSON_PATH="/appconfigs/system.json" ;;
-				my282)     SYSTEM_JSON_PATH="/config/system.json" ;;
-				my355)     SYSTEM_JSON_PATH="/userdata/system.json" ;;
-				*)         SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
+				my282) SYSTEM_JSON_PATH="/config/system.json" ;;
+				my355) SYSTEM_JSON_PATH="/userdata/system.json" ;;
+				*) SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
 			esac
 
 			[ ! -f "$SYSTEM_JSON_PATH" ] && echo '{"wifi": 0}' >"$SYSTEM_JSON_PATH"

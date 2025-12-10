@@ -12,9 +12,9 @@ main() {
 	# Determine system.json path
 	case "$PLATFORM" in
 		miyoomini) SYSTEM_JSON_PATH="/appconfigs/system.json" ;;
-		my282)     SYSTEM_JSON_PATH="/config/system.json" ;;
-		my355)     SYSTEM_JSON_PATH="/userdata/system.json" ;;
-		*)         SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
+		my282) SYSTEM_JSON_PATH="/config/system.json" ;;
+		my355) SYSTEM_JSON_PATH="/userdata/system.json" ;;
+		*) SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
 	esac
 
 	# Check system.json wifi flag
