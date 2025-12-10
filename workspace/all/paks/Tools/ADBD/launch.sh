@@ -60,7 +60,7 @@ case "$PLATFORM" in
 			sleep 1
 
 			echo "Success"
-		} > "$LOGS_PATH/$PAK_NAME.txt" 2>&1
+		} >"$LOGS_PATH/$PAK_NAME.txt" 2>&1
 
 		# Verify adbd started and get IP
 		if pidof adbd >/dev/null 2>&1; then

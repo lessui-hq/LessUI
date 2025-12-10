@@ -414,8 +414,8 @@ forget_network_loop() {
 
 		SSID="$(cat /tmp/minui-output)"
 		# Use grep -Fv for literal matching to avoid SSID injection attacks
-		grep -Fv "$SSID:" "$SDCARD_PATH/wifi.txt" > /tmp/wifi.txt.tmp && \
-			mv /tmp/wifi.txt.tmp "$SDCARD_PATH/wifi.txt"
+		grep -Fv "$SSID:" "$SDCARD_PATH/wifi.txt" >/tmp/wifi.txt.tmp \
+			&& mv /tmp/wifi.txt.tmp "$SDCARD_PATH/wifi.txt"
 
 		shui progress "Updating config..." --indeterminate
 		if ! write_config "true"; then
@@ -526,7 +526,7 @@ main() {
 
 	# Platform validation
 	case "$PLATFORM" in
-		miyoomini|my282|my355|tg5040|rg35xxplus) ;;
+		miyoomini | my282 | my355 | tg5040 | rg35xxplus) ;;
 		*)
 			show_message_wait "$PLATFORM is not a supported platform"
 			return 1

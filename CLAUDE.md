@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 LessUI is a focused, custom launcher and libretro frontend for retro handheld gaming devices. It provides a simple, distraction-free interface for playing retro games across multiple hardware platforms (Miyoo Mini, Trimui Smart, Anbernic RG35xx series, etc.).
 
 **Key Design Philosophy:**
+
 - Simplicity: No configuration, no boxart, no themes
 - Cross-platform: Single SD card works across multiple devices
 - Consistency: Same interface and behavior on all supported hardware
@@ -60,20 +61,23 @@ The common code in `workspace/all/common/defines.h` uses these to create derived
 ### Component Responsibilities
 
 **minui** (the launcher):
+
 - File browser for ROMs
 - Recently played list
 - Tools/apps launcher
 - Handles display names (strips region codes, parentheses)
 
 **minarch** (libretro frontend):
+
 - Loads and runs libretro cores
 - Save state management (auto-resume on slot 9)
 - In-game menu (save states, disc changing, core options)
 - Video scaling and filtering
 
 **Common utilities** (`workspace/all/common/`):
+
 - `utils.c` - String manipulation, file I/O, path handling
-- `api.c` - Graphics (GFX_*), Sound (SND_*), Input (PAD_*), Power (PWR_*)
+- `api.c` - Graphics (GFX*\*), Sound (SND*\_), Input (PAD\_\_), Power (PWR\_\*)
 - `scaler.c` - NEON-optimized pixel scaling for various screen sizes
 
 ## Build System
@@ -119,6 +123,7 @@ workspace/all/paks/
 ```
 
 **1. Tool Paks** (`workspace/all/paks/Tools/`) - Self-contained cross-platform tools:
+
 - Each pak has its own directory with `pak.json`, `launch.sh`, and optional `src/`
 - Native code in `src/` is cross-compiled per platform
 - Constructed during `make system` (not `make setup`)
@@ -127,6 +132,7 @@ workspace/all/paks/
 - Hybrid pattern supported (native for some platforms, shell-only for others)
 
 **2. Emulator Paks** (`workspace/all/paks/Emus/`) - Template-based for libretro cores:
+
 - `platforms.json` - Platform metadata (nice prefix, default settings)
 - `cores.json` - Core definitions (43 cores, all included in base install)
 - `launch.sh.template` - Shared launch script template
@@ -134,6 +140,7 @@ workspace/all/paks/
 - `cores-override/` - Local core zips for development
 
 **3. MinUI System Pak** (`workspace/all/paks/MinUI/`) - Template-based launcher init:
+
 - `platforms/<platform>/` - Each platform has its own directory with all files:
   - `config.sh` - Platform configuration (SDCARD_PATH, CPU speeds, features)
   - `pre-init.sh` - LCD/backlight initialization (optional)
@@ -145,9 +152,11 @@ workspace/all/paks/
 - Output: `build/SYSTEM/<platform>/paks/MinUI.pak/launch.sh`
 
 **4. Direct Paks** (`skeleton/TEMPLATES/paks/`) - Copied as-is for special cases:
+
 - PAK.pak - Native application launcher (copied to all platforms)
 
 **Generation:**
+
 ```bash
 # All paks generated during setup
 make setup  # Generates MinUI paks, emulator paks, and direct paks
@@ -158,6 +167,7 @@ make system PLATFORM=miyoomini  # Constructs complete tool paks
 ```
 
 **Adding a new tool pak:**
+
 1. Create directory `workspace/all/paks/Tools/<Name>/`
 2. Create `pak.json` with name, platforms, build type
 3. Create `launch.sh` (cross-platform entry point)
@@ -165,6 +175,7 @@ make system PLATFORM=miyoomini  # Constructs complete tool paks
 5. Test: `make build PLATFORM=miyoomini && make system PLATFORM=miyoomini`
 
 **Adding a new platform to MinUI:**
+
 1. Create `workspace/all/paks/MinUI/platforms/<platform>/` directory
 2. Create `config.sh` with platform variables (SDCARD_PATH, CPU config, features)
 3. Create optional hook scripts (`pre-init.sh`, `post-env.sh`, `daemons.sh`, etc.)
@@ -172,6 +183,7 @@ make system PLATFORM=miyoomini  # Constructs complete tool paks
 5. Add platform to `pak.json` platforms array
 
 **Adding a new emulator core:**
+
 1. Build core in external [minarch-cores repository](https://github.com/nchapman/minarch-cores)
 2. Add to `workspace/all/paks/Emus/cores.json`
 3. Create `workspace/all/paks/Emus/configs/base/<CORE>/default.cfg`
@@ -198,6 +210,7 @@ make dev-clean     # Clean macOS build artifacts
 ```
 
 **How it works:**
+
 - Compiles minui natively on macOS using system gcc/clang
 - Links against Homebrew SDL2 libraries
 - Runs in SDL2 window (640×480 for 4x3, 854×480 for 16x9)
@@ -206,6 +219,7 @@ make dev-clean     # Clean macOS build artifacts
 - Quit: Hold Backspace/Delete
 
 **Setting up test ROMs:**
+
 ```bash
 # Create console directories
 mkdir -p workspace/desktop/FAKESD/Roms/GB
@@ -216,18 +230,21 @@ cp ~/Downloads/game.gb workspace/desktop/FAKESD/Roms/GB/
 ```
 
 **Use cases:**
+
 - UI iteration (instant feedback vs. SD card deploy)
 - Visual testing of menus, text rendering, graphics
 - Debugging with sanitizers (-fsanitize=address)
 - Integration testing with file I/O and ROM browsing
 
 **Limitations:**
+
 - **minui (launcher) only** - Cannot test minarch (libretro cores)
 - Hardware features stubbed (brightness, volume, power management)
 - Performance differs from ARM devices
 - Path handling: SDCARD_PATH is `../../macos/FAKESD` relative to `workspace/all/minui/` working directory
 
 **Implementation details:**
+
 - Source files: Same as production minui build (from `workspace/all/minui/makefile`)
 - Platform code: `workspace/desktop/platform/platform.{h,c}` provides macOS-specific stubs
 - Build output: `workspace/all/minui/build/macos/minui` binary
@@ -270,6 +287,7 @@ tests/
 ```
 
 **Testing Philosophy:**
+
 - Test `workspace/all/` code (platform-independent)
 - Mock external dependencies (SDL, hardware)
 - Focus on business logic, not I/O
@@ -285,10 +303,11 @@ make setup  # Prepares fresh build directory and copies assets
 ```
 
 The `clean` target removes:
+
 - `./build/` - Final release staging directory
 - `workspace/all/*/build/` - Component build directories
 - `workspace/*/boot/output/` - Platform boot asset outputs
-- Copied boot assets (*.bmp files in workspace)
+- Copied boot assets (\*.bmp files in workspace)
 
 **Note:** Boot asset generation scripts (`workspace/*/boot/build.sh`) always regenerate output files, even if they exist. This ensures asset updates are always picked up during builds.
 
@@ -320,6 +339,7 @@ This pattern appears in `getEmuName()` and was the source of a critical bug.
 ### Display Name Processing
 
 LessUI automatically cleans up ROM filenames for display:
+
 - Removes file extensions (`.gb`, `.nes`, `.p8.png`)
 - Strips region codes and version info in parentheses: `Game (USA) (v1.2)` → `Game`
 - Trims whitespace
@@ -336,6 +356,7 @@ When adding platform-specific code:
 3. **Use weak symbols** - Mark fallback implementations with `FALLBACK_IMPLEMENTATION`
 
 Example:
+
 ```c
 // In api.h
 #define GFX_clear PLAT_clearVideo
@@ -350,29 +371,31 @@ Example:
 
 All extracted MinArch modules follow a standardized naming pattern where the module name appears between `MinArch` and the function name:
 
-| Module | Prefix | Example Functions |
-|--------|--------|-------------------|
-| minarch_config | `MinArchConfig_` | `MinArchConfig_getValue()`, `MinArchConfig_getPath()` |
-| minarch_options | `MinArchOptions_` | `MinArchOptions_find()`, `MinArchOptions_setValue()` |
-| minarch_paths | `MinArchPaths_` | `MinArchPaths_getSRAM()`, `MinArchPaths_getState()` |
-| minarch_memory | `MinArchMemory_` | `MinArchMemory_readSRAM()`, `MinArchMemory_write()` |
-| minarch_state | `MinArchState_` | `MinArchState_read()`, `MinArchState_autoSave()` |
-| minarch_utils | `MinArchUtils_` | `MinArchUtils_getCoreName()`, `MinArchUtils_replaceString()` |
-| minarch_zip | `MinArchZip_` | `MinArchZip_copy()`, `MinArchZip_inflate()` |
-| minarch_input | `MinArchInput_` | `MinArchInput_getButton()`, `MinArchInput_collectButtons()` |
-| minarch_core | `MinArchCore_` | `MinArchCore_buildGameInfo()`, `MinArchCore_processAVInfo()` |
-| minarch_menu | `MinArchMenu_` | `MinArchMenu_init()`, `MinArchMenuNav_navigate()` |
-| minarch_env | `MinArchEnv_` | `MinArchEnv_setRotation()`, `MinArchEnv_handleGeometry()` |
-| minarch_cpu | `MinArchCPU_` | `MinArchCPU_update()`, `MinArchCPU_detectFrequencies()` |
-| minarch_game | `MinArchGame_` | `MinArchGame_parseExtensions()`, `MinArchGame_detectM3uPath()` |
-| minarch_scaler | `MinArchScaler_` | `MinArchScaler_calculate()` |
+| Module          | Prefix            | Example Functions                                              |
+| --------------- | ----------------- | -------------------------------------------------------------- |
+| minarch_config  | `MinArchConfig_`  | `MinArchConfig_getValue()`, `MinArchConfig_getPath()`          |
+| minarch_options | `MinArchOptions_` | `MinArchOptions_find()`, `MinArchOptions_setValue()`           |
+| minarch_paths   | `MinArchPaths_`   | `MinArchPaths_getSRAM()`, `MinArchPaths_getState()`            |
+| minarch_memory  | `MinArchMemory_`  | `MinArchMemory_readSRAM()`, `MinArchMemory_write()`            |
+| minarch_state   | `MinArchState_`   | `MinArchState_read()`, `MinArchState_autoSave()`               |
+| minarch_utils   | `MinArchUtils_`   | `MinArchUtils_getCoreName()`, `MinArchUtils_replaceString()`   |
+| minarch_zip     | `MinArchZip_`     | `MinArchZip_copy()`, `MinArchZip_inflate()`                    |
+| minarch_input   | `MinArchInput_`   | `MinArchInput_getButton()`, `MinArchInput_collectButtons()`    |
+| minarch_core    | `MinArchCore_`    | `MinArchCore_buildGameInfo()`, `MinArchCore_processAVInfo()`   |
+| minarch_menu    | `MinArchMenu_`    | `MinArchMenu_init()`, `MinArchMenuNav_navigate()`              |
+| minarch_env     | `MinArchEnv_`     | `MinArchEnv_setRotation()`, `MinArchEnv_handleGeometry()`      |
+| minarch_cpu     | `MinArchCPU_`     | `MinArchCPU_update()`, `MinArchCPU_detectFrequencies()`        |
+| minarch_game    | `MinArchGame_`    | `MinArchGame_parseExtensions()`, `MinArchGame_detectM3uPath()` |
+| minarch_scaler  | `MinArchScaler_`  | `MinArchScaler_calculate()`                                    |
 
 **Type naming:** Types follow the same pattern with `MinArch[Module]TypeName`:
+
 - `MinArchCPUState`, `MinArchCPUConfig`, `MinArchCPUDecision`
 - `MinArchOption`, `MinArchOptionList`
 - `MinArchMemoryResult`, `MinArchStateResult`
 
 **Constants:** Module-specific constants use `MINARCH_MODULE_` prefix:
+
 - `MINARCH_CPU_MAX_FREQUENCIES`
 - `MINARCH_CPU_DEFAULT_WINDOW_FRAMES`
 - `MINARCH_MEM_OK`, `MINARCH_STATE_OK`
@@ -428,51 +451,51 @@ See `.clang-format` for complete style definition.
 
 ## File Locations Reference
 
-| Purpose | Location |
-|---------|----------|
-| Main launcher | `workspace/all/minui/minui.c` |
-| Libretro frontend | `workspace/all/minarch/minarch.c` |
-| Utility functions | `workspace/all/common/utils.c` |
-| Platform API | `workspace/all/common/api.c` |
-| MinArch internal types | `workspace/all/minarch/minarch_internal.h` |
-| MinArch context/state | `workspace/all/minarch/minarch_context.c` |
-| MinArch menu system | `workspace/all/minarch/minarch_menu.c` |
-| MinArch utilities | `workspace/all/minarch/minarch_utils.c` |
-| MinArch config utilities | `workspace/all/minarch/minarch_config.c` |
-| MinArch option management | `workspace/all/minarch/minarch_options.c` |
-| MinArch ZIP extraction | `workspace/all/minarch/minarch_zip.c` |
-| MinArch game file handling | `workspace/all/minarch/minarch_game.c` |
-| MinArch video scaler | `workspace/all/minarch/minarch_scaler.c` |
-| MinArch core AV processing | `workspace/all/minarch/minarch_core.c` |
-| MinArch memory persistence | `workspace/all/minarch/minarch_memory.c` |
-| MinArch save states | `workspace/all/minarch/minarch_state.c` |
-| MinArch CPU scaling | `workspace/all/minarch/minarch_cpu.c` |
-| MinArch input handling | `workspace/all/minarch/minarch_input.c` |
-| MinArch save paths | `workspace/all/minarch/minarch_paths.c` |
-| MinUI Entry type | `workspace/all/minui/minui_entry.c` |
-| MinUI launcher commands | `workspace/all/minui/minui_launcher.c` |
-| MinUI state persistence | `workspace/all/minui/minui_state.c` |
-| MinUI file utilities | `workspace/all/minui/minui_file_utils.c` |
-| MinUI misc utilities | `workspace/all/minui/minui_utils.c` |
-| MinUI directory building | `workspace/all/minui/minui_directory.c` |
-| MinUI context (state mgmt) | `workspace/all/minui/minui_context.c` |
-| MinUI navigation | `workspace/all/minui/minui_navigation.c` |
-| Directory indexing | `workspace/all/minui/directory_index.c` |
-| Collection parsing | `workspace/all/minui/collection_parser.c` |
-| Recent games | `workspace/all/minui/recent_file.c` |
-| Effect system | `workspace/all/common/effect_system.c` |
-| Platform variant detection | `workspace/all/common/platform_variant.c` |
-| Platform definitions | `workspace/<platform>/platform/platform.h` |
-| Common definitions | `workspace/all/common/defines.h` |
-| Tool paks | `workspace/all/paks/Tools/` |
-| Emulator pak templates | `workspace/all/paks/Emus/` |
-| MinUI pak templates | `workspace/all/paks/MinUI/` |
-| Emulator pak generation | `scripts/generate-paks.sh` |
-| MinUI pak generation | `scripts/generate-minui-pak.sh` |
-| Test suite | `tests/unit/all/common/` |
-| Refactoring guide | `docs/minarch-refactoring.md` |
-| Build orchestration | `Makefile` (host-side) |
-| QA tools | `makefile.qa` |
+| Purpose                    | Location                                   |
+| -------------------------- | ------------------------------------------ |
+| Main launcher              | `workspace/all/minui/minui.c`              |
+| Libretro frontend          | `workspace/all/minarch/minarch.c`          |
+| Utility functions          | `workspace/all/common/utils.c`             |
+| Platform API               | `workspace/all/common/api.c`               |
+| MinArch internal types     | `workspace/all/minarch/minarch_internal.h` |
+| MinArch context/state      | `workspace/all/minarch/minarch_context.c`  |
+| MinArch menu system        | `workspace/all/minarch/minarch_menu.c`     |
+| MinArch utilities          | `workspace/all/minarch/minarch_utils.c`    |
+| MinArch config utilities   | `workspace/all/minarch/minarch_config.c`   |
+| MinArch option management  | `workspace/all/minarch/minarch_options.c`  |
+| MinArch ZIP extraction     | `workspace/all/minarch/minarch_zip.c`      |
+| MinArch game file handling | `workspace/all/minarch/minarch_game.c`     |
+| MinArch video scaler       | `workspace/all/minarch/minarch_scaler.c`   |
+| MinArch core AV processing | `workspace/all/minarch/minarch_core.c`     |
+| MinArch memory persistence | `workspace/all/minarch/minarch_memory.c`   |
+| MinArch save states        | `workspace/all/minarch/minarch_state.c`    |
+| MinArch CPU scaling        | `workspace/all/minarch/minarch_cpu.c`      |
+| MinArch input handling     | `workspace/all/minarch/minarch_input.c`    |
+| MinArch save paths         | `workspace/all/minarch/minarch_paths.c`    |
+| MinUI Entry type           | `workspace/all/minui/minui_entry.c`        |
+| MinUI launcher commands    | `workspace/all/minui/minui_launcher.c`     |
+| MinUI state persistence    | `workspace/all/minui/minui_state.c`        |
+| MinUI file utilities       | `workspace/all/minui/minui_file_utils.c`   |
+| MinUI misc utilities       | `workspace/all/minui/minui_utils.c`        |
+| MinUI directory building   | `workspace/all/minui/minui_directory.c`    |
+| MinUI context (state mgmt) | `workspace/all/minui/minui_context.c`      |
+| MinUI navigation           | `workspace/all/minui/minui_navigation.c`   |
+| Directory indexing         | `workspace/all/minui/directory_index.c`    |
+| Collection parsing         | `workspace/all/minui/collection_parser.c`  |
+| Recent games               | `workspace/all/minui/recent_file.c`        |
+| Effect system              | `workspace/all/common/effect_system.c`     |
+| Platform variant detection | `workspace/all/common/platform_variant.c`  |
+| Platform definitions       | `workspace/<platform>/platform/platform.h` |
+| Common definitions         | `workspace/all/common/defines.h`           |
+| Tool paks                  | `workspace/all/paks/Tools/`                |
+| Emulator pak templates     | `workspace/all/paks/Emus/`                 |
+| MinUI pak templates        | `workspace/all/paks/MinUI/`                |
+| Emulator pak generation    | `scripts/generate-paks.sh`                 |
+| MinUI pak generation       | `scripts/generate-minui-pak.sh`            |
+| Test suite                 | `tests/unit/all/common/`                   |
+| Refactoring guide          | `docs/minarch-refactoring.md`              |
+| Build orchestration        | `Makefile` (host-side)                     |
+| QA tools                   | `makefile.qa`                              |
 
 ## Documentation
 
@@ -489,47 +512,47 @@ See `.clang-format` for complete style definition.
 
 To enable comprehensive testing, complex logic has been extracted from large files into focused, testable modules:
 
-| Module | Tests | Extracted From | Purpose |
-|--------|-------|----------------|---------|
-| utils.c (split into 6 modules) | 123 | (original) | String, file, name, date, math utilities |
-| minui_thumbnail.c | 72 | minui.c | Thumbnail cache, fade animation, preload hints |
-| minarch_env.c | 51 | minarch.c | Libretro environment callback handlers |
-| minarch_game.c | 46 | minarch.c | ZIP parsing, extension matching, M3U detection |
-| minarch_scaler.c | 26 | minarch.c | Video scaling geometry calculations |
-| minarch_core.c | 23 | minarch.c | Core AV info processing, aspect ratio calculation |
-| effect_system.c | 43 | platform files | Visual effect state management |
-| minarch_cpu.c | 42 | minarch.c | Auto CPU scaling algorithm |
-| minarch_utils.c | 41 | minarch.c | Core name extraction, string utilities |
-| minarch_menu.c | 41 | minarch.c | In-game menu, context pattern validation |
-| nointro_parser.c | 39 | (original) | No-Intro ROM naming conventions |
-| directory_index.c | 38 | minui.c | Alias application, duplicate detection, alpha indexing |
-| minui_directory.c | 32 | minui.c | Console detection, entry types, collation, scanning |
-| minarch_options.c | 36 | minarch.c | Option list search and manipulation |
-| pad.c | 36 | api.c | Button state machine, analog input |
-| minui_launcher.c | 32 | minui.c | Shell command construction, quote escaping |
-| gfx_text.c | 32 | api.c | Text truncation, wrapping, sizing |
-| collections.c | 30 | minui.c | Array, Hash data structures |
-| str_compare.c | 28 | (original) | Natural string sorting |
-| minui_state.c | 27 | minui.c | Path decomposition, collation, resume |
-| minui_entry.c | 25 | minui.c | Entry type, array operations, IntArray |
-| minarch_input.c | 24 | minarch.c | Input state queries, button mapping |
-| map_parser.c | 22 | minui.c/minarch.c | ROM display name aliasing |
-| m3u_parser.c | 20 | minui.c | M3U playlist parsing |
-| audio_resampler.c | 20 | api.c | Sample rate conversion |
-| ui_layout.c | 20 | api.c | UI layout calculations (DP system) |
-| minarch_config.c | 19 | minarch.c | Config path generation, option mapping |
-| minui_file_utils.c | 18 | minui.c | File/dir checking utilities |
-| recent_file.c | 31 | minui.c | Recent games I/O + Recent struct & array ops |
-| minui_navigation.c | 30 | minui.c | Navigation logic, entry dispatch, auto-launch, mock context tests |
-| minui_utils.c | 17 | minui.c | Index char, console dir detection |
-| minarch_memory.c | 16 | minarch.c | SRAM/RTC persistence with mock core |
-| minarch_state.c | 16 | minarch.c | Save state read/write, auto-resume |
-| minarch_paths.c | 16 | minarch.c | Save file path generation |
-| platform_variant.c | 14 | (original) | Platform variant detection |
-| minarch_zip.c | 13 | minarch.c | ZIP extraction (copy, deflate) |
-| binary_file_utils.c | 12 | minarch.c | Binary file read/write |
-| collection_parser.c | 11 | minui.c | Custom ROM list parsing |
-| integration_workflows | 22 | - | End-to-end workflow tests |
+| Module                         | Tests | Extracted From    | Purpose                                                           |
+| ------------------------------ | ----- | ----------------- | ----------------------------------------------------------------- |
+| utils.c (split into 6 modules) | 123   | (original)        | String, file, name, date, math utilities                          |
+| minui_thumbnail.c              | 72    | minui.c           | Thumbnail cache, fade animation, preload hints                    |
+| minarch_env.c                  | 51    | minarch.c         | Libretro environment callback handlers                            |
+| minarch_game.c                 | 46    | minarch.c         | ZIP parsing, extension matching, M3U detection                    |
+| minarch_scaler.c               | 26    | minarch.c         | Video scaling geometry calculations                               |
+| minarch_core.c                 | 23    | minarch.c         | Core AV info processing, aspect ratio calculation                 |
+| effect_system.c                | 43    | platform files    | Visual effect state management                                    |
+| minarch_cpu.c                  | 42    | minarch.c         | Auto CPU scaling algorithm                                        |
+| minarch_utils.c                | 41    | minarch.c         | Core name extraction, string utilities                            |
+| minarch_menu.c                 | 41    | minarch.c         | In-game menu, context pattern validation                          |
+| nointro_parser.c               | 39    | (original)        | No-Intro ROM naming conventions                                   |
+| directory_index.c              | 38    | minui.c           | Alias application, duplicate detection, alpha indexing            |
+| minui_directory.c              | 32    | minui.c           | Console detection, entry types, collation, scanning               |
+| minarch_options.c              | 36    | minarch.c         | Option list search and manipulation                               |
+| pad.c                          | 36    | api.c             | Button state machine, analog input                                |
+| minui_launcher.c               | 32    | minui.c           | Shell command construction, quote escaping                        |
+| gfx_text.c                     | 32    | api.c             | Text truncation, wrapping, sizing                                 |
+| collections.c                  | 30    | minui.c           | Array, Hash data structures                                       |
+| str_compare.c                  | 28    | (original)        | Natural string sorting                                            |
+| minui_state.c                  | 27    | minui.c           | Path decomposition, collation, resume                             |
+| minui_entry.c                  | 25    | minui.c           | Entry type, array operations, IntArray                            |
+| minarch_input.c                | 24    | minarch.c         | Input state queries, button mapping                               |
+| map_parser.c                   | 22    | minui.c/minarch.c | ROM display name aliasing                                         |
+| m3u_parser.c                   | 20    | minui.c           | M3U playlist parsing                                              |
+| audio_resampler.c              | 20    | api.c             | Sample rate conversion                                            |
+| ui_layout.c                    | 20    | api.c             | UI layout calculations (DP system)                                |
+| minarch_config.c               | 19    | minarch.c         | Config path generation, option mapping                            |
+| minui_file_utils.c             | 18    | minui.c           | File/dir checking utilities                                       |
+| recent_file.c                  | 31    | minui.c           | Recent games I/O + Recent struct & array ops                      |
+| minui_navigation.c             | 30    | minui.c           | Navigation logic, entry dispatch, auto-launch, mock context tests |
+| minui_utils.c                  | 17    | minui.c           | Index char, console dir detection                                 |
+| minarch_memory.c               | 16    | minarch.c         | SRAM/RTC persistence with mock core                               |
+| minarch_state.c                | 16    | minarch.c         | Save state read/write, auto-resume                                |
+| minarch_paths.c                | 16    | minarch.c         | Save file path generation                                         |
+| platform_variant.c             | 14    | (original)        | Platform variant detection                                        |
+| minarch_zip.c                  | 13    | minarch.c         | ZIP extraction (copy, deflate)                                    |
+| binary_file_utils.c            | 12    | minarch.c         | Binary file read/write                                            |
+| collection_parser.c            | 11    | minui.c           | Custom ROM list parsing                                           |
+| integration_workflows          | 22    | -                 | End-to-end workflow tests                                         |
 
 ### Testing Technologies
 

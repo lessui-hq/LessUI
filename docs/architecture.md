@@ -26,7 +26,7 @@ Platform-independent C code that works everywhere:
 
 - **common utilities** (`common/`)
   - `utils.c` - String helpers, file I/O, ROM name cleanup
-  - `api.c` - Graphics (GFX_*), Audio (SND_*), Input (PAD_*), Power (PWR_*)
+  - `api.c` - Graphics (GFX*\*), Audio (SND*\_), Input (PAD\_\_), Power (PWR\_\*)
   - `scaler.c` - Optimized pixel scaling (NEON when available)
 
 ### 2. Platform Definitions (`workspace/<platform>/platform/`)
@@ -90,6 +90,7 @@ Device-specific daemons and utilities:
 ### Platform Abstraction
 
 Common code calls abstract APIs:
+
 ```c
 GFX_init();                    // Initialize display
 PAD_poll();                    // Read button state
@@ -97,6 +98,7 @@ PWR_getBatteryLevel();         // Get battery %
 ```
 
 Each platform implements these differently:
+
 - **miyoomini**: SDL keyboard + custom battery ADC
 - **rgb30**: SDL2 joystick + sysfs battery
 - **tg5040**: SDL2 joystick + inverted ALSA volume
@@ -106,6 +108,7 @@ The abstraction hides complexity. Common code doesn't care how buttons work.
 ## Directory Layout
 
 ### Source Code
+
 ```
 workspace/
 ├── all/                   # Runs everywhere
@@ -122,6 +125,7 @@ workspace/
 ```
 
 ### Installation Files
+
 ```
 skeleton/
 ├── SYSTEM/
@@ -135,6 +139,7 @@ skeleton/
 ```
 
 ### Output
+
 ```
 build/
 ├── SYSTEM/               # Core system files
@@ -151,6 +156,7 @@ LessUI is extended through "paks" - folders ending in `.pak` with a `launch.sh` 
 ### Emulator Paks
 
 Live in `Emus/<platform>/`:
+
 ```
 Emus/miyoomini/
 └── GB.pak/
@@ -159,6 +165,7 @@ Emus/miyoomini/
 ```
 
 The launcher maps ROM folders to paks by tag:
+
 ```
 Roms/Game Boy (GB)/     →    Emus/miyoomini/GB.pak/
 ```
@@ -166,6 +173,7 @@ Roms/Game Boy (GB)/     →    Emus/miyoomini/GB.pak/
 ### Tool Paks
 
 Live in `Tools/<platform>/`:
+
 ```
 Tools/miyoomini/
 └── Files.pak/
@@ -193,6 +201,7 @@ sprintf(asset_path, RES_PATH "/assets@%ix.png", FIXED_SCALE);
 ```
 
 All UI coordinates use `SCALE1()`, `SCALE2()`, etc. macros:
+
 ```c
 SDL_Rect button = {SCALE4(10, 20, 30, 40)};  // Scales all 4 values
 ```
@@ -210,6 +219,7 @@ LessUI supports three input methods (platforms use one or more):
 Platforms define which buttons use which method. Some use multiple (e.g., miyoomini uses SDL keyboard for games, evdev codes for keymon).
 
 Common code reads buttons through the PAD API:
+
 ```c
 PAD_poll();
 if (PAD_justPressed(BTN_A)) { /* ... */ }
@@ -228,6 +238,7 @@ The platform layer handles the actual hardware polling.
 ### Rendering
 
 LessUI uses double-buffering:
+
 ```c
 GFX_clear(screen);              // Clear back buffer
 GFX_blitText(...);              // Draw UI elements
@@ -243,6 +254,7 @@ asset_rects[ASSET_BATTERY] = (SDL_Rect){SCALE4(47, 51, 17, 10)};
 ```
 
 Draw sprites with:
+
 ```c
 GFX_blitAsset(ASSET_BATTERY, screen, x, y, width, height, rotation);
 ```
@@ -250,10 +262,12 @@ GFX_blitAsset(ASSET_BATTERY, screen, x, y, width, height, rotation);
 ## Save States
 
 LessUI has 9 save state slots per game:
+
 - **Slots 0-8**: Manual saves (accessible in-game menu)
 - **Slot 9**: Auto-save (created on quit, loaded on resume)
 
 State files live in `.userdata/shared/<TAG>-<core-name>/`:
+
 ```
 .userdata/shared/GB-gambatte/
 ├── Pokemon.st0      # Manual save slot 0
@@ -268,11 +282,13 @@ Save states are shared across all platforms (unlike per-game configs which are p
 ### Stack vs Heap
 
 LessUI prefers stack allocation for speed:
+
 ```c
 char path[MAX_PATH];  // 512 bytes on stack
 ```
 
 Use heap only when necessary:
+
 ```c
 char* data = allocFile(path);  // Returns malloc'd memory
 // ... use data ...
@@ -282,6 +298,7 @@ free(data);  // Caller must free
 ### SDL Surfaces
 
 SDL surfaces are reference counted:
+
 ```c
 SDL_Surface* img = IMG_Load(path);
 // ... use img ...
@@ -293,6 +310,7 @@ SDL_FreeSurface(img);  // Always free
 ### Emulator Options
 
 Each pak can have a `default.cfg`:
+
 ```
 upscaler = 0
 aspect = fill
@@ -308,6 +326,7 @@ Users can override per-game in `.userdata/<platform>/<tag>/<rom-name>/`.
 ### Recent Games
 
 `/.minui/recent.txt` tracks recently played games:
+
 ```
 /path/to/rom.gb
 /path/to/rom.nes
@@ -332,6 +351,7 @@ Launcher shows these first for quick access.
 ### NEON SIMD
 
 Platforms with `HAS_NEON` can use ARM SIMD instructions:
+
 ```c
 #ifdef HAS_NEON
     scale_neon(src, dst, width, height);
@@ -345,6 +365,7 @@ Used in `scaler.c` for fast pixel scaling.
 ### Frame Pacing
 
 Minarch maintains 60fps by:
+
 - Locking to vsync when possible
 - Throttling with `SDL_Delay()` when vsync unavailable
 - Skipping frames if too slow (rare)
@@ -359,6 +380,7 @@ Minarch maintains 60fps by:
 ## Thread Safety
 
 LessUI is mostly single-threaded except:
+
 - Some platforms use background threads for HDMI monitoring
 - Keymon runs as separate process
 - Settings use shared memory or files for IPC
@@ -376,6 +398,7 @@ When you need platform-specific behavior, use `#ifdef`:
 ```
 
 Or add to `platform.c` and call from common code:
+
 ```c
 // In platform.c
 void PLAT_initSpecialHardware(void) {
@@ -391,6 +414,7 @@ void PLAT_initSpecialHardware(void) {
 ## File Paths
 
 All paths use forward slashes. Platforms define base paths:
+
 ```c
 #define SDCARD_PATH "/mnt/SDCARD"
 #define ROMS_PATH SDCARD_PATH "/Roms"

@@ -2,7 +2,7 @@
 # miyoomini initialization
 
 # CPU governor
-echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
 # CPU speeds for minarch
 export CPU_SPEED_MENU=504000

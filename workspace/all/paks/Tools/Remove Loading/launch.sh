@@ -74,7 +74,7 @@ case "$PLATFORM" in
 			shui progress "Complete!" --value 100
 			sleep 0.5
 
-		} &> ./log.txt
+		} >./log.txt 2>&1
 
 		# Self-destruct before reboot
 		mv "$DIR" "$DIR.disabled"
@@ -151,7 +151,7 @@ case "$PLATFORM" in
 			shui progress "Complete!" --value 100
 			sleep 0.5
 
-		} &> ./log.txt
+		} >./log.txt 2>&1
 
 		# Self-destruct
 		mv "$DIR" "$DIR.disabled"

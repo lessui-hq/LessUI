@@ -11,17 +11,17 @@ LOG_FILE="$SDCARD_PATH/lessui-install.log"
 . "$(dirname "$0")/install/update-functions.sh"
 
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-echo performance > "$CPU_PATH"
+echo performance >"$CPU_PATH"
 
 # install/update
 if [ -f "$UPDATE_PATH" ]; then
 	cd $(dirname "$0")/$PLATFORM
 
 	# init backlight
-	echo 0 > /sys/class/pwm/pwmchip0/export
-	echo 800 > /sys/class/pwm/pwmchip0/pwm0/period
-	echo 50 > /sys/class/pwm/pwmchip0/pwm0/duty_cycle
-	echo 1 > /sys/class/pwm/pwmchip0/pwm0/enable
+	echo 0 >/sys/class/pwm/pwmchip0/export
+	echo 800 >/sys/class/pwm/pwmchip0/pwm0/period
+	echo 50 >/sys/class/pwm/pwmchip0/pwm0/duty_cycle
+	echo 1 >/sys/class/pwm/pwmchip0/pwm0/enable
 
 	# init lcd
 	cat /proc/ls
@@ -47,7 +47,7 @@ fi
 
 # or launch (and keep launched)
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
-while [ -f "$LAUNCH_PATH" ] ; do
+while [ -f "$LAUNCH_PATH" ]; do
 	"$LAUNCH_PATH"
 done
 

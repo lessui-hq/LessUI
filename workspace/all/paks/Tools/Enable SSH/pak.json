@@ -4,9 +4,7 @@
   "description": "Install and enable SSH server",
   "version": "1.0.0",
 
-  "platforms": [
-    "rg35xxplus"
-  ],
+  "platforms": ["rg35xxplus"],
 
   "build": {
     "type": "shell-only"

@@ -3,7 +3,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -12,10 +12,10 @@ endif
 
 ###########################################################
 
-REQUIRES_UNZIP60=other/unzip60
-REQUIRES_SDL2=other/sdl2
-REQUIRES_DTC=other/dtc
-REQUIRES_FBSET=other/fbset
+REQUIRES_UNZIP60 = other/unzip60
+REQUIRES_SDL2 = other/sdl2
+REQUIRES_DTC = other/dtc
+REQUIRES_FBSET = other/fbset
 
 # Platform-specific binaries (can run in parallel after readmes)
 # show.elf is now built in workspace/all/utils/show
@@ -33,9 +33,9 @@ init:
 
 early: $(REQUIRES_UNZIP60) $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	mkdir -p other
-	cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc make NO_PYTHON=1 dtc
-	cd $(REQUIRES_UNZIP60) && make -f unix/Makefile.trimuismart unzip
-	cd $(REQUIRES_FBSET) && make
+	cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) NO_PYTHON=1 dtc
+	cd $(REQUIRES_UNZIP60) && $(MAKE) -f unix/Makefile.trimuismart unzip
+	cd $(REQUIRES_FBSET) && $(MAKE)
 	cd $(REQUIRES_SDL2) && CFLAGS="-O2 -march=armv8-a+crc -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
 		./configure CC=${CROSS_COMPILE}gcc --host=arm-buildroot-linux-gnueabihf \
 		  --enable-arm-neon \
@@ -66,17 +66,17 @@ early: $(REQUIRES_UNZIP60) $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 		  --disable-hidapi-libusb \
 		  --disable-joystick-virtual \
 		  --enable-video-mali \
-		  --disable-libsamplerate && make
+		  --disable-libsamplerate && $(MAKE)
 	# copy libs from toolchain (later moved to build)
 	cp $(PREFIX)/lib/libSDL2_image-2.0.so.0.0.1 ../libSDL2_image-2.0.so.0
 	cp $(PREFIX)/lib/libSDL2_ttf-2.0.so.0.14.0 ../libSDL2_ttf-2.0.so.0
-	
+
 clean:
 	cd boot && rm -rf output
-	cd $(REQUIRES_UNZIP60) && make -f unix/Makefile.trimuismart clean
-	cd $(REQUIRES_FBSET) && make clean
+	cd $(REQUIRES_UNZIP60) && $(MAKE) -f unix/Makefile.trimuismart clean
+	cd $(REQUIRES_FBSET) && $(MAKE) clean
 	rm -f ./boot/*.bmp
-	
+
 $(REQUIRES_UNZIP60):
 	git clone --depth 1 https://github.com/shauninman/unzip60.git $(REQUIRES_UNZIP60)
 

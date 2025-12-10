@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -13,11 +13,11 @@ endif
 all: readmes
 	cd ./boot && ./build.sh
 
-early: 
+early:
 	# early
 
 clean:
-	cd ./overclock && make clean
+	cd ./overclock && $(MAKE) clean
 	rm -f ./boot/*.bmp
 
 ###########################################################

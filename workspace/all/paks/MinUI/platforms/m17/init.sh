@@ -6,8 +6,8 @@ export PATH="$PATH:/usr/bin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib"
 
 # CPU/GPU governors (performance mode, no speed control)
-echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-echo performance > /sys/devices/platform/10091000.gpu/devfreq/10091000.gpu/governor
+echo performance >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo performance >/sys/devices/platform/10091000.gpu/devfreq/10091000.gpu/governor
 
 # Datetime restore
 if [ -f "$DATETIME_PATH" ]; then

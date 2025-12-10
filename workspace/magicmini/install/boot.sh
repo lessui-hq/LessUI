@@ -24,7 +24,7 @@ if [ -f $UPDATE_PATH ]; then
 
 	# show action
 	dd if=/usr/config/minui/$ACTION.bmp of=/dev/fb0 bs=1 skip=54
-	echo 0,0 > /sys/class/graphics/fb0/pan
+	echo 0,0 >/sys/class/graphics/fb0/pan
 
 	log_info "Starting LessUI $ACTION_NOUN..."
 

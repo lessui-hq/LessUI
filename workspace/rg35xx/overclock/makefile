@@ -7,9 +7,9 @@ endif
 TARGET = overclock
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS	= -Os -lrt -ldl -Wl,--gc-sections -s
-CFLAGS  += -I. -DPLATFORM=\"$(UNION_PLATFORM)\"
-CFLAGS  += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+CFLAGS = -Os -lrt -ldl -Wl,--gc-sections -s
+CFLAGS += -I. -DPLATFORM=\"$(UNION_PLATFORM)\"
+CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
            -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
            -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 

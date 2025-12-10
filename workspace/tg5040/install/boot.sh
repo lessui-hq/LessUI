@@ -14,17 +14,17 @@ LOG_FILE="$SDCARD_PATH/lessui-install.log"
 mount -o remount,rw,async "$SDCARD_PATH"
 mount -o remount,rw,async "/mnt/UDISK"
 
-echo userspace > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
 CPU_SPEED_PERF=2000000
-echo $CPU_SPEED_PERF > $CPU_PATH
+echo $CPU_SPEED_PERF >$CPU_PATH
 
 # install/update
 if [ -f "$UPDATE_PATH" ]; then
 	export LD_LIBRARY_PATH=/usr/trimui/lib:$LD_LIBRARY_PATH
 	export PATH=/usr/trimui/bin:$PATH
 
-	TRIMUI_MODEL=`strings /usr/trimui/bin/MainUI | grep ^Trimui`
+	TRIMUI_MODEL=$(strings /usr/trimui/bin/MainUI | grep ^Trimui)
 	if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
 		DEVICE="smartpro"
 	elif [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
@@ -32,10 +32,10 @@ if [ -f "$UPDATE_PATH" ]; then
 	fi
 
 	# leds_off
-	echo 0 > /sys/class/led_anim/max_scale
+	echo 0 >/sys/class/led_anim/max_scale
 	if [ "$DEVICE" = "brick" ]; then
-		echo 0 > /sys/class/led_anim/max_scale_lr
-		echo 0 > /sys/class/led_anim/max_scale_f1f2
+		echo 0 >/sys/class/led_anim/max_scale_lr
+		echo 0 >/sys/class/led_anim/max_scale_f1f2
 	fi
 
 	cd $(dirname "$0")/$PLATFORM
@@ -64,6 +64,6 @@ if [ -f "$UPDATE_PATH" ]; then
 fi
 
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
-if [ -f "$LAUNCH_PATH" ] ; then
+if [ -f "$LAUNCH_PATH" ]; then
 	exec "$LAUNCH_PATH"
 fi

@@ -6,6 +6,6 @@ sync
 if [ -f /mnt/writetest ]; then
 	rm -f /mnt/writetest
 else
-	e2fsck -p /dev/root > /mnt/SDCARD/RootRecovery.txt
+	e2fsck -p /dev/root >/mnt/SDCARD/RootRecovery.txt
 	reboot
 fi

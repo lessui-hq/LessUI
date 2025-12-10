@@ -22,34 +22,34 @@ was_updated() {
 	if [ ! -f /misc/charging.png ]; then
 		return 0
 	fi
-	
+
 	for FILE in /misc/* /misc/*/*; do
 		A_PATH=$FILE
 		A_NAME=$(busybox basename "$A_PATH")
 		B_PATH=$SYSTEM_PATH/dat/$A_NAME
-		
+
 		if [[ "$A_NAME" == "boot_logo.bmp.gz" ]]; then
 			# we don't care if the user has changed their boot logo
 			continue
 		fi
-		
+
 		if [[ "$A_NAME" == "charging.png" ]]; then
 			# we don't care if the user has changed their charging image
 			continue
 		fi
-		
+
 		if [ ! -f "$B_PATH" ]; then
 			continue
 		fi
-	
+
 		A_SUM=$(busybox md5sum $A_PATH | busybox cut -d ' ' -f 1)
 		B_SUM=$(busybox md5sum $B_PATH | busybox cut -d ' ' -f 1)
-	
+
 		if [[ "$A_SUM" != "$B_SUM" ]]; then
 			return 0
 		fi
 	done
-	
+
 	return 1
 }
 
@@ -58,7 +58,7 @@ if [ ! -f $FLAG_PATH ] || was_updated; then
 	mount -o remount,rw /dev/block/actb /misc
 	cp $SYSTEM_PATH/dat/dmenu.bin /misc
 	cp $SYSTEM_PATH/dat/ramdisk.img /misc
-	
+
 	# boot logo, only installed, never updated
 	if [ ! -f $FLAG_PATH ]; then
 		cp $SYSTEM_PATH/dat/boot_logo.bmp.gz /misc

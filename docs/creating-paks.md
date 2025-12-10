@@ -1,6 +1,6 @@
 # About LessUI paks
 
-A pak is just a folder with a ".pak" extension that contains a shell script named "launch.sh". 
+A pak is just a folder with a ".pak" extension that contains a shell script named "launch.sh".
 
 There are two kinds of paks, emulators and tools. Emulator paks live in the Emus folder. Tool paks live in the Tools folder. These two folders live at the root of your SD card. Extra paks should never be added to the hidden ".system" folder at the root of the SD card. This folder is deleted and replaced every time a user updates LessUI.
 
@@ -43,23 +43,23 @@ LessUI sets up these variables before launching your pak:
 
 Here's an example "launch.sh":
 
-	#!/bin/sh
-	
-	EMU_EXE=picodrive
-	
-	###############################
-	
-	EMU_TAG=$(basename "$(dirname "$0")" .pak)
-	ROM="$1"
-	mkdir -p "$BIOS_PATH/$EMU_TAG"
-	mkdir -p "$SAVES_PATH/$EMU_TAG"
-	HOME="$USERDATA_PATH"
-	cd "$HOME"
-	minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" &> "$LOGS_PATH/$EMU_TAG.txt"
+    #!/bin/sh
 
-This will open the requested rom using the "picodrive\_libretro.so" core included with the base LessUI install. To use a different core just change the value of `EMU_EXE` to another core name (minus the "_libretro.so"). If that core is bundled in your pak add the following after the `EMU_EXE` line:
+    EMU_EXE=picodrive
 
-	CORES_PATH=$(dirname "$0")
+    ###############################
+
+    EMU_TAG=$(basename "$(dirname "$0")" .pak)
+    ROM="$1"
+    mkdir -p "$BIOS_PATH/$EMU_TAG"
+    mkdir -p "$SAVES_PATH/$EMU_TAG"
+    HOME="$USERDATA_PATH"
+    cd "$HOME"
+    minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" &> "$LOGS_PATH/$EMU_TAG.txt"
+
+This will open the requested rom using the "picodrive_libretro.so" core included with the base LessUI install. To use a different core just change the value of `EMU_EXE` to another core name (minus the "\_libretro.so"). If that core is bundled in your pak add the following after the `EMU_EXE` line:
+
+    CORES_PATH=$(dirname "$0")
 
 There's no need to edit anything below the line of hash marks. The rest is boilerplate that will extract the pak's tag from its folder name, create corresponding bios and save folders, set the `HOME` envar to "/.userdata/[platform]/", launch the game, and log any output from minarch and the core to "/.userdata/[platform]/logs/[TAG].txt".
 
@@ -69,52 +69,52 @@ Some platforms may require `nice -20` before `minarch.elf` for proper CPU priori
 
 # Option defaults and button bindings
 
-Copy your new pak and some roms to your SD card and launch a game. Press the MENU button and select Options. Configure the Frontend, Emulator, and Controls. LessUI standard practice is to only bind controls present on the physical controller of the original system (eg. no turbo buttons or core-specific features like palette or disk switching). Let the player dig into that if they want to, the same goes for Shortcuts. Finally select Save Changes > Save for Console. Then quit and pop your SD card back into your computer. 
+Copy your new pak and some roms to your SD card and launch a game. Press the MENU button and select Options. Configure the Frontend, Emulator, and Controls. LessUI standard practice is to only bind controls present on the physical controller of the original system (eg. no turbo buttons or core-specific features like palette or disk switching). Let the player dig into that if they want to, the same goes for Shortcuts. Finally select Save Changes > Save for Console. Then quit and pop your SD card back into your computer.
 
 Inside the hidden ".userdata" folder at the root of your SD card, you'll find platform folders, and inside your platform folder a "[TAG]-[core]" folder. Copy the "minarch.cfg" file found within to your pak folder and rename it "default.cfg". Open "default.cfg" and delete any options you didn't customize. Any option name prefixed with a "-" will be set and hidden. This is useful for disabling features that may not be available (eg. overclocking) or perform poorly (eg. upscaling) on a specific platform. Near the bottom of the file you will find the button bindings. Here's an example from the "MGBA.pak":
 
-	bind Up = UP
-	bind Down = DOWN
-	bind Left = LEFT
-	bind Right = RIGHT
-	bind Select = SELECT
-	bind Start = START
-	bind A Button = A
-	bind B Button = B
-	bind A Turbo = NONE:X
-	bind B Turbo = NONE:Y
-	bind L Button = L1
-	bind R Button = R1
-	bind L Turbo = NONE:L2
-	bind R Turbo = NONE:R2
-	bind More Sun = NONE:L3
-	bind Less Sun = NONE:R3
+    bind Up = UP
+    bind Down = DOWN
+    bind Left = LEFT
+    bind Right = RIGHT
+    bind Select = SELECT
+    bind Start = START
+    bind A Button = A
+    bind B Button = B
+    bind A Turbo = NONE:X
+    bind B Turbo = NONE:Y
+    bind L Button = L1
+    bind R Button = R1
+    bind L Turbo = NONE:L2
+    bind R Turbo = NONE:R2
+    bind More Sun = NONE:L3
+    bind Less Sun = NONE:R3
 
-Everything after `bind ` up to the `=` is the button label that will appear in the Controls menu. I usually normalize these labels (eg.  "Up" instead of "D-pad up", "A Button" instead of just "A"). Everything after the `=` up to the optional `:` is the button mapping. Button mappings are all uppercase. Shoulder buttons and analog stick buttons always include the number, (eg. "L1" instead of just "L"). Use "NONE" if the button should not be bound by default. When customizing or removing a binding, the default core-defined button mapping should always be added after a ":". In the example above, I removed the default "More Sun" binding by changing:
+Everything after `bind ` up to the `=` is the button label that will appear in the Controls menu. I usually normalize these labels (eg. "Up" instead of "D-pad up", "A Button" instead of just "A"). Everything after the `=` up to the optional `:` is the button mapping. Button mappings are all uppercase. Shoulder buttons and analog stick buttons always include the number, (eg. "L1" instead of just "L"). Use "NONE" if the button should not be bound by default. When customizing or removing a binding, the default core-defined button mapping should always be added after a ":". In the example above, I removed the default "More Sun" binding by changing:
 
-	bind More Sun = L3
+    bind More Sun = L3
 
 to
 
-	bind More Sun = NONE:L3
+    bind More Sun = NONE:L3
 
 # Brightness and Volume
 
 Some binaries insist on resetting brightness (eg. DinguxCommander on the 40xxH stock firmware) or volume (eg. ppssppSDL everywhere) on every launch. To keep this in sync with LessUI's global settings there's syncsettings.elf. It waits one second then restores LessUI's current brightness and volume settings. In most cases you can just launch it as a daemon before launching the binary:
 
-	syncsettings.elf &
-	./DinguxCommander
+    syncsettings.elf &
+    ./DinguxCommander
 
 But if a binary takes more than one second to initialize you might need to just let it run in a loop the entire time the binary is running:
 
-	while :; do
-	    syncsettings.elf
-	done &
-	LOOP_PID=$!
-	
-	./PPSSPPSDL --pause-menu-exit "$ROM_PATH"
-	
-	kill $LOOP_PID
+    while :; do
+        syncsettings.elf
+    done &
+    LOOP_PID=$!
+
+    ./PPSSPPSDL --pause-menu-exit "$ROM_PATH"
+
+    kill $LOOP_PID
 
 # Caveats
 

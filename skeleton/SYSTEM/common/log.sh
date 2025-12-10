@@ -36,7 +36,7 @@
 # Only set LOG_FILE if not already set by the calling script
 : "${LOG_FILE:=}"
 LOG_ENABLED=1
-LOG_MAX_SIZE=1048576  # 1MB in bytes
+LOG_MAX_SIZE=1048576 # 1MB in bytes
 LOG_MAX_BACKUPS=3
 
 ###############################################################################
@@ -65,7 +65,7 @@ log_get_size() {
 	fi
 
 	# Fallback: use wc (slower but universal)
-	wc -c < "$_log_file" 2>/dev/null || echo 0
+	wc -c <"$_log_file" 2>/dev/null || echo 0
 }
 
 # Rotate log file if it exceeds maximum size
@@ -127,7 +127,7 @@ log_init() {
 		echo "========================================"
 		echo "Log started: $(date '+%Y-%m-%d %H:%M:%S')"
 		echo "========================================"
-	} >> "$LOG_FILE"
+	} >>"$LOG_FILE"
 }
 
 # Log an informational message
@@ -209,5 +209,5 @@ log_close() {
 		echo "========================================"
 		echo "Log ended: $(date '+%Y-%m-%d %H:%M:%S')"
 		echo "========================================"
-	} >> "$LOG_FILE"
+	} >>"$LOG_FILE"
 }

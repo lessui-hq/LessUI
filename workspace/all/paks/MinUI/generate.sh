@@ -14,7 +14,7 @@ platform_dir="$SCRIPT_DIR/platforms/$platform"
 output_dir="$build_dir/SYSTEM/$platform/paks/MinUI.pak"
 
 # Read platform config from shared JSON
-if ! jq -e ".platforms.\"$platform\"" "$CONFIG_JSON" > /dev/null 2>&1; then
+if ! jq -e ".platforms.\"$platform\"" "$CONFIG_JSON" >/dev/null 2>&1; then
 	echo "  Warning: No config for $platform in platforms.json, skipping"
 	exit 0
 fi
@@ -55,15 +55,15 @@ for hook in pre-init init late-init; do
 	if [ -f "$hook_file" ]; then
 		tmp=$(mktemp)
 		# Strip shebang line from hook files (not needed when embedded)
-		grep -v '^#!/' "$hook_file" > "$tmp"
+		grep -v '^#!/' "$hook_file" >"$tmp"
 		awk -v marker="$marker" -v file="$tmp" '
 			$0 == marker { while ((getline line < file) > 0) print line; next }
 			{ print }
-		' "$output_dir/launch.sh" > "$output_dir/launch.sh.new"
+		' "$output_dir/launch.sh" >"$output_dir/launch.sh.new"
 		mv "$output_dir/launch.sh.new" "$output_dir/launch.sh"
 		rm "$tmp"
 	else
-		grep -v "^${marker}$" "$output_dir/launch.sh" > "$output_dir/launch.sh.new" || true
+		grep -v "^${marker}$" "$output_dir/launch.sh" >"$output_dir/launch.sh.new" || true
 		mv "$output_dir/launch.sh.new" "$output_dir/launch.sh"
 	fi
 done

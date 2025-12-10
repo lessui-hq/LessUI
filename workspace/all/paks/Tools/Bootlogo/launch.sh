@@ -68,7 +68,7 @@ case "$PLATFORM" in
 			sleep 0.5
 
 			echo "Done."
-		} > ./log.txt 2>&1
+		} >./log.txt 2>&1
 
 		shui message "Boot logo flashed!" --confirm "Done"
 
@@ -100,7 +100,7 @@ case "$PLATFORM" in
 			shui progress "Flashing boot logo..." --indeterminate
 			dd if=$LOGO_PATH of=/dev/by-name/bootlogo bs=65536
 			echo "Done."
-		} > ./log.txt 2>&1
+		} >./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
 			shui message "Boot logo flashed!" --confirm "Done"
@@ -149,7 +149,7 @@ case "$PLATFORM" in
 
 		gzip -k "$LOGO_PATH"
 		LOGO_PATH=$LOGO_PATH.gz
-		LOGO_SIZE=$(wc -c < "$LOGO_PATH")
+		LOGO_SIZE=$(wc -c <"$LOGO_PATH")
 
 		MAX_SIZE=62234
 		if [ "$LOGO_SIZE" -gt "$MAX_SIZE" ]; then
@@ -162,7 +162,7 @@ case "$PLATFORM" in
 		shui progress "Preparing firmware..." --value 50
 
 		# Workaround for missing conv=notrunc support
-		OFFSET_PART=$((OFFSET+LOGO_SIZE))
+		OFFSET_PART=$((OFFSET + LOGO_SIZE))
 		dd if=boot0 of=boot0-suffix bs=1 skip=$OFFSET_PART 2>/dev/null
 		dd if=$LOGO_PATH of=boot0 bs=1 seek=$OFFSET 2>/dev/null
 		dd if=boot0-suffix of=boot0 bs=1 seek=$OFFSET_PART 2>/dev/null
@@ -191,7 +191,7 @@ case "$PLATFORM" in
 		fi
 
 		cd "$DIR"
-		./apply.sh > ./log.txt 2>&1 &
+		./apply.sh >./log.txt 2>&1 &
 		APPLY_PID=$!
 
 		# Show progress messages based on timing
@@ -268,7 +268,7 @@ case "$PLATFORM" in
 			sleep 0.5
 
 			echo "Done."
-		} > ./log.txt 2>&1
+		} >./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
 			# Self-destruct before reboot
@@ -343,7 +343,7 @@ case "$PLATFORM" in
 			shui progress "Reading logo size..." --value 10
 
 			# Read new bitmap size
-			HEX=`dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p`
+			HEX=$(dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p)
 			BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
 			BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
 			BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
@@ -360,18 +360,18 @@ case "$PLATFORM" in
 
 			# Detect boot partition revision
 			OFFSET=4044800 # rev A
-			SIGNATURE=`dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none`
+			SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
 
 			if [ "$SIGNATURE" = "BM" ]; then
 				echo "Rev A"
 			else
 				OFFSET=4045312 # rev B
-				SIGNATURE=`dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none`
+				SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
 				if [ "$SIGNATURE" = "BM" ]; then
 					echo "Rev B"
 				else
 					OFFSET=4046848 # rev C
-					SIGNATURE=`dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none`
+					SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
 					if [ "$SIGNATURE" = "BM" ]; then
 						echo "Rev C"
 					else
@@ -386,8 +386,8 @@ case "$PLATFORM" in
 			shui progress "Creating backup..." --value 50
 
 			# Create backup
-			DT=`date +'%Y%m%d%H%M%S'`
-			HEX=`dd if=/dev/block/by-name/boot bs=1 skip=$(($OFFSET+2)) count=4 status=none | xxd -g4 -p`
+			DT=$(date +'%Y%m%d%H%M%S')
+			HEX=$(dd if=/dev/block/by-name/boot bs=1 skip=$(($OFFSET + 2)) count=4 status=none | xxd -g4 -p)
 			BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
 			BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
 			BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
@@ -408,7 +408,7 @@ case "$PLATFORM" in
 			sleep 0.5
 
 			echo "Done."
-		} > ./log.txt 2>&1
+		} >./log.txt 2>&1
 
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
 			shui message "Boot logo flashed!" \

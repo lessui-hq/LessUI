@@ -10,6 +10,7 @@ LessUI uses a **dual logging system**:
 2. **Shell Logging** (`log.sh`) - For boot/install scripts
 
 Both systems provide:
+
 - Automatic timestamps (HH:MM:SS format)
 - Log levels (ERROR, WARN, INFO, DEBUG)
 - Consistent formatting across all platforms
@@ -42,12 +43,12 @@ if (!fp) {
 
 ### Log Levels
 
-| Level | When to Use | Compiled By Default | Output |
-|-------|-------------|---------------------|--------|
-| **ERROR** | Critical failures that prevent operation | ✅ Always | stderr |
-| **WARN** | Non-critical issues, recoverable errors | ✅ Always | stderr |
-| **INFO** | Key events, milestones | ⚙️ With `-DENABLE_INFO_LOGS` | stdout |
-| **DEBUG** | Detailed tracing, variable dumps | ⚙️ With `-DENABLE_DEBUG_LOGS` | stdout |
+| Level     | When to Use                              | Compiled By Default           | Output |
+| --------- | ---------------------------------------- | ----------------------------- | ------ |
+| **ERROR** | Critical failures that prevent operation | ✅ Always                     | stderr |
+| **WARN**  | Non-critical issues, recoverable errors  | ✅ Always                     | stderr |
+| **INFO**  | Key events, milestones                   | ⚙️ With `-DENABLE_INFO_LOGS`  | stdout |
+| **DEBUG** | Detailed tracing, variable dumps         | ⚙️ With `-DENABLE_DEBUG_LOGS` | stdout |
 
 ### Macros
 
@@ -68,6 +69,7 @@ LOG_errno_warn(fmt, ...)  // WARN level with automatic strerror(errno)
 ```
 
 **Example:**
+
 ```c
 int fd = open(path, O_RDONLY);
 if (fd < 0) {
@@ -95,6 +97,7 @@ log_file_close(log);
 ```
 
 **Rotation behavior:**
+
 - When file exceeds `max_size`, it's rotated
 - `file.log` → `file.log.1`
 - `file.log.1` → `file.log.2`
@@ -155,6 +158,7 @@ LOG_MAX_BACKUPS=3       # Keep 3 old logs (default)
 Example for Miyoo Mini: `/mnt/SDCARD/.userdata/miyoomini/logs/`
 
 **Files:**
+
 - `minui.log` - Main launcher (rotated)
 - `keymon.log` - Hardware button/battery daemon (rotated)
 - `batmon.log` - Battery charging monitor (optional)
@@ -165,6 +169,7 @@ Example for Miyoo Mini: `/mnt/SDCARD/.userdata/miyoomini/logs/`
 **Location:** `$SDCARD_PATH/` (SD card root)
 
 **Files:**
+
 - `boot.log` - Boot sequence, hardware init (rotated)
 - `install.log` - Installation/update operations (rotated)
 
@@ -200,6 +205,7 @@ Use for **critical failures** that prevent normal operation:
 ```
 
 **Examples:**
+
 ```c
 FILE* fp = fopen(path, "r");
 if (!fp) {
@@ -230,6 +236,7 @@ Use for **non-critical issues** that don't prevent operation:
 ```
 
 **Examples:**
+
 ```c
 if (battery < 10 && !charging) {
     LOG_warn("Battery critically low: %d%%", battery);
@@ -257,6 +264,7 @@ Use for **key events and milestones**:
 ```
 
 **Examples:**
+
 ```c
 LOG_info("Starting MinUI on %s", PLATFORM);
 LOG_info("Loading ROM: %s", rom_path);
@@ -278,6 +286,7 @@ Use for **detailed tracing** (development/testing only):
 ```
 
 **Examples:**
+
 ```c
 LOG_debug("Processing frame %d", frame_num);
 LOG_debug("Analog stick: x=%d y=%d", x, y);
@@ -328,6 +337,7 @@ SOURCE = main.c ../../all/common/log.c ...
 ```
 
 **Examples:**
+
 ```
 [14:32:15] [ERROR] utils.c:298 Failed to open file /Roms/GB/game.gb: No such file or directory
 [14:32:16] [WARN] keymon.c:298 Battery critically low: 5%
@@ -336,6 +346,7 @@ SOURCE = main.c ../../all/common/log.c ...
 ```
 
 **Context rules:**
+
 - ERROR/WARN: Includes `file.c:line`
 - INFO/DEBUG: No context (cleaner output)
 
@@ -356,6 +367,7 @@ LogFile* lf = log_file_open("/tmp/daemon.log", 1024*1024, 3);
 ```
 
 **When rotation occurs:**
+
 1. `daemon.log` reaches 1MB
 2. System rotates:
    - Delete `daemon.log.3`
@@ -392,6 +404,7 @@ void* worker1(void* arg) {
 ```
 
 **Guarantees:**
+
 - Messages from different threads won't interleave
 - Rotation is atomic (one thread rotates, others wait)
 - No corrupted lines
@@ -413,6 +426,7 @@ LOG_info("Thread B");
 ### Boot Scripts
 
 Boot scripts run **before SD card is fully mounted**, so they:
+
 - Use simple `echo >> file.log` instead of `log.sh`
 - Write to boot partition: `/mnt/mmc/boot.log` (RG35XX Plus)
 - Or TF1 partition before TF2 is mounted
@@ -432,11 +446,13 @@ log_info "Installing LessUI..."
 Daemons run continuously in background:
 
 **Option 1: Shell redirection (current)**
+
 ```bash
 keymon.elf &> $LOGS_PATH/keymon.log &
 ```
 
 **Option 2: Direct file logging**
+
 ```c
 int main() {
     LogFile* log = log_file_open("/tmp/keymon.log", 1024*1024, 3);
@@ -523,11 +539,13 @@ LOG_info("Loaded user config: %s", config_path);
 ### Where Are My Logs?
 
 **Main launcher log:**
+
 ```
 /mnt/SDCARD/.userdata/<platform>/logs/minui.log
 ```
 
 **Emulator logs:**
+
 ```
 /mnt/SDCARD/.userdata/<platform>/logs/GB.log
 /mnt/SDCARD/.userdata/<platform>/logs/GBA.log
@@ -535,12 +553,14 @@ LOG_info("Loaded user config: %s", config_path);
 ```
 
 **System logs:**
+
 ```
 /mnt/SDCARD/boot.log      - Boot sequence
 /mnt/SDCARD/install.log   - Installation/updates
 ```
 
 **Daemon logs:**
+
 ```
 /mnt/SDCARD/.userdata/<platform>/logs/keymon.log  - Button/battery monitoring
 ```
@@ -548,30 +568,35 @@ LOG_info("Loaded user config: %s", config_path);
 ### Common Issues
 
 **Problem: Emulator crashes immediately**
+
 ```
 Check: /mnt/SDCARD/.userdata/miyoomini/logs/GB.log
 Look for: [ERROR] lines showing core loading failures
 ```
 
 **Problem: ROM doesn't appear in list**
+
 ```
 Check: /mnt/SDCARD/.userdata/miyoomini/logs/minui.log
 Look for: File system errors, permission issues
 ```
 
 **Problem: Save states not working**
+
 ```
 Check: /mnt/SDCARD/.userdata/miyoomini/logs/PS.log (or appropriate core)
 Look for: [ERROR] lines in save state operations
 ```
 
 **Problem: Installation failed**
+
 ```
 Check: /mnt/SDCARD/install.log
 Look for: Extract errors, permission issues, disk space
 ```
 
 **Problem: Won't boot after update**
+
 ```
 Check: /mnt/mmc/boot.log (on RG35XX Plus)
        /mnt/SDCARD/boot.log (on other platforms)
@@ -707,6 +732,7 @@ for (int i = 0; i < size; i++) {
 ### Recommended Configuration
 
 **Production builds (release ZIPs):**
+
 ```makefile
 # minui/minarch - ERROR + WARN + INFO
 CFLAGS += -DENABLE_INFO_LOGS
@@ -716,6 +742,7 @@ CFLAGS += -DENABLE_INFO_LOGS
 ```
 
 **Development builds:**
+
 ```makefile
 # All levels for debugging
 CFLAGS += -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
@@ -854,6 +881,7 @@ A: Yes, if using file API or shell redirection. Logs are flushed immediately aft
 ## Best Practices Summary
 
 ✅ **DO:**
+
 - Log all errors with context (file:line, errno)
 - Log warnings for edge cases
 - Log key events at INFO level
@@ -863,11 +891,12 @@ A: Yes, if using file API or shell redirection. Logs are flushed immediately aft
 - Use file API for daemons needing rotation
 
 ❌ **DON'T:**
+
 - Add `\n` to log messages (auto-added)
 - Log per-frame events at INFO level
 - Log normal user actions
 - Forget to link log.c in makefile
-- Use printf/fprintf for logging (use LOG_* macros)
+- Use printf/fprintf for logging (use LOG\_\* macros)
 - Log from interrupt handlers
 - Forget to check log_file_open() return value
 

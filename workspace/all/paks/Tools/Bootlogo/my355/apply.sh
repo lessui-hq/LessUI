@@ -51,7 +51,7 @@ cp -f ../logo.bmp ./logo_kernel.bmp
 show "Packing updated resources..."
 echo "packing updated resources"
 for file in *; do
-    [ "$(basename "$file")" != "boot.img-second" ] && set -- "$@" -p "$file"
+	[ "$(basename "$file")" != "boot.img-second" ] && set -- "$@" -p "$file"
 done
 rsce_tool "$@"
 

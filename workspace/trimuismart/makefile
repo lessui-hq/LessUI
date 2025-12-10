@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -10,21 +10,21 @@ endif
 
 ###########################################################
 
-REQUIRES_COMMANDER=other/DinguxCommander
-REQUIRES_UNZIP60=other/unzip60
+REQUIRES_COMMANDER = other/DinguxCommander
+REQUIRES_UNZIP60 = other/unzip60
 
 # show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_UNZIP60)
 	mkdir -p other
-	cd other/DinguxCommander && make -j
-	cd other/unzip60 && make -f unix/Makefile.trimuismart unzip
+	cd other/DinguxCommander && $(MAKE) -j
+	cd other/unzip60 && $(MAKE) -f unix/Makefile.trimuismart unzip
 
 clean:
-	cd other/DinguxCommander && make clean
-	cd other/unzip60 && make -f unix/Makefile.trimuismart clean
-	
+	cd other/DinguxCommander && $(MAKE) clean
+	cd other/unzip60 && $(MAKE) -f unix/Makefile.trimuismart clean
+
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch trimui-smart https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
 $(REQUIRES_UNZIP60):

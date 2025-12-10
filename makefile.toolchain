@@ -25,16 +25,18 @@ $(error PLATFORM not specified. Use: make -f makefile.toolchain PLATFORM=<platfo
 endif
 
 # Workspace paths (host and Docker container)
-HOST_WORKSPACE=$(shell pwd)/workspace
-GUEST_WORKSPACE=/root/workspace
+HOST_WORKSPACE = $(shell pwd)/workspace
+GUEST_WORKSPACE = /root/workspace
 
 # Pre-built container registry
-CONTAINER_REGISTRY=ghcr.io
-CONTAINER_ORG=lessui-hq
-CONTAINER_IMAGE=$(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/union-$(PLATFORM)-toolchain:latest
+CONTAINER_REGISTRY = ghcr.io
+CONTAINER_ORG = lessui-hq
+CONTAINER_NAME = union-$(PLATFORM)-toolchain
+CONTAINER_TAG = latest
+CONTAINER_IMAGE = $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/$(CONTAINER_NAME):$(CONTAINER_TAG)
 
 # Common docker run options
-DOCKER_RUN=docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
+DOCKER_RUN = docker run --rm -e LOG_FLAGS="$(LOG_FLAGS)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
 
 # Default target: launch interactive shell (pulls image if missing)
 all:

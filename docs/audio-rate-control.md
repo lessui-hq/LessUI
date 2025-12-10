@@ -26,6 +26,7 @@ ratio = 1 - adjustment
 ```
 
 **Behavior:**
+
 - Buffer empty (fill=0): error=+1 → produce MORE samples → fill buffer
 - Buffer half (fill=0.5): error=0 → maintain equilibrium
 - Buffer full (fill=1): error=-1 → produce FEWER samples → drain buffer
@@ -56,13 +57,13 @@ float adjustment = p_term + integral;
 
 ### Parameters
 
-| Parameter | Value | Purpose |
-|-----------|-------|---------|
-| **d** | 1.0% | Proportional gain. Handles frame-to-frame jitter. |
-| **ki** | 0.00005 | Integral gain. Learns persistent clock offset. |
-| **α** | 0.003 | Error smoothing (~333 frames / 5.5 seconds at 60fps). |
-| **clamp** | ±2% | Max integral correction. Handles hardware clock drift. |
-| **buffer** | 5 frames | ~83ms latency. Headroom for timing variance. |
+| Parameter  | Value    | Purpose                                                |
+| ---------- | -------- | ------------------------------------------------------ |
+| **d**      | 1.0%     | Proportional gain. Handles frame-to-frame jitter.      |
+| **ki**     | 0.00005  | Integral gain. Learns persistent clock offset.         |
+| **α**      | 0.003    | Error smoothing (~333 frames / 5.5 seconds at 60fps).  |
+| **clamp**  | ±2%      | Max integral correction. Handles hardware clock drift. |
+| **buffer** | 5 frames | ~83ms latency. Headroom for timing variance.           |
 
 ## Implementation Details
 
@@ -120,13 +121,14 @@ Without this, skipped frames cause: no vsync wait → 4ms frame → next frame w
 
 Tested across three platforms with different timing characteristics:
 
-| Device | Fill | Variance | Integral | Underruns | Notes |
-|--------|------|----------|----------|-----------|-------|
-| rg35xxplus | 59% | ±8% | +0.15% | 0 | Rock solid |
-| tg5040 | 61% | ±16% | -0.71% | 0 | Integral learns clock offset |
-| miyoomini | 64% | ±14% | +0.42% | 0 | Fixed by sample rate policy |
+| Device     | Fill | Variance | Integral | Underruns | Notes                        |
+| ---------- | ---- | -------- | -------- | --------- | ---------------------------- |
+| rg35xxplus | 59%  | ±8%      | +0.15%   | 0         | Rock solid                   |
+| tg5040     | 61%  | ±16%     | -0.71%   | 0         | Integral learns clock offset |
+| miyoomini  | 64%  | ±14%     | +0.42%   | 0         | Fixed by sample rate policy  |
 
 **Key findings:**
+
 - d=0.010 (1.0%) is optimal for handheld timing variance (paper's 0.2-0.5% is for desktop)
 - Integral converges in ~15-20 seconds to steady-state offset
 - Each device has different clock characteristics that the integral learns

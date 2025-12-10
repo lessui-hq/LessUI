@@ -25,6 +25,7 @@ fi
 ```
 
 The only exceptions are:
+
 - **Informational paks** (like IP) that only display data
 - **App launchers** (like Files, Clock) that open another application
 
@@ -78,6 +79,7 @@ fi
 ```
 
 **Button text should be single-word action verbs in propercase:**
+
 - Use: "Enable", "Install", "Reboot", "Continue", "Done", "Dismiss"
 - Avoid: "OK", "Yes", "No", "Reboot Now", "Install SSH"
 - Text is automatically uppercased for display (e.g., "Generate" → "GENERATE")
@@ -99,6 +101,7 @@ shui message "File not found. Check the path and try again."
 ```
 
 **Toggle values should be:**
+
 - "On" / "Off" - for enabling features
 - "Yes" / "No" - for asking questions
 - Descriptive options - "Low" / "Medium" / "High"
@@ -170,18 +173,18 @@ For toggleable options using a list:
 
 ```json
 {
-    "settings": [
-        {
-            "name": "WiFi",
-            "options": ["Off", "On"],
-            "selected": 0
-        },
-        {
-            "name": "Start on boot",
-            "options": ["Off", "On"],
-            "selected": 0
-        }
-    ]
+  "settings": [
+    {
+      "name": "WiFi",
+      "options": ["Off", "On"],
+      "selected": 0
+    },
+    {
+      "name": "Start on boot",
+      "options": ["Off", "On"],
+      "selected": 0
+    }
+  ]
 }
 ```
 
@@ -383,19 +386,19 @@ fi
 
 ## Quick Reference
 
-| Situation | Pattern |
-|-----------|---------|
-| Before modifying anything | Confirm with action button |
-| During long operations | Show progress (indeterminate or percentage) |
-| After completing | Announce result with action button |
-| For toggles | Use "On"/"Off", never "true"/"false" |
-| For confirmations | Single-word verbs: "Delete", "Install", "Enable" |
-| For cancellations | Single-word verbs: "Keep", "Back", "Cancel" |
-| For errors | Clear message + "Dismiss" or recovery options |
-| Before reboot | Let user trigger: "Reboot" |
-| Progress bar | Always hit 100% before transitioning |
-| Additional context | Use `--subtext` for explanations, not `\n\n` |
-| Critical warnings | Use `--subtext` on progress for "Do not power off" |
+| Situation                 | Pattern                                            |
+| ------------------------- | -------------------------------------------------- |
+| Before modifying anything | Confirm with action button                         |
+| During long operations    | Show progress (indeterminate or percentage)        |
+| After completing          | Announce result with action button                 |
+| For toggles               | Use "On"/"Off", never "true"/"false"               |
+| For confirmations         | Single-word verbs: "Delete", "Install", "Enable"   |
+| For cancellations         | Single-word verbs: "Keep", "Back", "Cancel"        |
+| For errors                | Clear message + "Dismiss" or recovery options      |
+| Before reboot             | Let user trigger: "Reboot"                         |
+| Progress bar              | Always hit 100% before transitioning               |
+| Additional context        | Use `--subtext` for explanations, not `\n\n`       |
+| Critical warnings         | Use `--subtext` on progress for "Do not power off" |
 
 ---
 

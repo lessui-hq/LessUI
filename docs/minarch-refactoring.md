@@ -10,12 +10,12 @@
 
 ## Progress Summary
 
-| Metric | Before | After | Change |
-|--------|--------|-------|--------|
-| **minarch.c lines** | ~7,000 | 5,140 | -27% |
-| **Extracted modules** | 0 | 17 | +17 modules |
-| **Lines in modules** | 0 | ~4,350 | Well-organized |
-| **Unit tests** | 491 | 1,106 | +615 tests |
+| Metric                | Before | After  | Change         |
+| --------------------- | ------ | ------ | -------------- |
+| **minarch.c lines**   | ~7,000 | 5,140  | -27%           |
+| **Extracted modules** | 0      | 17     | +17 modules    |
+| **Lines in modules**  | 0      | ~4,350 | Well-organized |
+| **Unit tests**        | 491    | 1,106  | +615 tests     |
 
 ---
 
@@ -67,79 +67,85 @@ minarch.c (orchestration, main loop, SDL integration)
 
 ### Configuration Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_config.c` | ~90 | Parse config values, option display names | 19 |
-| `minarch_options.c` | ~200 | Option list search, get/set operations | 45 |
-| `minarch_paths.c` | ~110 | Generate paths for saves, states, configs, BIOS | 23 |
+| Module              | Lines | Responsibility                                  | Tests |
+| ------------------- | ----- | ----------------------------------------------- | ----- |
+| `minarch_config.c`  | ~90   | Parse config values, option display names       | 19    |
+| `minarch_options.c` | ~200  | Option list search, get/set operations          | 45    |
+| `minarch_paths.c`   | ~110  | Generate paths for saves, states, configs, BIOS | 23    |
 
 **Key decisions:**
+
 - Config parsing separated from file I/O
 - Path generation is pure (testable) - file operations stay in minarch.c
 - BIOS path selection uses smart fallback (tag dir → root)
 
 ### Input Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_input.c` | ~240 | Button state queries, mapping lookups, descriptor processing | 36 |
-| `minarch_mappings.c` | ~420 | Static data: button labels, scale/effect enums, defaults | - |
+| Module               | Lines | Responsibility                                               | Tests |
+| -------------------- | ----- | ------------------------------------------------------------ | ----- |
+| `minarch_input.c`    | ~240  | Button state queries, mapping lookups, descriptor processing | 36    |
+| `minarch_mappings.c` | ~420  | Static data: button labels, scale/effect enums, defaults     | -     |
 
 **Key decisions:**
-- Pure functions for button collection (no PAD_* dependencies)
+
+- Pure functions for button collection (no PAD\_\* dependencies)
 - D-pad remapping logic extracted and testable
 - Modifier key handling isolated
 
 ### Persistence Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_memory.c` | ~120 | SRAM/RTC persistence with mock core | 16 |
-| `minarch_state.c` | ~130 | Save state read/write, auto-resume | 16 |
-| `minarch_zip.c` | ~150 | ZIP copy/inflate extraction | 13 |
+| Module             | Lines | Responsibility                      | Tests |
+| ------------------ | ----- | ----------------------------------- | ----- |
+| `minarch_memory.c` | ~120  | SRAM/RTC persistence with mock core | 16    |
+| `minarch_state.c`  | ~130  | Save state read/write, auto-resume  | 16    |
+| `minarch_zip.c`    | ~150  | ZIP copy/inflate extraction         | 13    |
 
 **Key decisions:**
+
 - Core callbacks abstracted for testing
 - Path generation delegated to minarch_paths
 - Temp file handling isolated
 
 ### Video Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_scaler.c` | ~350 | Scaling geometry: aspect, native, cropped modes | 26 |
-| `minarch_rotation.c` | ~170 | Rotation buffer management | - |
-| `minarch_video_convert.c` | ~350 | Pixel format conversion (NEON + scalar) | - |
+| Module                    | Lines | Responsibility                                  | Tests |
+| ------------------------- | ----- | ----------------------------------------------- | ----- |
+| `minarch_scaler.c`        | ~350  | Scaling geometry: aspect, native, cropped modes | 26    |
+| `minarch_rotation.c`      | ~170  | Rotation buffer management                      | -     |
+| `minarch_video_convert.c` | ~350  | Pixel format conversion (NEON + scalar)         | -     |
 
 **Key decisions:**
+
 - Scaling calculations are pure math (highly testable)
 - Rotation handling extracted but tightly coupled to buffers
 - NEON code stays in dedicated module (platform-specific)
 
 ### Core Integration Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_core.c` | ~150 | Build game info, calculate aspect ratio, process AV info | 23 |
-| `minarch_env.c` | ~400 | Handle 30+ libretro environment callbacks | 51 |
-| `minarch_game.c` | ~300 | Extension parsing, ZIP headers, M3U detection | 46 |
-| `minarch_cpu.c` | ~350 | Auto CPU frequency scaling algorithm | 42 |
+| Module           | Lines | Responsibility                                           | Tests |
+| ---------------- | ----- | -------------------------------------------------------- | ----- |
+| `minarch_core.c` | ~150  | Build game info, calculate aspect ratio, process AV info | 23    |
+| `minarch_env.c`  | ~400  | Handle 30+ libretro environment callbacks                | 51    |
+| `minarch_game.c` | ~300  | Extension parsing, ZIP headers, M3U detection            | 46    |
+| `minarch_cpu.c`  | ~350  | Auto CPU frequency scaling algorithm                     | 42    |
 
 **Key decisions:**
+
 - Environment callbacks return structured results (testable)
 - Game file utilities are pure string/parsing operations
 - CPU algorithm separated from thread management
 
 ### UI Layer
 
-| Module | Lines | Responsibility | Tests |
-|--------|-------|----------------|-------|
-| `minarch_menu.c` | ~854 | Complete menu system: init, loop, save/load, scale | 41 |
-| `minarch_menu_types.h` | ~120 | MenuItem, MenuList type definitions | - |
-| `minarch_context.c` | ~140 | State container for context-based APIs | - |
-| `minarch_context.h` | ~260 | Context struct + service callback types | - |
+| Module                 | Lines | Responsibility                                     | Tests |
+| ---------------------- | ----- | -------------------------------------------------- | ----- |
+| `minarch_menu.c`       | ~854  | Complete menu system: init, loop, save/load, scale | 41    |
+| `minarch_menu_types.h` | ~120  | MenuItem, MenuList type definitions                | -     |
+| `minarch_context.c`    | ~140  | State container for context-based APIs             | -     |
+| `minarch_context.h`    | ~260  | Context struct + service callback types            | -     |
 
 **Key decisions:**
+
 - Menu functions take `MinArchContext*` for explicit dependencies
 - ✅ **All extern declarations eliminated** - Replaced with service callbacks in context
 - Context pattern enables unit testing of menu logic
@@ -150,29 +156,32 @@ minarch.c (orchestration, main loop, SDL integration)
 ## What Remains in minarch.c
 
 ### Orchestration (Should Stay)
+
 - `main()` - Entry point, argument parsing, main loop
 - `Menu_loop()` - Top-level game menu orchestration
 - Thread management for auto CPU scaling
 
 ### SDL Integration (Hard to Extract)
+
 - `Menu_options()` - 415 lines of menu UI rendering
 - `video_refresh_callback_main()` - Frame pipeline with debug HUD
-- Audio callbacks - Thin wrappers around SND_*
+- Audio callbacks - Thin wrappers around SND\_\*
 
 ### Platform-Specific (Better as Integration Tests)
+
 - `Core_open()` - dlopen/dlsym symbol resolution
 - Config file I/O wrappers
 - HDMI monitoring
 
 ### Remaining Extraction Candidates
 
-| Function | Lines | Extractable? | Notes |
-|----------|-------|--------------|-------|
-| `trackFPS()` | ~40 | ✅ Yes | Pure frame timing math |
-| `limitFF()` | ~60 | ✅ Yes | Fast-forward throttling |
-| `calculateProportionalWidths()` | ~40 | ✅ Yes | Text layout calculation |
-| `Config_readOptionsString()` | ~30 | ⚠️ Partial | Parsing is pure, state update isn't |
-| `Config_readControlsString()` | ~65 | ⚠️ Partial | Same as above |
+| Function                        | Lines | Extractable? | Notes                               |
+| ------------------------------- | ----- | ------------ | ----------------------------------- |
+| `trackFPS()`                    | ~40   | ✅ Yes       | Pure frame timing math              |
+| `limitFF()`                     | ~60   | ✅ Yes       | Fast-forward throttling             |
+| `calculateProportionalWidths()` | ~40   | ✅ Yes       | Text layout calculation             |
+| `Config_readOptionsString()`    | ~30   | ⚠️ Partial   | Parsing is pure, state update isn't |
+| `Config_readControlsString()`   | ~65   | ⚠️ Partial   | Same as above                       |
 
 ---
 
@@ -193,6 +202,7 @@ void Menu_saveState_ctx(MinArchContext* ctx) {
 ```
 
 **Benefits:**
+
 - Dependencies visible in function signature
 - Enables unit testing with mock context
 - No hidden coupling to globals
@@ -239,6 +249,7 @@ static void Menu_beforeSleep_ctx(MinArchContext* ctx) {
 ```
 
 **Benefits:**
+
 - Eliminates all extern declarations in minarch_menu.c
 - Dependencies are explicit and injectable
 - Enables unit testing with mock callbacks
@@ -302,7 +313,7 @@ struct SDL_Surface;  // Forward declaration
 ### When NOT to Extract
 
 1. **Thin wrappers** - If a function just calls one other function, don't extract
-2. **Tightly coupled SDL code** - Rendering code that uses GFX_*, TTF_*, SDL_* throughout
+2. **Tightly coupled SDL code** - Rendering code that uses GFX*\*, TTF*\_, SDL\_\_ throughout
 3. **Thread entry points** - Keep thread functions near their management code
 4. **dlopen/dlsym** - Platform-specific, better tested via integration
 
@@ -383,19 +394,21 @@ The ~410-line `Menu_options()` function was refactored to improve testability an
 
 **Created testable pure functions** (in `minarch_menu.c`):
 
-| Function | Purpose | Lines |
-|----------|---------|-------|
-| `MinArchMenuNav_init()` | Initialize navigation state | ~10 |
-| `MinArchMenuNav_navigate()` | Up/down navigation with pagination | ~35 |
-| `MinArchMenuNav_advanceItem()` | Advance to next item | ~15 |
-| `MinArchMenuNav_cycleValue()` | Left/right value cycling | ~25 |
-| `MinArchMenuNav_getAction()` | Determine action from button press | ~25 |
+| Function                       | Purpose                            | Lines |
+| ------------------------------ | ---------------------------------- | ----- |
+| `MinArchMenuNav_init()`        | Initialize navigation state        | ~10   |
+| `MinArchMenuNav_navigate()`    | Up/down navigation with pagination | ~35   |
+| `MinArchMenuNav_advanceItem()` | Advance to next item               | ~15   |
+| `MinArchMenuNav_cycleValue()`  | Left/right value cycling           | ~25   |
+| `MinArchMenuNav_getAction()`   | Determine action from button press | ~25   |
 
 **New types** (in `minarch_menu_types.h`):
+
 - `MinArchMenuNavState` - Navigation state container
 - `MinArchMenuAction` - Action enum (EXIT, CONFIRM, SUBMENU, etc.)
 
 **Benefits:**
+
 - Input logic now testable without SDL/PAD mocking
 - Navigation behavior validated by 27 new unit tests
 - Clearer separation of concerns (input vs. rendering)
@@ -404,11 +417,13 @@ The ~410-line `Menu_options()` function was refactored to improve testability an
 #### Phase B: Callback Consolidation
 
 **Created generic helper** (`OptionsMenu_buildAndShow()`):
+
 - Handles lazy initialization of option menus
 - Builds/updates MenuItems from OptionList
 - Eliminates ~80 lines of duplicate code
 
 **Before:**
+
 ```c
 static int OptionFrontend_openMenu(MenuList* list, int i) {
     // 40 lines of menu building logic
@@ -419,6 +434,7 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 ```
 
 **After:**
+
 ```c
 static int OptionFrontend_openMenu(MenuList* list, int i) {
     return OptionsMenu_buildAndShow(&config.frontend, &OptionFrontend_menu, NULL);
@@ -430,6 +446,7 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 ```
 
 **Impact:**
+
 - Reduced minarch.c from 5,189 → 5,140 lines (-49 lines / -1%)
 - Eliminated code duplication in option menu builders
 - Standardized option menu initialization pattern
@@ -437,10 +454,12 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 ### Code Cleanup and Naming Standardization (December 2025)
 
 **Removed Dead Code:**
+
 - Deleted unused `getAlias()` function from minarch.c (42 lines)
 - Reduced minarch.c from 5,140 → 5,098 lines
 
 **Unified Type Definitions:**
+
 - Consolidated `Option`/`MinArchOption` duplicate type definitions
 - Made `minarch_options.h` the canonical source for option types
 - Updated `minarch_internal.h` to use typedef aliases for backward compatibility
@@ -448,18 +467,19 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 **Function Naming Standardization:**
 Renamed **405 function references** across 8 modules to follow consistent `MinArch[Module]_functionName` pattern:
 
-| Module | Functions Renamed | Pattern |
-|--------|-------------------|---------|
-| minarch_config | 3 | `MinArch_getConfigValue` → `MinArchConfig_getValue` |
-| minarch_options | 5 | `MinArch_findOption` → `MinArchOptions_find` |
-| minarch_paths | 6 | `MinArch_getSRAMPath` → `MinArchPaths_getSRAM` |
-| minarch_memory | 7 | `MinArch_readSRAM` → `MinArchMemory_readSRAM` |
-| minarch_state | 5 | `MinArch_readState` → `MinArchState_read` |
-| minarch_utils | 3 | `MinArch_getCoreName` → `MinArchUtils_getCoreName` |
-| minarch_zip | 2 | `MinArch_zipCopy` → `MinArchZip_copy` |
-| minarch_cpu | (earlier) | `AutoCPU_update` → `MinArchCPU_update` |
+| Module          | Functions Renamed | Pattern                                             |
+| --------------- | ----------------- | --------------------------------------------------- |
+| minarch_config  | 3                 | `MinArch_getConfigValue` → `MinArchConfig_getValue` |
+| minarch_options | 5                 | `MinArch_findOption` → `MinArchOptions_find`        |
+| minarch_paths   | 6                 | `MinArch_getSRAMPath` → `MinArchPaths_getSRAM`      |
+| minarch_memory  | 7                 | `MinArch_readSRAM` → `MinArchMemory_readSRAM`       |
+| minarch_state   | 5                 | `MinArch_readState` → `MinArchState_read`           |
+| minarch_utils   | 3                 | `MinArch_getCoreName` → `MinArchUtils_getCoreName`  |
+| minarch_zip     | 2                 | `MinArch_zipCopy` → `MinArchZip_copy`               |
+| minarch_cpu     | (earlier)         | `AutoCPU_update` → `MinArchCPU_update`              |
 
 **Benefits:**
+
 - **Eliminates ambiguity** - Module ownership is immediately clear from function name
 - **Prevents collisions** - No more generic `MinArch_` prefix shared across modules
 - **Improves autocomplete** - IDEs can group functions by module
@@ -467,6 +487,7 @@ Renamed **405 function references** across 8 modules to follow consistent `MinAr
 - **Consistent with existing modules** - Matches patterns already used in Input, Core, Menu, Env, Game modules
 
 **Documentation:**
+
 - Added comprehensive naming convention guide to CLAUDE.md
 - Includes table of all module prefixes and example functions
 - Documents type naming (`MinArchCPUState`) and constant naming (`MINARCH_CPU_MAX`)

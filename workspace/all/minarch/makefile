@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -15,7 +15,7 @@ endif
 ###########################################################
 
 include ../../$(PLATFORM)/platform/makefile.env
-SDL?=SDL
+SDL ?= SDL
 
 ###########################################################
 
@@ -42,23 +42,23 @@ endif
 HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../minui/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS   = $(ARCH) -fomit-frame-pointer
-CFLAGS  += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -O3 -std=gnu99
-CFLAGS	+= -flto
-LDFLAGS	 = -ldl $(LIBS) -lmsettings -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-CFLAGS  += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
+CFLAGS = $(ARCH) -fomit-frame-pointer
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -O3 -std=gnu99
+CFLAGS += -flto
+LDFLAGS = -ldl $(LIBS) -lmsettings -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
            -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
            -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
 # CFLAGS  += -fsanitize=address -fno-common
 # LDFLAGS += -lasan
 
-BUILD_DATE!=date +%Y.%m.%d
-BUILD_HASH!=cat ../../hash.txt
+BUILD_DATE != date +%Y.%m.%d
+BUILD_HASH != cat ../../hash.txt
 CFLAGS += -DBUILD_DATE=\"${BUILD_DATE}\" -DBUILD_HASH=\"${BUILD_HASH}\"
 
 # CFLAGS += -DBUILD_DATE=\"20230326\" -DBUILD_HASH=\"d34db33f\"
 
-PRODUCT= build/$(PLATFORM)/$(TARGET).elf
+PRODUCT = build/$(PLATFORM)/$(TARGET).elf
 
 $(PRODUCT): $(SOURCE) $(HEADERS) | libretro-common $(PREFIX)/include/msettings.h
 	mkdir -p build/$(PLATFORM)
@@ -71,6 +71,6 @@ clean:
 
 libretro-common:
 	git clone https://github.com/libretro/libretro-common
-	
+
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && make
+	cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)

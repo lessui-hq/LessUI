@@ -19,7 +19,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 # Compute BUILD_DIR from DESTDIR (DESTDIR is build/SYSTEM/common/bin)

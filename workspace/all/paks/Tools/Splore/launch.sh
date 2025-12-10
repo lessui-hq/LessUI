@@ -34,7 +34,7 @@ if [ ! -d ./pico-8 ]; then
 	if [ -n "$PICO8_ZIP" ]; then
 		shui progress "Extracting PICO-8..." --indeterminate
 
-		if ! unzip -o "$PICO8_ZIP" -d ./ >> ./log.txt 2>&1; then
+		if ! unzip -o "$PICO8_ZIP" -d ./ >>./log.txt 2>&1; then
 			shui message "Failed to extract PICO-8." \
 				--subtext "Check log.txt for details." --confirm "Dismiss"
 			exit 1

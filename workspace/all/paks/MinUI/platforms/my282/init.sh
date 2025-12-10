@@ -2,7 +2,7 @@
 # my282 initialization
 
 # LED off
-echo 0 > /sys/class/leds/led1/brightness
+echo 0 >/sys/class/leds/led1/brightness
 
 # CPU speed control via reclock
 cpu_restore() {

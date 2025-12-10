@@ -4,9 +4,7 @@
   "description": "Swap Menu and Select buttons on RG35XX Plus",
   "version": "1.0.0",
 
-  "platforms": [
-    "rg35xxplus"
-  ],
+  "platforms": ["rg35xxplus"],
 
   "build": {
     "type": "shell-only"

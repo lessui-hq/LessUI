@@ -1,7 +1,7 @@
 ###########################################################
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -10,18 +10,18 @@ endif
 
 ###########################################################
 
-REQUIRES_COMMANDER=other/DinguxCommander
-REQUIRES_SDLCOMPAT=other/sdl12-compat
+REQUIRES_COMMANDER = other/DinguxCommander
+REQUIRES_SDLCOMPAT = other/sdl12-compat
 
 # show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
-	cd $(REQUIRES_COMMANDER) && make -j
+	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
 	cd $(REQUIRES_SDLCOMPAT) && cmake --build build
 
 clean:
-	cd $(REQUIRES_COMMANDER) && make clean
+	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
 	cd $(REQUIRES_SDLCOMPAT) && rm -rf build
 
 ###########################################################

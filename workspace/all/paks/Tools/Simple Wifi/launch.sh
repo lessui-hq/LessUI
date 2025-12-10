@@ -16,7 +16,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 		break
 	fi
 	LINE_NUM=$((LINE_NUM + 1))
-done < ./wifi.txt
+done <./wifi.txt
 
 ##############
 
@@ -28,16 +28,14 @@ CUR_PASS=$(get_setting wifi.key)
 
 STATUS=$(cat "/sys/class/net/wlan0/operstate")
 
-disconnect()
-{
+disconnect() {
 	shui progress "Disconnecting..." --indeterminate
 	wifictl disable
 	shui message "WiFi disconnected." --confirm "Done"
 	STATUS=down
 }
 
-connect()
-{
+connect() {
 	shui progress "Connecting to WiFi..." --indeterminate
 	wifictl enable &
 
@@ -60,31 +58,31 @@ connect()
 }
 
 {
-if [ "$WIFI_NAME" != "$CUR_NAME" ] || [ "$WIFI_PASS" != "$CUR_PASS" ]; then
+	if [ "$WIFI_NAME" != "$CUR_NAME" ] || [ "$WIFI_PASS" != "$CUR_PASS" ]; then
+		if [ "$STATUS" = "up" ]; then
+			shui progress "Disconnecting..." --indeterminate
+			wifictl disable
+			STATUS=down
+		fi
+
+		shui progress "Updating WiFi credentials..." --indeterminate
+		set_setting wifi.ssid "$WIFI_NAME"
+		set_setting wifi.key "$WIFI_PASS"
+	fi
+
 	if [ "$STATUS" = "up" ]; then
-		shui progress "Disconnecting..." --indeterminate
-		wifictl disable
-		STATUS=down
+		# Already connected, ask what to do
+		if shui message "WiFi is connected." \
+			--subtext "What would you like to do?" \
+			--confirm "Disconnect" --cancel "Keep"; then
+			disconnect
+		fi
+	else
+		# Not connected, ask to connect
+		if shui message "WiFi is disconnected." \
+			--subtext "Connect to $WIFI_NAME?" \
+			--confirm "Connect" --cancel "Cancel"; then
+			connect
+		fi
 	fi
-
-	shui progress "Updating WiFi credentials..." --indeterminate
-	set_setting wifi.ssid "$WIFI_NAME"
-	set_setting wifi.key "$WIFI_PASS"
-fi
-
-if [ "$STATUS" = "up" ]; then
-	# Already connected, ask what to do
-	if shui message "WiFi is connected." \
-		--subtext "What would you like to do?" \
-		--confirm "Disconnect" --cancel "Keep"; then
-		disconnect
-	fi
-else
-	# Not connected, ask to connect
-	if shui message "WiFi is disconnected." \
-		--subtext "Connect to $WIFI_NAME?" \
-		--confirm "Connect" --cancel "Cancel"; then
-		connect
-	fi
-fi
-} > ./log.txt 2>&1
+} >./log.txt 2>&1

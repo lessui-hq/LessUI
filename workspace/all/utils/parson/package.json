@@ -3,7 +3,10 @@
   "version": "1.5.3",
   "repo": "kgabis/parson",
   "description": "Small json parser and reader",
-  "keywords": [ "json", "parser" ],
+  "keywords": [
+    "json",
+    "parser"
+  ],
   "license": "MIT",
   "src": [
     "parson.c",

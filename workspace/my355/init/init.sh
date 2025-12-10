@@ -19,17 +19,17 @@ hide() {
 	touch /tmp/fbdisplay_exit
 }
 show() {
-    CURRENT_TIME=$(date +%s)
-    if [ $((CURRENT_TIME - LAST_CALL_TIME)) -lt 2 ]; then
+	CURRENT_TIME=$(date +%s)
+	if [ $((CURRENT_TIME - LAST_CALL_TIME)) -lt 2 ]; then
 		DELAY=$((2 - (CURRENT_TIME - LAST_CALL_TIME)))
 		echo "delay for $DELAY seconds"
-        sleep $DELAY
-    fi
-    
-    hide
-    # show.elf $DIR/res/$1 300 &
-    /usr/bin/fbdisplay $DIR/res/$1 &
-    LAST_CALL_TIME=$(date +%s)
+		sleep $DELAY
+	fi
+
+	hide
+	# show.elf $DIR/res/$1 300 &
+	/usr/bin/fbdisplay $DIR/res/$1 &
+	LAST_CALL_TIME=$(date +%s)
 }
 
 show "prep-env.png"

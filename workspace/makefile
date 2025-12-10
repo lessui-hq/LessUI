@@ -1,7 +1,7 @@
 # workspace/makefile - builds all components for a platform
 
 ifeq (,$(PLATFORM))
-PLATFORM=$(UNION_PLATFORM)
+PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
@@ -39,10 +39,10 @@ platform-late:
 	$(MAKE) -C ./$(PLATFORM)
 
 clean:
-	cd ./$(PLATFORM)/libmsettings && make clean
-	cd ./all/minui/ && make clean
-	cd ./all/minarch/ && make clean
-	cd ./all/paks/ && make clean
-	cd ./all/utils/ && make clean
-	cd ./all/syncsettings/ && make clean
-	cd ./$(PLATFORM) && make clean
+	cd ./$(PLATFORM)/libmsettings && $(MAKE) clean
+	cd ./all/minui/ && $(MAKE) clean
+	cd ./all/minarch/ && $(MAKE) clean
+	cd ./all/paks/ && $(MAKE) clean
+	cd ./all/utils/ && $(MAKE) clean
+	cd ./all/syncsettings/ && $(MAKE) clean
+	cd ./$(PLATFORM) && $(MAKE) clean

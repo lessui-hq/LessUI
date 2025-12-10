@@ -35,14 +35,14 @@ endif
 ###########################################################
 # Release versioning
 
-BUILD_HASH:=$(shell git rev-parse --short HEAD)
-RELEASE_TIME:=$(shell TZ=GMT date +%Y%m%d)
-RELEASE_BETA=
-RELEASE_BASE=LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
-RELEASE_DOT:=$(shell find ./releases/. -name "${RELEASE_BASE}-*.zip" 2>/dev/null | wc -l | sed 's/ //g')
+BUILD_HASH := $(shell git rev-parse --short HEAD)
+RELEASE_TIME := $(shell TZ=GMT date +%Y%m%d)
+RELEASE_BETA =
+RELEASE_BASE = LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
+RELEASE_DOT := $(shell find ./releases/. -name "${RELEASE_BASE}-*.zip" 2>/dev/null | wc -l | sed 's/ //g')
 # First build has no suffix, subsequent builds use -1, -2, etc.
 # Check if unnumbered release exists, if so start numbering from RELEASE_DOT+1
-RELEASE_SUFFIX:=$(shell \
+RELEASE_SUFFIX := $(shell \
 	if [ "$(RELEASE_DOT)" = "0" ] && [ ! -f "./releases/${RELEASE_BASE}.zip" ]; then \
 		echo ""; \
 	elif [ "$(RELEASE_DOT)" = "0" ]; then \
@@ -50,7 +50,7 @@ RELEASE_SUFFIX:=$(shell \
 	else \
 		echo "-$$(($(RELEASE_DOT) + 1))"; \
 	fi)
-RELEASE_NAME=$(RELEASE_BASE)$(RELEASE_SUFFIX)
+RELEASE_NAME = $(RELEASE_BASE)$(RELEASE_SUFFIX)
 
 ###########################################################
 # Build configuration
@@ -128,9 +128,9 @@ dev-deploy:
 #        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
 dev-build-deploy:
 	@if [ -n "$(PLATFORM)" ]; then \
-		make common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		$(MAKE) common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
 	else \
-		make all && ./scripts/dev-deploy.sh; \
+		$(MAKE) all && ./scripts/dev-deploy.sh; \
 	fi
 
 # Build all components for a specific platform (in Docker)
@@ -150,7 +150,7 @@ system:
 	# Install utils (calls install hook for each util - includes keymon.elf and show.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
 	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
-	make -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
+	$(MAKE) -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	# Construct tool paks from workspace/all/paks/Tools/
 	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
@@ -240,12 +240,12 @@ setup: name
 	rm -rf ./build
 	mkdir -p ./releases
 	rsync -a ./skeleton/ ./build/
-	
+
 	# remove authoring detritus
 	cd ./build && find . -type f -name '.keep' -delete
 	cd ./build && find . -type f -name '*.meta' -delete
 	echo $(BUILD_HASH) > ./workspace/hash.txt
-	
+
 	# Copy README to workspace for formatting (uses Linux fmt in Docker)
 	mkdir -p ./workspace/readmes
 	rsync -a ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
@@ -324,7 +324,7 @@ package: tidy
 	# Move formatted README from workspace to build
 	rsync -a ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt
 	rm -rf ./workspace/readmes
-	
+
 	cd ./build/SYSTEM && echo "$(RELEASE_NAME)\n$(BUILD_HASH)" > version.txt
 	./commits.sh > ./build/SYSTEM/commits.txt
 	cd ./build && find . -type f -name '.DS_Store' -delete
@@ -351,7 +351,7 @@ package: tidy
 		cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
 	fi
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
-	
+
 ###########################################################
 # Dynamic platform targets
 
@@ -359,5 +359,4 @@ package: tidy
 .DEFAULT:
 	# ----------------------------------------------------
 	# $@
-	@echo "$(PLATFORMS)" | grep -q "\b$@\b" && (make common PLATFORM=$@) || (exit 1)
-	
+	@echo "$(PLATFORMS)" | grep -q "\b$@\b" && ($(MAKE) common PLATFORM=$@) || (exit 1)
