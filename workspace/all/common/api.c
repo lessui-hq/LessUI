@@ -114,10 +114,14 @@ UI_Layout ui = {
  * @note Must be called before any DP() macro usage
  */
 void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
+	LOG_debug("UI_initLayout: Starting layout calculation (%dx%d @ %.2f\")", screen_width,
+	          screen_height, diagonal_inches);
+
 	// Calculate PPI and dp_scale
 	float diagonal_px = sqrtf((float)(screen_width * screen_width + screen_height * screen_height));
 	float ppi = diagonal_px / diagonal_inches;
 	float raw_dp_scale = ppi / 120.0f;
+	LOG_debug("UI_initLayout: Calculated PPI=%.0f, raw_dp_scale=%.2f", ppi, raw_dp_scale);
 
 	// Apply platform scale modifier if defined
 #ifdef SCALE_MODIFIER
@@ -530,19 +534,27 @@ SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h) {
  * @note Also calls PLAT_initLid() to set up lid detection hardware
  */
 SDL_Surface* GFX_init(int mode) {
+	LOG_debug("GFX_init: Starting graphics initialization (mode=%d)", mode);
+
 	// TODO: this doesn't really belong here...
 	// tried adding to PWR_init() but that was no good (not sure why)
+	LOG_debug("GFX_init: Initializing lid");
 	PLAT_initLid();
 
+	LOG_debug("GFX_init: Calling PLAT_initVideo");
 	gfx.screen = PLAT_initVideo();
 	if (gfx.screen == NULL) {
+		LOG_error("GFX_init: PLAT_initVideo returned NULL");
 		return NULL;
 	}
+	LOG_debug("GFX_init: PLAT_initVideo succeeded (screen=%dx%d)", gfx.screen->w, gfx.screen->h);
 	gfx.mode = mode;
 
 	// Initialize DP scaling system
 #ifdef SCREEN_DIAGONAL
+	LOG_debug("GFX_init: Calling UI_initLayout (diagonal=%.2f)", SCREEN_DIAGONAL);
 	UI_initLayout(gfx.screen->w, gfx.screen->h, SCREEN_DIAGONAL);
+	LOG_debug("GFX_init: UI_initLayout completed (dp_scale=%.2f)", gfx_dp_scale);
 #endif
 
 	RGB_WHITE = SDL_MapRGB(gfx.screen->format, TRIAD_WHITE);
@@ -570,18 +582,27 @@ SDL_Surface* GFX_init(int mode) {
 	// Select asset tier based on dp_scale (use one tier higher for better quality)
 	// Available tiers: @1x, @2x, @3x, @4x
 	// Always downscale from a higher resolution for smoother antialiasing
+	LOG_debug("GFX_init: Selecting asset tier (dp_scale=%.2f)", gfx_dp_scale);
 	int asset_scale = (int)ceilf(gfx_dp_scale) + 1;
+	LOG_debug("GFX_init: Calculated asset_scale from dp_scale: %d", asset_scale);
 	if (asset_scale < 1)
 		asset_scale = 1;
 	if (asset_scale > 4)
 		asset_scale = 4;
+	LOG_debug("GFX_init: Selected asset_scale=%dx", asset_scale);
 
 	// Load asset sprite sheet at selected tier
 	char asset_path[MAX_PATH];
 	sprintf(asset_path, RES_PATH "/assets@%ix.png", asset_scale);
+	LOG_debug("GFX_init: Loading assets from: %s", asset_path);
 	if (!exists(asset_path))
-		LOG_info("missing assets, you're about to segfault dummy!\n");
+		LOG_error("GFX_init: Missing assets at %s, about to segfault!", asset_path);
 	SDL_Surface* loaded_assets = IMG_Load(asset_path);
+	if (!loaded_assets) {
+		LOG_error("GFX_init: IMG_Load failed for %s: %s", asset_path, SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("GFX_init: Assets loaded successfully (%dx%d)", loaded_assets->w, loaded_assets->h);
 
 	// Define asset rectangles in the loaded sprite sheet (at asset_scale)
 	// Base coordinates are @1x, multiply by asset_scale for actual position
@@ -785,11 +806,25 @@ SDL_Surface* GFX_init(int mode) {
 
 #undef ASSET_SCALE4
 
-	TTF_Init();
+	LOG_debug("GFX_init: Initializing TTF");
+	if (TTF_Init() < 0) {
+		LOG_error("GFX_init: TTF_Init failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("GFX_init: Loading fonts from %s", FONT_PATH);
 	font.large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
+	if (!font.large)
+		LOG_error("GFX_init: Failed to load large font: %s", SDL_GetError());
 	font.medium = TTF_OpenFont(FONT_PATH, DP(FONT_MEDIUM));
+	if (!font.medium)
+		LOG_error("GFX_init: Failed to load medium font: %s", SDL_GetError());
 	font.small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
+	if (!font.small)
+		LOG_error("GFX_init: Failed to load small font: %s", SDL_GetError());
 	font.tiny = TTF_OpenFont(FONT_PATH, DP(FONT_TINY));
+	if (!font.tiny)
+		LOG_error("GFX_init: Failed to load tiny font: %s", SDL_GetError());
+	LOG_debug("GFX_init: Fonts loaded successfully");
 
 	// ============================================================================
 	// PIXEL-PERFECT TEXT CENTERING
@@ -804,6 +839,7 @@ SDL_Surface* GFX_init(int mode) {
 	ui.button_text_offset_px = GFX_centerTextY(font.small, DP(ui.button_size));
 	ui.button_label_offset_px = GFX_centerTextY(font.tiny, DP(ui.button_size));
 
+	LOG_debug("GFX_init: Graphics initialization complete");
 	return gfx.screen;
 }
 

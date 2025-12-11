@@ -144,42 +144,90 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	EFFECT_init(&ctx->effect_state);
 
 	// Initialize SDL video
-	SDL_InitSubSystem(SDL_INIT_VIDEO);
+	LOG_debug("SDL2_initVideo: Calling SDL_InitSubSystem(VIDEO)");
+	if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
+		LOG_error("SDL2_initVideo: SDL_InitSubSystem failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: SDL video subsystem initialized");
 	SDL_ShowCursor(0);
 
 	int w = width;
 	int h = height;
 	int p = w * FIXED_BPP;
+	LOG_debug("SDL2_initVideo: Creating window/renderer (size=%dx%d)", w, h);
 
 	// Create window and renderer
 	ctx->window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
 	                               SDL_WINDOW_SHOWN);
+	if (!ctx->window) {
+		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Window created successfully");
+
 	ctx->renderer =
 	    SDL_CreateRenderer(ctx->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (!ctx->renderer) {
+		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Renderer created successfully");
 
 	// Check for rotation (portrait display)
 	if (ctx->config.auto_rotate) {
 		SDL_DisplayMode mode;
-		SDL_GetCurrentDisplayMode(0, &mode);
-		LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
-		if (mode.h > mode.w) {
-			// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
-			ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
-			LOG_debug("Rotation enabled: rotate=%d (%s)\n", ctx->rotate,
-			          ctx->config.rotate_cw ? "CW" : "CCW");
+		LOG_debug("SDL2_initVideo: Checking display mode for rotation");
+		if (SDL_GetCurrentDisplayMode(0, &mode) < 0) {
+			LOG_error("SDL2_initVideo: SDL_GetCurrentDisplayMode failed: %s", SDL_GetError());
+		} else {
+			LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
+			if (mode.h > mode.w) {
+				// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
+				ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
+				LOG_debug("Rotation enabled: rotate=%d (%s)\n", ctx->rotate,
+				          ctx->config.rotate_cw ? "CW" : "CCW");
+			}
 		}
 	}
 
 	// Create initial texture
+	LOG_debug("SDL2_initVideo: Creating texture (sharpness=%s)",
+	          ctx->config.default_sharpness == SHARPNESS_SOFT ? "soft" : "sharp");
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,
 	            ctx->config.default_sharpness == SHARPNESS_SOFT ? "1" : "0");
 	ctx->texture =
 	    SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
+	if (!ctx->texture) {
+		LOG_error("SDL2_initVideo: SDL_CreateTexture failed: %s", SDL_GetError());
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Texture created successfully");
 	ctx->target = NULL;
 
 	// Create surfaces
+	LOG_debug("SDL2_initVideo: Creating SDL surfaces");
 	ctx->buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
+	if (!ctx->buffer) {
+		LOG_error("SDL2_initVideo: SDL_CreateRGBSurfaceFrom failed: %s", SDL_GetError());
+		SDL_DestroyTexture(ctx->texture);
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
 	ctx->screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH, RGBA_MASK_565);
+	if (!ctx->screen) {
+		LOG_error("SDL2_initVideo: SDL_CreateRGBSurface failed: %s", SDL_GetError());
+		SDL_FreeSurface(ctx->buffer);
+		SDL_DestroyTexture(ctx->texture);
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Surfaces created successfully");
 
 	// Store dimensions
 	ctx->width = w;
@@ -192,6 +240,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	ctx->sharpness = ctx->config.default_sharpness;
 	ctx->hard_scale = 4;
 
+	LOG_debug("SDL2_initVideo: Video initialization complete (screen=%dx%d)", w, h);
 	return ctx->screen;
 }
 
