@@ -84,6 +84,12 @@ generate_pak() {
             -e "s|{{NICE_PREFIX}}|$nice_prefix|g" \
             "$launch_template" > "$output_dir/launch.sh"
         chmod +x "$output_dir/launch.sh"
+        # Preserve newest timestamp among all dependencies for rsync
+        # Find the newest file among template, platforms.json, and cores.json
+        local newest="$launch_template"
+        [ "$PLATFORMS_JSON" -nt "$newest" ] && newest="$PLATFORMS_JSON"
+        [ "$CORES_JSON" -nt "$newest" ] && newest="$CORES_JSON"
+        touch -r "$newest" "$output_dir/launch.sh"
     fi
 
     # Copy config files - base first, then platform-specific overwrites
