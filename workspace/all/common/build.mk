@@ -96,7 +96,7 @@ HEADERS = $(wildcard $(COMMON_DIR)/*.h) $(wildcard $(PLATFORM_DIR)/*.h)
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS  = $(ARCH) -fomit-frame-pointer
-CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -Ofast
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -O3
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
