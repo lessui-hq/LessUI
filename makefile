@@ -166,10 +166,15 @@ system:
 	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
 	$(MAKE) -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	# Construct tool paks from workspace/all/paks/Tools/
+	# DEBUG=1 includes debug-only paks (those with "debug": true in pak.json)
 	@for pak_dir in ./workspace/all/paks/Tools/*/; do \
 		[ -d "$$pak_dir" ] || continue; \
 		pak_name=$$(basename "$$pak_dir"); \
 		[ -f "$$pak_dir/pak.json" ] || continue; \
+		is_debug_pak=$$(jq -r '.debug // false' "$$pak_dir/pak.json"); \
+		if [ "$$is_debug_pak" = "true" ] && [ -z "$(DEBUG)" ]; then \
+			continue; \
+		fi; \
 		if jq -e '.platforms | index("$(PLATFORM)") or index("all")' "$$pak_dir/pak.json" > /dev/null 2>&1; then \
 			echo "  Constructing $${pak_name}.pak for $(PLATFORM)"; \
 			output_dir="./build/Tools/$(PLATFORM)/$${pak_name}.pak"; \

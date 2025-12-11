@@ -110,6 +110,7 @@ workspace/all/paks/
 | `type`                                | Yes      | One of: `tool`, `emulator`, `app`                         |
 | `description`                         | No       | Brief description                                         |
 | `version`                             | No       | Semantic version                                          |
+| `debug`                               | No       | If `true`, pak is only included in DEBUG=1 builds         |
 | `platforms`                           | Yes      | Array of supported platform IDs                           |
 | `build`                               | No       | Native code build configuration                           |
 | `build.type`                          | -        | `native` (compile C), `download` (fetch binaries), `none` |

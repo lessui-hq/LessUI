@@ -77,9 +77,13 @@ while [ -f "$EXEC_PATH" ]; do
 	if [ -f "$NEXT_PATH" ]; then
 		type pre_pak_hook >/dev/null 2>&1 && pre_pak_hook
 		CMD=$(cat "$NEXT_PATH")
-		echo "$CMD" | grep -q "/Tools/" && LOG_FILE="$LOGS_PATH/shui.log" shui start &
 		PAK_NAME=$(echo "$CMD" | sed -n 's|.*/\([^/]*\)\.pak/.*|\1|p')
 		[ -z "$PAK_NAME" ] && PAK_NAME="pak"
+
+		# Pre-start shui daemon for Tools (skip on SDL1 platforms - setsid breaks fbdev)
+		if [ "$PLATFORM" != "trimuismart" ]; then
+			echo "$CMD" | grep -q "/Tools/" && LOG_FILE="$LOGS_PATH/${PAK_NAME}.log" shui start &
+		fi
 
 		# Dual logging strategy:
 		# - LOG_FILE env var: Used by native C binaries via log_open()

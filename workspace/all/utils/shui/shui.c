@@ -407,7 +407,11 @@ static int daemon_spawn(void) {
 	if (pid == 0) {
 		// Child: become daemon (lock fd inherited, closed on exec)
 		close(lock_fd);
+		// Skip setsid() on SDL1 platforms (trimuismart) - SDL1 fbdev driver
+		// hangs during keyboard init when there's no controlling terminal
+#ifndef SKIP_SETSID
 		setsid();
+#endif
 
 		// Re-exec ourselves with --daemon flag
 		char* self = "/proc/self/exe";

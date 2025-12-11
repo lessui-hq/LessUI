@@ -1,0 +1,23 @@
+{
+  "name": "Kitchen Sink",
+  "type": "tool",
+  "description": "Test visual utilities (show.elf, shui)",
+  "version": "1.0.0",
+  "debug": true,
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "m17",
+    "my282",
+    "magicmini"
+  ],
+
+  "launch": "launch.sh"
+}
