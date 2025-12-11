@@ -4950,25 +4950,30 @@ int main(int argc, char* argv[]) {
 
 	LOG_info("rom_path: %s", rom_path);
 
+	LOG_debug("GFX_init");
 	screen = GFX_init(MODE_MENU);
 	if (screen == NULL) {
 		LOG_error("Failed to initialize video");
 		log_close();
 		return EXIT_FAILURE;
 	}
+
+	LOG_debug("PAD_init");
 	PAD_init();
 	DEVICE_WIDTH = screen->w;
 	DEVICE_HEIGHT = screen->h;
 	DEVICE_PITCH = screen->pitch;
-	// LOG_info("DEVICE_SIZE: %ix%i (%i)", DEVICE_WIDTH,DEVICE_HEIGHT,DEVICE_PITCH);
 
+	LOG_debug("VIB_init");
 	VIB_init();
+
+	LOG_debug("PWR_init");
 	PWR_init();
 	if (!HAS_POWER_BUTTON)
 		PWR_disableSleep();
-	MSG_init();
 
-	// Overrides_init();
+	LOG_debug("MSG_init");
+	MSG_init();
 
 	Core_open(core_path, tag_name);
 	Game_open(rom_path); // nes tries to load gamegenie setting before this returns ffs
@@ -4978,8 +4983,13 @@ int main(int argc, char* argv[]) {
 	simple_mode = exists(SIMPLE_MODE_PATH);
 
 	// restore options
+	LOG_debug("Config_load");
 	Config_load(); // before init?
+
+	LOG_debug("Config_init");
 	Config_init();
+
+	LOG_debug("Config_readOptions (early)");
 	Config_readOptions(); // cores with boot logo option (eg. gb) need to load options early
 	setOverclock(overclock);
 
@@ -4992,15 +5002,30 @@ int main(int argc, char* argv[]) {
 	options_menu.items[1].desc = (char*)core.version;
 
 	Core_load();
+
+	LOG_debug("Input_init");
 	Input_init(NULL);
+
+	LOG_debug("Config_readOptions (late)");
 	Config_readOptions(); // but others load and report options later (eg. nes)
+
+	LOG_debug("Config_readControls");
 	Config_readControls(); // restore controls (after the core has reported its defaults)
 	Config_free();
 
+	LOG_debug("SND_init (sample_rate=%d, fps=%f)", core.sample_rate, core.fps);
 	SND_init(core.sample_rate, core.fps);
+
+	LOG_debug("InitSettings");
 	InitSettings(); // after we initialize audio
+
+	LOG_debug("Menu_init");
 	Menu_init();
+
+	LOG_debug("State_resume");
 	State_resume();
+
+	LOG_debug("Menu_initState");
 	Menu_initState(); // make ready for state shortcuts
 
 	PWR_warn(1);
@@ -5011,8 +5036,10 @@ int main(int argc, char* argv[]) {
 	GFX_clearAll();
 	GFX_flip(screen);
 
+	LOG_debug("Special_init");
 	Special_init(); // after config
 
+	LOG_debug("Entering main loop");
 	sec_start = SDL_GetTicks();
 	while (!quit) {
 		GFX_startFrame();
