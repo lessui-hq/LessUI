@@ -46,7 +46,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 #endif
 	v->hdmi_active = 0;
 	v->hw_features = 0;
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 	v->hw_features |= HW_FEATURE_NEON;
 #endif
 	v->platform_data = NULL;

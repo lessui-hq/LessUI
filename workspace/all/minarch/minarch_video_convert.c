@@ -12,7 +12,7 @@
 #include "log.h"
 #include <stdlib.h>
 
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
 #endif
 
@@ -82,7 +82,7 @@ void MinArchVideoConvert_0rgb1555Scalar(const void* data, uint16_t* output, unsi
 	}
 }
 
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 void MinArchVideoConvert_xrgb8888Neon(const void* data, uint16_t* output, unsigned width,
                                       unsigned height, size_t pitch) {
 	const uint32_t* input = data;
@@ -172,7 +172,7 @@ void MinArchVideoConvert_0rgb1555Neon(const void* data, uint16_t* output, unsign
 		output += width;
 	}
 }
-#endif // HAS_NEON
+#endif // __arm__ || __aarch64__
 
 void MinArchVideoConvert_convert(const void* data, unsigned width, unsigned height, size_t pitch,
                                  MinArchPixelFormat format) {
@@ -195,7 +195,7 @@ void MinArchVideoConvert_convert(const void* data, unsigned width, unsigned heig
 
 	switch (format) {
 	case MINARCH_PIXEL_FORMAT_XRGB8888:
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 		MinArchVideoConvert_xrgb8888Neon(data, output, width, height, pitch);
 #else
 		MinArchVideoConvert_xrgb8888Scalar(data, output, width, height, pitch);
@@ -203,7 +203,7 @@ void MinArchVideoConvert_convert(const void* data, unsigned width, unsigned heig
 		break;
 
 	case MINARCH_PIXEL_FORMAT_0RGB1555:
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 		MinArchVideoConvert_0rgb1555Neon(data, output, width, height, pitch);
 #else
 		MinArchVideoConvert_0rgb1555Scalar(data, output, width, height, pitch);

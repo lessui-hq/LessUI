@@ -164,7 +164,6 @@
 
 #define SDCARD_PATH "/mnt/SDCARD" // Path to SD card mount point
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
-#define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
 // Keymon Configuration

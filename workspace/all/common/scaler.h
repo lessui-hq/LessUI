@@ -9,8 +9,9 @@
  * in both horizontal and vertical directions.
  *
  * NEON functions (scale*_n16, scale*_n32):
- *   - Available when HAS_NEON is defined
+ *   - Available on 32-bit ARM (__arm__ defined)
  *   - Use ARM NEON SIMD instructions for ~2-4x speedup
+ *   - Not available on ARM64 (use C scalers instead)
  *   - Require 32-bit aligned addresses and even pixel counts
  *   - Fall back to C scalers for odd dimensions
  *
@@ -74,7 +75,7 @@ typedef void (*scaler_t)(void* __restrict src, void* __restrict dst, uint32_t sw
  * @param dh Destination height in pixels
  * @param dp Destination pitch in bytes (0 for auto)
  */
-#ifdef HAS_NEON
+#if defined(__arm__)
 void scaler_n16(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __restrict dst,
                 uint32_t sw, uint32_t sh, uint32_t sp, uint32_t dw, uint32_t dh, uint32_t dp);
 
@@ -139,10 +140,10 @@ void scaler_c32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
                 uint32_t sw, uint32_t sh, uint32_t sp, uint32_t dw, uint32_t dh, uint32_t dp);
 
 ///////////////////////////////
-// NEON-optimized functions
+// NEON-optimized functions (32-bit ARM only)
 ///////////////////////////////
 
-#ifdef HAS_NEON
+#if defined(__arm__)
 
 /**
  * NEON-optimized memcpy.
@@ -542,7 +543,7 @@ enum {
 void rotate_c16(unsigned rotation, void* __restrict src, void* __restrict dst, uint32_t src_w,
                 uint32_t src_h, uint32_t src_p, uint32_t dst_p);
 
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 /**
  * NEON-optimized RGB565 rotation using 4x4 block transpose.
  *

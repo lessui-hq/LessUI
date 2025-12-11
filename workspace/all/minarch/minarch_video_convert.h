@@ -98,7 +98,7 @@ void MinArchVideoConvert_xrgb8888Scalar(const void* data, uint16_t* output, unsi
 void MinArchVideoConvert_0rgb1555Scalar(const void* data, uint16_t* output, unsigned width,
                                         unsigned height, size_t pitch);
 
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 /**
  * Converts XRGB8888 to RGB565 using ARM NEON SIMD.
  *

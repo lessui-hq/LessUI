@@ -168,7 +168,6 @@
 
 #define SDCARD_PATH "/mnt/SDCARD" // Path to SD card mount point
 #define MUTE_VOLUME_RAW -60 // Raw value for muted volume (negative scale)
-#define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
 

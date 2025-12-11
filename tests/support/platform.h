@@ -28,10 +28,6 @@
 #define HDMI_HEIGHT 720
 #define HDMI_PITCH 2560
 
-// NEON support (for platform_variant.c)
-// Commented out for test builds
-// #define HAS_NEON
-
 // Button definitions (required by defines.h)
 #define BUTTON_NA -1
 #define CODE_NA -1

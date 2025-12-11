@@ -44,7 +44,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "defines.h" // for HAS_NEON, FIXED_BPP, MIN
+#include "defines.h" // for FIXED_BPP, MIN
 #include "log.h"
 #include "scaler.h" // for function declarations and ROTATION_ constants
 
@@ -906,10 +906,12 @@ void scale6x6_c32(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
 }
 
 ///////////////////////////////
-// ARM NEON Optimized Scalers
+// ARM NEON Optimized Scalers (32-bit ARM only)
 ///////////////////////////////
 
-#ifdef HAS_NEON
+// These NEON scalers use ARM32-specific inline assembly (including the 'lr' register)
+// and are not compatible with ARM64/aarch64. ARM64 platforms fall back to C versions.
+#if defined(__arm__)
 
 /**
  * NEON-optimized memory copy using SIMD instructions.
@@ -3892,7 +3894,7 @@ void scaler_n32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
 	return;
 }
 
-#endif // HAS_NEON
+#endif // __arm__
 
 ///////////////////////////////
 // High-Level Scaler Dispatchers
@@ -4196,7 +4198,7 @@ void scale3x_grid(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
 // Rotation implementations
 ///////////////////////////////
 
-#ifdef HAS_NEON
+#if defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
 
 /**
@@ -4444,7 +4446,7 @@ void rotate_n16(unsigned rotation, void* __restrict src, void* __restrict dst, u
 		break;
 	}
 }
-#endif // HAS_NEON
+#endif // __arm__ || __aarch64__
 
 /**
  * C implementation of RGB565 rotation.

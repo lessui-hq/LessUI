@@ -155,7 +155,6 @@
 
 #define SDCARD_PATH "/storage/TF2" // Path to secondary SD card slot
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
-#define HAS_NEON // ARM NEON SIMD optimizations available
 
 ///////////////////////////////
 // Keymon Configuration
