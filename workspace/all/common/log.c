@@ -20,6 +20,8 @@
 
 #define LOG_BUFFER_SIZE 2048
 #define TIMESTAMP_SIZE 16
+#define LOG_MAX_SIZE_DEFAULT (1024 * 1024) // 1MB default rotation size
+#define LOG_MAX_BACKUPS_DEFAULT 3
 
 // Log level names for output
 static const char* LEVEL_NAMES[] = {
@@ -28,6 +30,14 @@ static const char* LEVEL_NAMES[] = {
     [LOG_LEVEL_INFO] = "INFO",
     [LOG_LEVEL_DEBUG] = "DEBUG",
 };
+
+///////////////////////////////
+// Global Log State
+///////////////////////////////
+
+static LogFile* g_log_file = NULL; // Global log file (NULL = use stdout/stderr)
+static int g_log_sync = 0; // Crash-safe mode: fsync after each write
+static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER; // Protects g_log_file
 
 ///////////////////////////////
 // Timestamp Formatting
@@ -83,14 +93,145 @@ int log_format_prefix(char* buf, size_t size, LogLevel level, const char* file, 
 }
 
 ///////////////////////////////
+// Global Log Initialization
+///////////////////////////////
+
+/**
+ * Initialize the global logging system.
+ */
+int log_open(const char* path) {
+	// Determine path: explicit > env var > NULL (use stdout)
+	const char* log_path = path;
+	if (!log_path) {
+		log_path = getenv("LOG_FILE");
+	}
+
+	// Check for sync mode
+	const char* sync_env = getenv("LOG_SYNC");
+	int sync_mode = (sync_env && strcmp(sync_env, "1") == 0);
+
+	pthread_mutex_lock(&g_log_mutex);
+
+	// Close existing log if open
+	if (g_log_file) {
+		log_file_close(g_log_file);
+		g_log_file = NULL;
+	}
+
+	g_log_sync = sync_mode;
+
+	// If no path specified, stay with stdout/stderr (backward compatible)
+	if (!log_path || log_path[0] == '\0') {
+		pthread_mutex_unlock(&g_log_mutex);
+		return 0;
+	}
+
+	// Open the log file with rotation support
+	g_log_file = log_file_open(log_path, LOG_MAX_SIZE_DEFAULT, LOG_MAX_BACKUPS_DEFAULT);
+	if (!g_log_file) {
+		pthread_mutex_unlock(&g_log_mutex);
+		// Log to stderr since file logging failed
+		fprintf(stderr, "[ERROR] log_open: Failed to open log file: %s\n", log_path);
+		return -1;
+	}
+
+	// Store sync mode in the LogFile for use during writes
+	// Note: We'll handle sync in the write path using g_log_sync
+
+	pthread_mutex_unlock(&g_log_mutex);
+	return 0;
+}
+
+/**
+ * Close the global log file.
+ */
+void log_close(void) {
+	pthread_mutex_lock(&g_log_mutex);
+
+	if (g_log_file) {
+		// Final sync before closing
+		if (g_log_file->fp) {
+			fflush(g_log_file->fp);
+			fsync(fileno(g_log_file->fp));
+		}
+		log_file_close(g_log_file);
+		g_log_file = NULL;
+	}
+
+	g_log_sync = 0;
+
+	pthread_mutex_unlock(&g_log_mutex);
+}
+
+/**
+ * Manually sync log file to disk.
+ */
+void log_sync(void) {
+	pthread_mutex_lock(&g_log_mutex);
+
+	if (g_log_file && g_log_file->fp) {
+		fflush(g_log_file->fp);
+		fsync(fileno(g_log_file->fp));
+	}
+
+	pthread_mutex_unlock(&g_log_mutex);
+}
+
+/**
+ * Check if global logging is initialized to a file.
+ */
+int log_is_file_open(void) {
+	pthread_mutex_lock(&g_log_mutex);
+	int result = (g_log_file != NULL);
+	pthread_mutex_unlock(&g_log_mutex);
+	return result;
+}
+
+///////////////////////////////
 // Core Logging Functions
 ///////////////////////////////
 
 /**
+ * Internal: Write to global log file with optional sync.
+ *
+ * Called with g_log_mutex held.
+ */
+static void log_write_to_file(LogFile* lf, const char* prefix, const char* message, int do_sync) {
+	if (!lf || !lf->fp)
+		return;
+
+	char full_message[LOG_BUFFER_SIZE + 256];
+	snprintf(full_message, sizeof(full_message), "%s%s", prefix, message);
+	size_t msg_len = strlen(full_message);
+
+	pthread_mutex_lock(&lf->lock);
+
+	// Check if rotation needed
+	int rotate_ok = 1;
+	if (lf->max_size > 0 && lf->current_size + msg_len > lf->max_size) {
+		rotate_ok = (log_rotate_file(lf) != -1);
+	}
+
+	// Write message (with auto-newline)
+	if (rotate_ok && lf->fp) {
+		fprintf(lf->fp, "%s\n", full_message);
+		fflush(lf->fp);
+		lf->current_size += msg_len + 1;
+
+		// Sync to disk if crash-safe mode enabled
+		if (do_sync) {
+			fsync(fileno(lf->fp));
+		}
+	}
+
+	pthread_mutex_unlock(&lf->lock);
+}
+
+/**
  * Write a log message with context (file:line).
  *
- * ERROR/WARN go to stderr, INFO/DEBUG go to stdout.
- * Always flushes output for immediate visibility.
+ * If global log file is open, writes there (with optional fsync).
+ * Otherwise, ERROR/WARN go to stderr, INFO/DEBUG go to stdout.
  */
 void log_write(LogLevel level, const char* file, int line, const char* fmt, ...) {
 	char prefix[256];
@@ -105,7 +246,16 @@ void log_write(LogLevel level, const char* file, int line, const char* fmt, ...)
 	vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
-	// Write to appropriate stream (auto-add newline)
+	// Write to global log file if available
+	pthread_mutex_lock(&g_log_mutex);
+	if (g_log_file) {
+		log_write_to_file(g_log_file, prefix, message, g_log_sync);
+		pthread_mutex_unlock(&g_log_mutex);
+		return;
+	}
+	pthread_mutex_unlock(&g_log_mutex);
+
+	// Fallback: write to stdout/stderr
 	FILE* stream = (level <= LOG_LEVEL_WARN) ? stderr : stdout;
 	fprintf(stream, "%s%s\n", prefix, message);
 	fflush(stream);
@@ -114,7 +264,8 @@ void log_write(LogLevel level, const char* file, int line, const char* fmt, ...)
 /**
  * Write a simple log message without file:line context.
  *
- * Cleaner output for informational messages.
+ * If global log file is open, writes there (with optional fsync).
+ * Otherwise uses stdout/stderr.
  */
 void log_write_simple(LogLevel level, const char* fmt, ...) {
 	char prefix[256];
@@ -129,7 +280,16 @@ void log_write_simple(LogLevel level, const char* fmt, ...) {
 	vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
-	// Write to appropriate stream (auto-add newline)
+	// Write to global log file if available
+	pthread_mutex_lock(&g_log_mutex);
+	if (g_log_file) {
+		log_write_to_file(g_log_file, prefix, message, g_log_sync);
+		pthread_mutex_unlock(&g_log_mutex);
+		return;
+	}
+	pthread_mutex_unlock(&g_log_mutex);
+
+	// Fallback: write to stdout/stderr
 	FILE* stream = (level <= LOG_LEVEL_WARN) ? stderr : stdout;
 	fprintf(stream, "%s%s\n", prefix, message);
 	fflush(stream);

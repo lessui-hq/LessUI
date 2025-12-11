@@ -4872,6 +4872,9 @@ static void limitFF(void) {
  * @note Exits early if game fails to load
  */
 int main(int argc, char* argv[]) {
+	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
+	log_open(NULL);
+
 	LOG_info("MinArch");
 
 	// Initialize context with pointers to globals
@@ -4950,6 +4953,7 @@ int main(int argc, char* argv[]) {
 	screen = GFX_init(MODE_MENU);
 	if (screen == NULL) {
 		LOG_error("Failed to initialize video");
+		log_close();
 		return EXIT_FAILURE;
 	}
 	PAD_init();
@@ -5101,6 +5105,9 @@ finish:
 	GFX_quit();
 
 	MinArchVideoConvert_freeBuffer();
+
+	// Close log file (flushes and syncs to disk)
+	log_close();
 
 	return EXIT_SUCCESS;
 }

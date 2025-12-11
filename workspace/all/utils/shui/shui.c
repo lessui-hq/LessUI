@@ -829,6 +829,9 @@ static void process_request(const Request* req, Response* resp) {
 }
 
 static int run_daemon(void) {
+	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
+	log_open(NULL);
+
 	// Setup signal handling
 	struct sigaction sa = {
 		.sa_handler = signal_handler,
@@ -894,6 +897,9 @@ static int run_daemon(void) {
 	restore_output();
 
 	ipc_cleanup();
+
+	// Close log file (flushes and syncs to disk)
+	log_close();
 
 	return EXIT_SUCCESS_CODE;
 }
