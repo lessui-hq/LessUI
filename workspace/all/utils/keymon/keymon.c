@@ -316,7 +316,7 @@ static void* watchMute(void* arg) {
  * @return 0 on clean shutdown (SIGTERM/SIGINT)
  */
 int main(int argc, char* argv[]) {
-	// Initialize logging from LOG_FILE env var (set by init.sh)
+	// Initialize logging (reads LOG_FILE environment variable)
 	log_open(NULL);
 
 	// Register signal handlers for clean shutdown

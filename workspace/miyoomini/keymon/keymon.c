@@ -441,7 +441,7 @@ static void* runChecks(void *arg) {
  * @return Never returns (runs infinite loop)
  */
 int main (int argc, char *argv[]) {
-	// Initialize logging from LOG_FILE env var (set by launch.sh)
+	// Initialize logging (reads LOG_FILE environment variable)
 	log_open(NULL);
 
 	// Register signal handlers for clean shutdown

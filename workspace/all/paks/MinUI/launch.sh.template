@@ -81,6 +81,10 @@ while [ -f "$EXEC_PATH" ]; do
 		PAK_NAME=$(echo "$CMD" | sed -n 's|.*/\([^/]*\)\.pak/.*|\1|p')
 		[ -z "$PAK_NAME" ] && PAK_NAME="pak"
 
+		# Dual logging strategy:
+		# - LOG_FILE env var: Used by native C binaries via log_open()
+		# - Stdout/stderr redirect: Captures output from shell-only paks
+		# Well-behaved C binaries use LOG_* macros exclusively, so redirect is harmless
 		LOG_FILE="$LOGS_PATH/${PAK_NAME}.log" eval "$CMD" > "$LOGS_PATH/${PAK_NAME}.log" 2>&1
 
 		shui stop 2>/dev/null

@@ -149,11 +149,14 @@ void log_close(void) {
 	pthread_mutex_lock(&g_log_mutex);
 
 	if (g_log_file) {
-		// Final sync before closing
+		// Final sync before closing (acquire file lock for thread safety)
+		pthread_mutex_lock(&g_log_file->lock);
 		if (g_log_file->fp) {
 			fflush(g_log_file->fp);
 			fsync(fileno(g_log_file->fp));
 		}
+		pthread_mutex_unlock(&g_log_file->lock);
+
 		log_file_close(g_log_file);
 		g_log_file = NULL;
 	}
@@ -169,9 +172,13 @@ void log_close(void) {
 void log_sync(void) {
 	pthread_mutex_lock(&g_log_mutex);
 
-	if (g_log_file && g_log_file->fp) {
-		fflush(g_log_file->fp);
-		fsync(fileno(g_log_file->fp));
+	if (g_log_file) {
+		pthread_mutex_lock(&g_log_file->lock);
+		if (g_log_file->fp) {
+			fflush(g_log_file->fp);
+			fsync(fileno(g_log_file->fp));
+		}
+		pthread_mutex_unlock(&g_log_file->lock);
 	}
 
 	pthread_mutex_unlock(&g_log_mutex);

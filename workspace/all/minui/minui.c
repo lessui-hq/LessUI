@@ -2430,4 +2430,6 @@ int main(int argc, char* argv[]) {
 
 	// Close log file (flushes and syncs to disk)
 	log_close();
+
+	return EXIT_SUCCESS;
 }
