@@ -38,4 +38,4 @@ miyoo_inputd &
 mv /dev/input/event1 /dev/input/event1.disabled
 
 # Start keymon
-keymon.elf >"$LOGS_PATH/keymon.log" 2>&1 &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

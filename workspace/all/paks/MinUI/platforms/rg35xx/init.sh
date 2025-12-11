@@ -20,4 +20,4 @@ echo on >/sys/devices/b0238000.mmc/mmc_host/mmc0/power/control
 echo on >/sys/devices/b0230000.mmc/mmc_host/mmc1/power/control
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

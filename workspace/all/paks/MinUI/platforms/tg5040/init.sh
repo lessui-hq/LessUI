@@ -86,4 +86,4 @@ rfkill block bluetooth
 rfkill block wifi
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

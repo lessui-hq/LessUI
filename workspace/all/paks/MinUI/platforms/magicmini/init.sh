@@ -22,4 +22,4 @@ amixer cset name='Playback Path' SPK
 cat /dev/zero >/dev/fb0
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

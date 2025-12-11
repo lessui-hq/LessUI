@@ -36,6 +36,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <signal.h>
 #include <linux/input.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
@@ -85,6 +86,17 @@
 #else
 #define ERROR(str) do { LOG_error(str); quit(EXIT_FAILURE); } while(0)
 #endif
+
+// Shutdown flag for clean exit
+static volatile sig_atomic_t running = 1;
+
+/**
+ * Signal handler for clean shutdown.
+ */
+static void handle_signal(int sig) {
+	(void)sig;
+	running = 0;
+}
 
 // Miyoo Mini Plus AXP223 PMIC I2C configuration (via eggs)
 #define	AXPDEV	"/dev/i2c-1"
@@ -210,6 +222,7 @@ void quit(int exitcode) {
 
 	if (input_fd > 0) close(input_fd);
 	if (sar_fd > 0) close(sar_fd);
+	log_close();
 	exit(exitcode);
 }
 
@@ -428,6 +441,13 @@ static void* runChecks(void *arg) {
  * @return Never returns (runs infinite loop)
  */
 int main (int argc, char *argv[]) {
+	// Initialize logging from LOG_FILE env var (set by launch.sh)
+	log_open(NULL);
+
+	// Register signal handlers for clean shutdown
+	signal(SIGTERM, handle_signal);
+	signal(SIGINT, handle_signal);
+
 	// Initialize settings first (needed for checkUSB to call SetJack)
 	InitSettings();
 
@@ -545,5 +565,11 @@ int main (int argc, char *argv[]) {
 			while (1) pause();  // Wait for shutdown to complete
 		}
 	}
+
+	// Check if we exited due to signal (clean shutdown)
+	if (!running) {
+		quit(EXIT_SUCCESS);
+	}
+
 	ERROR("Failed to read input event");
 }

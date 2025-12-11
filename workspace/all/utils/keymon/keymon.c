@@ -25,6 +25,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +49,17 @@
 #define RELEASED 0
 #define PRESSED 1
 #define REPEAT 2
+
+// Shutdown flag for clean exit
+static volatile sig_atomic_t running = 1;
+
+/**
+ * Signal handler for clean shutdown.
+ */
+static void handle_signal(int sig) {
+	(void)sig;
+	running = 0;
+}
 
 // Input device management
 #if KEYMON_INPUT_COUNT > 1
@@ -301,9 +313,16 @@ static void* watchMute(void* arg) {
  *
  * @param argc Argument count (unused)
  * @param argv Argument values (unused)
- * @return Never returns (runs infinite loop)
+ * @return 0 on clean shutdown (SIGTERM/SIGINT)
  */
 int main(int argc, char* argv[]) {
+	// Initialize logging from LOG_FILE env var (set by init.sh)
+	log_open(NULL);
+
+	// Register signal handlers for clean shutdown
+	signal(SIGTERM, handle_signal);
+	signal(SIGINT, handle_signal);
+
 	InitSettings();
 
 	// Open input device(s)
@@ -379,7 +398,7 @@ int main(int argc, char* argv[]) {
 	gettimeofday(&tod, NULL);
 	then = tod.tv_sec * 1000 + tod.tv_usec / 1000;
 
-	while (1) {
+	while (running) {
 		gettimeofday(&tod, NULL);
 		now = tod.tv_sec * 1000 + tod.tv_usec / 1000;
 
@@ -573,6 +592,10 @@ int main(int argc, char* argv[]) {
 
 		usleep(16666); // 60Hz polling rate
 	}
+
+	// Clean shutdown
+	QuitSettings();
+	log_close();
 
 	return 0;
 }

@@ -23,4 +23,4 @@ while :; do
 done &
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

@@ -33,4 +33,4 @@ loop_tail_hook() {
 start_adbd.sh
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

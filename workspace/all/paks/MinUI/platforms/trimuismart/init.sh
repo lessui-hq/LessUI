@@ -56,4 +56,4 @@ loop_tail_hook() {
 }
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &
