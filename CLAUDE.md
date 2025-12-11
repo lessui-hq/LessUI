@@ -106,6 +106,32 @@ make PLATFORM=miyoomini build
 4. `Makefile` target `system` - Copies binaries to `build/` directory
 5. `Makefile` target `package` - Creates release ZIP files
 
+### Debug vs Release Builds
+
+`DEBUG=1` controls both optimization and log verbosity:
+
+| Build Type             | Optimization | Debug Symbols | Log Level    |
+| ---------------------- | ------------ | ------------- | ------------ |
+| Release (default)      | `-O3`        | No            | INFO         |
+| Debug (`DEBUG=1`)      | `-O0`        | Yes (`-g`)    | INFO + DEBUG |
+| macOS dev (`make dev`) | `-O3` + ASan | Yes (`-g`)    | INFO + DEBUG |
+
+```bash
+# Release build (default) - optimized, INFO logs only
+make build PLATFORM=miyoomini
+
+# Debug build - no optimization, debug symbols, all logs
+make build PLATFORM=miyoomini DEBUG=1
+
+# Dev deploy always uses debug builds automatically
+make dev-build-deploy PLATFORM=miyoomini
+
+# macOS dev builds use ASan + debug symbols + full logging
+make dev-run
+```
+
+**Note:** macOS dev builds (`make dev`) use `-O3` with AddressSanitizer since ASan catches memory issues better than `-O0`, and `-O0` would make the UI too slow for iteration.
+
 ### Available Platforms
 
 Active platforms (as of most recent): miyoomini, trimuismart, rg35xx, rg35xxplus, my355, tg5040, zero28, rgb30, m17, my282, magicmini

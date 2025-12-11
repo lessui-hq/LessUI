@@ -54,13 +54,27 @@ RELEASE_NAME = $(RELEASE_BASE)$(RELEASE_SUFFIX)
 
 ###########################################################
 # Build configuration
+#
+# DEBUG=1 controls both optimization and log verbosity:
+#   - Release (default): -O3, INFO logs, no debug symbols
+#   - Debug (DEBUG=1):   -O0 -g, INFO+DEBUG logs, debug symbols
+#
+# Usage:
+#   make build PLATFORM=X           # Release build
+#   make build PLATFORM=X DEBUG=1   # Debug build
+#   make dev-build-deploy           # Always debug build
+#   make dev-run                    # macOS dev (always debug)
 
-# Logging configuration (applies to all components)
-# Options:
-#   -DENABLE_INFO_LOGS              INFO + WARN + ERROR (recommended for production)
-#   -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS   All logs (development/troubleshooting)
-#   (none)                          WARN + ERROR only (minimal logging)
+ifdef DEBUG
+# Debug: no optimization, debug symbols, all logs
+OPT_FLAGS = -O0 -g
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
+else
+# Release: full optimization, INFO logs (useful for user troubleshooting)
+OPT_FLAGS = -O3
+LOG_FLAGS = -DENABLE_INFO_LOGS
+endif
+export OPT_FLAGS
 export LOG_FLAGS
 
 .PHONY: build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup dev-deploy dev-build-deploy
@@ -123,14 +137,14 @@ dev-deploy:
 		./scripts/dev-deploy.sh; \
 	fi
 
-# Build and deploy in one shot for dev iteration
+# Build and deploy in one shot for dev iteration (always debug build)
 # Usage: make dev-build-deploy                    - Build all platforms and deploy
 #        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
 dev-build-deploy:
 	@if [ -n "$(PLATFORM)" ]; then \
-		$(MAKE) common PLATFORM=$(PLATFORM) && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
 	else \
-		$(MAKE) all && ./scripts/dev-deploy.sh; \
+		$(MAKE) all DEBUG=1 && ./scripts/dev-deploy.sh; \
 	fi
 
 # Build all components for a specific platform (in Docker)

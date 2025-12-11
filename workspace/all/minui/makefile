@@ -41,8 +41,10 @@ endif
 HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
 CFLAGS = $(ARCH) -fomit-frame-pointer
-CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -O3 -std=gnu99
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
            -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
            -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror

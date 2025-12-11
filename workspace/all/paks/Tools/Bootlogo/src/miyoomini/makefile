@@ -19,7 +19,9 @@ include ../../../../../../$(PLATFORM)/platform/makefile.env
 ###########################################################
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS = $(ARCH) -fomit-frame-pointer -Ofast
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
+CFLAGS = $(ARCH) -fomit-frame-pointer $(OPT_FLAGS)
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror

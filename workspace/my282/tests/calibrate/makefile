@@ -24,8 +24,10 @@ INCDIR = -I. -I../../all/common/ -I../platform/
 SOURCE = $(TARGET).c ../../all/common/utils.c ../../all/common/api.c ../../all/common/scaler.c ../platform/platform.c
 
 CC = $(CROSS_COMPILE)gcc
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
 CFLAGS = $(ARCH) -fomit-frame-pointer
-CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL)  -Ofast
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(OPT_FLAGS)
 LDFLAGS = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 LDFLAGS += -lmsettings
 

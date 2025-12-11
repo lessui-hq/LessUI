@@ -95,8 +95,10 @@ HEADERS = $(wildcard $(COMMON_DIR)/*.h) $(wildcard $(PLATFORM_DIR)/*.h)
 # Compiler configuration
 
 CC = $(CROSS_COMPILE)gcc
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
 CFLAGS  = $(ARCH) -fomit-frame-pointer
-CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) -O3
+CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS)
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror

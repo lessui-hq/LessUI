@@ -5,7 +5,9 @@ $(error missing CROSS_COMPILE for this toolchain)
 endif
 
 CC = $(CROSS_COMPILE)gcc
-CFLAGS = -Os -lrt -ldl -Wl,--gc-sections -s
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
+CFLAGS = $(OPT_FLAGS) -lrt -ldl -Wl,--gc-sections -s
 CFLAGS += -I.
 CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
            -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \

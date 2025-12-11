@@ -17,10 +17,10 @@ CC = $(CROSS_COMPILE)gcc
 SYSROOT := $(shell $(CC) --print-sysroot)
 
 INCLUDEDIR = $(SYSROOT)/usr/include
-CFLAGS = -I$(INCLUDEDIR) $(ARCH)
+# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+OPT_FLAGS ?= -O3
+CFLAGS = -I$(INCLUDEDIR) $(ARCH) $(OPT_FLAGS)
 LDFLAGS = -ldl -lpthread -lrt -s
-
-OPTM = -Ofast
 
 build:
 	$(CC) -c -Werror -fpic "$(TARGET).c" $(CFLAGS) -Wl,--no-as-needed $(LDFLAGS)
