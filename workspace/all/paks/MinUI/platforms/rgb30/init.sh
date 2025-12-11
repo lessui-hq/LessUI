@@ -19,4 +19,4 @@ export SDL_VIDEODRIVER=kmsdrm
 export SDL_AUDIODRIVER=alsa
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

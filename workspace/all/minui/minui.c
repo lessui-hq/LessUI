@@ -1656,9 +1656,15 @@ static void MinUIContext_setup(void) {
  * - If a ROM/app was launched, it's queued in /tmp/next
  */
 int main(int argc, char* argv[]) {
+	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
+	// This must happen before any LOG_* calls to ensure crash-safe logging
+	log_open(NULL);
+
 	// Check for auto-resume first (fast path)
-	if (autoResume())
+	if (autoResume()) {
+		log_close();
 		return 0;
+	}
 
 	simple_mode = exists(SIMPLE_MODE_PATH);
 
@@ -1675,6 +1681,7 @@ int main(int argc, char* argv[]) {
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
 	if (screen == NULL) {
 		LOG_error("Failed to initialize video");
+		log_close();
 		return EXIT_FAILURE;
 	}
 
@@ -2420,4 +2427,9 @@ int main(int argc, char* argv[]) {
 	PAD_quit();
 	GFX_quit();
 	QuitSettings();
+
+	// Close log file (flushes and syncs to disk)
+	log_close();
+
+	return EXIT_SUCCESS;
 }

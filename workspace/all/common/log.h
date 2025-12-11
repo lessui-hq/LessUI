@@ -13,13 +13,21 @@
  * - Thread-safe file logging with rotation
  * - Compile-time level control for zero overhead
  * - Size-based log rotation (configurable)
+ * - Crash-safe sync mode (fsync after each write)
  *
  * Usage:
+ *   // Initialize logging (call early in main)
+ *   log_open(NULL);  // Uses LOG_FILE env var, or stdout if not set
+ *   // Or explicitly:
+ *   log_open("/path/to/app.log");
+ *
  *   LOG_error("Failed to open file: %s", path);
  *   LOG_errno("fopen() failed for %s", path);  // Adds errno automatically
  *   LOG_warn("Battery low: %d%%", level);
  *   LOG_info("Loading ROM: %s", rom_path);
  *   LOG_debug("Pixel %d,%d = %06x", x, y, color);
+ *
+ *   log_close();  // Clean shutdown
  *
  * Note: Newlines are added automatically - do not include \n in messages
  *
@@ -28,9 +36,14 @@
  *   -DENABLE_DEBUG_LOGS   Enable DEBUG level (development/testing only)
  *   Without flags: Only ERROR and WARN compiled in
  *
+ * Environment variables:
+ *   LOG_FILE  - Path to log file (if not set, uses stdout/stderr)
+ *   LOG_SYNC  - Set to "1" for crash-safe mode (fsync after each write)
+ *
  * Log output:
- *   By default, logs go to stdout/stderr. Shell scripts redirect to files.
- *   For daemons or apps needing rotation, use log_file_open() API.
+ *   If log_open() is called and LOG_FILE is set, logs go to that file.
+ *   Otherwise, logs go to stdout/stderr as before.
+ *   For advanced use cases (daemons, multiple files), use log_file_open() API.
  */
 
 #ifndef __LOG_H__
@@ -53,6 +66,62 @@ typedef enum {
 } LogLevel;
 
 ///////////////////////////////
+// Global Log Initialization
+///////////////////////////////
+
+/**
+ * Initialize the global logging system.
+ *
+ * Call this early in main() to set up file logging. If path is NULL,
+ * reads from LOG_FILE environment variable. If neither is set, logs
+ * continue to stdout/stderr (backward compatible).
+ *
+ * Also reads LOG_SYNC environment variable: if set to "1", enables
+ * crash-safe mode where every log message is fsync'd to disk.
+ *
+ * Thread-safe. Can be called multiple times (closes previous file first).
+ *
+ * @param path Log file path, or NULL to use LOG_FILE env var
+ * @return 0 on success, -1 on failure (logs to stderr and continues with stdout)
+ *
+ * Example:
+ *   int main() {
+ *       log_open(NULL);  // Use LOG_FILE from environment
+ *       LOG_info("Application starting");
+ *       // ... application code ...
+ *       log_close();
+ *       return 0;
+ *   }
+ */
+int log_open(const char* path);
+
+/**
+ * Close the global log file.
+ *
+ * Flushes and syncs any pending data, then closes the file.
+ * After this call, logs return to stdout/stderr.
+ *
+ * Safe to call even if log_open() wasn't called or failed.
+ */
+void log_close(void);
+
+/**
+ * Manually sync log file to disk.
+ *
+ * Use this at critical points (before risky operations) to ensure
+ * all previous log messages are persisted. No-op if sync mode is
+ * already enabled or no log file is open.
+ */
+void log_sync(void);
+
+/**
+ * Check if global logging is initialized to a file.
+ *
+ * @return 1 if logging to file, 0 if logging to stdout/stderr
+ */
+int log_is_file_open(void);
+
+///////////////////////////////
 // Core Logging Functions
 ///////////////////////////////
 
@@ -60,7 +129,8 @@ typedef enum {
  * Write a log message at the specified level.
  *
  * Formats and writes a timestamped log message. For ERROR level, includes
- * file:line context. Output goes to stderr for ERROR/WARN, stdout for INFO/DEBUG.
+ * file:line context. If global log file is open, writes there; otherwise
+ * writes to stderr for ERROR/WARN, stdout for INFO/DEBUG.
  *
  * @param level Log severity level
  * @param file Source file name (use __FILE__)

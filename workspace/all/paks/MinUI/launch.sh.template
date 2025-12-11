@@ -33,10 +33,18 @@ export LD_LIBRARY_PATH="$SYSTEM_PATH/lib:$LD_LIBRARY_PATH"
 
 #######################################
 # Logging
+#
+# Native C binaries use LOG_FILE environment variable for file logging.
+# Each binary launch sets LOG_FILE inline for clarity and consistency.
+# Shell scripts use log.sh library for their own logging.
+# Set LOG_SYNC=1 to enable crash-safe mode (fsync after each log write).
+
+# Uncomment the next line to enable crash-safe logging (slower but survives crashes):
+# export LOG_SYNC=1
 
 if [ -f "$SDCARD_PATH/.system/common/log.sh" ]; then
 	. "$SDCARD_PATH/.system/common/log.sh"
-	log_init "$LOGS_PATH/minui.log"
+	log_init "$LOGS_PATH/shell.log"
 fi
 
 {{HOOK:init}}
@@ -60,17 +68,25 @@ touch "$EXEC_PATH" && sync
 while [ -f "$EXEC_PATH" ]; do
 	cpu_restore 2>/dev/null || true
 	type pre_minui_hook >/dev/null 2>&1 && pre_minui_hook
-	minui.elf > "$LOGS_PATH/minui.log" 2>&1
+
+	LOG_FILE="$LOGS_PATH/minui.log" minui.elf
+
 	echo "$(date +'%F %T')" > "$DATETIME_PATH"
 	sync
 
 	if [ -f "$NEXT_PATH" ]; then
 		type pre_pak_hook >/dev/null 2>&1 && pre_pak_hook
 		CMD=$(cat "$NEXT_PATH")
-		echo "$CMD" | grep -q "/Tools/" && shui start &
+		echo "$CMD" | grep -q "/Tools/" && LOG_FILE="$LOGS_PATH/shui.log" shui start &
 		PAK_NAME=$(echo "$CMD" | sed -n 's|.*/\([^/]*\)\.pak/.*|\1|p')
 		[ -z "$PAK_NAME" ] && PAK_NAME="pak"
-		eval "$CMD" > "$LOGS_PATH/${PAK_NAME}.log" 2>&1
+
+		# Dual logging strategy:
+		# - LOG_FILE env var: Used by native C binaries via log_open()
+		# - Stdout/stderr redirect: Captures output from shell-only paks
+		# Well-behaved C binaries use LOG_* macros exclusively, so redirect is harmless
+		LOG_FILE="$LOGS_PATH/${PAK_NAME}.log" eval "$CMD" > "$LOGS_PATH/${PAK_NAME}.log" 2>&1
+
 		shui stop 2>/dev/null
 		rm -f "$NEXT_PATH"
 

@@ -20,4 +20,4 @@ cpu_restore
 bl_disable && bl_enable
 
 # Start keymon
-keymon.elf &
+LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

@@ -33,6 +33,7 @@
 #include "api.h"
 #include "defines.h"
 #include "fonts.h"
+#include "log.h"
 #include "shui_utils.h"
 #include "ui_message.h"
 #include "ui_list.h"
@@ -575,16 +576,24 @@ static void restore_output(void) {
 }
 
 static void daemon_init(void) {
+	LOG_debug("daemon_init");
 	if (screen == NULL) {
+		LOG_debug("GFX_init");
 		screen = GFX_init(MODE_MAIN);
 		if (screen == NULL) {
+			LOG_error("GFX_init failed");
 			return;
 		}
 	}
+	LOG_debug("PAD_init");
 	PAD_init();
+	LOG_debug("PWR_init");
 	PWR_init();
+	LOG_debug("InitSettings");
 	InitSettings();
+	LOG_debug("fonts_init");
 	fonts_init();
+	LOG_debug("daemon_init complete");
 }
 
 static void daemon_cleanup(void) {
@@ -829,7 +838,13 @@ static void process_request(const Request* req, Response* resp) {
 }
 
 static int run_daemon(void) {
+	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
+	log_open(NULL);
+
+	LOG_info("Starting shui daemon on %s", PLATFORM);
+
 	// Setup signal handling
+	LOG_debug("Setting up signal handlers");
 	struct sigaction sa = {
 		.sa_handler = signal_handler,
 		.sa_flags = SA_RESTART
@@ -839,6 +854,7 @@ static int run_daemon(void) {
 	sigaction(SIGTERM, &sa, NULL);
 
 	// Write PID file
+	LOG_debug("Writing PID file");
 	ipc_init();
 	FILE* f = fopen(SHUI_PID_FILE, "w");
 	if (f) {
@@ -852,9 +868,11 @@ static int run_daemon(void) {
 	restore_output();
 
 	// Signal that we're ready
+	LOG_debug("Writing ready file");
 	f = fopen(SHUI_READY_FILE, "w");
 	if (f) fclose(f);
 
+	LOG_debug("Entering main loop");
 	// Main loop: wait for requests
 	while (!daemon_quit) {
 		// Handle power button even when idle (NULLs: no redraw tracking,
@@ -894,6 +912,9 @@ static int run_daemon(void) {
 	restore_output();
 
 	ipc_cleanup();
+
+	// Close log file (flushes and syncs to disk)
+	log_close();
 
 	return EXIT_SUCCESS_CODE;
 }

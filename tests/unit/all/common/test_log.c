@@ -30,14 +30,21 @@ void setUp(void) {
 	unlink("/tmp/test_log.log.1");
 	unlink("/tmp/test_log.log.2");
 	unlink("/tmp/test_log.log.3");
+	unlink("/tmp/test_log2.log");
+	unlink("/tmp/wrong_log.log");
+	// Ensure global log is closed before each test
+	log_close();
 }
 
 void tearDown(void) {
 	// Cleanup
+	log_close();
 	unlink("/tmp/test_log.log");
 	unlink("/tmp/test_log.log.1");
 	unlink("/tmp/test_log.log.2");
 	unlink("/tmp/test_log.log.3");
+	unlink("/tmp/test_log2.log");
+	unlink("/tmp/wrong_log.log");
 }
 
 ///////////////////////////////
@@ -410,6 +417,279 @@ void test_log_no_double_newline(void) {
 }
 
 ///////////////////////////////
+// Global Log API Tests
+///////////////////////////////
+
+void test_log_open_with_explicit_path(void) {
+	// Open with explicit path
+	int result = log_open("/tmp/test_log.log");
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_TRUE(log_is_file_open());
+
+	// Write via LOG_* macros (they should route to file)
+	LOG_info("Test message via LOG_info");
+
+	log_close();
+	TEST_ASSERT_FALSE(log_is_file_open());
+
+	// Verify content was written
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "Test message via LOG_info") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "[INFO]") != NULL);
+
+	free(content);
+}
+
+void test_log_open_with_env_var(void) {
+	// Set LOG_FILE env var
+	setenv("LOG_FILE", "/tmp/test_log.log", 1);
+
+	// Open with NULL (should use env var)
+	int result = log_open(NULL);
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_TRUE(log_is_file_open());
+
+	LOG_info("Message via env var");
+
+	log_close();
+	unsetenv("LOG_FILE");
+
+	// Verify content
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "Message via env var") != NULL);
+
+	free(content);
+}
+
+void test_log_open_without_env_var_uses_stdout(void) {
+	// Ensure no LOG_FILE env var
+	unsetenv("LOG_FILE");
+
+	// Open with NULL (should fall back to stdout, return success)
+	int result = log_open(NULL);
+	TEST_ASSERT_EQUAL(0, result);
+	TEST_ASSERT_FALSE(log_is_file_open());  // No file open, using stdout
+
+	// This should go to stdout (we can't easily capture, but it shouldn't crash)
+	LOG_info("This goes to stdout");
+
+	log_close();  // Safe to call even when no file open
+}
+
+void test_log_open_explicit_path_overrides_env_var(void) {
+	// Set env var to one path
+	setenv("LOG_FILE", "/tmp/wrong_log.log", 1);
+
+	// Open with explicit different path
+	int result = log_open("/tmp/test_log.log");
+	TEST_ASSERT_EQUAL(0, result);
+
+	LOG_info("Explicit path message");
+
+	log_close();
+	unsetenv("LOG_FILE");
+
+	// Should have written to explicit path, not env var path
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "Explicit path message") != NULL);
+	free(content);
+
+	// Wrong path should not exist (or be empty)
+	TEST_ASSERT_FALSE(access("/tmp/wrong_log.log", F_OK) == 0);
+}
+
+void test_log_close_safe_when_not_open(void) {
+	// Ensure not open
+	unsetenv("LOG_FILE");
+	log_close();  // Should not crash
+
+	// Call again - still safe
+	log_close();
+
+	TEST_ASSERT_FALSE(log_is_file_open());
+}
+
+void test_log_open_can_reopen(void) {
+	// Open first file
+	log_open("/tmp/test_log.log");
+	LOG_info("First file");
+
+	// Open second file (should close first)
+	unlink("/tmp/test_log2.log");
+	log_open("/tmp/test_log2.log");
+	LOG_info("Second file");
+
+	log_close();
+
+	// Both files should exist with correct content
+	char* content1 = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content1);
+	TEST_ASSERT_TRUE(strstr(content1, "First file") != NULL);
+	TEST_ASSERT_TRUE(strstr(content1, "Second file") == NULL);
+	free(content1);
+
+	char* content2 = read_file("/tmp/test_log2.log");
+	TEST_ASSERT_NOT_NULL(content2);
+	TEST_ASSERT_TRUE(strstr(content2, "Second file") != NULL);
+	TEST_ASSERT_TRUE(strstr(content2, "First file") == NULL);
+	free(content2);
+
+	unlink("/tmp/test_log2.log");
+}
+
+void test_log_sync_flushes_to_disk(void) {
+	log_open("/tmp/test_log.log");
+	LOG_info("Before sync");
+
+	// Sync should not crash and should ensure data is on disk
+	log_sync();
+
+	// File should be readable immediately after sync
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "Before sync") != NULL);
+	free(content);
+
+	log_close();
+}
+
+void test_log_sync_safe_when_not_open(void) {
+	// Ensure not open
+	unsetenv("LOG_FILE");
+	log_close();
+
+	// Sync should not crash when no file open
+	log_sync();
+
+	TEST_ASSERT_FALSE(log_is_file_open());
+}
+
+void test_log_sync_env_var(void) {
+	// Set LOG_SYNC=1
+	setenv("LOG_FILE", "/tmp/test_log.log", 1);
+	setenv("LOG_SYNC", "1", 1);
+
+	log_open(NULL);
+	TEST_ASSERT_TRUE(log_is_file_open());
+
+	// Write - should auto-sync due to LOG_SYNC=1
+	LOG_info("Synced message");
+
+	// File should be readable immediately (synced after each write)
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "Synced message") != NULL);
+	free(content);
+
+	log_close();
+	unsetenv("LOG_FILE");
+	unsetenv("LOG_SYNC");
+}
+
+void test_log_sync_env_var_only_when_one(void) {
+	// Set LOG_SYNC to something other than "1"
+	setenv("LOG_FILE", "/tmp/test_log.log", 1);
+	setenv("LOG_SYNC", "yes", 1);  // Not "1", should not enable sync
+
+	log_open(NULL);
+	LOG_info("Message");
+	log_close();
+
+	unsetenv("LOG_FILE");
+	unsetenv("LOG_SYNC");
+
+	// Just verify it didn't crash - sync mode only enabled for "1"
+	TEST_ASSERT_TRUE(1);
+}
+
+void test_log_is_file_open_accurate(void) {
+	// Initially not open
+	unsetenv("LOG_FILE");
+	log_close();
+	TEST_ASSERT_FALSE(log_is_file_open());
+
+	// After open
+	log_open("/tmp/test_log.log");
+	TEST_ASSERT_TRUE(log_is_file_open());
+
+	// After close
+	log_close();
+	TEST_ASSERT_FALSE(log_is_file_open());
+}
+
+void test_log_error_routes_to_file(void) {
+	log_open("/tmp/test_log.log");
+	LOG_error("Error message test");
+	log_close();
+
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "[ERROR]") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "Error message test") != NULL);
+	// ERROR includes file:line
+	TEST_ASSERT_TRUE(strstr(content, "test_log.c:") != NULL);
+	free(content);
+}
+
+void test_log_warn_routes_to_file(void) {
+	log_open("/tmp/test_log.log");
+	LOG_warn("Warning message test");
+	log_close();
+
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "[WARN]") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "Warning message test") != NULL);
+	free(content);
+}
+
+void test_log_debug_routes_to_file(void) {
+	log_open("/tmp/test_log.log");
+	LOG_debug("Debug message test");
+	log_close();
+
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "[DEBUG]") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "Debug message test") != NULL);
+	free(content);
+}
+
+void test_log_errno_routes_to_file(void) {
+	log_open("/tmp/test_log.log");
+	errno = ENOENT;
+	LOG_errno("Failed to open");
+	log_close();
+
+	char* content = read_file("/tmp/test_log.log");
+	TEST_ASSERT_NOT_NULL(content);
+	TEST_ASSERT_TRUE(strstr(content, "[ERROR]") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "Failed to open") != NULL);
+	TEST_ASSERT_TRUE(strstr(content, "No such file or directory") != NULL);
+	free(content);
+}
+
+void test_log_global_with_rotation(void) {
+	// Use small max size to trigger rotation
+	// Note: log_open uses default 1MB, so we test that file grows correctly
+	log_open("/tmp/test_log.log");
+
+	// Write multiple messages
+	for (int i = 0; i < 10; i++) {
+		LOG_info("Message number %d for rotation test", i);
+	}
+
+	log_close();
+
+	// Verify all messages written
+	int lines = count_lines("/tmp/test_log.log");
+	TEST_ASSERT_EQUAL(10, lines);
+}
+
+///////////////////////////////
 // Integration Tests
 ///////////////////////////////
 
@@ -493,6 +773,24 @@ int main(void) {
 	// Integration tests
 	RUN_TEST(test_log_errno_includes_error_message);
 	RUN_TEST(test_log_levels_in_output);
+
+	// Global Log API tests
+	RUN_TEST(test_log_open_with_explicit_path);
+	RUN_TEST(test_log_open_with_env_var);
+	RUN_TEST(test_log_open_without_env_var_uses_stdout);
+	RUN_TEST(test_log_open_explicit_path_overrides_env_var);
+	RUN_TEST(test_log_close_safe_when_not_open);
+	RUN_TEST(test_log_open_can_reopen);
+	RUN_TEST(test_log_sync_flushes_to_disk);
+	RUN_TEST(test_log_sync_safe_when_not_open);
+	RUN_TEST(test_log_sync_env_var);
+	RUN_TEST(test_log_sync_env_var_only_when_one);
+	RUN_TEST(test_log_is_file_open_accurate);
+	RUN_TEST(test_log_error_routes_to_file);
+	RUN_TEST(test_log_warn_routes_to_file);
+	RUN_TEST(test_log_debug_routes_to_file);
+	RUN_TEST(test_log_errno_routes_to_file);
+	RUN_TEST(test_log_global_with_rotation);
 
 	return UNITY_END();
 }

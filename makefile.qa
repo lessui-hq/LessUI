@@ -206,9 +206,10 @@ test-native: $(TEST_EXECUTABLES)
 	@echo "✓ All tests passed"
 
 # Build logging system tests
+# Enable INFO and DEBUG logs so we can test all log levels
 tests/log_test: tests/unit/all/common/test_log.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building logging system tests..."
-	@$(CC) $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE -o $@ $^ -lpthread
+	@$(CC) $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS -o $@ $^ -lpthread
 
 # Build comprehensive utils tests
 tests/utils_test: tests/unit/all/common/test_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
