@@ -113,6 +113,8 @@ This package contains:
 
 ### M17 (Deprecated)
 
+**Important:** SD card must be formatted as **exFAT** (FAT32 will not work).
+
 **Setup:**
 1. Copy `em_ui.sh` to SD card root
 2. Copy `LessUI.zip` to SD card root

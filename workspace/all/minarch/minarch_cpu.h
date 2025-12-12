@@ -115,6 +115,7 @@ typedef struct {
 
 	// Flags for frequency detection
 	int frequencies_detected; // 1 if frequencies have been detected
+	int scaling_disabled; // 1 if scaling is disabled (0 or 1 frequency available)
 
 	// Per-frequency panic tracking (failsafe for problematic frequencies)
 	int panic_count[MINARCH_CPU_MAX_FREQUENCIES]; // Count of panics at each frequency

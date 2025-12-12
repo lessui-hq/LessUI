@@ -83,27 +83,32 @@ void MinArchCPU_detectFrequencies(MinArchCPUState* state, const MinArchCPUConfig
 		}
 	}
 
-	if (state->freq_count >= 2) {
-		state->use_granular = 1;
-
-		// Calculate preset indices based on percentage of max frequency
-		int max_freq = state->frequencies[state->freq_count - 1];
-
-		// POWERSAVE: 55% of max
-		int ps_target = max_freq * 55 / 100;
-		state->preset_indices[MINARCH_CPU_LEVEL_POWERSAVE] =
-		    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, ps_target);
-
-		// NORMAL: 80% of max
-		int normal_target = max_freq * 80 / 100;
-		state->preset_indices[MINARCH_CPU_LEVEL_NORMAL] =
-		    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, normal_target);
-
-		// PERFORMANCE: max frequency
-		state->preset_indices[MINARCH_CPU_LEVEL_PERFORMANCE] = state->freq_count - 1;
-	} else {
+	// Disable scaling if only 0 or 1 frequency available (nothing to scale)
+	if (state->freq_count <= 1) {
+		state->scaling_disabled = 1;
 		state->use_granular = 0;
+		state->frequencies_detected = 1;
+		return;
 	}
+
+	state->scaling_disabled = 0;
+	state->use_granular = 1;
+
+	// Calculate preset indices based on percentage of max frequency
+	int max_freq = state->frequencies[state->freq_count - 1];
+
+	// POWERSAVE: 55% of max
+	int ps_target = max_freq * 55 / 100;
+	state->preset_indices[MINARCH_CPU_LEVEL_POWERSAVE] =
+	    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, ps_target);
+
+	// NORMAL: 80% of max
+	int normal_target = max_freq * 80 / 100;
+	state->preset_indices[MINARCH_CPU_LEVEL_NORMAL] =
+	    MinArchCPU_findNearestIndex(state->frequencies, state->freq_count, normal_target);
+
+	// PERFORMANCE: max frequency
+	state->preset_indices[MINARCH_CPU_LEVEL_PERFORMANCE] = state->freq_count - 1;
 
 	state->frequencies_detected = 1;
 }
@@ -187,6 +192,13 @@ MinArchCPUDecision MinArchCPU_update(MinArchCPUState* state, const MinArchCPUCon
 		result->new_level = state->target_level;
 		result->utilization = 0;
 		result->p90_time = 0;
+	}
+
+	// Skip if scaling is disabled (0 or 1 frequency available)
+	if (state->scaling_disabled) {
+		if (result)
+			result->decision = MINARCH_CPU_DECISION_SKIP;
+		return MINARCH_CPU_DECISION_SKIP;
 	}
 
 	// Skip during special states

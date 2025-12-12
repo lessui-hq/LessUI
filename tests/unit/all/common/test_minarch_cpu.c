@@ -8,8 +8,9 @@
  * - Panic path (underrun handling)
  * - Granular vs fallback modes
  * - Frame timing percentile calculation
+ * - Single-frequency/scaling-disabled scenarios (M17-like devices)
  *
- * 30 tests organized by functionality.
+ * 46 tests organized by functionality.
  */
 
 #include "../../../support/unity/unity.h"
@@ -135,12 +136,32 @@ void test_detectFrequencies_enables_granular_mode(void) {
 	TEST_ASSERT_EQUAL(1, state.frequencies_detected);
 }
 
-void test_detectFrequencies_fallback_with_one_freq(void) {
+void test_detectFrequencies_disables_scaling_with_one_freq(void) {
 	int raw[] = {800000}; // Only one frequency
 	MinArchCPU_detectFrequencies(&state, &config, raw, 1);
 
+	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Scaling disabled
 	TEST_ASSERT_EQUAL(0, state.use_granular);
 	TEST_ASSERT_EQUAL(1, state.freq_count);
+	TEST_ASSERT_EQUAL(1, state.frequencies_detected);
+}
+
+void test_detectFrequencies_disables_scaling_with_zero_freqs(void) {
+	MinArchCPU_detectFrequencies(&state, &config, NULL, 0);
+
+	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Scaling disabled
+	TEST_ASSERT_EQUAL(0, state.use_granular);
+	TEST_ASSERT_EQUAL(0, state.freq_count);
+	TEST_ASSERT_EQUAL(1, state.frequencies_detected);
+}
+
+void test_detectFrequencies_enables_scaling_with_multiple_freqs(void) {
+	int raw[] = {400000, 600000, 800000};
+	MinArchCPU_detectFrequencies(&state, &config, raw, 3);
+
+	TEST_ASSERT_EQUAL(0, state.scaling_disabled); // Scaling enabled
+	TEST_ASSERT_EQUAL(1, state.use_granular);
+	TEST_ASSERT_EQUAL(3, state.freq_count);
 }
 
 void test_detectFrequencies_calculates_preset_indices(void) {
@@ -322,6 +343,40 @@ void test_update_skips_during_grace_period(void) {
 
 	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(101, state.startup_frames); // Incremented
+}
+
+void test_update_skips_when_scaling_disabled(void) {
+	// Simulate M17-like single-frequency device
+	int raw[] = {1200000}; // Only one frequency (like M17)
+	MinArchCPU_detectFrequencies(&state, &config, raw, 1);
+
+	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Pre-condition: scaling disabled
+
+	// Even with valid state and frame times, should skip
+	state.startup_frames = config.startup_grace;
+	state.frame_count = config.window_frames - 1;
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		MinArchCPU_recordFrameTime(&state, 15000); // High utilization
+	}
+
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, &result);
+
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, result.decision);
+}
+
+void test_update_skips_when_no_frequencies(void) {
+	// Edge case: no frequencies at all
+	MinArchCPU_detectFrequencies(&state, &config, NULL, 0);
+
+	TEST_ASSERT_EQUAL(1, state.scaling_disabled);
+
+	MinArchCPUResult result;
+	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 0, &result);
+
+	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_SKIP, decision);
 }
 
 ///////////////////////////////
@@ -537,7 +592,9 @@ int main(void) {
 	// detectFrequencies
 	RUN_TEST(test_detectFrequencies_filters_below_minimum);
 	RUN_TEST(test_detectFrequencies_enables_granular_mode);
-	RUN_TEST(test_detectFrequencies_fallback_with_one_freq);
+	RUN_TEST(test_detectFrequencies_disables_scaling_with_one_freq);
+	RUN_TEST(test_detectFrequencies_disables_scaling_with_zero_freqs);
+	RUN_TEST(test_detectFrequencies_enables_scaling_with_multiple_freqs);
 	RUN_TEST(test_detectFrequencies_calculates_preset_indices);
 
 	// reset
@@ -571,6 +628,8 @@ int main(void) {
 	RUN_TEST(test_update_skips_during_fast_forward);
 	RUN_TEST(test_update_skips_during_menu);
 	RUN_TEST(test_update_skips_during_grace_period);
+	RUN_TEST(test_update_skips_when_scaling_disabled);
+	RUN_TEST(test_update_skips_when_no_frequencies);
 
 	// update - panic
 	RUN_TEST(test_update_panic_on_underrun_granular);

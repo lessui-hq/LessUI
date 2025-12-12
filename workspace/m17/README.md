@@ -13,6 +13,7 @@ Platform implementation for the M17 retro handheld device.
 
 ### Display
 - **Resolution**: 480x272 (16:9 widescreen)
+- **Diagonal**: 4.3 inches
 - **Color Depth**: 16-bit RGB565
 - **UI Scale**: 1x (uses `assets.png`)
 - **Aspect Ratio**: 16:9 widescreen format
@@ -33,9 +34,13 @@ Platform implementation for the M17 retro handheld device.
 - **Analog Sticks**: Supported via EV_ABS events
 
 ### CPU & Performance
-- ARM processor with potential NEON SIMD support (HAS_NEON defined)
+- **SoC**: Rockchip RK3126C
+- **CPU**: 4x Cortex-A7 @ 1.2 GHz (fixed frequency, no scaling)
+- **GPU**: Mali 400 @ 480 MHz (fixed frequency, no scaling)
+- **RAM**: ~240 MB
+- ARM NEON SIMD support (HAS_NEON defined)
 - Supports CPU affinity pinning (taskset 8 for core 3)
-- No overclocking utilities included
+- **Note**: CPU/GPU frequency scaling is not available on this device
 
 ### Power Management
 - Headphone jack detection via sysfs (`/sys/devices/virtual/switch/h2w/state`)
@@ -44,6 +49,7 @@ Platform implementation for the M17 retro handheld device.
 
 ### Storage
 - SD card mounted at `/sdcard`
+- **Important:** SD card must be formatted as **exFAT** (FAT32 will not work)
 
 ## Directory Structure
 

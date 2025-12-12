@@ -2,10 +2,10 @@
  * m17/platform/platform.h - Platform definitions for M17
  *
  * Supported devices:
- * - M17: 480x273 display (16:9 widescreen)
+ * - M17: 480x272 display (16:9 widescreen, 4.3" diagonal)
  *
  * Hardware features:
- * - 480x273 widescreen display (16:9 aspect ratio)
+ * - 480x272 widescreen display (16:9 aspect ratio)
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
  * - Menu button with alternate
@@ -146,9 +146,9 @@
 // Display Specifications
 ///////////////////////////////
 
-#define SCREEN_DIAGONAL 7.0f // Physical screen diagonal in inches (estimated)
+#define SCREEN_DIAGONAL 4.3f // Physical screen diagonal in inches
 #define FIXED_WIDTH 480 // Screen width in pixels
-#define FIXED_HEIGHT 273 // Screen height in pixels (16:9 widescreen)
+#define FIXED_HEIGHT 272 // Screen height in pixels (16:9 widescreen)
 
 ///////////////////////////////
 // Platform-Specific Paths and Settings
