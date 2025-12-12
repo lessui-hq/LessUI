@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <string.h>
-// #include <tinyalsa/mixer.h>
 
 #include "msettings.h"
 
@@ -41,11 +40,6 @@ static char SettingsPath[256];
 static int shm_fd = -1;
 static int is_host = 0;
 static int shm_size = sizeof(Settings);
-
-// #define BACKLIGHT_PATH "/sys/class/backlight/backlight/bl_power"
-// #define BRIGHTNESS_PATH "/sys/class/backlight/backlight/brightness"
-// #define JACK_STATE_PATH "/sys/bus/platform/devices/singleadc-joypad/hp"
-// #define HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"
 
 int getInt(char* path) {
 	int i = 0;
@@ -84,13 +78,9 @@ void InitSettings(void) {
 			memcpy(settings, &DefaultSettings, shm_size);
 		}
 		
-		// these shouldn't be persisted
-		// settings->jack = 0;
-		// settings->hdmi = 0;
 		settings->mute = 0;
 	}
-	// printf("brightness: %i\nspeaker: %i \n", settings->brightness, settings->speaker);
-	 
+
 	system("amixer sset 'Headphone' 0"); // 100%
 	system("amixer sset 'digital volume' 0"); // 100%
 	system("amixer sset 'Soft Volume Master' 255"); // 100%
@@ -143,8 +133,6 @@ int GetVolume(void) { // 0-20
 }
 void SetVolume(int value) { // 0-20
 	if (settings->mute) return SetRawVolume(0);
-	// if (settings->hdmi) return;
-	
 	if (settings->jack) settings->headphones = value;
 	else settings->speaker = value;
 
@@ -156,10 +144,7 @@ void SetVolume(int value) { // 0-20
 
 #define DISP_LCD_SET_BRIGHTNESS  0x102
 void SetRawBrightness(int val) { // 0 - 255
-	// if (settings->hdmi) return;
-	
-	// val = 255-val; // inverted
-	printf("SetRawBrightness(%i)\n", val); fflush(stdout);
+	val = 255-val; // zero28 display driver uses inverted values
 
     int fd = open("/dev/disp", O_RDWR);
 	if (fd) {
@@ -169,62 +154,26 @@ void SetRawBrightness(int val) { // 0 - 255
 	}
 }
 void SetRawVolume(int val) { // 0 or 96 - 160
-	printf("SetRawVolume(%i)\n", val); fflush(stdout);
 	if (settings->mute) val = 0;
-	
+
 	char cmd[256];
 	sprintf(cmd, "amixer sset 'DAC volume' %i &> /dev/null", val);
 	system(cmd);
-	
-	// TODO: unfortunately doing it this way creating a linker nightmare
-	// struct mixer *mixer = mixer_open(0);
-	// struct mixer_ctl *ctl;
-	//
-	// // digital volume (one-time?)
-	// ctl = mixer_get_ctl(mixer, 3);
-	// mixer_ctl_set_value(ctl,0,0);
-	//
-	// // Soft Volume Master (one-time?)
-	// ctl = mixer_get_ctl(mixer, 16);
-	// mixer_ctl_set_value(ctl,0,255);
-	// mixer_ctl_set_value(ctl,1,255);
-	//
-	// // DAC volume
-	// ctl = mixer_get_ctl(mixer, 7);
-	// mixer_ctl_set_value(ctl,0,val);
-	// mixer_ctl_set_value(ctl,1,val);
-	// mixer_close(mixer);
-	
-	// char cmd[256];
-	// sprintf(cmd, "amixer sset 'digital volume' %i%% &> /dev/null", 100-val);
-	// // puts(cmd); fflush(stdout);
-	// system(cmd);
 }
 
-// monitored and set by thread in keymon
 int GetJack(void) {
 	return settings->jack;
 }
 void SetJack(int value) {
-	printf("SetJack(%i)\n", value); fflush(stdout);
-	
 	settings->jack = value;
 	SetVolume(GetVolume());
 }
 
-int GetHDMI(void) {	
-	// printf("GetHDMI() %i\n", settings->hdmi); fflush(stdout);
-	// return settings->hdmi;
-	return 0;
+int GetHDMI(void) {
+	return 0; // zero28 has no HDMI
 }
 void SetHDMI(int value) {
-	// printf("SetHDMI(%i)\n", value); fflush(stdout);
-	
-	// if (settings->hdmi!=value) system("/usr/lib/autostart/common/055-hdmi-check");
-	
-	// settings->hdmi = value;
-	// if (value) SetRawVolume(100); // max
-	// else SetVolume(GetVolume()); // restore
+	(void)value; // zero28 has no HDMI
 }
 
 int GetMute(void) {
