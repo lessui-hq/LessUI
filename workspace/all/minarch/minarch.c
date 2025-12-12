@@ -1184,8 +1184,8 @@ static float current_vsync_hz = 0;
  * Granular Mode Algorithm:
  * - Performance scales linearly with frequency
  * - Boost: Jump to predicted optimal frequency (no step limit)
- * - Reduce: Limited to MAX_STEP indices to prevent underruns
- * - Panic: Boost by MAX_STEP on underrun, with cooldown
+ * - Reduce: Limited to max_step_down indices to prevent underruns
+ * - Panic: Boost by panic_step_up on underrun, with cooldown
  *
  * Fallback Mode Algorithm (3 levels):
  * - Count consecutive high/low util windows
@@ -1240,7 +1240,7 @@ static void updateAutoCPU(void) {
 		}
 
 		if (auto_cpu_state.use_granular) {
-			int new_idx = current_idx + auto_cpu_config.max_step;
+			int new_idx = current_idx + auto_cpu_config.panic_step_up;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
 			auto_cpu_setTargetIndex(new_idx);
@@ -1248,7 +1248,7 @@ static void updateAutoCPU(void) {
 			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx],
 			         audio_fill);
 		} else {
-			int new_level = current_level + auto_cpu_config.max_step;
+			int new_level = current_level + auto_cpu_config.panic_step_up;
 			if (new_level > 2)
 				new_level = 2;
 			auto_cpu_setTargetLevel(new_level);
@@ -1356,9 +1356,9 @@ static void updateAutoCPU(void) {
 					if (new_idx < 0)
 						new_idx = 0;
 
-					// Limit reduction to MAX_STEP indices at once
-					if (current_idx - new_idx > auto_cpu_config.max_step) {
-						new_idx = current_idx - auto_cpu_config.max_step;
+					// Limit reduction to max_step_down indices at once
+					if (current_idx - new_idx > auto_cpu_config.max_step_down) {
+						new_idx = current_idx - auto_cpu_config.max_step_down;
 					}
 
 					// Skip blocked frequencies - find first unblocked one above new_idx.

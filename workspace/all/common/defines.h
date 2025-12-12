@@ -347,11 +347,34 @@
 ///////////////////////////////
 
 /**
- * Default audio buffer size in samples.
- * Platforms can override this if needed (e.g., for latency tuning).
+ * SDL audio callback chunk size in samples.
+ * At 48kHz/60fps, one video frame = 800 samples.
+ * 256 samples = ~5.3ms per callback, smoother audio stream.
+ * Platforms can override this in platform.h if needed.
  */
-#ifndef SAMPLES
-#define SAMPLES 512
+#ifndef SND_CHUNK_SAMPLES
+#define SND_CHUNK_SAMPLES 256
+#endif
+
+/**
+ * Audio ring buffer size in samples (stereo frames).
+ * Controls how much audio is buffered ahead (~85ms at 48kHz with 4096 samples).
+ * Lower values reduce latency, higher values prevent underruns on slow devices.
+ * Platforms can override this in platform.h if needed.
+ */
+#ifndef SND_BUFFER_SAMPLES
+#define SND_BUFFER_SAMPLES 4096
+#endif
+
+/**
+ * Rate control proportional gain (d parameter from Arntzen paper).
+ * Controls maximum pitch deviation for buffer level compensation.
+ * Higher values = more aggressive correction, faster response to jitter.
+ * Paper recommends 0.2-0.5%, but handhelds need 1.0-1.5% due to timing variance.
+ * Platforms can override this in platform.h if needed.
+ */
+#ifndef SND_RATE_CONTROL_D
+#define SND_RATE_CONTROL_D 0.012f
 #endif
 
 ///////////////////////////////

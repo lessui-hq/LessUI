@@ -46,7 +46,8 @@ void MinArchCPU_initConfig(MinArchCPUConfig* config) {
 	config->startup_grace = MINARCH_CPU_DEFAULT_STARTUP_GRACE;
 	config->min_freq_khz = MINARCH_CPU_DEFAULT_MIN_FREQ_KHZ;
 	config->target_util = MINARCH_CPU_DEFAULT_TARGET_UTIL;
-	config->max_step = MINARCH_CPU_DEFAULT_MAX_STEP;
+	config->max_step_down = MINARCH_CPU_DEFAULT_MAX_STEP_DOWN;
+	config->panic_step_up = MINARCH_CPU_DEFAULT_PANIC_STEP_UP;
 }
 
 void MinArchCPU_initState(MinArchCPUState* state) {
@@ -215,9 +216,9 @@ MinArchCPUDecision MinArchCPU_update(MinArchCPUState* state, const MinArchCPUCon
 
 	// Emergency: check for underruns (panic path)
 	if (current_underruns > state->last_underrun && !at_max) {
-		// Underrun detected - boost by up to max_step
+		// Underrun detected - boost by panic_step_up
 		if (state->use_granular) {
-			int new_idx = current_idx + config->max_step;
+			int new_idx = current_idx + config->panic_step_up;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
 			state->target_index = new_idx;
@@ -226,7 +227,7 @@ MinArchCPUDecision MinArchCPU_update(MinArchCPUState* state, const MinArchCPUCon
 				result->new_index = new_idx;
 			}
 		} else {
-			int new_level = current_level + config->max_step;
+			int new_level = current_level + config->panic_step_up;
 			if (new_level > 2)
 				new_level = 2;
 			state->target_level = new_level;
@@ -343,9 +344,9 @@ MinArchCPUDecision MinArchCPU_update(MinArchCPUState* state, const MinArchCPUCon
 				if (new_idx < 0)
 					new_idx = 0;
 
-				// Limit reduction to max_step
-				if (current_idx - new_idx > config->max_step) {
-					new_idx = current_idx - config->max_step;
+				// Limit reduction to max_step_down
+				if (current_idx - new_idx > config->max_step_down) {
+					new_idx = current_idx - config->max_step_down;
 				}
 
 				state->target_index = new_idx;

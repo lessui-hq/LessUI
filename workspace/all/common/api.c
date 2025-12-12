@@ -1833,16 +1833,12 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 
 #define MAX_SAMPLE_RATE 48000
 #define BATCH_SIZE 100 // Max frames to batch per write
-// SAMPLES defined in defines.h (default 512)
+// SND_CHUNK_SAMPLES defined in defines.h (default 512)
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-// Rate control feedback gain (Arntzen paper: pure proportional control).
+// SND_RATE_CONTROL_D is defined in defines.h (platforms can override)
 // See docs/audio-rate-control.md for tuning guidance.
-//
-// d: Response to buffer level. Paper recommends 0.002-0.005.
-//    Higher = faster convergence but more audible pitch variation.
-#define SND_RATE_CONTROL_D_DEFAULT 0.010f // 1.0% - tuned for handheld timing variance
 
 // Dual-timescale PI controller: integral operates on smoothed error to avoid fighting proportional
 // ki: Integral gain - very slow accumulation for persistent drift only
@@ -1852,9 +1848,7 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 #define SND_ERROR_AVG_ALPHA 0.003f
 #define SND_INTEGRAL_CLAMP 0.02f
 
-// Buffer sizing: 5 video frames of audio (~83ms at 60fps)
-// Provides headroom for timing variance while keeping latency reasonable.
-#define SND_BUFFER_FRAMES 5
+// SND_BUFFER_SAMPLES is defined in defines.h (platforms can override)
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1864,7 +1858,6 @@ static struct SND_Context {
 	int sample_rate_in;
 	int sample_rate_out;
 
-	int buffer_video_frames; // How many video frames of audio to buffer
 	SND_Frame* buffer; // Ring buffer
 	size_t frame_count; // Buffer capacity in samples
 
@@ -1981,21 +1974,17 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 }
 
 /**
- * Resizes the audio ring buffer based on sample rate and frame rate.
+ * Allocates the audio ring buffer.
  *
- * Buffer holds buffer_video_frames worth of audio samples.
- * At 60fps this is ~83ms, at 50fps ~100ms.
+ * Buffer size is SND_BUFFER_SAMPLES (~83ms at 48kHz with 4000 samples).
  * Locks audio thread during resize to prevent corruption.
  *
- * @note Called during init and when audio parameters change
+ * @note Called during init
  */
-static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
-	snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
+static void SND_resizeBuffer(void) {
+	snd.frame_count = SND_BUFFER_SAMPLES;
 	if (snd.frame_count == 0)
 		return;
-
-	// LOG_info("frame_count: %i (%i * %i / %f)\n", snd.frame_count, snd.buffer_video_frames, snd.sample_rate_in, snd.frame_rate);
-	// snd.frame_count *= 2; // no help
 
 	SDL_LockAudio();
 
@@ -2072,7 +2061,7 @@ static float SND_calculateRateAdjust(void) {
 	float error = 1.0f - 2.0f * fill;
 
 	// Fast timescale (proportional): immediate response to buffer level changes
-	float p_term = error * SND_RATE_CONTROL_D_DEFAULT;
+	float p_term = error * SND_RATE_CONTROL_D;
 
 	// Slow timescale (integral): persistent offset learned in SND_newFrame()
 	// Integral is updated once per frame, not here (avoids N updates for N audio batches)
@@ -2199,13 +2188,12 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	spec_in.freq = PLAT_pickSampleRate(sample_rate, MAX_SAMPLE_RATE);
 	spec_in.format = AUDIO_S16;
 	spec_in.channels = 2;
-	spec_in.samples = SAMPLES;
+	spec_in.samples = SND_CHUNK_SAMPLES;
 	spec_in.callback = SND_audioCallback;
 
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_video_frames = SND_BUFFER_FRAMES;
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
@@ -2215,8 +2203,8 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 
 	SDL_PauseAudio(0);
 
-	LOG_info("sample rate: %i (req) %i (rec) [samples %i]\n", snd.sample_rate_in,
-	         snd.sample_rate_out, SAMPLES);
+	LOG_info("sample rate: %i (req) %i (rec) [chunk %i]\n", snd.sample_rate_in, snd.sample_rate_out,
+	         SND_CHUNK_SAMPLES);
 	snd.initialized = 1;
 }
 
@@ -2325,7 +2313,7 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.rate_adjust = snd.last_rate_adjust;
 	snap.total_adjust = snd.last_rate_adjust;
 	snap.rate_integral = snd.rate_integral;
-	snap.rate_control_d = SND_RATE_CONTROL_D_DEFAULT;
+	snap.rate_control_d = SND_RATE_CONTROL_D;
 	snap.rate_control_ki = SND_RATE_CONTROL_KI;
 	snap.error_avg = snd.error_avg;
 

@@ -41,7 +41,8 @@
 #define MINARCH_CPU_DEFAULT_STARTUP_GRACE 300 // Frames to skip (~5s at 60fps)
 #define MINARCH_CPU_DEFAULT_MIN_FREQ_KHZ 0 // No minimum (panic failsafe handles problematic freqs)
 #define MINARCH_CPU_DEFAULT_TARGET_UTIL 70 // Target utilization after change
-#define MINARCH_CPU_DEFAULT_MAX_STEP 2 // Max frequency steps per change
+#define MINARCH_CPU_DEFAULT_MAX_STEP_DOWN 1 // Max frequency steps when reducing
+#define MINARCH_CPU_DEFAULT_PANIC_STEP_UP 2 // Frequency steps on panic (underrun)
 #define MINARCH_CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
 
 /**
@@ -76,7 +77,8 @@ typedef struct {
 	int startup_grace; // Grace period frames at startup
 	int min_freq_khz; // Minimum frequency to consider (kHz)
 	unsigned int target_util; // Target utilization after frequency change
-	int max_step; // Maximum frequency index steps per change
+	int max_step_down; // Max frequency steps when reducing
+	int panic_step_up; // Frequency steps on panic (underrun)
 } MinArchCPUConfig;
 
 /**

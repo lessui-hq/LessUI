@@ -27,6 +27,13 @@
 #define PLATFORM "my355"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// More aggressive rate control for device with timing variance
+#define SND_RATE_CONTROL_D 0.015f
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 

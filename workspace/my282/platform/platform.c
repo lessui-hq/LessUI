@@ -403,16 +403,24 @@ void PLAT_setCPUSpeed(int speed) {
 }
 
 /**
- * Gets available CPU frequencies from sysfs.
+ * Returns hardcoded CPU frequencies for my282.
  *
- * my282 may expose frequencies via sysfs even though we use overclock.elf for setting.
+ * The my282 kernel (3.4.39) doesn't expose scaling_available_frequencies,
+ * so we return the frequencies discovered via probing.
  *
  * @param frequencies Output array to fill with frequencies (in kHz)
  * @param max_count Maximum number of frequencies to return
- * @return Number of frequencies found
+ * @return Number of frequencies returned
  */
 int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count) {
-	return PWR_getAvailableCPUFrequencies_sysfs(frequencies, max_count);
+	static const int known_freqs[] = {
+	    120000, 240000, 408000, 480000, 648000, 816000, 1008000, 1200000, 1344000,
+	};
+	int count = sizeof(known_freqs) / sizeof(known_freqs[0]);
+	if (count > max_count)
+		count = max_count;
+	memcpy(frequencies, known_freqs, count * sizeof(int));
+	return count;
 }
 
 /**

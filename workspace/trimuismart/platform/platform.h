@@ -24,6 +24,13 @@
 #define PLATFORM "trimuismart"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// More aggressive rate control for slower A7 device with high timing variance
+#define SND_RATE_CONTROL_D 0.015f
+
+///////////////////////////////
 // Video Buffer Scaling
 ///////////////////////////////
 

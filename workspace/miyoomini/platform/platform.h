@@ -23,6 +23,13 @@
 #define PLATFORM_MIYOOMINI 1 // For conditional compilation (show.c uses direct framebuffer)
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// More aggressive rate control for A7 device with high timing variance
+#define SND_RATE_CONTROL_D 0.015f
+
+///////////////////////////////
 // Video Buffer Scaling
 ///////////////////////////////
 

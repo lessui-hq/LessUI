@@ -50,10 +50,11 @@ void test_initConfig_sets_defaults(void) {
 	TEST_ASSERT_GREATER_THAN(0, c.boost_windows);
 	TEST_ASSERT_GREATER_THAN(0, c.reduce_windows);
 	TEST_ASSERT_GREATER_THAN(0, c.startup_grace);
-	TEST_ASSERT_GREATER_THAN(0, c.min_freq_khz);
+	TEST_ASSERT_GREATER_OR_EQUAL(0, c.min_freq_khz); // Can be 0 (panic failsafe handles low freqs)
 	TEST_ASSERT_GREATER_THAN(0, c.target_util);
 	TEST_ASSERT_LESS_OR_EQUAL(100, c.target_util);
-	TEST_ASSERT_GREATER_THAN(0, c.max_step);
+	TEST_ASSERT_GREATER_THAN(0, c.max_step_down);
+	TEST_ASSERT_GREATER_THAN(0, c.panic_step_up);
 }
 
 void test_initState_zeros_state(void) {
@@ -114,10 +115,12 @@ void test_findNearestIndex_above_max(void) {
 ///////////////////////////////
 
 void test_detectFrequencies_filters_below_minimum(void) {
+	// Set explicit min_freq_khz to test filtering behavior
+	config.min_freq_khz = 400000;
 	int raw[] = {100000, 200000, 300000, 400000, 600000, 800000};
 	MinArchCPU_detectFrequencies(&state, &config, raw, 6);
 
-	// Should only keep 400000, 600000, 800000
+	// Should only keep 400000, 600000, 800000 (at or above min_freq_khz)
 	TEST_ASSERT_EQUAL(3, state.freq_count);
 	TEST_ASSERT_EQUAL(400000, state.frequencies[0]);
 	TEST_ASSERT_EQUAL(600000, state.frequencies[1]);
@@ -337,7 +340,7 @@ void test_update_panic_on_underrun_granular(void) {
 	MinArchCPUDecision decision = MinArchCPU_update(&state, &config, false, false, 1, &result);
 
 	TEST_ASSERT_EQUAL(MINARCH_CPU_DECISION_PANIC, decision);
-	TEST_ASSERT_EQUAL(3, state.target_index); // Boosted by max_step=2 (1+2=3)
+	TEST_ASSERT_EQUAL(3, state.target_index); // Boosted by panic_step_up=2 (1+2=3)
 	TEST_ASSERT_EQUAL(8, state.panic_cooldown);
 }
 
