@@ -28,11 +28,18 @@ test_show() {
 		return
 	fi
 
+	# Stop shui to release display buffer before show.elf takes control
+	# (shui will auto-start when next called)
+	shui stop
+
 	# show.elf displays the image and auto-exits after 2 seconds
-	if show.elf "$TEST_IMAGE" 2 2>/dev/null; then
+	# Enable logging to help debug centering issues
+	LOG_FILE="$USERDATA_PATH/logs/Kitchen Sink.log" show.elf "$TEST_IMAGE" 2 >>"$USERDATA_PATH/logs/Kitchen Sink.log" 2>&1
+	result=$?
+	if [ $result -eq 0 ]; then
 		record "show.elf: PASS"
 	else
-		record "show.elf: FAIL (exit $?)"
+		record "show.elf: FAIL (exit $result)"
 	fi
 }
 
