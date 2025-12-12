@@ -872,10 +872,13 @@ static void* auto_cpu_scaling_thread(void* arg) {
 			if (target_idx != current_idx && target_idx >= 0 &&
 			    target_idx < auto_cpu_state.freq_count) {
 				int freq_khz = auto_cpu_state.frequencies[target_idx];
-				LOG_info("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
-				         auto_cpu_state.freq_count - 1);
+				unsigned audio_fill_before = SND_getBufferOccupancy();
+				LOG_info("Auto CPU: setting %d kHz (index %d/%d, audio=%u%%)\n", freq_khz,
+				         target_idx, auto_cpu_state.freq_count - 1, audio_fill_before);
+				(void)audio_fill_before; // Used in LOG_info which may be compiled out
 
-				if (PLAT_setCPUFrequency(freq_khz) == 0) {
+				int result = PLAT_setCPUFrequency(freq_khz);
+				if (result == 0) {
 					pthread_mutex_lock(&auto_cpu_mutex);
 					auto_cpu_state.current_index = target_idx;
 					pthread_mutex_unlock(&auto_cpu_mutex);
@@ -1095,6 +1098,9 @@ static void resetAutoCPUState(void) {
 	auto_cpu_state.frame_time_index = 0;
 	auto_cpu_state.panic_cooldown = 0;
 
+	// Reset panic tracking (menu changes may allow lower frequencies to work)
+	memset(auto_cpu_state.panic_count, 0, sizeof(auto_cpu_state.panic_count));
+
 	// Calculate frame budget from core's declared FPS
 	if (core.fps > 0) {
 		auto_cpu_state.frame_budget_us = (uint64_t)(1000000.0 / core.fps);
@@ -1211,20 +1217,43 @@ static void updateAutoCPU(void) {
 	int at_max = auto_cpu_state.use_granular ? (current_idx >= max_idx) : (current_level >= 2);
 
 	if (underruns > auto_cpu_state.last_underrun && !at_max) {
-		// Underrun detected - boost by up to MAX_STEP (not straight to max)
+		// Underrun detected - track panic and boost
+		unsigned audio_fill = SND_getBufferOccupancy();
+
+		// Track panic at current frequency (for failsafe blocking).
+		// If a frequency can't keep up, all lower frequencies are also blocked
+		// because lower freq = less CPU throughput = guaranteed worse performance.
+		if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		    current_idx < MINARCH_CPU_MAX_FREQUENCIES) {
+			auto_cpu_state.panic_count[current_idx]++;
+
+			if (auto_cpu_state.panic_count[current_idx] >= MINARCH_CPU_PANIC_THRESHOLD) {
+				LOG_warn("Auto CPU: BLOCKING %d kHz and below after %d panics (audio=%u%%)\n",
+				         auto_cpu_state.frequencies[current_idx],
+				         auto_cpu_state.panic_count[current_idx], audio_fill);
+				// Block this frequency and all below - they can't possibly work
+				// if this one failed (lower freq = strictly less performance)
+				for (int i = 0; i <= current_idx; i++) {
+					auto_cpu_state.panic_count[i] = MINARCH_CPU_PANIC_THRESHOLD;
+				}
+			}
+		}
+
 		if (auto_cpu_state.use_granular) {
 			int new_idx = current_idx + auto_cpu_config.max_step;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
 			auto_cpu_setTargetIndex(new_idx);
-			LOG_warn("Auto CPU: PANIC - underrun, boosting %d→%d kHz\n",
-			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx]);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting %d→%d kHz (audio=%u%%)\n",
+			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx],
+			         audio_fill);
 		} else {
 			int new_level = current_level + auto_cpu_config.max_step;
 			if (new_level > 2)
 				new_level = 2;
 			auto_cpu_setTargetLevel(new_level);
-			LOG_warn("Auto CPU: PANIC - underrun, boosting to level %d\n", new_level);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting to level %d (audio=%u%%)\n", new_level,
+			         audio_fill);
 		}
 		auto_cpu_state.high_util_windows = 0;
 		auto_cpu_state.low_util_windows = 0;
@@ -1298,9 +1327,11 @@ static void updateAutoCPU(void) {
 
 					auto_cpu_setTargetIndex(new_idx);
 					auto_cpu_state.high_util_windows = 0;
-					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%)\n", current_freq,
-					         auto_cpu_state.frequencies[new_idx], util,
-					         auto_cpu_config.target_util);
+					unsigned audio_fill = SND_getBufferOccupancy();
+					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%, audio=%u%%)\n",
+					         current_freq, auto_cpu_state.frequencies[new_idx], util,
+					         auto_cpu_config.target_util, audio_fill);
+					(void)audio_fill; // Used in LOG_info which may be compiled out
 				}
 			} else if (util < auto_cpu_config.util_low) {
 				// Can reduce power - step down
@@ -1330,14 +1361,33 @@ static void updateAutoCPU(void) {
 						new_idx = current_idx - auto_cpu_config.max_step;
 					}
 
-					int new_freq = auto_cpu_state.frequencies[new_idx];
-					int predicted_util = util * current_freq / new_freq;
+					// Skip blocked frequencies - find first unblocked one above new_idx.
+					// Frequencies get blocked when they cause repeated panics.
+					while (new_idx >= 0 &&
+					       auto_cpu_state.panic_count[new_idx] >= MINARCH_CPU_PANIC_THRESHOLD) {
+						new_idx++;
+						if (new_idx >= current_idx) {
+							// All lower frequencies blocked - stay at current
+							break;
+						}
+					}
 
-					auto_cpu_setTargetIndex(new_idx);
-					auto_cpu_state.low_util_windows = 0;
-					LOG_info("Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%)\n",
-					         current_freq, new_freq, util, predicted_util);
-					(void)predicted_util; // Used in LOG_info which may be compiled out
+					// Don't reduce if no safe frequency found
+					if (new_idx >= current_idx) {
+						auto_cpu_state.low_util_windows = 0;
+					} else {
+						int new_freq = auto_cpu_state.frequencies[new_idx];
+						int predicted_util = util * current_freq / new_freq;
+
+						auto_cpu_setTargetIndex(new_idx);
+						auto_cpu_state.low_util_windows = 0;
+						unsigned audio_fill = SND_getBufferOccupancy();
+						LOG_info(
+						    "Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%, audio=%u%%)\n",
+						    current_freq, new_freq, util, predicted_util, audio_fill);
+						(void)predicted_util; // Used in LOG_info which may be compiled out
+						(void)audio_fill; // Used in LOG_info which may be compiled out
+					}
 				}
 			} else {
 				// In sweet spot - reset counters
@@ -5013,7 +5063,7 @@ int main(int argc, char* argv[]) {
 	Config_readControls(); // restore controls (after the core has reported its defaults)
 	Config_free();
 
-	LOG_debug("SND_init (sample_rate=%d, fps=%f)", core.sample_rate, core.fps);
+	LOG_debug("SND_init (sample_rate=%.0f, fps=%.2f)", core.sample_rate, core.fps);
 	SND_init(core.sample_rate, core.fps);
 
 	LOG_debug("InitSettings");

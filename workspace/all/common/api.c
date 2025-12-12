@@ -1960,6 +1960,11 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 	if (len > 0) {
 		snd.underrun_count++; // Track for auto CPU scaling panic path
 
+		// Log underrun with context (every occurrence - these are critical events)
+		float fill_before = (float)(requested - len) / (float)snd.frame_count * 100.0f;
+		LOG_warn("Audio underrun #%u: needed %d more samples (had %d/%d, fill was %.0f%%)\n",
+		         snd.underrun_count, len, requested - len, requested, fill_before);
+
 		if (snd.frame_filled >= 0 && snd.frame_filled < (int)snd.frame_count) {
 			// Repeat last consumed frame to avoid click
 			SND_Frame last = snd.buffer[snd.frame_filled];

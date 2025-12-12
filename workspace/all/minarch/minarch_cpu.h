@@ -39,9 +39,10 @@
 #define MINARCH_CPU_DEFAULT_BOOST_WINDOWS 2 // Windows before boost (~1s)
 #define MINARCH_CPU_DEFAULT_REDUCE_WINDOWS 4 // Windows before reduce (~2s)
 #define MINARCH_CPU_DEFAULT_STARTUP_GRACE 300 // Frames to skip (~5s at 60fps)
-#define MINARCH_CPU_DEFAULT_MIN_FREQ_KHZ 400000 // Minimum frequency (400 MHz)
+#define MINARCH_CPU_DEFAULT_MIN_FREQ_KHZ 0 // No minimum (panic failsafe handles problematic freqs)
 #define MINARCH_CPU_DEFAULT_TARGET_UTIL 70 // Target utilization after change
 #define MINARCH_CPU_DEFAULT_MAX_STEP 2 // Max frequency steps per change
+#define MINARCH_CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
 
 /**
  * Preset level indices.
@@ -112,6 +113,9 @@ typedef struct {
 
 	// Flags for frequency detection
 	int frequencies_detected; // 1 if frequencies have been detected
+
+	// Per-frequency panic tracking (failsafe for problematic frequencies)
+	int panic_count[MINARCH_CPU_MAX_FREQUENCIES]; // Count of panics at each frequency
 } MinArchCPUState;
 
 /**
