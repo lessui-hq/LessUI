@@ -2075,25 +2075,75 @@ static float SND_calculateRateAdjust(void) {
 /**
  * Writes a batch of audio samples to the ring buffer.
  *
- * Uses linear interpolation resampling with dynamic rate control:
- * - Linear interpolation: Smoothly blends between adjacent samples
- * - Dynamic rate control: Adjusts pitch ±0.5% based on buffer fill level
+ * Two implementations based on sync mode:
  *
- * Implements Hans-Kristian Arntzen's "Dynamic Rate Control" algorithm which
- * maintains buffer at 50% full. Base/audio corrections handle static clock
- * drift; d=0.5% handles only jitter (paper recommends 0.2-0.5%).
+ * SYNC_MODE_AUDIOCLOCK (audio-driven timing):
+ * - Blocks when buffer is full (up to 10ms)
+ * - Audio hardware clock drives emulation timing
+ * - Fixed 1.0 resampling ratio (no dynamic rate control)
+ * - For devices with unstable vsync
+ *
+ * Default (vsync-driven timing):
+ * - Non-blocking with dynamic rate control
+ * - Adjusts pitch ±0.5% to maintain buffer at 50% full
+ * - For devices with stable vsync
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
- * @return Number of frames consumed (may be less than frame_count if buffer full)
- *
- * @note Non-blocking - resampler handles buffer full gracefully with partial writes
+ * @return Number of frames consumed
  */
 size_t SND_batchSamples(const SND_Frame* frames,
                         size_t frame_count) { // plat_sound_write / plat_sound_write_resample
 
 	if (snd.frame_count == 0)
 		return 0;
+
+#ifdef SYNC_MODE_AUDIOCLOCK
+	// ========================================================================
+	// AUDIOCLOCK MODE: Blocking writes with audio hardware timing
+	// ========================================================================
+
+	SDL_LockAudio();
+
+	size_t consumed = 0;
+	while (frame_count > 0) {
+		int tries = 0;
+
+		// Wait for audio callback to drain buffer (up to 10ms)
+		while (tries < 10 && snd.frame_in == snd.frame_filled) {
+			tries++;
+			SDL_UnlockAudio();
+			SDL_Delay(1);
+			SDL_LockAudio();
+		}
+
+		// Write samples with fixed 1.0 ratio (no rate control)
+		AudioRingBuffer ring = {
+		    .frames = snd.buffer,
+		    .capacity = snd.frame_count,
+		    .write_pos = snd.frame_in,
+		    .read_pos = snd.frame_out,
+		};
+
+		ResampleResult result =
+		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, 1.0f);
+
+		snd.frame_in = ring.write_pos;
+		snd.samples_in += result.frames_consumed;
+		snd.samples_written += result.frames_written;
+
+		frames += result.frames_consumed;
+		frame_count -= result.frames_consumed;
+		consumed += result.frames_consumed;
+	}
+
+	SDL_UnlockAudio();
+	return consumed;
+
+#else
+	// ========================================================================
+	// VSYNC MODE: Non-blocking with dynamic rate control
+	// ========================================================================
 
 	SDL_LockAudio();
 
@@ -2153,6 +2203,7 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	SDL_UnlockAudio();
 
 	return result.frames_consumed;
+#endif
 }
 
 /**
@@ -2259,6 +2310,10 @@ void SND_resetUnderrunCount(void) {
  * Some cores (e.g., 64-bit snes9x) call audio ~535 times per frame.
  */
 void SND_newFrame(void) {
+#ifdef SYNC_MODE_AUDIOCLOCK
+	// No-op in audioclock mode - no rate control needed
+	return;
+#else
 	if (!snd.initialized)
 		return;
 
@@ -2278,6 +2333,7 @@ void SND_newFrame(void) {
 		snd.rate_integral = -SND_INTEGRAL_CLAMP;
 
 	SDL_UnlockAudio();
+#endif
 }
 
 /**

@@ -323,6 +323,10 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 	);
 }
 
+void PLAT_clearBlit(void) {
+	vid.blit = NULL;
+}
+
 /**
  * Presents rendered frame to the display.
  *
@@ -455,6 +459,16 @@ void PLAT_powerOff(void) {
 	PWR_quit();
 	GFX_quit();
 	exit(0);
+}
+
+double PLAT_getDisplayHz(void) {
+	return 60.0;
+}
+
+uint32_t PLAT_measureVsyncInterval(void) {
+	// Desktop platform: measurement not reliable on macOS
+	// Return 0 to fall back to PLAT_getDisplayHz()
+	return 0;
 }
 
 /**

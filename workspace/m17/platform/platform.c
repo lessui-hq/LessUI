@@ -1,14 +1,16 @@
 /**
  * platform.c - Powkiddy RGB10 Max (M17) platform implementation
  *
+ * REFACTORED VERSION - Uses shared render_sdl2 backend
+ *
  * Implements the hardware abstraction layer for the Powkiddy RGB10 Max (M17),
  * a 5-inch horizontal handheld gaming device with SDL2-based video rendering.
  *
  * Hardware features:
- * - Display: 1280x720 (720p) IPS screen
+ * - Display: 1280x720 (720p) IPS screen at ~73Hz
  * - Input: D-pad, 4 face buttons, dual shoulder buttons, plus/minus buttons
- * - Video: SDL2 Window/Renderer/Texture API with hardware acceleration
- * - No analog sticks (commented out in input code)
+ * - Video: SDL2 Window/Renderer/Texture API with hardware acceleration (via render_sdl2)
+ * - No analog sticks
  *
  * Platform specifics:
  * - Fixed CPU speed (1200000 MHz, cannot be changed)
@@ -35,11 +37,11 @@
 #include "platform.h"
 #include "utils.h"
 
-#include "effect_utils.h"
+#include "render_sdl2.h"
 #include "scaler.h"
 
 ///////////////////////////////
-// Input handling
+// Input handling (evdev)
 ///////////////////////////////
 
 #define RAW_UP 103
@@ -203,306 +205,80 @@ int PLAT_shouldWake(void) {
 }
 
 ///////////////////////////////
-// Video subsystem (SDL2)
+// Video - Using shared SDL2 backend
 ///////////////////////////////
 
-static struct VID_Context {
-	SDL_Window* window;
-	SDL_Renderer* renderer;
-	SDL_Texture* texture;
-	SDL_Texture* target;
-	SDL_Surface* buffer;
-	SDL_Surface* screen;
+static SDL2_RenderContext vid_ctx;
 
-	GFX_Renderer* blit; // yeesh
+static const SDL2_Config vid_config = {
+    // No rotation needed (landscape display)
+    .auto_rotate = 0,
+    .rotate_cw = 0,
+    .rotate_null_center = 0,
+    // Display features
+    .has_hdmi = 0,
+    .default_sharpness = SHARPNESS_SOFT,
+};
 
-	int width;
-	int height;
-	int pitch;
-	int sharpness;
-} vid;
-
-/**
- * Initializes SDL2 video subsystem and creates rendering context.
- *
- * Creates a hardware-accelerated renderer with VSync enabled. Uses RGB565
- * pixel format for texture streaming. Defaults to soft (linear) scaling.
- *
- * @return Pointer to SDL_Surface for software rendering operations
- */
 SDL_Surface* PLAT_initVideo(void) {
-	SDL_InitSubSystem(SDL_INIT_VIDEO);
-	SDL_ShowCursor(0);
-
-	// SDL_version compiled;
-	// SDL_version linked;
-	// SDL_VERSION(&compiled);
-	// SDL_GetVersion(&linked);
-	// LOG_info("We compiled against SDL version %d.%d.%d ...\n", compiled.major, compiled.minor, compiled.patch);
-	// LOG_info("But we linked against SDL version %d.%d.%d.\n", linked.major, linked.minor, linked.patch);
-
-	// LOG_info("Available video drivers:\n");
-	// for (int i=0; i<SDL_GetNumVideoDrivers(); i++) {
-	// 	LOG_info("- %s\n", SDL_GetVideoDriver(i));
-	// }
-	// LOG_info("Current video driver: %s\n", SDL_GetCurrentVideoDriver());
-	//
-	// LOG_info("Available render drivers:\n");
-	// for (int i=0; i<SDL_GetNumRenderDrivers(); i++) {
-	// 	SDL_RendererInfo info;
-	// 	SDL_GetRenderDriverInfo(i,&info);
-	// 	LOG_info("- %s\n", info.name);
-	// }
-	//
-	// LOG_info("Available display modes:\n");
-	// SDL_DisplayMode mode;
-	// for (int i=0; i<SDL_GetNumDisplayModes(0); i++) {
-	// 	SDL_GetDisplayMode(0, i, &mode);
-	// 	LOG_info("- %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-	// }
-	// SDL_GetCurrentDisplayMode(0, &mode);
-	// LOG_info("Current display mode: %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-	//
-	// LOG_info("Availabel audio drivers:\n");
-	// for (int i=0; i<SDL_GetNumAudioDrivers(); i++) {
-	// 	LOG_info("- %s\n", SDL_GetAudioDriver(i));
-	// }
-
-	int w = FIXED_WIDTH;
-	int h = FIXED_HEIGHT;
-	int p = FIXED_PITCH;
-
-	SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY, "1",
-	                        SDL_HINT_OVERRIDE); // we default to soft
-	// SDL_SetHintWithPriority(SDL_HINT_RENDER_VSYNC, "1", SDL_HINT_OVERRIDE); // TODO: not doing anything
-
-	vid.window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
-	                              SDL_WINDOW_SHOWN);
-
-	// SDL_GetCurrentDisplayMode(0, &mode);
-	// LOG_info("Current display mode: %ix%i (%s)\n", mode.w,mode.h, SDL_GetPixelFormatName(mode.format));
-
-	vid.renderer =
-	    SDL_CreateRenderer(vid.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	// SDL_RenderSetVSync(vid.renderer, 0); // added SDL 2.0.18, m17 has 2.0.7
-
-	// SDL_RendererInfo info;
-	// SDL_GetRendererInfo(vid.renderer, &info);
-	// LOG_info("Current render driver: %s\n", info.name);
-
-	vid.texture =
-	    SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
-	vid.target = NULL; // only needed for non-native sizes
-
-	vid.buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
-	vid.screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH,
-	                                  RGBA_MASK_565); // is this necessary any more?
-	vid.width = w;
-	vid.height = h;
-	vid.pitch = p;
-
-	vid.sharpness = SHARPNESS_SOFT;
-
-	return vid.screen;
+	return SDL2_initVideo(&vid_ctx, FIXED_WIDTH, FIXED_HEIGHT, &vid_config);
 }
 
-/**
- * Clears video output by filling with black and presenting.
- *
- * Performs 3 clear cycles to ensure all frame buffers are cleared.
- */
-static void clearVideo(void) {
-	SDL_FillRect(vid.screen, NULL, 0);
-	for (int i = 0; i < 3; i++) {
-		SDL_RenderClear(vid.renderer);
-		SDL_RenderPresent(vid.renderer);
-	}
-}
-
-/**
- * Shuts down video subsystem and frees all resources.
- *
- * Clears display, destroys textures/renderer/window, and zeros framebuffer.
- */
 void PLAT_quitVideo(void) {
-	clearVideo();
-
-	SDL_FreeSurface(vid.screen);
-	SDL_FreeSurface(vid.buffer);
-	if (vid.target)
-		SDL_DestroyTexture(vid.target);
-	SDL_DestroyTexture(vid.texture);
-	SDL_DestroyRenderer(vid.renderer);
-	SDL_DestroyWindow(vid.window);
-	SDL_Quit();
-
+	SDL2_quitVideo(&vid_ctx);
 	system("cat /dev/zero > /dev/fb0 2>/dev/null");
 }
 
-/**
- * Clears a specific surface to black.
- *
- * @param screen Surface to clear
- */
 void PLAT_clearVideo(SDL_Surface* screen) {
-	SDL_FillRect(screen, NULL, 0); // TODO: revisit
+	SDL2_clearVideo(&vid_ctx);
 }
-/**
- * Clears all video buffers.
- */
+
 void PLAT_clearAll(void) {
-	clearVideo();
-}
-
-// Scaling multiplier for crisp mode (nearest-neighbor upscaling)
-static int hard_scale = 4;
-
-/**
- * Resizes video buffers and textures for new dimensions.
- *
- * Determines appropriate hard_scale multiplier based on content size:
- * - Native or larger: 1x (no upscaling)
- * - >= 160p: 2x
- * - Smaller: 4x
- *
- * Recreates textures with appropriate scaling quality based on sharpness setting.
- *
- * @param w New width
- * @param h New height
- * @param p New pitch
- */
-static void resizeVideo(int w, int h, int p) {
-	if (w == vid.width && h == vid.height && p == vid.pitch)
-		return;
-
-	if (w >= FIXED_WIDTH && h >= FIXED_HEIGHT) {
-		hard_scale = 1;
-	} else if (h >= 160) {
-		hard_scale = 2;
-	} else {
-		hard_scale = 4;
-	}
-
-	// TODO: figure out how to ignore minarch upscale requests
-	LOG_info("resizeVideo(%i,%i,%i) hard_scale: %i\n", w, h, p, hard_scale);
-
-	SDL_FreeSurface(vid.buffer);
-	SDL_DestroyTexture(vid.texture);
-	if (vid.target)
-		SDL_DestroyTexture(vid.target);
-
-	SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY,
-	                        vid.sharpness == SHARPNESS_SOFT ? "1" : "0", SDL_HINT_OVERRIDE);
-	vid.texture =
-	    SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-	if (vid.sharpness == SHARPNESS_CRISP) {
-		SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY, "1", SDL_HINT_OVERRIDE);
-		vid.target = SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565,
-		                               SDL_TEXTUREACCESS_TARGET, w * hard_scale, h * hard_scale);
-	} else {
-		vid.target = NULL;
-	}
-
-	vid.buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
-
-	vid.width = w;
-	vid.height = h;
-	vid.pitch = p;
+	SDL2_clearAll(&vid_ctx);
 }
 
 SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
-	// LOG_info("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
-	resizeVideo(w, h, p);
-	return vid.screen;
+	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
 
 void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
-	// buh
+	// Not supported on this platform
 }
+
 void PLAT_setNearestNeighbor(int enabled) {
-	// always enabled?
+	// Always enabled via sharpness setting
 }
+
 void PLAT_setSharpness(int sharpness) {
-	if (vid.sharpness == sharpness)
-		return;
-	int p = vid.pitch;
-	vid.pitch = 0;
-	vid.sharpness = sharpness;
-	resizeVideo(vid.width, vid.height, p);
+	SDL2_setSharpness(&vid_ctx, sharpness);
 }
+
 void PLAT_setEffect(int effect) {
-	// buh
+	SDL2_setEffect(&vid_ctx, effect);
+}
+
+void PLAT_setEffectColor(int color) {
+	SDL2_setEffectColor(&vid_ctx, color);
 }
 
 void PLAT_vsync(int remaining) {
-	if (remaining > 0)
-		SDL_Delay(remaining);
+	SDL2_vsync(remaining);
 }
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	return scale1x1_n16;
+	return SDL2_getScaler(&vid_ctx, renderer);
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.blit = renderer;
-	SDL_RenderClear(vid.renderer);
-	resizeVideo(vid.blit->true_w, vid.blit->true_h, vid.blit->src_p);
+	SDL2_blitRenderer(&vid_ctx, renderer);
 }
 
-void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
-	if (!vid.blit) {
-		resizeVideo(FIXED_WIDTH, FIXED_HEIGHT, FIXED_PITCH); // !!!???
-		SDL_LockTexture(vid.texture, NULL, &vid.buffer->pixels, &vid.buffer->pitch);
-		SDL_BlitSurface(vid.screen, NULL, vid.buffer, NULL);
-		SDL_UnlockTexture(vid.texture);
-		SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_RenderPresent(vid.renderer);
-		return;
-	}
+void PLAT_clearBlit(void) {
+	SDL2_clearBlit(&vid_ctx);
+}
 
-	SDL_LockTexture(vid.texture, NULL, &vid.buffer->pixels, &vid.buffer->pitch);
-	((scaler_t)vid.blit->blit)(
-	    vid.blit->src, vid.buffer->pixels, vid.blit->src_w, vid.blit->src_h, vid.blit->src_p,
-	    // vid.blit->true_w,vid.blit->true_h,vid.blit->src_p, // TODO: fix to be confirmed, issue may not present on this platform
-	    vid.buffer->w, vid.buffer->h, vid.buffer->pitch);
-	SDL_UnlockTexture(vid.texture);
-
-	SDL_Texture* target = vid.texture;
-	int w = vid.blit->src_w;
-	int h = vid.blit->src_h;
-	if (vid.sharpness == SHARPNESS_CRISP) {
-		SDL_SetRenderTarget(vid.renderer, vid.target);
-		SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		SDL_SetRenderTarget(vid.renderer, NULL);
-		w *= hard_scale;
-		h *= hard_scale;
-		target = vid.target;
-	}
-
-	SDL_Rect* src_rect = &(SDL_Rect){0, 0, w, h};
-	SDL_Rect* dst_rect = NULL;
-	if (vid.blit->aspect == 0) { // native or cropped
-		int dst_w = vid.blit->src_w * vid.blit->scale;
-		int dst_h = vid.blit->src_h * vid.blit->scale;
-		int dst_x = (FIXED_WIDTH - dst_w) / 2;
-		int dst_y = (FIXED_HEIGHT - dst_h) / 2;
-		dst_rect = &(SDL_Rect){dst_x, dst_y, dst_w, dst_h};
-	} else if (vid.blit->aspect > 0) { // aspect
-		int aspect_h = FIXED_HEIGHT;
-		int aspect_w = aspect_h * vid.blit->aspect;
-		if (aspect_w > FIXED_WIDTH) {
-			double ratio = 1 / vid.blit->aspect;
-			aspect_w = FIXED_WIDTH;
-			aspect_h = aspect_w * ratio;
-		}
-		int aspect_x = (FIXED_WIDTH - aspect_w) / 2;
-		int aspect_y = (FIXED_HEIGHT - aspect_h) / 2;
-		dst_rect = &(SDL_Rect){aspect_x, aspect_y, aspect_w, aspect_h};
-	}
-	SDL_RenderCopy(vid.renderer, target, src_rect, dst_rect);
-	SDL_RenderPresent(vid.renderer);
-	vid.blit = NULL;
+void PLAT_flip(SDL_Surface* screen, int sync) {
+	SDL2_flip(&vid_ctx, sync);
 }
 
 ///////////////////////////////
@@ -586,6 +362,14 @@ void PLAT_powerOff(void) {
 
 	touch("/tmp/poweroff");
 	exit(0);
+}
+
+double PLAT_getDisplayHz(void) {
+	return 73.0; // M17 panel is 73Hz (480x272p73)
+}
+
+uint32_t PLAT_measureVsyncInterval(void) {
+	return SDL2_measureVsyncInterval(&vid_ctx);
 }
 
 ///////////////////////////////

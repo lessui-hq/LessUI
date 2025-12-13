@@ -349,11 +349,15 @@
 /**
  * SDL audio callback chunk size in samples.
  * At 48kHz/60fps, one video frame = 800 samples.
- * 256 samples = ~5.3ms per callback, smoother audio stream.
- * Platforms can override this in platform.h if needed.
+ *
+ * Tradeoff:
+ * - 512 samples (~10.7ms latency): More stable, fewer callbacks, better for CPU
+ * - 256 samples (~5.3ms latency): Lower latency, more responsive input
+ *
+ * Default 512 balances stability and responsiveness. Platforms can override.
  */
 #ifndef SND_CHUNK_SAMPLES
-#define SND_CHUNK_SAMPLES 256
+#define SND_CHUNK_SAMPLES 512
 #endif
 
 /**

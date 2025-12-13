@@ -201,6 +201,16 @@ scaler_t SDL2_getScaler(SDL2_RenderContext* ctx, GFX_Renderer* renderer);
 void SDL2_blitRenderer(SDL2_RenderContext* ctx, GFX_Renderer* renderer);
 
 /**
+ * Clears the blit renderer to switch to UI mode.
+ *
+ * After calling this, SDL2_flip will render from the screen surface
+ * instead of the game renderer. Used when entering menus.
+ *
+ * @param ctx Render context
+ */
+void SDL2_clearBlit(SDL2_RenderContext* ctx);
+
+/**
  * Presents rendered frame to display.
  *
  * Updates texture from source, applies scaling and effects,
@@ -227,5 +237,26 @@ void SDL2_vsync(int remaining);
  * @return 1 if HDMI state changed, 0 otherwise
  */
 int SDL2_hdmiChanged(SDL2_RenderContext* ctx);
+
+/**
+ * Gets display refresh rate in Hz.
+ *
+ * Uses SDL_GetCurrentDisplayMode to detect the refresh rate.
+ * Returns 60.0 if detection fails.
+ *
+ * @return Display refresh rate (e.g., 60.0, 72.0)
+ */
+double SDL2_getDisplayHz(void);
+
+/**
+ * Measures a single vsync interval.
+ *
+ * Calls SDL_RenderPresent twice and returns the elapsed time.
+ * Must be called AFTER video init (renderer must exist).
+ *
+ * @param ctx Render context with initialized renderer
+ * @return Vsync interval in microseconds, or 0 on error
+ */
+uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx);
 
 #endif /* __RENDER_SDL2_H__ */
