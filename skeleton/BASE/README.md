@@ -137,7 +137,7 @@ This package contains:
 
 ## Updating LessUI
 
-Copy `LessUI.7z` to the root of your SD card (the one with your Roms folder). Reboot. LessUI will detect the ZIP and auto-update.
+Copy `LessUI.7z` to the root of your SD card (the one with your Roms folder). Reboot. LessUI will detect the archive and auto-update.
 
 ---
 

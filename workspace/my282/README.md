@@ -212,7 +212,7 @@ LessUI installs to the SD card with the following structure:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Move old update directory to backup location
    - Extract `LessUI.7z` to SD card using unzip utility
-   - Delete ZIP file
+   - Delete archive
    - Remove backup directory
    - Run `.system/my282/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/my282/paks/MinUI.pak/launch.sh`
@@ -224,8 +224,8 @@ LessUI installs to the SD card with the following structure:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/LessUI.7z`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 5. LessUI launches automatically
 
 ## Platform-Specific Features

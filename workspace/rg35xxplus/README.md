@@ -246,7 +246,7 @@ LessUI installs across two SD cards:
      - (none): Standard 640x480
    - Display `installing.bmp` (first install) or `updating.bmp` (update)
    - Extract `LessUI.7z` to `/mnt/sdcard`
-   - Delete ZIP file
+   - Delete archive
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
 6. Launch LessUI via `.system/rg35xxplus/paks/MinUI.pak/launch.sh`
@@ -257,8 +257,8 @@ LessUI installs across two SD cards:
 To update LessUI on device:
 1. Place `LessUI.7z` in TF2 root (`/mnt/sdcard/`)
 2. Reboot device
-3. Boot script auto-detects ZIP, determines variant, and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive, determines variant, and performs update
+4. Archive is deleted after successful extraction
 5. `install.sh` finalizes update (copies dmenu.bin, migrates old configs)
 
 ### Migration from RG40XXCUBE

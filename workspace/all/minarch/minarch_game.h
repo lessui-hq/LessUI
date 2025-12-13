@@ -2,7 +2,7 @@
  * minarch_game.h - Game file loading utilities
  *
  * Provides functions for game file handling including:
- * - ZIP archive entry detection and extension matching
+ * - Archive entry detection and extension matching
  * - M3U playlist detection for multi-disc games
  * - Extension list parsing
  *
@@ -33,18 +33,18 @@
  *                       Modified in place (strtok)
  * @param out_extensions Array to receive extension pointers
  * @param max_extensions Maximum number of extensions to store
- * @param out_supports_zip Set to true if "zip" extension found
+ * @param out_supports_archive Set to true if "zip" or "7z" extension found
  * @return Number of extensions parsed
  *
  * @example
  *   char exts[] = "gb|gbc|zip";
  *   char* ext_array[32];
- *   bool supports_zip;
- *   int count = MinArchGame_parseExtensions(exts, ext_array, 32, &supports_zip);
- *   // count=3, ext_array={"gb","gbc","zip"}, supports_zip=true
+ *   bool supports_archive;
+ *   int count = MinArchGame_parseExtensions(exts, ext_array, 32, &supports_archive);
+ *   // count=3, ext_array={"gb","gbc","zip"}, supports_archive=true
  */
 int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions,
-                                bool* out_supports_zip);
+                                bool* out_supports_archive);
 
 /**
  * Checks if a filename matches any of the given extensions.

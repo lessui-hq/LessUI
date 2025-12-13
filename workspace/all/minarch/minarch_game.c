@@ -19,15 +19,15 @@
 #endif
 
 int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions,
-                                bool* out_supports_zip) {
+                                bool* out_supports_archive) {
 	if (!extensions_str || !out_extensions || max_extensions <= 0) {
-		if (out_supports_zip)
-			*out_supports_zip = false;
+		if (out_supports_archive)
+			*out_supports_archive = false;
 		return 0;
 	}
 
 	int count = 0;
-	bool supports_zip = false;
+	bool supports_archive = false;
 	char* ext;
 
 	// Parse pipe-delimited extensions
@@ -35,7 +35,7 @@ int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int
 	while (ext && count < max_extensions) {
 		out_extensions[count++] = ext;
 		if (strcmp("zip", ext) == 0 || strcmp("7z", ext) == 0) {
-			supports_zip = true;
+			supports_archive = true;
 		}
 		ext = strtok(NULL, "|");
 	}
@@ -45,8 +45,8 @@ int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int
 		out_extensions[count] = NULL;
 	}
 
-	if (out_supports_zip)
-		*out_supports_zip = supports_zip;
+	if (out_supports_archive)
+		*out_supports_archive = supports_archive;
 
 	return count;
 }

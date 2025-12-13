@@ -201,15 +201,15 @@ static void Game_open(char* path) {
 	// Handle archive files (.zip, .7z)
 	if (MinArchArchive_isArchive(game.path)) {
 		LOG_info("is archive file");
-		bool supports_zip = false;
+		bool supports_archive = false;
 		char exts[128];
 		char* extensions[MINARCH_MAX_EXTENSIONS];
 		strcpy(exts, core.extensions);
-		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_zip);
+		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_archive);
 
-		// Extract if core doesn't support ZIP natively, or if it's a 7z file
+		// Extract if core doesn't support archives natively, or if it's a 7z file
 		// (7z is never natively supported by libretro cores)
-		if (!supports_zip || suffixMatch(".7z", game.path)) {
+		if (!supports_archive || suffixMatch(".7z", game.path)) {
 			int result =
 			    MinArchArchive_extract(game.path, extensions, game.tmp_path, sizeof(game.tmp_path));
 			if (result != MINARCH_ARCHIVE_OK) {

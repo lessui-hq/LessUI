@@ -254,7 +254,7 @@ LessUI installs to the SD card with the following structure:
      - Standard: `installing.png` or `updating.png` (1280x720)
      - Brick: `brick/installing.png` or `brick/updating.png` (1024x768)
    - Extracts `LessUI.7z` to SD card
-   - Deletes ZIP file
+   - Deletes archive
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
 6. Launches LessUI via `.system/tg5040/paks/MinUI.pak/launch.sh`
@@ -264,9 +264,9 @@ LessUI installs to the SD card with the following structure:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
+3. Boot script auto-detects archive and performs update
 4. Displays variant-appropriate update splash
-5. ZIP is deleted after successful extraction
+5. Archive is deleted after successful extraction
 
 ### Migration from TG3040
 

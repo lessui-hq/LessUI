@@ -230,8 +230,8 @@ After initialization, device boots as follows:
 2. Script sets CPU governor to "performance" mode
 3. If `LessUI.7z` exists on SD card:
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract ZIP to SD card root
-   - Delete ZIP file
+   - Extract archive to SD card root
+   - Delete archive
    - Run `.system/my355/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/my355/paks/MinUI.pak/launch.sh`
 5. Loop: if launcher exits, relaunch (prevents stock firmware access)
@@ -242,8 +242,8 @@ After initialization, device boots as follows:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 
 ## Platform-Specific Features
 

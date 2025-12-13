@@ -32,90 +32,90 @@ void tearDown(void) {
 void test_parseExtensions_single_extension(void) {
 	char exts[] = "gb";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(1, count);
 	TEST_ASSERT_EQUAL_STRING("gb", out[0]);
 	TEST_ASSERT_NULL(out[1]);
-	TEST_ASSERT_FALSE(supports_zip);
+	TEST_ASSERT_FALSE(supports_archive);
 }
 
 void test_parseExtensions_multiple_extensions(void) {
 	char exts[] = "gb|gbc|dmg";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(3, count);
 	TEST_ASSERT_EQUAL_STRING("gb", out[0]);
 	TEST_ASSERT_EQUAL_STRING("gbc", out[1]);
 	TEST_ASSERT_EQUAL_STRING("dmg", out[2]);
 	TEST_ASSERT_NULL(out[3]);
-	TEST_ASSERT_FALSE(supports_zip);
+	TEST_ASSERT_FALSE(supports_archive);
 }
 
 void test_parseExtensions_with_zip_support(void) {
 	char exts[] = "nes|fds|zip";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(3, count);
-	TEST_ASSERT_TRUE(supports_zip);
+	TEST_ASSERT_TRUE(supports_archive);
 }
 
 void test_parseExtensions_zip_in_middle(void) {
 	char exts[] = "nes|zip|fds";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(3, count);
-	TEST_ASSERT_TRUE(supports_zip);
+	TEST_ASSERT_TRUE(supports_archive);
 }
 
 void test_parseExtensions_zip_only(void) {
 	char exts[] = "zip";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(1, count);
-	TEST_ASSERT_TRUE(supports_zip);
+	TEST_ASSERT_TRUE(supports_archive);
 }
 
 void test_parseExtensions_empty_string(void) {
 	char exts[] = "";
 	char* out[32];
-	bool supports_zip = true; // Start true to verify it gets set false
+	bool supports_archive = true; // Start true to verify it gets set false
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(0, count);
-	TEST_ASSERT_FALSE(supports_zip);
+	TEST_ASSERT_FALSE(supports_archive);
 }
 
 void test_parseExtensions_null_string(void) {
 	char* out[32];
-	bool supports_zip = true;
+	bool supports_archive = true;
 
-	int count = MinArchGame_parseExtensions(NULL, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(NULL, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(0, count);
-	TEST_ASSERT_FALSE(supports_zip);
+	TEST_ASSERT_FALSE(supports_archive);
 }
 
 void test_parseExtensions_null_output(void) {
 	char exts[] = "gb|gbc";
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, NULL, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, NULL, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(0, count);
 }
@@ -123,9 +123,9 @@ void test_parseExtensions_null_output(void) {
 void test_parseExtensions_respects_max(void) {
 	char exts[] = "a|b|c|d|e|f|g|h|i|j";
 	char* out[5];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 5, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 5, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(5, count);
 	TEST_ASSERT_EQUAL_STRING("a", out[0]);
@@ -136,21 +136,21 @@ void test_parseExtensions_typical_core(void) {
 	// Typical SNES core extensions
 	char exts[] = "smc|sfc|swc|fig|bs|st|bin";
 	char* out[32];
-	bool supports_zip = false;
+	bool supports_archive = false;
 
-	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_zip);
+	int count = MinArchGame_parseExtensions(exts, out, 32, &supports_archive);
 
 	TEST_ASSERT_EQUAL_INT(7, count);
 	TEST_ASSERT_EQUAL_STRING("smc", out[0]);
 	TEST_ASSERT_EQUAL_STRING("bin", out[6]);
-	TEST_ASSERT_FALSE(supports_zip);
+	TEST_ASSERT_FALSE(supports_archive);
 }
 
-void test_parseExtensions_null_supports_zip_pointer(void) {
+void test_parseExtensions_null_supports_archive_pointer(void) {
 	char exts[] = "gb|zip";
 	char* out[32];
 
-	// Should not crash when supports_zip is NULL
+	// Should not crash when supports_archive is NULL
 	int count = MinArchGame_parseExtensions(exts, out, 32, NULL);
 
 	TEST_ASSERT_EQUAL_INT(2, count);
@@ -324,7 +324,7 @@ int main(void) {
 	RUN_TEST(test_parseExtensions_null_output);
 	RUN_TEST(test_parseExtensions_respects_max);
 	RUN_TEST(test_parseExtensions_typical_core);
-	RUN_TEST(test_parseExtensions_null_supports_zip_pointer);
+	RUN_TEST(test_parseExtensions_null_supports_archive_pointer);
 
 	// matchesExtension tests
 	RUN_TEST(test_matchesExtension_exact_match);

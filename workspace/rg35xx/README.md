@@ -209,7 +209,7 @@ LessUI modifies the `/misc` partition during installation:
    - Extract splash images from uuencoded data in boot script
    - Display appropriate splash to `/dev/fb0`
    - Extract `LessUI.7z` to SD card
-   - Delete ZIP file
+   - Delete archive
    - Run `.system/rg35xx/bin/install.sh` to update `/misc` partition
    - Reboot device
 6. Check for `rootfs.ext2` (required for LessUI)
@@ -224,7 +224,7 @@ LessUI modifies the `/misc` partition during installation:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
+3. Boot script auto-detects archive and performs update
 4. Install script checks MD5 checksums of `/misc` files
 5. Only updates `/misc` if files have changed (preserves custom boot logo)
 6. Device automatically reboots after update

@@ -180,8 +180,8 @@ LessUI installs to the SD card with the following structure:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 
 ## Platform-Specific Features
 

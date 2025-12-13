@@ -175,7 +175,6 @@ LessUI installs to the SD card with the following structure:
 │       ├── show.elf          Splash screen display
 │       ├── installing.png    Initial install splash
 │       ├── updating.png      Update splash
-│       ├── unzip             Update extraction utility
 │       └── leds_off          LED control utility
 ├── Roms/                     ROM files organized by system
 └── LessUI.7z                 Update package (if present)
@@ -188,7 +187,7 @@ LessUI installs to the SD card with the following structure:
 3. If `LessUI.7z` exists:
    - Turn off LEDs (`leds_off`)
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract `LessUI.7z` to SD card using custom `unzip` utility
+   - Extract `LessUI.7z` to SD card
    - Delete `LessUI.7z` after successful extraction
    - Run `.system/trimuismart/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/trimuismart/paks/MinUI.pak/launch.sh`
@@ -199,8 +198,8 @@ LessUI installs to the SD card with the following structure:
 To update LessUI on device:
 1. Place `LessUI.7z` in SD card root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 
 ## Platform-Specific Features
 
