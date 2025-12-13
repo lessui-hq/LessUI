@@ -12,7 +12,7 @@
 7Z_VERSION := 2501
 
 # Download URLs (static console builds)
-URL_ARM   := https://www.7-zip.org/a/7z$(7Z_VERSION)-linux-arm.tar.xz
+URL_ARM := https://www.7-zip.org/a/7z$(7Z_VERSION)-linux-arm.tar.xz
 URL_ARM64 := https://www.7-zip.org/a/7z$(7Z_VERSION)-linux-arm64.tar.xz
 
 # Download targets - extract 7zzs (static build) and rename to 7z

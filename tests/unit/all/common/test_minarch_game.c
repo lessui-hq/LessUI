@@ -4,7 +4,6 @@
  * Tests the game file loading functions extracted from minarch.c:
  * - MinArchGame_parseExtensions - Parse pipe-delimited extension list
  * - MinArchGame_matchesExtension - Match filename against extension list
- * - MinArchGame_parseZipHeader - Parse ZIP local file header
  * - MinArchGame_buildM3uPath - Build M3U path from ROM path
  *
  * These are pure functions that can be tested without file I/O mocking.
@@ -230,145 +229,6 @@ void test_matchesExtension_double_extension(void) {
 }
 
 ///////////////////////////////
-// MinArchGame_parseZipHeader tests
-///////////////////////////////
-
-void test_parseZipHeader_stored_file(void) {
-	// ZIP local file header for a stored (uncompressed) file
-	// Signature: PK\x03\x04
-	// Version needed: 10
-	// General purpose flag: 0
-	// Compression method: 0 (store)
-	// ... other fields ...
-	// Compressed size: 0x1234 (4660)
-	// Filename length: 8
-	// Extra field length: 0
-	uint8_t header[MINARCH_ZIP_HEADER_SIZE] = {
-	    0x50, 0x4b, 0x03, 0x04, // signature
-	    0x0a, 0x00,             // version needed
-	    0x00, 0x00,             // flags (no data descriptor)
-	    0x00, 0x00,             // compression method: stored
-	    0x00, 0x00,             // mod time
-	    0x00, 0x00,             // mod date
-	    0x00, 0x00, 0x00, 0x00, // CRC-32
-	    0x34, 0x12, 0x00, 0x00, // compressed size: 0x1234
-	    0x34, 0x12, 0x00, 0x00, // uncompressed size
-	    0x08, 0x00,             // filename length: 8
-	    0x00, 0x00              // extra field length: 0
-	};
-
-	uint16_t compression, filename_len, extra_len;
-	uint32_t compressed_size;
-
-	bool result =
-	    MinArchGame_parseZipHeader(header, &compression, &filename_len, &compressed_size, &extra_len);
-
-	TEST_ASSERT_TRUE(result);
-	TEST_ASSERT_EQUAL_UINT16(0, compression);       // stored
-	TEST_ASSERT_EQUAL_UINT16(8, filename_len);      // filename length
-	TEST_ASSERT_EQUAL_UINT32(0x1234, compressed_size); // 4660 bytes
-	TEST_ASSERT_EQUAL_UINT16(0, extra_len);
-}
-
-void test_parseZipHeader_deflate_file(void) {
-	uint8_t header[MINARCH_ZIP_HEADER_SIZE] = {
-	    0x50, 0x4b, 0x03, 0x04, // signature
-	    0x14, 0x00,             // version needed
-	    0x00, 0x00,             // flags
-	    0x08, 0x00,             // compression method: deflate
-	    0x00, 0x00,             // mod time
-	    0x00, 0x00,             // mod date
-	    0x00, 0x00, 0x00, 0x00, // CRC-32
-	    0xff, 0x00, 0x01, 0x00, // compressed size: 0x100ff
-	    0x00, 0x02, 0x00, 0x00, // uncompressed size
-	    0x0c, 0x00,             // filename length: 12
-	    0x10, 0x00              // extra field length: 16
-	};
-
-	uint16_t compression, filename_len, extra_len;
-	uint32_t compressed_size;
-
-	bool result =
-	    MinArchGame_parseZipHeader(header, &compression, &filename_len, &compressed_size, &extra_len);
-
-	TEST_ASSERT_TRUE(result);
-	TEST_ASSERT_EQUAL_UINT16(8, compression);           // deflate
-	TEST_ASSERT_EQUAL_UINT16(12, filename_len);         // filename length
-	TEST_ASSERT_EQUAL_UINT32(0x100ff, compressed_size); // compressed size
-	TEST_ASSERT_EQUAL_UINT16(16, extra_len);            // extra field length
-}
-
-void test_parseZipHeader_data_descriptor_flag(void) {
-	// Header with data descriptor flag set (bit 3 of flags)
-	uint8_t header[MINARCH_ZIP_HEADER_SIZE] = {
-	    0x50, 0x4b, 0x03, 0x04, // signature
-	    0x14, 0x00,             // version needed
-	    0x08, 0x00,             // flags: bit 3 set (data descriptor)
-	    0x08, 0x00,             // compression method
-	    0x00, 0x00,             // mod time
-	    0x00, 0x00,             // mod date
-	    0x00, 0x00, 0x00, 0x00, // CRC-32 (invalid - in data descriptor)
-	    0x00, 0x00, 0x00, 0x00, // compressed size (invalid)
-	    0x00, 0x00, 0x00, 0x00, // uncompressed size (invalid)
-	    0x08, 0x00,             // filename length
-	    0x00, 0x00              // extra field length
-	};
-
-	uint16_t compression, filename_len, extra_len;
-	uint32_t compressed_size;
-
-	bool result =
-	    MinArchGame_parseZipHeader(header, &compression, &filename_len, &compressed_size, &extra_len);
-
-	TEST_ASSERT_FALSE(result); // Should reject headers with data descriptor
-}
-
-void test_parseZipHeader_null_header(void) {
-	uint16_t compression;
-	bool result = MinArchGame_parseZipHeader(NULL, &compression, NULL, NULL, NULL);
-	TEST_ASSERT_FALSE(result);
-}
-
-void test_parseZipHeader_null_outputs(void) {
-	uint8_t header[MINARCH_ZIP_HEADER_SIZE] = {
-	    0x50, 0x4b, 0x03, 0x04, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00,
-	    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	    0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-	// Should not crash with NULL output pointers
-	bool result = MinArchGame_parseZipHeader(header, NULL, NULL, NULL, NULL);
-	TEST_ASSERT_TRUE(result);
-}
-
-void test_parseZipHeader_large_sizes(void) {
-	// Header with large file sizes (close to 4GB limit)
-	uint8_t header[MINARCH_ZIP_HEADER_SIZE] = {
-	    0x50, 0x4b, 0x03, 0x04, // signature
-	    0x14, 0x00,             // version needed
-	    0x00, 0x00,             // flags
-	    0x00, 0x00,             // compression: stored
-	    0x00, 0x00,             // mod time
-	    0x00, 0x00,             // mod date
-	    0x00, 0x00, 0x00, 0x00, // CRC-32
-	    0xff, 0xff, 0xff, 0x7f, // compressed size: 0x7fffffff (2GB)
-	    0xff, 0xff, 0xff, 0x7f, // uncompressed size
-	    0xff, 0x00,             // filename length: 255
-	    0xff, 0x7f              // extra field length: 32767
-	};
-
-	uint16_t compression, filename_len, extra_len;
-	uint32_t compressed_size;
-
-	bool result =
-	    MinArchGame_parseZipHeader(header, &compression, &filename_len, &compressed_size, &extra_len);
-
-	TEST_ASSERT_TRUE(result);
-	TEST_ASSERT_EQUAL_UINT32(0x7fffffff, compressed_size);
-	TEST_ASSERT_EQUAL_UINT16(255, filename_len);
-	TEST_ASSERT_EQUAL_UINT16(0x7fff, extra_len);
-}
-
-///////////////////////////////
 // MinArchGame_buildM3uPath tests
 ///////////////////////////////
 
@@ -447,40 +307,6 @@ void test_buildM3uPath_root_dir(void) {
 }
 
 ///////////////////////////////
-// ZIP LE macros tests
-///////////////////////////////
-
-void test_zip_le_read16_typical(void) {
-	uint8_t buf[] = {0x34, 0x12}; // Little-endian 0x1234
-	TEST_ASSERT_EQUAL_UINT16(0x1234, MINARCH_ZIP_LE_READ16(buf));
-}
-
-void test_zip_le_read16_zero(void) {
-	uint8_t buf[] = {0x00, 0x00};
-	TEST_ASSERT_EQUAL_UINT16(0, MINARCH_ZIP_LE_READ16(buf));
-}
-
-void test_zip_le_read16_max(void) {
-	uint8_t buf[] = {0xff, 0xff};
-	TEST_ASSERT_EQUAL_UINT16(0xffff, MINARCH_ZIP_LE_READ16(buf));
-}
-
-void test_zip_le_read32_typical(void) {
-	uint8_t buf[] = {0x78, 0x56, 0x34, 0x12}; // Little-endian 0x12345678
-	TEST_ASSERT_EQUAL_UINT32(0x12345678, MINARCH_ZIP_LE_READ32(buf));
-}
-
-void test_zip_le_read32_zero(void) {
-	uint8_t buf[] = {0x00, 0x00, 0x00, 0x00};
-	TEST_ASSERT_EQUAL_UINT32(0, MINARCH_ZIP_LE_READ32(buf));
-}
-
-void test_zip_le_read32_max(void) {
-	uint8_t buf[] = {0xff, 0xff, 0xff, 0xff};
-	TEST_ASSERT_EQUAL_UINT32(0xffffffff, MINARCH_ZIP_LE_READ32(buf));
-}
-
-///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -515,14 +341,6 @@ int main(void) {
 	RUN_TEST(test_matchesExtension_path_with_extension);
 	RUN_TEST(test_matchesExtension_double_extension);
 
-	// parseZipHeader tests
-	RUN_TEST(test_parseZipHeader_stored_file);
-	RUN_TEST(test_parseZipHeader_deflate_file);
-	RUN_TEST(test_parseZipHeader_data_descriptor_flag);
-	RUN_TEST(test_parseZipHeader_null_header);
-	RUN_TEST(test_parseZipHeader_null_outputs);
-	RUN_TEST(test_parseZipHeader_large_sizes);
-
 	// buildM3uPath tests
 	RUN_TEST(test_buildM3uPath_typical_disc);
 	RUN_TEST(test_buildM3uPath_simple_path);
@@ -534,14 +352,6 @@ int main(void) {
 	RUN_TEST(test_buildM3uPath_buffer_too_small);
 	RUN_TEST(test_buildM3uPath_single_component);
 	RUN_TEST(test_buildM3uPath_root_dir);
-
-	// ZIP LE macro tests
-	RUN_TEST(test_zip_le_read16_typical);
-	RUN_TEST(test_zip_le_read16_zero);
-	RUN_TEST(test_zip_le_read16_max);
-	RUN_TEST(test_zip_le_read32_typical);
-	RUN_TEST(test_zip_le_read32_zero);
-	RUN_TEST(test_zip_le_read32_max);
 
 	return UNITY_END();
 }

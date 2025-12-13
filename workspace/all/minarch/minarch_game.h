@@ -18,37 +18,9 @@
 #include <stdio.h>
 
 /**
- * ZIP local file header size (fixed portion).
- */
-#define MINARCH_ZIP_HEADER_SIZE 30
-
-/**
  * Maximum number of extensions to parse from a pipe-delimited string.
  */
 #define MINARCH_MAX_EXTENSIONS 32
-
-/**
- * Read 16-bit little-endian value from buffer.
- */
-#define MINARCH_ZIP_LE_READ16(buf) ((uint16_t)(((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
-
-/**
- * Read 32-bit little-endian value from buffer.
- */
-#define MINARCH_ZIP_LE_READ32(buf)                                                                 \
-	((uint32_t)(((uint8_t*)(buf))[3] << 24 | ((uint8_t*)(buf))[2] << 16 |                          \
-	            ((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
-
-/**
- * Information about a found ZIP entry.
- */
-typedef struct {
-	char filename[512]; /**< Filename within ZIP */
-	uint32_t compressed_size; /**< Size of compressed data */
-	uint16_t compression_method; /**< 0=stored, 8=deflate */
-	long data_offset; /**< File offset to compressed data start */
-	bool found; /**< Whether a matching entry was found */
-} MinArchZipEntryInfo;
 
 /**
  * Parses a pipe-delimited extension list into an array.
@@ -75,36 +47,16 @@ int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int
                                 bool* out_supports_zip);
 
 /**
- * Finds the first ZIP entry matching any of the given extensions.
+ * Checks if a filename matches any of the given extensions.
  *
- * Searches through ZIP local file headers to find the first entry whose
- * filename ends with one of the provided extensions.
+ * Extracts the file extension from the filename and compares it
+ * against the provided extensions array (case-insensitive).
  *
- * @param zip_header 30-byte ZIP local file header
- * @param filename Filename extracted from the header
+ * @param filename Filename to check (can include path)
  * @param extensions NULL-terminated array of extensions to match (without dots)
  * @return true if the filename matches any extension, false otherwise
- *
- * @note The caller is responsible for iterating through ZIP entries
  */
 bool MinArchGame_matchesExtension(const char* filename, char* const* extensions);
-
-/**
- * Parses a ZIP local file header.
- *
- * Extracts compression method, filename length, compressed size, and extra
- * field length from the header bytes.
- *
- * @param header 30-byte header buffer
- * @param out_compression_method Compression method (0=stored, 8=deflate)
- * @param out_filename_len Length of filename field
- * @param out_compressed_size Size of compressed data
- * @param out_extra_len Length of extra field
- * @return true if header appears valid, false if data descriptor bit is set
- */
-bool MinArchGame_parseZipHeader(const uint8_t* header, uint16_t* out_compression_method,
-                                uint16_t* out_filename_len, uint32_t* out_compressed_size,
-                                uint16_t* out_extra_len);
 
 /**
  * Detects if an M3U playlist exists for a ROM path.

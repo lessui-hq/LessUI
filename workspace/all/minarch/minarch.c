@@ -56,6 +56,7 @@
 #include "defines.h"
 #include "frame_pacer.h"
 #include "libretro.h"
+#include "minarch_archive.h"
 #include "minarch_config.h"
 #include "minarch_context.h"
 #include "minarch_core.h"
@@ -73,7 +74,6 @@
 #include "minarch_scaler.h"
 #include "minarch_state.h"
 #include "minarch_video_convert.h"
-#include "minarch_zip.h"
 #include "minui_file_utils.h"
 #include "scaler.h"
 #include "utils.h"
@@ -172,25 +172,6 @@ GFX_Renderer renderer; // Platform-specific renderer handle
 static struct Core core;
 
 ///////////////////////////////////////
-// ZIP File Extraction
-///////////////////////////////////////
-// Based on picoarch/unzip.c
-//
-// Supports extracting files from ZIP archives when cores don't natively
-// support the .zip extension. Handles both uncompressed (store) and
-// deflate-compressed files.
-
-#define ZIP_HEADER_SIZE 30
-#define ZIP_CHUNK_SIZE 65536
-#define ZIP_LE_READ16(buf) ((uint16_t)(((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
-#define ZIP_LE_READ32(buf)                                                                         \
-	((uint32_t)(((uint8_t*)(buf))[3] << 24 | ((uint8_t*)(buf))[2] << 16 |                          \
-	            ((uint8_t*)(buf))[1] << 8 | ((uint8_t*)(buf))[0]))
-
-// ZIP extraction function pointer type for selecting copy vs inflate
-typedef int (*Zip_extract_t)(FILE* zip, FILE* dst, size_t size);
-
-///////////////////////////////////////
 // Game Management
 ///////////////////////////////////////
 
@@ -201,14 +182,14 @@ static struct Game game;
  * Opens and prepares a game for loading into the core.
  *
  * Handles multiple scenarios:
- * 1. ZIP files: Extracts first matching ROM to /tmp if core doesn't support ZIP
+ * 1. Archive files (.zip, .7z): Extracts first matching ROM to /tmp via 7z binary
  * 2. Multi-disc: Detects and stores .m3u playlist path
  * 3. Memory loading: Reads entire ROM into memory for cores that need it
  *
- * @param path Full path to ROM file or ZIP archive
+ * @param path Full path to ROM file or archive
  *
  * @note Sets game.is_open = 1 on success, 0 on failure
- * @note For ZIP files, extracts to /tmp/minarch-XXXXXX/ (deleted on close)
+ * @note For archives, extracts to /tmp/minarch-XXXXXX/ (deleted on close)
  */
 static void Game_open(char* path) {
 	LOG_info("Game_open");
@@ -217,93 +198,24 @@ static void Game_open(char* path) {
 	strcpy((char*)game.path, path);
 	strcpy((char*)game.name, strrchr(path, '/') + 1);
 
-	// if we have a zip file
-	if (suffixMatch(".zip", game.path)) {
-		LOG_info("is zip file");
+	// Handle archive files (.zip, .7z)
+	if (MinArchArchive_isArchive(game.path)) {
+		LOG_info("is archive file");
 		bool supports_zip = false;
 		char exts[128];
 		char* extensions[MINARCH_MAX_EXTENSIONS];
 		strcpy(exts, core.extensions);
 		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_zip);
 
-		// if the core doesn't support zip files natively
-		if (!supports_zip) {
-			FILE* zip = fopen(game.path, "r");
-			if (zip == NULL) {
-				LOG_error("Error opening archive: %s\n\t%s", game.path, strerror(errno));
+		// Extract if core doesn't support ZIP natively, or if it's a 7z file
+		// (7z is never natively supported by libretro cores)
+		if (!supports_zip || suffixMatch(".7z", game.path)) {
+			int result =
+			    MinArchArchive_extract(game.path, extensions, game.tmp_path, sizeof(game.tmp_path));
+			if (result != MINARCH_ARCHIVE_OK) {
+				LOG_error("Failed to extract archive: %s (error %d)", game.path, result);
 				return;
 			}
-
-			// extract a known file format
-			uint8_t header[MINARCH_ZIP_HEADER_SIZE];
-			uint32_t next = 0;
-			uint16_t filename_len = 0;
-			char filename[MAX_PATH];
-			uint16_t compression_method = 0;
-			uint32_t compressed_size = 0;
-			uint16_t extra_len = 0;
-			while (1) {
-				if (next)
-					fseek(zip, next, SEEK_CUR);
-
-				if (MINARCH_ZIP_HEADER_SIZE != fread(header, 1, MINARCH_ZIP_HEADER_SIZE, zip))
-					break;
-
-				if (!MinArchGame_parseZipHeader(header, &compression_method, &filename_len,
-				                                &compressed_size, &extra_len))
-					break;
-
-				if (filename_len >= MAX_PATH)
-					break;
-
-				if (filename_len != fread(filename, 1, filename_len, zip))
-					break;
-				filename[filename_len] = '\0';
-				LOG_info("filename: %s", filename);
-
-				fseek(zip, extra_len, SEEK_CUR);
-				next = compressed_size;
-
-				if (!MinArchGame_matchesExtension(filename, extensions))
-					continue;
-
-				char tmp_template[MAX_PATH];
-				strcpy(tmp_template, "/tmp/minarch-XXXXXX");
-				char* tmp_dirname = mkdtemp(tmp_template);
-				// LOG_info("tmp_dirname: %s", tmp_dirname);
-				sprintf(game.tmp_path, "%s/%s", tmp_dirname, basename(filename));
-
-				// TODO: we need to clear game.tmp_path if anything below this point fails!
-
-				FILE* dst = fopen(game.tmp_path, "w");
-				if (dst == NULL) {
-					game.tmp_path[0] = '\0';
-					LOG_error("Error extracting file: %s\n\t%s", filename, strerror(errno));
-					return;
-				}
-
-				Zip_extract_t extract = NULL;
-				switch (compression_method) {
-				case 0:
-					extract = MinArchZip_copy;
-					break;
-				case 8:
-					extract = MinArchZip_inflate;
-					break;
-				}
-
-				if (!extract || extract(zip, dst, compressed_size)) {
-					game.tmp_path[0] = '\0';
-					LOG_error("Error extracting file: %s\n\t%s", filename, strerror(errno));
-					return;
-				}
-
-				fclose(dst);
-
-				break;
-			}
-
-			fclose(zip);
 		}
 	}
 
