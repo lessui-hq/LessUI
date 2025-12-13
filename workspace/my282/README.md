@@ -73,7 +73,6 @@ my282/
 │   └── output/        Built libretro core binaries
 ├── other/             Third-party dependencies
 │   ├── DinguxCommander-sdl2/  File manager (SDL2 version)
-│   ├── unzip60/       Unzip utility for package extraction
 │   └── squashfs/      Squashfs tools for filesystem management
 └── tests/             Platform-specific test utilities
     ├── brightness/    Brightness control testing
@@ -170,7 +169,6 @@ SDL = SDL2
 
 The platform automatically clones required dependencies on first build:
 - **DinguxCommander-sdl2**: `github.com/shauninman/DinguxCommander-sdl2.git` (file manager)
-- **unzip60**: `github.com/shauninman/unzip60.git` (archive extraction)
 
 ### Core Sharing
 

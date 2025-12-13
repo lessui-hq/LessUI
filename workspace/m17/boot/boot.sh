@@ -41,11 +41,11 @@ if [ -f "$UPDATE_PATH" ]; then
 	sync
 
 	log_info "Starting LessUI $ACTION_NOUN..."
-	if unzip -o "$UPDATE_PATH" -d "$SDCARD_PATH" >>"$LOG_FILE" 2>&1; then
-		log_info "Unzip complete"
+	if $SDCARD_PATH/bin/arm/7z x -y -o"$SDCARD_PATH" "$UPDATE_PATH" >>"$LOG_FILE" 2>&1; then
+		log_info "Extraction complete"
 	else
 		EXIT_CODE=$?
-		log_error "Unzip failed with exit code $EXIT_CODE"
+		log_error "7z extraction failed with exit code $EXIT_CODE"
 	fi
 	rm -f "$UPDATE_PATH"
 	sync

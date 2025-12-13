@@ -80,8 +80,7 @@ trimuismart/
 ├── cores/             Libretro cores (submodules + builds)
 │   └── makefile       12 cores: NES, GB/GBC, GBA, PSX, Genesis, SNES, etc.
 └── other/             Third-party dependencies
-    ├── DinguxCommander/  File manager (trimui-smart branch)
-    └── unzip60/          Unzip utility for update extraction
+    └── DinguxCommander/  File manager (trimui-smart branch)
 ```
 
 ## Input System
@@ -145,14 +144,12 @@ make
 # - keymon (button monitoring daemon)
 # - libmsettings (settings library with DE2 brightness control)
 # - DinguxCommander (file manager)
-# - unzip60 (update extraction utility)
 # - All libretro cores in cores/
 ```
 
 ### Dependencies
 The platform automatically clones required dependencies on first build:
 - **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `trimui-smart`)
-- **unzip60**: `github.com/shauninman/unzip60.git` (custom makefile for Trimui Smart)
 
 Note: Unlike most platforms, Trimui Smart has no SDL dependency in its platform makefile (SDL is pre-installed in stock firmware).
 

@@ -45,11 +45,9 @@ dd skip=54 iflag=skip_bytes if=installing-w.bmp of=output/installing-w
 dd skip=54 iflag=skip_bytes if=updating-w.bmp of=output/updating-w
 cp bootlogo-w.bmp ./output/
 
-cp ../other/unzip60/unzip ./output/
-
 cd output
 
-tar -czvf data bootlogo.bmp installing updating bootlogo-r.bmp installing-r updating-r bootlogo-s.bmp installing-s updating-s bootlogo-w.bmp installing-w updating-w unzip
+tar -czvf data bootlogo.bmp installing updating bootlogo-r.bmp installing-r updating-r bootlogo-s.bmp installing-s updating-s bootlogo-w.bmp installing-w updating-w
 
 cat ../$SOURCE >$TARGET
 {

@@ -295,6 +295,9 @@ setup: name
 	@echo "Running setup hooks..."
 	@$(MAKE) -C ./workspace/all/utils setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
 	@$(MAKE) -C ./workspace/all/paks setup DESTDIR=$(CURDIR)/build/SYSTEM/common/bin
+	# Copy 7z binaries to BOOT (will be moved to BASE during special target)
+	rsync -a ./build/SYSTEM/common/bin/arm/7z ./build/BOOT/bin/arm/
+	rsync -a ./build/SYSTEM/common/bin/arm64/7z ./build/BOOT/bin/arm64/
 
 	# Generate emulator paks from templates
 	@echo "Generating emulator paks..."
@@ -308,6 +311,7 @@ special:
 	rsync -a ./skeleton/SYSTEM/common/update-functions.sh ./build/BOOT/common/install/
 	# setup miyoomini/trimui/magicx family .tmp_update in BOOT
 	mv ./build/BOOT/common ./build/BOOT/.tmp_update
+	mv ./build/BOOT/bin ./build/BASE/
 	mv ./build/BOOT/miyoo ./build/BASE/
 	mv ./build/BOOT/trimui ./build/BASE/
 	mv ./build/BOOT/magicx ./build/BASE/
@@ -365,9 +369,9 @@ package: tidy
 
 	# Package final release (use 7z for multi-threaded compression if available)
 	@if command -v 7z >/dev/null 2>&1; then \
-		cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
+		cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
 	else \
-		cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
+		cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
 	fi
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 

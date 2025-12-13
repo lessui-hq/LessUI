@@ -100,8 +100,7 @@ tg5040/
 └── other/             Third-party dependencies
     ├── DinguxCommander-sdl2/  File manager (SDL2)
     ├── evtest/        Input device testing tool
-    ├── jstest/        Joystick testing tool
-    └── unzip60/       ZIP extraction utility
+    └── jstest/        Joystick testing tool
 ```
 
 ## Input System
@@ -194,7 +193,6 @@ The platform automatically clones required dependencies on first build:
 - **DinguxCommander-sdl2**: `github.com/shauninman/DinguxCommander-sdl2.git`
 - **evtest**: `github.com/freedesktop-unofficial-mirror/evtest.git`
 - **jstest**: `github.com/datrh/joyutils.git`
-- **unzip60**: `github.com/shauninman/unzip60.git`
 
 ### Supported Libretro Cores
 - **NES**: fceumm

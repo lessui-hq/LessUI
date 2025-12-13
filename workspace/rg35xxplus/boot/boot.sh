@@ -114,11 +114,11 @@ if [ -f $UPDATE_PATH ]; then
 	rm -rf $BOOT_PATH
 
 	log_info "Starting LessUI $ACTION_NOUN..."
-	if /tmp/unzip -o $UPDATE_PATH -d $SDCARD_PATH >>"$LOG_FILE" 2>&1; then
-		log_info "Unzip complete"
+	if $SDCARD_PATH/bin/arm64/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
+		log_info "Extraction complete"
 	else
 		EXIT_CODE=$?
-		log_error "Unzip failed with exit code $EXIT_CODE"
+		log_error "7z extraction failed with exit code $EXIT_CODE"
 	fi
 	rm -f $UPDATE_PATH
 

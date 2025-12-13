@@ -111,7 +111,6 @@ rg35xxplus/
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
     ├── sdl2/          Custom SDL2 fork (Mali framebuffer rotation)
-    ├── unzip60/       Unzip utility for update extraction
     ├── dtc/           Device Tree Compiler (for boot customization)
     └── fbset/         Framebuffer configuration utility
 ```
@@ -186,7 +185,6 @@ make
 # - libmsettings (settings library)
 # - Boot assets (bootlogo variants packaged into boot.sh)
 # - SDL2 library (Mali framebuffer with rotation support)
-# - unzip60 (update extraction)
 # - dtc (device tree compiler)
 # - fbset (framebuffer configuration)
 # - All libretro cores in cores/
@@ -195,7 +193,6 @@ make
 ### Dependencies
 The platform automatically clones required dependencies on first build:
 - **SDL2**: `github.com/JohnnyonFlame/SDL-malifbdev-rot` (Mali framebuffer with rotation)
-- **unzip60**: `github.com/shauninman/unzip60.git`
 - **dtc**: `github.com/dgibson/dtc` (Device Tree Compiler)
 - **fbset**: `github.com/shauninman/union-fbset`
 
