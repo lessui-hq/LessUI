@@ -19,6 +19,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <msettings.h>
@@ -592,6 +593,10 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 	                           renderer->src_p, renderer->dst_w, renderer->dst_h, renderer->dst_p);
 }
 
+void PLAT_clearBlit(void) {
+	// No-op: SDL1 platforms clear vid.in_game after every flip
+}
+
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Update and composite effect overlay (only in game mode, not menus)
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
@@ -746,6 +751,29 @@ void PLAT_powerOff(void) {
 	GFX_quit();
 
 	system("shutdown");
+}
+
+double PLAT_getDisplayHz(void) {
+	return 60.0;
+}
+
+uint32_t PLAT_measureVsyncInterval(void) {
+	// rg35xx uses ioctl(OWLFB_WAITFORVSYNC) for vsync
+	// Measure time for two consecutive waits to get one vsync interval
+	struct timespec start, end;
+	int dummy;
+
+	// First wait to sync to vsync boundary
+	ioctl(vid.fd_fb, OWLFB_WAITFORVSYNC, &dummy);
+
+	// Measure the second wait (one full vsync interval)
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	ioctl(vid.fd_fb, OWLFB_WAITFORVSYNC, &dummy);
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	// Convert to microseconds
+	uint32_t us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+	return us;
 }
 
 ///////////////////////////////

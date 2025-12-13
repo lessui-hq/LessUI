@@ -29,6 +29,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <msettings.h>
@@ -674,6 +675,10 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 	                           renderer->src_p, renderer->dst_w, renderer->dst_h, renderer->dst_p);
 }
 
+void PLAT_clearBlit(void) {
+	// No-op: miyoomini clears vid.in_game after every flip (line 691)
+}
+
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	if (!vid.direct)
 		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
@@ -825,6 +830,28 @@ void PLAT_powerOff(void) {
 	system("shutdown");
 	while (1)
 		pause();
+}
+
+double PLAT_getDisplayHz(void) {
+	return 60.0;
+}
+
+uint32_t PLAT_measureVsyncInterval(void) {
+	// miyoomini uses SDL_Flip with GFX_FLIPWAIT=1 for vsync
+	// Measure time for two consecutive flips to get one vsync interval
+	struct timespec start, end;
+
+	// First flip to sync to vsync boundary
+	SDL_Flip(vid.video);
+
+	// Measure the second flip (one full vsync interval)
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	SDL_Flip(vid.video);
+	clock_gettime(CLOCK_MONOTONIC, &end);
+
+	// Convert to microseconds
+	uint32_t us = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+	return us;
 }
 
 ///////////////////////////////

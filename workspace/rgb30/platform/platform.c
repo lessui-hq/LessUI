@@ -99,6 +99,10 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 	SDL2_blitRenderer(&vid_ctx, renderer);
 }
 
+void PLAT_clearBlit(void) {
+	SDL2_clearBlit(&vid_ctx);
+}
+
 void PLAT_flip(SDL_Surface* screen, int sync) {
 	SDL2_flip(&vid_ctx, sync);
 }
@@ -321,6 +325,14 @@ void PLAT_powerOff(void) {
 	system("shutdown");
 	while (1)
 		pause();
+}
+
+double PLAT_getDisplayHz(void) {
+	return SDL2_getDisplayHz();
+}
+
+uint32_t PLAT_measureVsyncInterval(void) {
+	return SDL2_measureVsyncInterval(&vid_ctx);
 }
 
 #define GOVERNOR_PATH "/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed"

@@ -594,6 +594,12 @@ int GFX_wrapText(TTF_Font* font, char* str, int max_width, int max_lines);
 #define GFX_blitRenderer PLAT_blitRenderer
 
 /**
+ * Clears the blit renderer to switch to UI mode.
+ * After calling this, GFX_flip renders from screen surface instead of game renderer.
+ */
+#define GFX_clearBlit PLAT_clearBlit
+
+/**
  * Gets anti-aliased scaler for smooth scaling operations.
  *
  * @param renderer Rendering context
@@ -1428,6 +1434,12 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer);
 void PLAT_blitRenderer(GFX_Renderer* renderer);
 
 /**
+ * Platform-specific blit clearing.
+ * Switches from game mode to UI mode rendering.
+ */
+void PLAT_clearBlit(void);
+
+/**
  * Platform-specific screen flip.
  *
  * @param screen SDL surface to flip
@@ -1441,6 +1453,27 @@ void PLAT_flip(SDL_Surface* screen, int sync);
  * @return 1 if platform supports overscan adjustment, 0 otherwise
  */
 int PLAT_supportsOverscan(void);
+
+/**
+ * Platform-specific display refresh rate.
+ *
+ * Used by frame pacing to decouple emulation from display timing.
+ * Most platforms return 60.0, but some (e.g., M17 with 72Hz panel)
+ * have different refresh rates.
+ *
+ * @return Display refresh rate in Hz (e.g., 60.0, 72.0)
+ */
+double PLAT_getDisplayHz(void);
+
+/**
+ * Measures a single vsync interval.
+ *
+ * Blocks until vsync completes and returns the elapsed time.
+ * Used for adaptive display Hz measurement.
+ *
+ * @return Vsync interval in microseconds (e.g., 16667 for 60Hz), or 0 if unsupported
+ */
+uint32_t PLAT_measureVsyncInterval(void);
 
 /**
  * Platform-specific overlay initialization (for on-screen indicators).

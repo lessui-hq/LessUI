@@ -314,6 +314,10 @@ void SDL2_blitRenderer(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	resizeVideoInternal(ctx, renderer->true_w, renderer->true_h, renderer->src_p);
 }
 
+void SDL2_clearBlit(SDL2_RenderContext* ctx) {
+	ctx->blit = NULL;
+}
+
 void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 	// UI mode (no blit renderer)
 	if (!ctx->blit) {
@@ -394,7 +398,10 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 
 	// Present
 	SDL_RenderPresent(ctx->renderer);
-	ctx->blit = NULL;
+	// NOTE: Don't clear ctx->blit here - it needs to persist for frame pacing.
+	// When frame pacing repeats a frame (no core.run()), we still need the
+	// blit info to re-render the previous frame. The blit pointer stays valid
+	// until explicitly changed by SDL2_blitRenderer().
 }
 
 void SDL2_vsync(int remaining) {
@@ -408,4 +415,34 @@ int SDL2_hdmiChanged(SDL2_RenderContext* ctx) {
 	// This function just reports if it changed
 	// (Actual detection happens in platform code)
 	return 0;
+}
+
+double SDL2_getDisplayHz(void) {
+	SDL_DisplayMode mode;
+	if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
+		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
+		if (mode.refresh_rate > 0) {
+			return (double)mode.refresh_rate;
+		}
+	}
+	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback\n");
+	return 0.0; // Return 0 to indicate no data, caller should use PLAT_getDisplayHz
+}
+
+uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx) {
+	if (!ctx || !ctx->renderer) {
+		return 0;
+	}
+
+	// First present to sync to vsync boundary
+	SDL_RenderPresent(ctx->renderer);
+
+	// Measure time for second present (one full vsync interval)
+	uint64_t start = SDL_GetPerformanceCounter();
+	SDL_RenderPresent(ctx->renderer);
+	uint64_t end = SDL_GetPerformanceCounter();
+
+	// Convert to microseconds
+	uint64_t freq = SDL_GetPerformanceFrequency();
+	return (uint32_t)((end - start) * 1000000 / freq);
 }
