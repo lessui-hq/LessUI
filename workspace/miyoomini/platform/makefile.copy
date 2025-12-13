@@ -12,8 +12,9 @@ $(PLATFORM):
 	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
 	mkdir -p ./build/BOOT/common/$@/
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
-	# show.elf is now installed by utils install hook, just copy to BOOT
-	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
+	# show.elf (platform-specific build)
+	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
+	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
 	# boot assets
 	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
 	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png

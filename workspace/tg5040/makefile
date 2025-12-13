@@ -14,7 +14,11 @@ REQUIRES_EVTEST = other/evtest
 REQUIRES_JSTEST = other/jstest
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
-all: readmes
+all: readmes show
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_JSTEST) $(REQUIRES_COMMANDER)
 	mkdir -p other

@@ -17,8 +17,7 @@ REQUIRES_DTC = other/dtc
 REQUIRES_FBSET = other/fbset
 
 # Platform-specific binaries (can run in parallel after readmes)
-# show.elf is now built in workspace/all/utils/show
-PLATFORM_TARGETS = boot init
+PLATFORM_TARGETS = boot init show
 
 .PHONY: $(PLATFORM_TARGETS)
 
@@ -29,6 +28,10 @@ boot:
 
 init:
 	$(MAKE) -C init
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	mkdir -p other

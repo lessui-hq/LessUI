@@ -13,8 +13,12 @@ endif
 REQUIRES_COMMANDER = other/DinguxCommander
 REQUIRES_SDLCOMPAT = other/sdl12-compat
 
-# show.elf and keymon.elf are now built in workspace/all/utils
-all: readmes
+# keymon.elf is now built in workspace/all/utils
+all: readmes show
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
 	cd $(REQUIRES_COMMANDER) && $(MAKE) -j

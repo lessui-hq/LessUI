@@ -12,8 +12,12 @@ endif
 
 REQUIRES_COMMANDER = other/DinguxCommander
 
-# show.elf and keymon.elf are now built in workspace/all/utils
-all: readmes
+# keymon.elf is now built in workspace/all/utils
+all: readmes show
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER)
 	mkdir -p other

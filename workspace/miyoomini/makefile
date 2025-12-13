@@ -14,7 +14,7 @@ REQUIRES_SDL = other/sdl
 REQUIRES_COMMANDER = other/DinguxCommander
 
 # Platform-specific binaries (can run in parallel)
-PLATFORM_TARGETS = blank batmon lumon overclock
+PLATFORM_TARGETS = blank batmon lumon overclock show
 
 .PHONY: $(PLATFORM_TARGETS)
 
@@ -31,6 +31,10 @@ lumon:
 
 overclock:
 	$(MAKE) -C overclock
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_SDL) $(REQUIRES_COMMANDER)
 	cd other/sdl && ./make.sh
