@@ -17,6 +17,11 @@ extern double PLAT_getDisplayHz(void);
 #define Q16_SCALE 65536.0
 
 void FramePacer_init(FramePacer* pacer, double game_fps, double display_hz) {
+	// Fallback to 60Hz if display_hz detection failed
+	if (display_hz <= 0.0) {
+		display_hz = 60.0;
+	}
+
 	// Convert to Q16.16 fixed-point for precise integer math
 	// 59.73fps becomes 3,913,359 (59.73 * 65536)
 	pacer->game_fps_q16 = (int32_t)(game_fps * Q16_SCALE);
