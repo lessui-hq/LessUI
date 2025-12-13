@@ -14,8 +14,12 @@ endif
 
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
-all: readmes
+all: readmes show
 	cd bl && $(MAKE)
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER)
 	mkdir -p other

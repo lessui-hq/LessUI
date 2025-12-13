@@ -5,7 +5,8 @@ $(PLATFORM):
 	rsync -a ./workspace/$@/boot/output/dmenu.bin ./build/SYSTEM/$@/dat/
 	mkdir -p ./build/BASE/$@
 	rsync -a ./workspace/$@/boot/output/dmenu.bin ./build/BASE/$@/
-	# show.elf is now installed by utils install hook
+	# show.elf (platform-specific build)
+	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
 	rsync -a ./workspace/$@/other/fbset/fbset ./build/SYSTEM/$@/bin
 	rsync -a ./workspace/$@/other/sdl2/build/.libs/libSDL2-2.0.so.0.2800.5 ./build/SYSTEM/$@/lib/libSDL2-2.0.so.0
 	# move libs (copied from toolchain)

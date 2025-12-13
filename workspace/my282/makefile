@@ -14,9 +14,13 @@ endif
 
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
-all: readmes
+all: readmes show
 	cd overclock && $(MAKE)
 	cd other/squashfs && $(MAKE)
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER)
 	mkdir -p other

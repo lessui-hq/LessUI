@@ -156,14 +156,14 @@ build:
 # Copy platform binaries to build directory
 system:
 	# populate system (binaries that makefile.copy may reference)
-	# keymon.elf and show.elf are now installed by utils install hook (unified implementation)
+	# keymon.elf is installed by utils install hook, show.elf is platform-specific
 	cp ./workspace/$(PLATFORM)/libmsettings/libmsettings.so ./build/SYSTEM/$(PLATFORM)/lib
 	cp ./workspace/all/minui/build/$(PLATFORM)/minui.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/minarch.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
-	# Install utils (calls install hook for each util - includes keymon.elf and show.elf)
+	# Install utils (calls install hook for each util - includes keymon.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
-	# Now run platform-specific copy (may reference utils like show.elf for BOOT)
+	# Now run platform-specific copy (includes show.elf and BOOT assets)
 	$(MAKE) -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
 	# Construct tool paks from workspace/all/paks/Tools/
 	# DEBUG=1 includes debug-only paks (those with "debug": true in pak.json)

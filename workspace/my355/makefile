@@ -17,9 +17,13 @@ REQUIRES_MKBOOTIMG = other/mkbootimg
 REQUIRES_RSCEGO = other/rsce-go
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
-# show.elf and keymon.elf are now built in workspace/all/utils
-all: readmes
+# keymon.elf is now built in workspace/all/utils
+all: readmes show
 	cd other/squashfs && $(MAKE)
+
+.PHONY: show
+show:
+	$(MAKE) -C show
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_MKBOOTIMG) $(REQUIRES_RSCEGO) $(REQUIRES_COMMANDER)
 	mkdir -p other
