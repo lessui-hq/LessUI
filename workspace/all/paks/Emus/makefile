@@ -9,7 +9,7 @@
 #   clean   - Remove downloaded cores
 ###########################################################
 
-MINARCH_CORES_VERSION ?= 20251130-2
+MINARCH_CORES_VERSION ?= 20251213-0
 CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
 
 # All core management happens in cores/ directory
