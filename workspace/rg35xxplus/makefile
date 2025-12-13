@@ -12,7 +12,6 @@ endif
 
 ###########################################################
 
-REQUIRES_UNZIP60 = other/unzip60
 REQUIRES_SDL2 = other/sdl2
 REQUIRES_DTC = other/dtc
 REQUIRES_FBSET = other/fbset
@@ -31,10 +30,9 @@ boot:
 init:
 	$(MAKE) -C init
 
-early: $(REQUIRES_UNZIP60) $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
+early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	mkdir -p other
 	cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) NO_PYTHON=1 dtc
-	cd $(REQUIRES_UNZIP60) && $(MAKE) -f unix/Makefile.trimuismart unzip
 	cd $(REQUIRES_FBSET) && $(MAKE)
 	cd $(REQUIRES_SDL2) && CFLAGS="-O2 -march=armv8-a+crc -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
 		./configure CC=${CROSS_COMPILE}gcc --host=arm-buildroot-linux-gnueabihf \
@@ -73,12 +71,8 @@ early: $(REQUIRES_UNZIP60) $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 
 clean:
 	cd boot && rm -rf output
-	cd $(REQUIRES_UNZIP60) && $(MAKE) -f unix/Makefile.trimuismart clean
 	cd $(REQUIRES_FBSET) && $(MAKE) clean
 	rm -f ./boot/*.bmp
-
-$(REQUIRES_UNZIP60):
-	git clone --depth 1 https://github.com/shauninman/unzip60.git $(REQUIRES_UNZIP60)
 
 $(REQUIRES_SDL2):
 	git clone https://github.com/JohnnyonFlame/SDL-malifbdev-rot $(REQUIRES_SDL2)

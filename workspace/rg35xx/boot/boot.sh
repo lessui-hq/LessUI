@@ -7,7 +7,7 @@ TF2_PATH=/mnt/sdcard
 SDCARD_PATH=$TF1_PATH
 SYSTEM_DIR=/.system
 SYSTEM_FRAG=$SYSTEM_DIR/rg35xx
-UPDATE_FRAG=/LessUI.zip
+UPDATE_FRAG=/LessUI.7z
 SYSTEM_PATH=${SDCARD_PATH}${SYSTEM_FRAG}
 UPDATE_PATH=${SDCARD_PATH}${UPDATE_FRAG}
 LOG_FILE="${SDCARD_PATH}/lessui-install.log"
@@ -70,11 +70,11 @@ if [ -f $UPDATE_PATH ]; then
 	sync
 
 	log_info "Starting LessUI $ACTION..."
-	if busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH >>"$LOG_FILE" 2>&1; then
-		log_info "Unzip complete"
+	if /tmp/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
+		log_info "Extraction complete"
 	else
 		EXIT_CODE=$?
-		log_error "Unzip failed with exit code $EXIT_CODE"
+		log_error "7z extraction failed with exit code $EXIT_CODE"
 	fi
 	rm -f $UPDATE_PATH
 

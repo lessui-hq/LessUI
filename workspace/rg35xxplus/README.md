@@ -111,7 +111,6 @@ rg35xxplus/
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
     ├── sdl2/          Custom SDL2 fork (Mali framebuffer rotation)
-    ├── unzip60/       Unzip utility for update extraction
     ├── dtc/           Device Tree Compiler (for boot customization)
     └── fbset/         Framebuffer configuration utility
 ```
@@ -186,7 +185,6 @@ make
 # - libmsettings (settings library)
 # - Boot assets (bootlogo variants packaged into boot.sh)
 # - SDL2 library (Mali framebuffer with rotation support)
-# - unzip60 (update extraction)
 # - dtc (device tree compiler)
 # - fbset (framebuffer configuration)
 # - All libretro cores in cores/
@@ -195,7 +193,6 @@ make
 ### Dependencies
 The platform automatically clones required dependencies on first build:
 - **SDL2**: `github.com/JohnnyonFlame/SDL-malifbdev-rot` (Mali framebuffer with rotation)
-- **unzip60**: `github.com/shauninman/unzip60.git`
 - **dtc**: `github.com/dgibson/dtc` (Device Tree Compiler)
 - **fbset**: `github.com/shauninman/union-fbset`
 
@@ -230,7 +227,7 @@ LessUI installs across two SD cards:
 ├── .userdata/
 │   └── rg35xxplus/        User settings and saves
 ├── Roms/                  ROM files organized by system
-└── LessUI.zip              Update package (if present)
+└── LessUI.7z              Update package (if present)
 ```
 
 ### Boot Process
@@ -239,7 +236,7 @@ LessUI installs across two SD cards:
 2. Custom boot script runs (`boot.sh` embedded in bootloader)
 3. Script mounts TF2 (`/mnt/sdcard`) at `/dev/mmcblk1p1`
 4. If TF2 mount fails or doesn't contain LessUI: symlink `/mnt/sdcard` → `/mnt/mmc`
-5. Check for `LessUI.zip` on TF2:
+5. Check for `LessUI.7z` on TF2:
    - Detect device variant by reading `/mnt/vendor/bin/dmenu.bin`
    - Detect framebuffer orientation from `/sys/class/graphics/fb0/modes`
    - Select appropriate boot image suffix:
@@ -248,8 +245,8 @@ LessUI installs across two SD cards:
      - `-w`: Widescreen display (RG34xx)
      - (none): Standard 640x480
    - Display `installing.bmp` (first install) or `updating.bmp` (update)
-   - Extract `LessUI.zip` to `/mnt/sdcard`
-   - Delete ZIP file
+   - Extract `LessUI.7z` to `/mnt/sdcard`
+   - Delete archive
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
 6. Launch LessUI via `.system/rg35xxplus/paks/MinUI.pak/launch.sh`
@@ -258,10 +255,10 @@ LessUI installs across two SD cards:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in TF2 root (`/mnt/sdcard/`)
+1. Place `LessUI.7z` in TF2 root (`/mnt/sdcard/`)
 2. Reboot device
-3. Boot script auto-detects ZIP, determines variant, and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive, determines variant, and performs update
+4. Archive is deleted after successful extraction
 5. `install.sh` finalizes update (copies dmenu.bin, migrates old configs)
 
 ### Migration from RG40XXCUBE

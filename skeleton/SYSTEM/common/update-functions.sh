@@ -24,7 +24,7 @@ SCRIPT_DIR="$(dirname "$0")"
 # This prevents orphaned files and partial updates.
 #
 # Args:
-#   $1 - UPDATE_PATH (path to LessUI.zip)
+#   $1 - UPDATE_PATH (path to LessUI.7z)
 #   $2 - SDCARD_PATH (SD card mount point)
 #   $3 - SYSTEM_PATH (.system directory path)
 #   $4 - LOG_FILE (log file path)
@@ -53,27 +53,25 @@ atomic_system_update() {
 	# Move old .tmp_update out of the way (using consistent -prev suffix)
 	mv "$_sdcard/.tmp_update" "$_sdcard/.tmp_update-prev" 2>/dev/null
 
-	# Determine which unzip to use
-	# Some platforms bundle unzip (tg5040, trimuismart, my282, rg35xxplus)
-	# Others rely on stock firmware's unzip in PATH (miyoomini, rg35xx, etc.)
-	if [ -x "./unzip" ]; then
-		_unzip_cmd="./unzip"
+	# Determine which 7z binary to use based on architecture
+	if [ "$(uname -m)" = "aarch64" ]; then
+		_7z="$_sdcard/bin/arm64/7z"
 	else
-		_unzip_cmd="unzip"
+		_7z="$_sdcard/bin/arm/7z"
 	fi
 
 	# Extract update
-	if "$_unzip_cmd" -o "$_update_zip" -d "$_sdcard" >>"$_log" 2>&1; then
-		# SUCCESS: Unzip completed successfully
-		log_info "Unzip complete"
+	if "$_7z" x -y -o"$_sdcard" "$_update_zip" >>"$_log" 2>&1; then
+		# SUCCESS: Extraction completed successfully
+		log_info "Extraction complete"
 		rm -f "$_update_zip"
 		rm -rf "$_sdcard/.tmp_update-prev"
 		rm -rf "$_system_dir-prev"
 		return 0
 	else
-		# FAILURE: Unzip failed - restore backups
+		# FAILURE: 7z extraction failed - restore backups
 		_exit_code=$?
-		log_error "Unzip failed with exit code $_exit_code"
+		log_error "7z extraction failed with exit code $_exit_code"
 
 		# Restore .system backup
 		if [ -d "$_system_dir-prev" ]; then

@@ -169,7 +169,7 @@ LessUI installs to the SD card with the following structure:
 │   └── rgb30/              Platform-specific settings
 │       └── msettings.bin   Volume/brightness preferences
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Settings Management

@@ -19,23 +19,23 @@
 #endif
 
 int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions,
-                                bool* out_supports_zip) {
+                                bool* out_supports_archive) {
 	if (!extensions_str || !out_extensions || max_extensions <= 0) {
-		if (out_supports_zip)
-			*out_supports_zip = false;
+		if (out_supports_archive)
+			*out_supports_archive = false;
 		return 0;
 	}
 
 	int count = 0;
-	bool supports_zip = false;
+	bool supports_archive = false;
 	char* ext;
 
 	// Parse pipe-delimited extensions
 	ext = strtok(extensions_str, "|");
 	while (ext && count < max_extensions) {
 		out_extensions[count++] = ext;
-		if (strcmp("zip", ext) == 0) {
-			supports_zip = true;
+		if (strcmp("zip", ext) == 0 || strcmp("7z", ext) == 0) {
+			supports_archive = true;
 		}
 		ext = strtok(NULL, "|");
 	}
@@ -45,8 +45,8 @@ int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int
 		out_extensions[count] = NULL;
 	}
 
-	if (out_supports_zip)
-		*out_supports_zip = supports_zip;
+	if (out_supports_archive)
+		*out_supports_archive = supports_archive;
 
 	return count;
 }
@@ -73,33 +73,6 @@ bool MinArchGame_matchesExtension(const char* filename, char* const* extensions)
 	return false;
 }
 
-bool MinArchGame_parseZipHeader(const uint8_t* header, uint16_t* out_compression_method,
-                                uint16_t* out_filename_len, uint32_t* out_compressed_size,
-                                uint16_t* out_extra_len) {
-	if (!header)
-		return false;
-
-	// Check for data descriptor flag (bit 3 of general purpose bit flag)
-	// If set, sizes are in data descriptor after compressed data
-	uint16_t flags = MINARCH_ZIP_LE_READ16(&header[6]);
-	if (flags & 0x0008) {
-		return false; // Can't handle data descriptors
-	}
-
-	if (out_compression_method)
-		*out_compression_method = MINARCH_ZIP_LE_READ16(&header[8]);
-
-	if (out_compressed_size)
-		*out_compressed_size = MINARCH_ZIP_LE_READ32(&header[18]);
-
-	if (out_filename_len)
-		*out_filename_len = MINARCH_ZIP_LE_READ16(&header[26]);
-
-	if (out_extra_len)
-		*out_extra_len = MINARCH_ZIP_LE_READ16(&header[28]);
-
-	return true;
-}
 
 bool MinArchGame_buildM3uPath(const char* rom_path, char* out_m3u_path, size_t m3u_path_size) {
 	if (!rom_path || !out_m3u_path || m3u_path_size == 0)

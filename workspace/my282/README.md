@@ -73,7 +73,6 @@ my282/
 │   └── output/        Built libretro core binaries
 ├── other/             Third-party dependencies
 │   ├── DinguxCommander-sdl2/  File manager (SDL2 version)
-│   ├── unzip60/       Unzip utility for package extraction
 │   └── squashfs/      Squashfs tools for filesystem management
 └── tests/             Platform-specific test utilities
     ├── brightness/    Brightness control testing
@@ -170,7 +169,6 @@ SDL = SDL2
 
 The platform automatically clones required dependencies on first build:
 - **DinguxCommander-sdl2**: `github.com/shauninman/DinguxCommander-sdl2.git` (file manager)
-- **unzip60**: `github.com/shauninman/unzip60.git` (archive extraction)
 
 ### Core Sharing
 
@@ -203,18 +201,18 @@ LessUI installs to the SD card with the following structure:
 │   └── my282/
 │       └── msettings.bin Settings persistence file
 ├── Roms/                 ROM files organized by system
-└── LessUI.zip             Update package (if present)
+└── LessUI.7z             Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs boot script from `.tmp_update/my282.sh`
 2. Script sets CPU governor to "performance" for optimal speed
-3. If `LessUI.zip` exists:
+3. If `LessUI.7z` exists:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Move old update directory to backup location
-   - Extract `LessUI.zip` to SD card using unzip utility
-   - Delete ZIP file
+   - Extract `LessUI.7z` to SD card using unzip utility
+   - Delete archive
    - Remove backup directory
    - Run `.system/my282/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/my282/paks/MinUI.pak/launch.sh`
@@ -224,10 +222,10 @@ LessUI installs to the SD card with the following structure:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/LessUI.zip`)
+1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/LessUI.7z`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 5. LessUI launches automatically
 
 ## Platform-Specific Features
@@ -371,7 +369,7 @@ When testing changes:
 5. Test headphone jack detection and volume switching
 6. Verify analog stick input if used by applications
 7. Confirm splash screens display correctly during install/update
-8. Test boot process with and without LessUI.zip present
+8. Test boot process with and without LessUI.7z present
 
 ## Related Documentation
 

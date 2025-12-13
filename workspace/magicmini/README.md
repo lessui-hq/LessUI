@@ -150,7 +150,7 @@ LessUI installs to the **secondary SD card** (`/storage/TF2`) with this structur
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
 ├── Roms/                   ROM files organized by system
-├── LessUI.zip               Update package (if present)
+├── LessUI.7z               Update package (if present)
 └── log.txt                 Installation/update log
 ```
 
@@ -176,11 +176,11 @@ The `autostart.sh` script runs on device boot and checks for LessUI updates on t
 
 1. Device boots stock OS from internal SD
 2. Stock OS runs `/usr/bin/autostart.sh` (LessUI's boot.sh)
-3. Script checks for `LessUI.zip` on `/storage/TF2`
-4. If ZIP found:
+3. Script checks for `LessUI.7z` on `/storage/TF2`
+4. If archive found:
    - Display splash screen to framebuffer (`installing.bmp` or `updating.bmp`)
-   - Extract ZIP to `/storage/TF2`
-   - Delete ZIP file
+   - Extract archive to `/storage/TF2`
+   - Delete archive
    - Run `.system/magicmini/bin/install.sh` to complete setup
 5. Launch LessUI via `.system/magicmini/paks/MinUI.pak/launch.sh`
 6. If launcher exits, shutdown device (prevents stock OS from interfering)

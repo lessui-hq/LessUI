@@ -7,7 +7,6 @@ $(PLATFORM):
 	rsync -a ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
 	mkdir -p ./build/BOOT/common/$@/
 	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
-	rsync -a ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
 	# boot assets (standard and brick variants)
 	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
 	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png

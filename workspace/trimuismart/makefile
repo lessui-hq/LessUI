@@ -11,23 +11,18 @@ endif
 ###########################################################
 
 REQUIRES_COMMANDER = other/DinguxCommander
-REQUIRES_UNZIP60 = other/unzip60
 
 # show.elf and keymon.elf are now built in workspace/all/utils
 all: readmes
 
-early: $(REQUIRES_COMMANDER) $(REQUIRES_UNZIP60)
+early: $(REQUIRES_COMMANDER)
 	mkdir -p other
 	cd other/DinguxCommander && $(MAKE) -j
-	cd other/unzip60 && $(MAKE) -f unix/Makefile.trimuismart unzip
 
 clean:
 	cd other/DinguxCommander && $(MAKE) clean
-	cd other/unzip60 && $(MAKE) -f unix/Makefile.trimuismart clean
 
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch trimui-smart https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
-$(REQUIRES_UNZIP60):
-	git clone --depth 1 https://github.com/shauninman/unzip60.git $(REQUIRES_UNZIP60)
 
 include ../all/readmes/makefile

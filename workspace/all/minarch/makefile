@@ -24,7 +24,7 @@ INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../minui/ -I../../$(PLA
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
          ../common/gfx_text.c ../minui/minui_file_utils.c ../common/platform_variant.c \
-         minarch_zip.c minarch_memory.c minarch_state.c \
+         minarch_archive.c minarch_memory.c minarch_state.c \
          minarch_paths.c minarch_cpu.c minarch_input.c minarch_mappings.c \
          minarch_video_convert.c minarch_rotation.c minarch_config.c minarch_context.c \
          minarch_menu.c minarch_env.c minarch_game.c minarch_scaler.c minarch_core.c \

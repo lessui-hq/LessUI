@@ -5,7 +5,6 @@ $(PLATFORM):
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
 	mkdir -p ./build/BOOT/common/$@/
 	cp ./build/SYSTEM/$@/bin/show.elf ./build/BOOT/common/$@/
-	rsync -a ./workspace/$@/other/unzip60/unzip ./build/BOOT/common/$@/
 	rsync -a ./build/SYSTEM/$@/bin/leds_off ./build/BOOT/common/$@/
 	# boot assets
 	rsync -a ./skeleton/SYSTEM/res/installing@1x.png ./build/BOOT/common/$@/installing.png

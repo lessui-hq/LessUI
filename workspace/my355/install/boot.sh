@@ -6,7 +6,7 @@ cat /dev/zero >/dev/fb0
 
 PLATFORM="my355"
 SDCARD_PATH="/mnt/SDCARD"
-UPDATE_PATH="$SDCARD_PATH/LessUI.zip"
+UPDATE_PATH="$SDCARD_PATH/LessUI.7z"
 SYSTEM_PATH="$SDCARD_PATH/.system"
 LOG_FILE="$SDCARD_PATH/lessui-install.log"
 
