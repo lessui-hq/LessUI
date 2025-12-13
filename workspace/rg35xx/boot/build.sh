@@ -16,9 +16,11 @@ dd skip=54 iflag=skip_bytes if=updating.bmp of=output/updating
 
 convert boot_logo.png -type truecolor output/boot_logo.bmp && gzip -f -n output/boot_logo.bmp
 
+cp ../../all/utils/7z/bin/arm/7z ./output/
+
 cd output
 # Always regenerate data archive to pick up asset changes
-zip -r data.zip installing updating
+zip -r data.zip installing updating 7z
 mv data.zip data
 
 cp ~/buildroot/output/images/rootfs.ext2 ./

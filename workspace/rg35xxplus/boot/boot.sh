@@ -114,7 +114,7 @@ if [ -f $UPDATE_PATH ]; then
 	rm -rf $BOOT_PATH
 
 	log_info "Starting LessUI $ACTION_NOUN..."
-	if $SDCARD_PATH/bin/arm64/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
+	if /tmp/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
 		log_info "Extraction complete"
 	else
 		EXIT_CODE=$?

@@ -356,8 +356,8 @@ package: tidy
 	rsync -a ./build/.system/cores/ ./build/PAYLOAD/.system/cores/
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 
-	# Create LessUI.7z for update installer (LZMA2 compression - 32% smaller than zip)
-	cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -mmt=on LessUI.7z .system .tmp_update
+	# Create LessUI.7z (-md=16m limits dictionary so 128MB RAM devices can decompress)
+	cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update
 	mv ./build/PAYLOAD/LessUI.7z ./build/BASE
 
 	# Move Tools to BASE so everything is at the same level

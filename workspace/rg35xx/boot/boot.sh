@@ -70,7 +70,7 @@ if [ -f $UPDATE_PATH ]; then
 	sync
 
 	log_info "Starting LessUI $ACTION..."
-	if $SDCARD_PATH/bin/arm/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
+	if /tmp/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
 		log_info "Extraction complete"
 	else
 		EXIT_CODE=$?
