@@ -31,7 +31,7 @@ setup:
 			echo "Extracting override a7 cores ($$OVERRIDE_VERSION)..."; \
 			rm -rf "$(CORES_DIR)/extracted/override/a7"; \
 			mkdir -p "$(CORES_DIR)/extracted/override/a7"; \
-			unzip -j -q "$(CORES_DIR)/override/linux-arm32.zip" -d "$(CORES_DIR)/extracted/override/a7"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/override/a7" "$(CORES_DIR)/override/linux-arm32.zip" >/dev/null; \
 			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-a7"; \
 			rsync -a "$(CORES_DIR)/extracted/override/a7/" "$$BUILD_CORES_DIR/a7/"; \
 		fi; \
@@ -45,7 +45,7 @@ setup:
 			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-a7.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/a7"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/a7"; \
-			unzip -j -q /tmp/lessui-cores-a7.zip -d "$(CORES_DIR)/extracted/remote/a7"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/remote/a7" /tmp/lessui-cores-a7.zip >/dev/null; \
 			rm /tmp/lessui-cores-a7.zip; \
 			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-a7"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/a7/" "$$BUILD_CORES_DIR/a7/"; \
@@ -61,7 +61,7 @@ setup:
 			echo "Extracting override a53 cores ($$OVERRIDE_VERSION)..."; \
 			rm -rf "$(CORES_DIR)/extracted/override/a53"; \
 			mkdir -p "$(CORES_DIR)/extracted/override/a53"; \
-			unzip -j -q "$(CORES_DIR)/override/linux-arm64.zip" -d "$(CORES_DIR)/extracted/override/a53"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/override/a53" "$(CORES_DIR)/override/linux-arm64.zip" >/dev/null; \
 			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-a53"; \
 			rsync -a "$(CORES_DIR)/extracted/override/a53/" "$$BUILD_CORES_DIR/a53/"; \
 		fi; \
@@ -75,7 +75,7 @@ setup:
 			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-a53.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/a53"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/a53"; \
-			unzip -j -q /tmp/lessui-cores-a53.zip -d "$(CORES_DIR)/extracted/remote/a53"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/remote/a53" /tmp/lessui-cores-a53.zip >/dev/null; \
 			rm /tmp/lessui-cores-a53.zip; \
 			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-a53"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/a53/" "$$BUILD_CORES_DIR/a53/"; \
