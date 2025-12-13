@@ -339,7 +339,7 @@ Launcher shows these first for quick access.
 1. Device hardware boots
 2. Runs boot script from device-specific location
 3. Boot script:
-   - Checks for `LessUI.zip` (update)
+   - Checks for `LessUI.7z` (update)
    - Displays splash screen if updating
    - Extracts update or launches LessUI
 4. LessUI launcher starts

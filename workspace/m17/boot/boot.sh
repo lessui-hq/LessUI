@@ -4,7 +4,7 @@
 
 PLATFORM="m17"
 SDCARD_PATH="/sdcard"
-UPDATE_PATH="$SDCARD_PATH/LessUI.zip"
+UPDATE_PATH="$SDCARD_PATH/LessUI.7z"
 SYSTEM_PATH="$SDCARD_PATH/.system"
 LOG_FILE="$SDCARD_PATH/lessui-install.log"
 

@@ -159,18 +159,18 @@ LessUI installs to the SD card with the following structure:
 │       ├── installing.png Initial install splash
 │       └── updating.png   Update splash
 ├── Roms/                  ROM files organized by system
-└── LessUI.zip              Update package (if present)
+└── LessUI.7z              Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `miyoomini.sh` from `.tmp_update/`
 2. Script sets CPU governor to "performance"
-3. If `LessUI.zip` exists:
+3. If `LessUI.7z` exists:
    - Initialize backlight (PWM)
    - Initialize LCD (trigger `/proc/ls`)
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract `LessUI.zip` to SD card
+   - Extract `LessUI.7z` to SD card
    - Run `.system/miyoomini/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/miyoomini/paks/MinUI.pak/launch.sh`
 5. If launcher exits, reboot (prevents stock firmware from accessing card)
@@ -178,7 +178,7 @@ LessUI installs to the SD card with the following structure:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root
+1. Place `LessUI.7z` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction

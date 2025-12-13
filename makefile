@@ -356,23 +356,15 @@ package: tidy
 	rsync -a ./build/.system/cores/ ./build/PAYLOAD/.system/cores/
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 
-	# Create LessUI.zip for update installer
-	@if command -v 7z >/dev/null 2>&1; then \
-		cd ./build/PAYLOAD && 7z a -tzip -mmt=on -mx=5 LessUI.zip .system .tmp_update; \
-	else \
-		cd ./build/PAYLOAD && zip -r LessUI.zip .system .tmp_update; \
-	fi
-	mv ./build/PAYLOAD/LessUI.zip ./build/BASE
+	# Create LessUI.7z for update installer (LZMA2 compression - 32% smaller than zip)
+	cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -mmt=on LessUI.7z .system .tmp_update
+	mv ./build/PAYLOAD/LessUI.7z ./build/BASE
 
 	# Move Tools to BASE so everything is at the same level
 	mv ./build/Tools ./build/BASE/
 
-	# Package final release (use 7z for multi-threaded compression if available)
-	@if command -v 7z >/dev/null 2>&1; then \
-		cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
-	else \
-		cd ./build/BASE && zip -r ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.zip README.txt; \
-	fi
+	# Package final release
+	cd ./build/BASE && 7zz a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
 	echo "$(RELEASE_NAME)" > ./build/latest.txt
 
 ###########################################################

@@ -227,7 +227,7 @@ LessUI installs across two SD cards:
 ├── .userdata/
 │   └── rg35xxplus/        User settings and saves
 ├── Roms/                  ROM files organized by system
-└── LessUI.zip              Update package (if present)
+└── LessUI.7z              Update package (if present)
 ```
 
 ### Boot Process
@@ -236,7 +236,7 @@ LessUI installs across two SD cards:
 2. Custom boot script runs (`boot.sh` embedded in bootloader)
 3. Script mounts TF2 (`/mnt/sdcard`) at `/dev/mmcblk1p1`
 4. If TF2 mount fails or doesn't contain LessUI: symlink `/mnt/sdcard` → `/mnt/mmc`
-5. Check for `LessUI.zip` on TF2:
+5. Check for `LessUI.7z` on TF2:
    - Detect device variant by reading `/mnt/vendor/bin/dmenu.bin`
    - Detect framebuffer orientation from `/sys/class/graphics/fb0/modes`
    - Select appropriate boot image suffix:
@@ -245,7 +245,7 @@ LessUI installs across two SD cards:
      - `-w`: Widescreen display (RG34xx)
      - (none): Standard 640x480
    - Display `installing.bmp` (first install) or `updating.bmp` (update)
-   - Extract `LessUI.zip` to `/mnt/sdcard`
+   - Extract `LessUI.7z` to `/mnt/sdcard`
    - Delete ZIP file
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
@@ -255,7 +255,7 @@ LessUI installs across two SD cards:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in TF2 root (`/mnt/sdcard/`)
+1. Place `LessUI.7z` in TF2 root (`/mnt/sdcard/`)
 2. Reboot device
 3. Boot script auto-detects ZIP, determines variant, and performs update
 4. ZIP is deleted after successful extraction

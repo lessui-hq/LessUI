@@ -239,7 +239,7 @@ LessUI installs to the SD card with the following structure:
 ├── .userdata/              User settings and saves
 │   └── tg5040/             Platform-specific settings
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Boot Process
@@ -248,12 +248,12 @@ LessUI installs to the SD card with the following structure:
 2. Script remounts SD cards as read-write (Brick has `/mnt/UDISK` too)
 3. Sets CPU governor to "userspace" and frequency to 2.0 GHz
 4. Detects variant by checking MainUI binary for "Trimui Brick" string
-5. If `LessUI.zip` exists:
+5. If `LessUI.7z` exists:
    - Disables LED animations (standard + Brick-specific LEDs if applicable)
    - Displays variant-appropriate splash screen:
      - Standard: `installing.png` or `updating.png` (1280x720)
      - Brick: `brick/installing.png` or `brick/updating.png` (1024x768)
-   - Extracts `LessUI.zip` to SD card
+   - Extracts `LessUI.7z` to SD card
    - Deletes ZIP file
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
@@ -262,7 +262,7 @@ LessUI installs to the SD card with the following structure:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/`)
+1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. Displays variant-appropriate update splash

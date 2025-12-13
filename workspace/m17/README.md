@@ -174,19 +174,19 @@ LessUI installs to the SD card with the following structure:
 │       └── InterTight-Bold.ttf
 ├── em_ui.sh                Boot script (LessUI entry point)
 ├── Roms/                   ROM files organized by system
-├── LessUI.zip               Update package (if present)
+├── LessUI.7z               Update package (if present)
 └── log.txt                 Installation/update log (optional)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `/sdcard/em_ui.sh` (LessUI's boot.sh)
-2. Script checks for `LessUI.zip` on SD card root
+2. Script checks for `LessUI.7z` on SD card root
 3. If ZIP found:
    - Initialize framebuffer (`/dev/fb0`)
    - Extract embedded splash images from boot script using `uudecode`
    - Display `installing` (first install) or `updating` (update) to framebuffer
-   - Extract `LessUI.zip` to `/sdcard`
+   - Extract `LessUI.7z` to `/sdcard`
    - Delete ZIP file
    - Run `.system/m17/bin/install.sh` to complete setup:
      - Extract `extra-libs.tar` to `.system/m17/lib/`
@@ -209,7 +209,7 @@ This allows splash images to be embedded directly in the boot script without req
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in `/sdcard/` root
+1. Place `LessUI.7z` in `/sdcard/` root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. ZIP is deleted after successful extraction

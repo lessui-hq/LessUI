@@ -72,7 +72,7 @@ The RG35XX uses a flexible dual-partition approach:
 - **TF1** (`/mnt/mmc`): Primary ROMS partition
 - **TF2** (`/mnt/sdcard`): Optional secondary partition
 
-Boot script detects which partition contains LessUI (`.system/rg35xx` or `LessUI.zip`) and creates symlinks accordingly. This allows LessUI to work with single or dual TF card setups.
+Boot script detects which partition contains LessUI (`.system/rg35xx` or `LessUI.7z`) and creates symlinks accordingly. This allows LessUI to work with single or dual TF card setups.
 
 ### Boot Firmware Integration
 LessUI runs through a custom ramdisk (`ramdisk.img`) and boot script (`dmenu.bin`) installed in the `/misc` partition:
@@ -181,7 +181,7 @@ LessUI installs to the SD card with the following structure:
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Boot Partition Layout (`/misc`)
@@ -201,14 +201,14 @@ LessUI modifies the `/misc` partition during installation:
 
 1. Stock firmware boots and runs `/misc/dmenu.bin` (LessUI's boot.sh)
 2. Script mounts SD card partitions (TF1 at `/mnt/mmc`, TF2 at `/mnt/sdcard`)
-3. Detects which partition contains LessUI by checking for `.system/rg35xx` or `LessUI.zip`
+3. Detects which partition contains LessUI by checking for `.system/rg35xx` or `LessUI.7z`
 4. Creates symlink if needed to unify partition access
-5. If `LessUI.zip` exists:
+5. If `LessUI.7z` exists:
    - Display splash screen based on install state (installing.bmp or updating.bmp)
    - Set framebuffer to 640x480x16
    - Extract splash images from uuencoded data in boot script
    - Display appropriate splash to `/dev/fb0`
-   - Extract `LessUI.zip` to SD card
+   - Extract `LessUI.7z` to SD card
    - Delete ZIP file
    - Run `.system/rg35xx/bin/install.sh` to update `/misc` partition
    - Reboot device
@@ -222,7 +222,7 @@ LessUI modifies the `/misc` partition during installation:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root
+1. Place `LessUI.7z` in SD card root
 2. Reboot device
 3. Boot script auto-detects ZIP and performs update
 4. Install script checks MD5 checksums of `/misc` files

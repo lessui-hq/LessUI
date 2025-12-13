@@ -24,7 +24,7 @@ SCRIPT_DIR="$(dirname "$0")"
 # This prevents orphaned files and partial updates.
 #
 # Args:
-#   $1 - UPDATE_PATH (path to LessUI.zip)
+#   $1 - UPDATE_PATH (path to LessUI.7z)
 #   $2 - SDCARD_PATH (SD card mount point)
 #   $3 - SYSTEM_PATH (.system directory path)
 #   $4 - LOG_FILE (log file path)
