@@ -128,18 +128,6 @@
     },
     "COLECO": {
       "emu_exe": "bluemsx"
-    },
-    "C128": {
-      "emu_exe": "vice_x64"
-    },
-    "VIC": {
-      "emu_exe": "vice_x64"
-    },
-    "PLUS4": {
-      "emu_exe": "vice_x64"
-    },
-    "PET": {
-      "emu_exe": "vice_x64"
     }
   }
 }
