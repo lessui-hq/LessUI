@@ -123,7 +123,7 @@ int strArrayContains(char** arr, const char* str) {
  */
 int hide(char* file_name) {
 	return file_name[0] == '.' || suffixMatch(".disabled", file_name) ||
-	       exactMatch("map.txt", file_name);
+	       exactMatch("map.txt", file_name) || exactMatch("about.txt", file_name);
 }
 
 /**

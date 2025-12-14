@@ -1,0 +1,8 @@
+Capcom Play System 3
+
+Core: fbneo
+
+Supported file types:
+  .zip, .7z
+
+No BIOS required.

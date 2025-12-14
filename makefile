@@ -353,7 +353,14 @@ package: tidy
 	cd ./build && find . -type f -name '.DS_Store' -delete
 	mkdir -p ./build/PAYLOAD
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
-	rsync -a ./build/.system/cores/ ./build/PAYLOAD/.system/cores/
+
+	# Copy only the cores referenced in cores.json (not all downloaded cores)
+	mkdir -p ./build/PAYLOAD/.system/cores/a7 ./build/PAYLOAD/.system/cores/a53
+	jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
+		[ -f "./build/.system/cores/a7/$$core" ] && cp "./build/.system/cores/a7/$$core" "./build/PAYLOAD/.system/cores/a7/"; \
+		[ -f "./build/.system/cores/a53/$$core" ] && cp "./build/.system/cores/a53/$$core" "./build/PAYLOAD/.system/cores/a53/"; \
+	done
+	@echo "Copied $$(ls ./build/PAYLOAD/.system/cores/a7/*.so 2>/dev/null | wc -l | tr -d ' ') a7 cores, $$(ls ./build/PAYLOAD/.system/cores/a53/*.so 2>/dev/null | wc -l | tr -d ' ') a53 cores"
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 
 	# Create LessUI.7z (-md=16m limits dictionary so 128MB RAM devices can decompress)

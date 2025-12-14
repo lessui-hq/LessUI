@@ -1,0 +1,8 @@
+TIC-80
+
+Core: tic80
+
+Supported file types:
+  .tic
+
+No BIOS required.

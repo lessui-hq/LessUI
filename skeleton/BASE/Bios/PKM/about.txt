@@ -1,0 +1,6 @@
+Pokemon mini
+
+Core: pokemini
+
+BIOS (optional):
+  bios.min - enables boot animation

@@ -1,0 +1,8 @@
+Pico-8
+
+Core: fake08
+
+Supported file types:
+  .p8, .p8.png, .png
+
+No BIOS required.

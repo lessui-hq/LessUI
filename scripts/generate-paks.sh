@@ -149,7 +149,7 @@ generate_pak() {
 
     # Get metadata (inline jq calls for subprocess isolation)
     local nice_prefix=$(jq -r ".platforms.\"$platform\".nice_prefix" "$PLATFORMS_JSON")
-    local emu_exe=$(jq -r ".stock_cores.\"$core\".emu_exe" "$CORES_JSON")
+    local core_so=$(jq -r ".cores.\"$core\".core" "$CORES_JSON")
 
     # Create output directory
     local output_dir="$BUILD_DIR/SYSTEM/$platform/paks/Emus/${core}.pak"
@@ -158,7 +158,7 @@ generate_pak() {
     # Generate launch.sh from template
     local launch_template="$TEMPLATE_DIR/launch.sh.template"
     if [ -f "$launch_template" ]; then
-        sed -e "s|{{EMU_EXE}}|$emu_exe|g" \
+        sed -e "s|{{CORE}}|$core_so|g" \
             -e "s|{{NICE_PREFIX}}|$nice_prefix|g" \
             "$launch_template" > "$output_dir/launch.sh"
         chmod +x "$output_dir/launch.sh"
@@ -226,7 +226,7 @@ is_core_compatible() {
     local core=$2
 
     local platform_arch=$(jq -r ".platforms.\"$platform\".arch" "$PLATFORMS_JSON")
-    local arm64_only=$(jq -r ".stock_cores.\"$core\".arm64_only // false" "$CORES_JSON")
+    local arm64_only=$(jq -r ".cores.\"$core\".arm64_only // false" "$CORES_JSON")
 
     if [ "$platform_arch" = "arm32" ] && [ "$arm64_only" = "true" ]; then
         return 1
@@ -253,7 +253,7 @@ echo "Generating emulator paks..."
 # Build list of all platform/core pairs to generate
 WORK_LIST=""
 for platform in $PLATFORMS_TO_GENERATE; do
-    CORES=$(jq -r '.stock_cores | keys[]' "$CORES_JSON")
+    CORES=$(jq -r '.cores | keys[]' "$CORES_JSON")
 
     for core in $CORES; do
         # Filter by target cores if specified

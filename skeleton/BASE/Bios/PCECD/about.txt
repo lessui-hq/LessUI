@@ -1,0 +1,6 @@
+TurboGrafx CD
+
+Core: mednafen_pce_fast
+
+BIOS (required):
+  syscard3.pce - Super CD-ROM2 System Card

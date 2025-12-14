@@ -1,0 +1,11 @@
+Pokemon mini
+
+Core: pokemini
+
+Supported file types:
+  .min
+
+BIOS (optional):
+  bios.min - enables boot animation
+
+Place BIOS files in: /Bios/PKM/

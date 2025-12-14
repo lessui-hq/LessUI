@@ -1,0 +1,6 @@
+Arcade (MAME)
+
+Core: mame2003_plus
+
+BIOS (optional):
+  neogeo.zip - required for Neo Geo games

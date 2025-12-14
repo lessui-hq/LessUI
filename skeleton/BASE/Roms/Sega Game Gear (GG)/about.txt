@@ -1,0 +1,8 @@
+Sega Game Gear
+
+Core: picodrive
+
+Supported file types:
+  .gg
+
+No BIOS required.
