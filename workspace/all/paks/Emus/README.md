@@ -32,29 +32,50 @@ minarch-paks/
 
 ## Config Template Structure
 
-Templates mirror the pak output structure:
+Platform configs are **merged** onto base configs at build time, using last-one-wins semantics
+(matching runtime behavior). This allows platform configs to be sparse - containing only the
+settings that differ from base.
 
 **Template:**
 ```
 configs/
-  base/GBA/default.cfg           → GBA.pak/default.cfg (fallback)
-  tg5040/GBA/default.cfg         → GBA.pak/default.cfg (overwrites base)
-  tg5040/GBA/default-brick.cfg   → GBA.pak/default-brick.cfg (adds brick variant)
+  base/GBA/default.cfg           → Complete core defaults (bindings, locked options)
+  tg5040/GBA/default.cfg         → Sparse overrides (just tg5040-specific settings)
+  tg5040/GBA/default-brick.cfg   → Sparse brick-specific overrides
 ```
 
-**Generated Pak:**
+**Generated Pak (after merge):**
 ```
 GBA.pak/
   launch.sh
-  default.cfg          ← From tg5040/GBA/default.cfg (or base/GBA/ if missing)
-  default-brick.cfg    ← From tg5040/GBA/default-brick.cfg (if exists)
+  default.cfg          ← base/GBA/default.cfg merged with tg5040/GBA/default.cfg
+  default-brick.cfg    ← base/GBA/default.cfg merged with tg5040/GBA/default-brick.cfg
 ```
+
+### Build-Time Merge Logic
+
+1. **default.cfg**: `base/{CORE}/default.cfg` + `{platform}/{CORE}/default.cfg`
+2. **default-{device}.cfg**: `base/{CORE}/default.cfg` + `{platform}/{CORE}/default-{device}.cfg`
+
+When the same key appears in both files, the platform value wins (last-one-wins).
 
 ### Key Principles
 
-1. **Sparse Platform Overrides** - Only create `{platform}/{TAG}/` when you need platform-specific settings
-2. **Additive Device Variants** - `default-{device}.cfg` files are ADDITIONAL configs, not replacements
-3. **Fallback to Base** - If no platform override exists, uses `base/{TAG}/default.cfg`
+1. **Sparse Platform Overrides** - Platform configs should contain ONLY settings that differ from base
+2. **Cascading Merge** - Build-time behavior matches runtime (system.cfg → default.cfg → user.cfg)
+3. **Device Variants Inherit** - `default-{device}.cfg` inherits from base `default.cfg`, then applies device-specific settings
+
+### Example: Sparse Platform Config
+
+Instead of duplicating all 15 lines from base, a platform config only needs the unique lines:
+
+```cfg
+# configs/rg35xxplus/GBA/default-cube.cfg (just 2 lines!)
+minarch_screen_scaling = Native
+minarch_screen_sharpness = Sharp
+```
+
+The build script merges this with `base/GBA/default.cfg` to produce a complete 16-line config.
 
 ## Config Loading Hierarchy (Runtime)
 
