@@ -100,6 +100,16 @@ int containsString(char* haystack, char* needle) {
 	return strcasestr(haystack, needle) != NULL;
 }
 
+int strArrayContains(char** arr, const char* str) {
+	if (!arr || !str)
+		return 0;
+	for (int i = 0; arr[i]; i++) {
+		if (strcmp(arr[i], str) == 0)
+			return 1;
+	}
+	return 0;
+}
+
 /**
  * Determines if a file should be hidden in the UI.
  *

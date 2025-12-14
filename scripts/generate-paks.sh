@@ -63,6 +63,84 @@ PARALLEL_JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # Export variables for parallel subprocesses
 export TEMPLATE_DIR BUILD_DIR PLATFORMS_JSON CORES_JSON
 
+# Merge two config files with last-one-wins semantics
+# Usage: merge_configs base_file override_file output_file
+# If override_file doesn't exist or is empty, just copies base_file
+merge_configs() {
+    local base_file="$1"
+    local override_file="$2"
+    local output_file="$3"
+
+    # If no override, just copy base
+    if [ ! -f "$override_file" ]; then
+        cp "$base_file" "$output_file"
+        return
+    fi
+
+    # Use awk to merge: base values first, then override values win
+    awk '
+    BEGIN { key_count = 0 }
+
+    # Function to extract key from a line (handles "bind X = Y" and "key = value" and "-key = value")
+    function get_key(line) {
+        # Remove leading/trailing whitespace
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+
+        # Skip empty lines
+        if (line == "") return ""
+
+        # Handle locked prefix
+        if (substr(line, 1, 1) == "-") {
+            line = substr(line, 2)
+        }
+
+        # Find the = sign
+        eq_pos = index(line, "=")
+        if (eq_pos == 0) return ""
+
+        key = substr(line, 1, eq_pos - 1)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+        return key
+    }
+
+    # First pass: read base file, track order
+    FNR == NR {
+        key = get_key($0)
+        if (key != "") {
+            if (!(key in values)) {
+                order[key_count++] = key
+            }
+            values[key] = $0
+        } else if ($0 ~ /^[[:space:]]*$/) {
+            # Preserve empty lines from base as placeholders
+            order[key_count++] = "__EMPTY__" key_count
+            values["__EMPTY__" key_count] = ""
+        }
+        next
+    }
+
+    # Second pass: read override file, update values
+    {
+        key = get_key($0)
+        if (key != "") {
+            if (!(key in values)) {
+                # New key from override, add to end
+                order[key_count++] = key
+            }
+            values[key] = $0
+        }
+    }
+
+    END {
+        for (i = 0; i < key_count; i++) {
+            key = order[i]
+            print values[key]
+        }
+    }
+    ' "$base_file" "$override_file" > "$output_file"
+}
+export -f merge_configs
+
 # Function to generate a single pak (called in parallel)
 # Arguments: platform core
 generate_pak() {
@@ -92,16 +170,52 @@ generate_pak() {
         touch -r "$newest" "$output_dir/launch.sh"
     fi
 
-    # Copy config files - base first, then platform-specific overwrites
+    # Merge config files - base provides defaults, platform overrides specific values
     local cfg_base_dir="$TEMPLATE_DIR/configs/base/${core}"
     local cfg_platform_dir="$TEMPLATE_DIR/configs/${platform}/${core}"
+    local base_default="$cfg_base_dir/default.cfg"
 
-    if [ -d "$cfg_base_dir" ]; then
-        rsync -a "$cfg_base_dir"/*.cfg "$output_dir/" 2>/dev/null || true
+    # Skip if no base config exists
+    if [ ! -f "$base_default" ]; then
+        return
     fi
-    if [ -d "$cfg_platform_dir" ]; then
-        rsync -a "$cfg_platform_dir"/*.cfg "$output_dir/" 2>/dev/null || true
-    fi
+
+    # Generate default.cfg: merge base + platform override
+    merge_configs "$base_default" "$cfg_platform_dir/default.cfg" "$output_dir/default.cfg"
+
+    # Generate device-variant configs (default-{device}.cfg)
+    # These inherit from base/default.cfg, then apply platform device-specific overrides
+    # Check both base and platform for device variants
+    local device_cfgs=""
+    [ -d "$cfg_base_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_base_dir"/default-*.cfg 2>/dev/null || true)"
+    [ -d "$cfg_platform_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_platform_dir"/default-*.cfg 2>/dev/null || true)"
+
+    # Get unique device variant names
+    for cfg_path in $device_cfgs; do
+        [ -z "$cfg_path" ] && continue
+        local cfg_name=$(basename "$cfg_path")
+        local device_tag="${cfg_name#default-}"
+        device_tag="${device_tag%.cfg}"
+
+        # Skip if already processed (dedup)
+        [ -f "$output_dir/$cfg_name" ] && continue
+
+        # Device variants inherit from base/default.cfg, then apply device-specific overrides
+        # Priority: base/default.cfg -> base/default-{device}.cfg -> platform/default-{device}.cfg
+        local base_device="$cfg_base_dir/$cfg_name"
+        local platform_device="$cfg_platform_dir/$cfg_name"
+
+        if [ -f "$base_device" ]; then
+            # Base has device variant - merge base/default.cfg + base/default-{device}.cfg first
+            merge_configs "$base_default" "$base_device" "$output_dir/$cfg_name.tmp"
+            # Then merge platform override if exists
+            merge_configs "$output_dir/$cfg_name.tmp" "$platform_device" "$output_dir/$cfg_name"
+            rm -f "$output_dir/$cfg_name.tmp"
+        else
+            # No base device variant - merge base/default.cfg + platform/default-{device}.cfg
+            merge_configs "$base_default" "$platform_device" "$output_dir/$cfg_name"
+        fi
+    done
 
 }
 export -f generate_pak

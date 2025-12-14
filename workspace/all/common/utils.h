@@ -71,6 +71,20 @@ int exactMatch(const char* str1, const char* str2);
 int containsString(char* haystack, char* needle);
 
 /**
+ * Checks if a NULL-terminated string array contains a specific string.
+ *
+ * @param arr NULL-terminated array of string pointers
+ * @param str String to search for (exact match, case-sensitive)
+ * @return 1 if string is found, 0 otherwise
+ *
+ * @example
+ *   char* exts[] = {"zip", "7z", "nes", NULL};
+ *   strArrayContains(exts, "zip");  // returns 1
+ *   strArrayContains(exts, "gz");   // returns 0
+ */
+int strArrayContains(char** arr, const char* str);
+
+/**
  * Determines if a file should be hidden in the UI.
  *
  * Files are hidden if they:

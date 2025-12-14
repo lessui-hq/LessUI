@@ -32,29 +32,66 @@ minarch-paks/
 
 ## Config Template Structure
 
-Templates mirror the pak output structure:
+Platform configs are **merged** onto base configs at build time, using last-one-wins semantics
+(matching runtime behavior). This allows platform configs to be sparse - containing only the
+settings that differ from base.
 
 **Template:**
 ```
 configs/
-  base/GBA/default.cfg           → GBA.pak/default.cfg (fallback)
-  tg5040/GBA/default.cfg         → GBA.pak/default.cfg (overwrites base)
-  tg5040/GBA/default-brick.cfg   → GBA.pak/default-brick.cfg (adds brick variant)
+  base/GBA/default.cfg           → Complete core defaults (bindings, locked options)
+  tg5040/GBA/default.cfg         → Sparse overrides (just tg5040-specific settings)
+  tg5040/GBA/default-brick.cfg   → Sparse brick-specific overrides
 ```
 
-**Generated Pak:**
+**Generated Pak (after merge):**
 ```
 GBA.pak/
   launch.sh
-  default.cfg          ← From tg5040/GBA/default.cfg (or base/GBA/ if missing)
-  default-brick.cfg    ← From tg5040/GBA/default-brick.cfg (if exists)
+  default.cfg          ← base/GBA/default.cfg merged with tg5040/GBA/default.cfg
+  default-brick.cfg    ← base/GBA/default.cfg merged with tg5040/GBA/default-brick.cfg
 ```
+
+### Build-Time Merge Logic
+
+1. **default.cfg**: `base/{CORE}/default.cfg` + `{platform}/{CORE}/default.cfg`
+2. **default-{device}.cfg**: `base/{CORE}/default.cfg` + `{platform}/{CORE}/default-{device}.cfg`
+
+When the same key appears in both files, the platform value wins (last-one-wins).
 
 ### Key Principles
 
-1. **Sparse Platform Overrides** - Only create `{platform}/{TAG}/` when you need platform-specific settings
-2. **Additive Device Variants** - `default-{device}.cfg` files are ADDITIONAL configs, not replacements
-3. **Fallback to Base** - If no platform override exists, uses `base/{TAG}/default.cfg`
+1. **Sparse Platform Overrides** - Platform configs should contain ONLY settings that differ from base
+2. **Cascading Merge** - Build-time behavior matches runtime (system.cfg → default.cfg → user.cfg)
+3. **Device Variants Inherit** - `default-{device}.cfg` inherits from base `default.cfg`, then applies device-specific settings
+
+### Default Settings Philosophy
+
+Base configs use **Aspect** scaling and **Crisp** sharpness as defaults. This follows the principle that most users want games to fill their screens as much as possible while looking as good as possible.
+
+**Standard displays (4:3, 16:9):**
+- `minarch_screen_scaling = Aspect` - Fill the screen while preserving aspect ratio
+- `minarch_screen_sharpness = Crisp` - Sharp pixels with subtle smoothing
+
+**Square displays (cube, rgb30):**
+- `minarch_screen_scaling = Native` or `Cropped` - Integer scaling for pixel-perfect display
+- `minarch_screen_sharpness = Sharp` - Maximum crispness for integer-scaled pixels
+
+Platform overrides exist only when truly needed:
+- **Square screens**: Different scaling for integer-pixel modes (cube, rgb30)
+- **Button availability**: L2/R2 bindings for PS on devices that have those buttons (m17, trimuismart)
+
+### Example: Sparse Platform Config
+
+Instead of duplicating all 15 lines from base, a platform config only needs the unique lines:
+
+```cfg
+# configs/rg35xxplus/GBA/default-cube.cfg (just 2 lines!)
+minarch_screen_scaling = Native
+minarch_screen_sharpness = Sharp
+```
+
+The build script merges this with `base/GBA/default.cfg` to produce a complete 16-line config.
 
 ## Config Loading Hierarchy (Runtime)
 
@@ -176,43 +213,37 @@ Create `default-{device}.cfg` when a specific core needs different settings on a
 
 1. **Create template:**
    ```bash
-   # For GBA on Trimui Brick
-   skeleton/TEMPLATES/minarch-paks/configs/tg5040/GBA/default-brick.cfg
+   # For GBA on RG CubeXX (square screen)
+   workspace/all/paks/Emus/configs/rg35xxplus/GBA/default-cube.cfg
    ```
 
-2. **Add device-specific settings:**
+2. **Add device-specific settings (sparse - only what differs from base):**
    ```cfg
-   minarch_screen_scaling = Aspect
-   minarch_cpu_speed = Powersave
-
-   -gpsp_save_method = libretro
-
-   bind Up = UP
-   bind Down = DOWN
-   # ... (full button mapping)
+   minarch_screen_scaling = Native
+   minarch_screen_sharpness = Sharp
    ```
 
 3. **Regenerate paks:**
    ```bash
-   ./scripts/generate-paks.sh tg5040 GBA
+   ./scripts/generate-paks.sh rg35xxplus GBA
    ```
 
 4. **Result:**
    ```
    GBA.pak/
-     default.cfg         ← Standard TG5040
-     default-brick.cfg   ← Brick variant
+     default.cfg         ← Base config (Aspect + Crisp)
+     default-cube.cfg    ← Merged: base + cube overrides (Native + Sharp)
    ```
 
 ### Common Device Differences
 
-**Cube (square screen):**
-- `minarch_screen_scaling = Native` (integer scaling works better on square)
-- `minarch_screen_sharpness = Sharp` (crisp pixels)
+**Square screens (cube, rgb30):**
+- `minarch_screen_scaling = Native` for systems that fit perfectly (GBA on 720×720)
+- `minarch_screen_scaling = Cropped` for 4:3 systems (FC, SFC) to maximize size
+- `minarch_screen_sharpness = Sharp` for pixel-perfect integer scaling
 
-**Brick (smaller screen):**
-- `minarch_screen_scaling = Aspect` (maximize visible area)
-- May need different CPU speeds for performance
+**Brick (smaller 4:3 screen):**
+- Uses base defaults (Aspect + Crisp) - no overrides needed
 
 ## Complete Config Hierarchy
 
