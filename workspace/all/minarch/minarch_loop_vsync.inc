@@ -41,6 +41,7 @@ static void run_main_loop(void) {
 	sec_start = SDL_GetTicks();
 	while (!quit) {
 		GFX_startFrame();
+		input_polled_this_frame = 0; // Reset at start of frame
 
 		// Frame pacing: Bresenham accumulator decides whether to run core this vsync.
 		// Vsync (from GFX_flip) is the timing source - each loop iteration = one display refresh.
@@ -97,9 +98,16 @@ static void run_main_loop(void) {
 			updateAutoCPU();
 		}
 
+		// Fallback input poll - ensures MENU button and shortcuts work even when
+		// core doesn't call input_poll_callback (e.g., showing error screens).
+		// Guard inside callback prevents double execution.
+		input_poll_callback();
+
 		if (show_menu) {
+			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
 			GFX_clearBlit(); // Switch to UI mode for menu rendering
 			Menu_loop();
+			LOG_debug("Main loop: returned from Menu_loop");
 		}
 
 		hdmimon();

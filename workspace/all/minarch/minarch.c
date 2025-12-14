@@ -47,6 +47,8 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <setjmp.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -89,6 +91,16 @@ static SDL_Surface* screen; // Main screen surface (managed by platform API)
 static int quit = 0; // Set to 1 to exit main loop
 static int show_menu = 0; // Set to 1 to display in-game menu
 static int simple_mode = 0; // Simplified interface mode (fewer options)
+static int input_polled_this_frame = 0; // Tracks if core called input_poll_callback
+static int toggled_ff_on = 0; // Fast-forward toggle state (for TOGGLE_FF vs HOLD_FF interaction)
+
+// Fatal error handling - detail shown when game fails to load
+static char fatal_error_detail[512] = {0};
+static int capturing_core_errors = 0; // Flag to enable capture during load
+
+// Segfault recovery during core loading
+static sigjmp_buf segfault_jmp;
+static volatile sig_atomic_t in_core_load = 0;
 
 // Video geometry state for dynamic updates (type defined in minarch_env.h)
 static MinArchVideoState video_state;
@@ -179,6 +191,17 @@ static struct Core core;
 static struct Game game;
 
 /**
+ * Sets a fatal error message for display when game fails to load.
+ * Title is always "Game failed to load" - only the detail varies.
+ */
+static void setFatalError(const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(fatal_error_detail, sizeof(fatal_error_detail), fmt, args);
+	va_end(args);
+}
+
+/**
  * Opens and prepares a game for loading into the core.
  *
  * Handles multiple scenarios:
@@ -207,12 +230,25 @@ static void Game_open(char* path) {
 		strcpy(exts, core.extensions);
 		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_archive);
 
-		// Extract if core doesn't support archives natively, or if it's a 7z file
-		// (7z is never natively supported by libretro cores)
-		if (!supports_archive || suffixMatch(".7z", game.path)) {
+		// Extract if core doesn't support the archive format natively
+		if (!supports_archive) {
 			int result =
 			    MinArchArchive_extract(game.path, extensions, game.tmp_path, sizeof(game.tmp_path));
 			if (result != MINARCH_ARCHIVE_OK) {
+				if (result == MINARCH_ARCHIVE_ERR_NO_MATCH) {
+					// Build extension list for user - this is specific and actionable
+					char ext_list[256] = {0};
+					size_t pos = 0;
+					for (int i = 0; extensions[i] && pos < sizeof(ext_list) - 10; i++) {
+						if (i > 0)
+							pos += snprintf(ext_list + pos, sizeof(ext_list) - pos, ", ");
+						pos +=
+						    snprintf(ext_list + pos, sizeof(ext_list) - pos, ".%s", extensions[i]);
+					}
+					setFatalError("No compatible files found in archive\nExpected: %s", ext_list);
+				} else {
+					setFatalError("Failed to extract archive");
+				}
 				LOG_error("Failed to extract archive: %s (error %d)", game.path, result);
 				return;
 			}
@@ -226,6 +262,7 @@ static void Game_open(char* path) {
 
 		FILE* file = fopen(path, "r");
 		if (file == NULL) {
+			setFatalError("Could not open ROM file\n%s", strerror(errno));
 			LOG_error("Error opening game: %s\n\t%s", path, strerror(errno));
 			return;
 		}
@@ -236,7 +273,9 @@ static void Game_open(char* path) {
 		fseek(file, 0, SEEK_SET);
 		game.data = malloc(game.size);
 		if (game.data == NULL) {
+			setFatalError("Not enough memory to load ROM\nFile size: %ld bytes", (long)game.size);
 			LOG_error("Couldn't allocate memory for file: %s", path);
+			fclose(file);
 			return;
 		}
 
@@ -266,8 +305,18 @@ static void Game_open(char* path) {
 static void Game_close(void) {
 	if (game.data)
 		free(game.data);
-	if (game.tmp_path[0])
+	if (game.tmp_path[0]) {
+		// Remove extracted file and temp directory
 		remove(game.tmp_path);
+		// Extract directory path and remove it
+		char dir_path[MAX_PATH];
+		strcpy(dir_path, game.tmp_path);
+		char* last_slash = strrchr(dir_path, '/');
+		if (last_slash) {
+			*last_slash = '\0';
+			rmdir(dir_path);
+		}
+	}
 	game.is_open = 0;
 	VIB_setStrength(0); // Ensure rumble is disabled
 }
@@ -2144,9 +2193,15 @@ static int ignore_menu = 0; // Suppress menu button (used for shortcuts)
  *
  * Also translates platform button presses to libretro button flags.
  *
- * @note This is a libretro callback, invoked by core on each frame
+ * @note This is a libretro callback, invoked by core on each frame.
+ * Also called by main loop as fallback for misbehaving cores.
+ * Guard ensures it only runs once per frame.
  */
 static void input_poll_callback(void) {
+	if (input_polled_this_frame)
+		return; // Already ran this frame
+
+	input_polled_this_frame = 1;
 	PAD_poll();
 
 	int show_setting = 0;
@@ -2160,8 +2215,7 @@ static void input_poll_callback(void) {
 		ignore_menu = 1;
 	}
 
-	static int toggled_ff_on =
-	    0; // this logic only works because TOGGLE_FF is before HOLD_FF in the menu...
+	// this logic only works because TOGGLE_FF is before HOLD_FF in the menu...
 	for (int i = 0; i < SHORTCUT_COUNT; i++) {
 		MinArchButtonMapping* mapping = &config.shortcuts[i];
 		int btn = 1 << mapping->local_id;
@@ -2230,15 +2284,7 @@ static void input_poll_callback(void) {
 		show_menu = 1;
 	}
 
-	// TODO: figure out how to ignore button when MENU+button is handled first
-	// TODO: array size of LOCAL_ whatever that macro is
-	// TODO: then split it into two loops
-	// TODO: first check for MENU+button
-	// TODO: when found mark button the array
-	// TODO: then check for button
-	// TODO: only modify if absent from array
-	// TODO: the shortcuts loop above should also contribute to the array
-
+	// Translate platform buttons to libretro button flags for core
 	buttons = 0;
 	for (int i = 0; config.controls[i].name; i++) {
 		MinArchButtonMapping* mapping = &config.controls[i];
@@ -2395,6 +2441,10 @@ static void retro_log_callback(enum retro_log_level level, const char* fmt, ...)
 	case RETRO_LOG_ERROR:
 	default:
 		LOG_error("%s", msg_buffer);
+		// Capture error for display if we're loading
+		if (capturing_core_errors && msg_buffer[0] != '\0') {
+			setFatalError("%s", msg_buffer);
+		}
 		break;
 	}
 }
@@ -3530,8 +3580,12 @@ void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("Core_open");
 	core.handle = dlopen(core_path, RTLD_LAZY);
 
-	if (!core.handle)
-		LOG_error("%s", dlerror());
+	if (!core.handle) {
+		const char* error = dlerror();
+		LOG_error("%s", error);
+		setFatalError("Failed to load core\n%s", error);
+		return;
+	}
 
 	core.init = dlsym(core.handle, "retro_init");
 	core.deinit = dlsym(core.handle, "retro_deinit");
@@ -3598,13 +3652,68 @@ void Core_init(void) {
 	core.init();
 	core.initialized = 1;
 }
-void Core_load(void) {
+
+/**
+ * Signal handler for catching segfaults during core loading.
+ * Allows graceful error display instead of silent crash.
+ */
+static void core_load_segfault_handler(int sig) {
+	(void)sig;
+	if (in_core_load) {
+		siglongjmp(segfault_jmp, 1);
+	}
+	// Not in core_load - restore default handler and re-raise
+	signal(SIGSEGV, SIG_DFL);
+	raise(SIGSEGV);
+}
+
+bool Core_load(void) {
 	LOG_info("Core_load");
 	struct retro_game_info game_info;
 	MinArchCore_buildGameInfo(&game, &game_info);
 	LOG_info("game path: %s (%i)", game_info.path, game_info.size);
 
-	core.load_game(&game_info);
+	// Set up segfault handler to catch core crashes during load_game().
+	// Some cores crash when given invalid ROM data or unsupported formats.
+	// Without this, the user would see a silent crash; with it, we can
+	// display a helpful error message before exiting gracefully.
+	LOG_debug("Setting up SIGSEGV handler for core load");
+	struct sigaction sa, old_sa;
+	sa.sa_handler = core_load_segfault_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sigaction(SIGSEGV, &sa, &old_sa);
+
+	capturing_core_errors = 1;
+	in_core_load = 1;
+
+	LOG_debug("Calling core.load_game");
+	bool success;
+	if (sigsetjmp(segfault_jmp, 1) == 0) {
+		// Normal path
+		success = core.load_game(&game_info);
+		LOG_debug("core.load_game returned %s", success ? "true" : "false");
+	} else {
+		// Caught segfault - core crashed
+		LOG_error("Core crashed during load_game (SIGSEGV caught)");
+		success = false;
+		if (fatal_error_detail[0] == '\0') {
+			setFatalError("Core crashed during initialization");
+		}
+	}
+
+	in_core_load = 0;
+	capturing_core_errors = 0;
+	sigaction(SIGSEGV, &old_sa, NULL); // Restore old handler
+	LOG_debug("Restored old SIGSEGV handler");
+
+	if (!success) {
+		LOG_debug("Core_load failed");
+		if (fatal_error_detail[0] == '\0') {
+			setFatalError("Core could not be initialized");
+		}
+		return false;
+	}
 
 	SRAM_read();
 	RTC_read();
@@ -3624,6 +3733,7 @@ void Core_load(void) {
 
 	LOG_info("aspect_ratio: %f (%ix%i) fps: %f", info.aspect_ratio, av_info.geometry.base_width,
 	         av_info.geometry.base_height, core.fps);
+	return true;
 }
 void Core_reset(void) {
 	core.reset();
@@ -4863,6 +4973,85 @@ static void limitFF(void) {
  * @note Exits early if game fails to load
  */
 
+/**
+ * Display a fatal error message and wait for user acknowledgment.
+ *
+ * Shows "Game failed to load" title (large, white) and detail text (small, gray).
+ * Blocks until user presses A or B.
+ *
+ * Reads from global fatal_error_detail.
+ */
+static void showFatalError(void) {
+	static const char* title_text = "Game failed to start.";
+
+	if (!screen || !font.large || !font.small) {
+		LOG_error("showFatalError: UI not initialized");
+		return;
+	}
+
+	// Copy and wrap detail text to fit screen
+	char detail[512];
+	strncpy(detail, fatal_error_detail, sizeof(detail) - 1);
+	detail[sizeof(detail) - 1] = '\0';
+	int text_width = ui.screen_width_px - ui.edge_padding_px * 2;
+	GFX_wrapText(font.small, detail, text_width, 0);
+
+	char* pairs[] = {"B", "BACK", NULL};
+	int dirty = 1;
+
+	while (1) {
+		GFX_startFrame();
+		PAD_poll();
+
+		if (PAD_justPressed(BTN_A) || PAD_justPressed(BTN_B))
+			break;
+
+		// Use NULL callbacks - no game state to save during error display
+		PWR_update(&dirty, NULL, NULL, NULL);
+
+		if (dirty) {
+			GFX_clear(screen);
+
+			// Calculate dimensions for vertical centering
+			int title_h = TTF_FontHeight(font.large);
+			int detail_line_h = TTF_FontLineSkip(font.small);
+
+			// Count detail lines
+			int detail_lines = 1;
+			for (const char* p = detail; *p; p++) {
+				if (*p == '\n')
+					detail_lines++;
+			}
+			int detail_h = detail_lines * detail_line_h;
+
+			int spacing = DP(4);
+			int total_h = title_h + spacing + detail_h;
+			int content_area_h = DP(ui.screen_height - ui.pill_height - ui.edge_padding * 2);
+			int y = DP(ui.edge_padding) + (content_area_h - total_h) / 2;
+
+			// Title (large, white, centered)
+			SDL_Surface* title = TTF_RenderUTF8_Blended(font.large, title_text, COLOR_WHITE);
+			if (title) {
+				SDL_Rect title_rect = {(screen->w - title->w) / 2, y, title->w, title->h};
+				SDL_BlitSurface(title, NULL, screen, &title_rect);
+				SDL_FreeSurface(title);
+			}
+
+			y += title_h + spacing;
+
+			// Detail text (small, gray, multi-line, left-aligned with standard padding)
+			GFX_blitText(font.small, detail, detail_line_h, COLOR_GRAY, screen,
+			             &(SDL_Rect){ui.edge_padding_px, y, text_width, detail_h});
+
+			GFX_blitButtonGroup(pairs, 0, screen, 1);
+			GFX_flip(screen);
+			dirty = 0;
+		} else {
+			GFX_sync();
+		}
+	}
+}
+
 // Main loop implementation selected at compile-time based on sync mode
 #ifdef SYNC_MODE_AUDIOCLOCK
 #include "minarch_loop_audioclock.inc"
@@ -4971,13 +5160,32 @@ int main(int argc, char* argv[]) {
 	if (!HAS_POWER_BUTTON)
 		PWR_disableSleep();
 
+	LOG_debug("InitSettings");
+	InitSettings(); // Initialize early so GetMute() works in error display
+
 	LOG_debug("MSG_init");
 	MSG_init();
 
 	Core_open(core_path, tag_name);
-	Game_open(rom_path); // nes tries to load gamegenie setting before this returns ffs
-	if (!game.is_open)
+	if (!core.handle) {
+		LOG_debug("Core_open failed, core.handle=NULL");
+		if (fatal_error_detail[0] != '\0') {
+			LOG_info("Showing fatal error: %s", fatal_error_detail);
+			showFatalError();
+		}
 		goto finish;
+	}
+
+	Game_open(rom_path); // nes tries to load gamegenie setting before this returns ffs
+	if (!game.is_open) {
+		LOG_debug("Game_open failed, game.is_open=0");
+		if (fatal_error_detail[0] != '\0') {
+			LOG_info("Showing fatal error: %s", fatal_error_detail);
+			GFX_clearBlit(); // Ensure UI rendering mode
+			showFatalError();
+		}
+		goto finish;
+	}
 
 	simple_mode = exists(SIMPLE_MODE_PATH);
 
@@ -5000,7 +5208,12 @@ int main(int argc, char* argv[]) {
 	// ah, because it's defined before options_menu...
 	options_menu.items[1].desc = (char*)core.version;
 
-	Core_load();
+	if (!Core_load()) {
+		LOG_info("Showing fatal error: %s", fatal_error_detail);
+		GFX_clearBlit(); // Ensure UI rendering mode (core may have set game mode)
+		showFatalError();
+		goto finish;
+	}
 
 	LOG_debug("Input_init");
 	Input_init(NULL);
@@ -5015,9 +5228,6 @@ int main(int argc, char* argv[]) {
 	LOG_debug("SND_init (sample_rate=%.0f, fps=%.2f)", core.sample_rate, core.fps);
 	SND_init(core.sample_rate, core.fps);
 
-	LOG_debug("InitSettings");
-	InitSettings(); // after we initialize audio
-
 	LOG_debug("Menu_init");
 	Menu_init();
 
@@ -5031,9 +5241,10 @@ int main(int argc, char* argv[]) {
 	run_main_loop();
 
 	Menu_quit();
-	QuitSettings();
 
 finish:
+
+	QuitSettings();
 
 	Game_close();
 	Core_unload();

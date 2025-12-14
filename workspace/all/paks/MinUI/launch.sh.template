@@ -37,9 +37,8 @@ export LD_LIBRARY_PATH="$SYSTEM_PATH/lib:$LD_LIBRARY_PATH"
 # Native C binaries use LOG_FILE environment variable for file logging.
 # Each binary launch sets LOG_FILE inline for clarity and consistency.
 # Shell scripts use log.sh library for their own logging.
-# Set LOG_SYNC=1 to enable crash-safe mode (fsync after each log write).
-
-# Uncomment the next line to enable crash-safe logging (slower but survives crashes):
+# LOG_SYNC=1 enables crash-safe mode (fsync after each log write).
+# Slower but ensures logs survive crashes - uncomment for debugging.
 # export LOG_SYNC=1
 
 if [ -f "$SDCARD_PATH/.system/common/log.sh" ]; then

@@ -75,9 +75,10 @@ int GFX_truncateText(TTF_Font* ttf_font, const char* in_name, char* out_name, in
 /**
  * Wraps text to fit within a maximum width by inserting newlines.
  *
- * Breaks text at space characters to create wrapped lines. The last
- * line is truncated with "..." if it still exceeds max_width.
- * Modifies the input string in place by replacing spaces with newlines.
+ * Breaks text at space characters to create wrapped lines. Preserves
+ * existing newlines (intentional line breaks). Each line segment is
+ * wrapped independently. Lines that can't wrap (no spaces) are truncated
+ * with "...".
  *
  * @param font TTF font to measure text with
  * @param str String to wrap (modified in place)
@@ -88,69 +89,79 @@ int GFX_truncateText(TTF_Font* ttf_font, const char* in_name, char* out_name, in
  * @note Input string is modified - spaces become newlines at wrap points
  */
 int GFX_wrapText(TTF_Font* ttf_font, char* str, int max_width, int max_lines) {
-	if (!str)
+	if (!str || !str[0] || max_width <= 0)
 		return 0;
 
-	int line_width;
 	int max_line_width = 0;
-	char* line = str;
-	char buffer[MAX_PATH];
-
-	TTF_SizeUTF8(ttf_font, line, &line_width, NULL);
-	if (line_width <= max_width) {
-		line_width = GFX_truncateText(ttf_font, line, buffer, max_width, 0);
-		strcpy(line, buffer);
-		return line_width;
-	}
-
-	char* prev = NULL;
-	char* tmp = line;
 	int lines = 1;
-	while (!max_lines || lines < max_lines) {
-		tmp = strchr(tmp, ' ');
-		if (!tmp) {
-			if (prev) {
-				TTF_SizeUTF8(ttf_font, line, &line_width, NULL);
-				if (line_width >= max_width) {
-					if (line_width > max_line_width)
-						max_line_width = line_width;
-					prev[0] = '\n';
-					line = prev + 1;
-				}
-			}
-			break;
-		}
-		tmp[0] = '\0';
+	char* line_start = str; // Start of current line being measured
+	char* last_space = NULL; // Last space we could wrap at
+	char* p = str;
 
-		TTF_SizeUTF8(ttf_font, line, &line_width, NULL);
-
-		if (line_width >= max_width) { // wrap
-			if (line_width > max_line_width)
-				max_line_width = line_width;
-			tmp[0] = ' ';
-			tmp += 1;
-			if (prev) {
-				prev[0] = '\n';
-				prev += 1;
-				line = prev;
-			} else {
-				// TODO: If first word is too long (no prev space), it gets skipped.
-				// Should truncate with "..." instead of dropping it entirely.
-				line = tmp;
-			}
-			lines += 1;
-		} else { // continue
-			tmp[0] = ' ';
-			prev = tmp;
-			tmp += 1;
+	while (*p) {
+		// Hit existing newline - reset for next line
+		if (*p == '\n') {
+			// Measure this line segment
+			char saved = *p;
+			*p = '\0';
+			int w;
+			TTF_SizeUTF8(ttf_font, line_start, &w, NULL);
+			*p = saved;
+			if (w > max_line_width)
+				max_line_width = w;
+			line_start = p + 1;
+			last_space = NULL;
+			lines++;
+			p++;
+			continue;
 		}
+
+		// Track spaces as potential wrap points
+		if (*p == ' ')
+			last_space = p;
+
+		// Measure current line (up to and including current char)
+		char saved = *(p + 1);
+		*(p + 1) = '\0';
+		int line_width;
+		TTF_SizeUTF8(ttf_font, line_start, &line_width, NULL);
+		*(p + 1) = saved;
+
+		// Line too long - wrap at last space if possible
+		if (line_width > max_width) {
+			if (last_space) {
+				// Wrap at the last space
+				if (max_lines && lines >= max_lines)
+					break;
+				*last_space = '\n';
+				line_start = last_space + 1;
+				last_space = NULL;
+				lines++;
+			}
+			// If no space to wrap at, we'll truncate at the end
+		}
+
+		if (line_width > max_line_width)
+			max_line_width = line_width;
+
+		p++;
 	}
 
-	line_width = GFX_truncateText(ttf_font, line, buffer, max_width, 0);
-	strcpy(line, buffer);
+	// Truncate final line if it's too long
+	if (*line_start) {
+		int w;
+		TTF_SizeUTF8(ttf_font, line_start, &w, NULL);
+		if (w > max_width) {
+			// Use GFX_truncateText to truncate with "..."
+			char buffer[MAX_PATH];
+			GFX_truncateText(ttf_font, line_start, buffer, max_width, 0);
+			strcpy(line_start, buffer);
+			TTF_SizeUTF8(ttf_font, line_start, &w, NULL);
+		}
+		if (w > max_line_width)
+			max_line_width = w;
+	}
 
-	if (line_width > max_line_width)
-		max_line_width = line_width;
 	return max_line_width;
 }
 

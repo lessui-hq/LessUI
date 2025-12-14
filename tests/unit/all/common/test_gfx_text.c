@@ -327,6 +327,61 @@ void test_wrapText_only_spaces(void) {
 	TEST_ASSERT_GREATER_OR_EQUAL(0, width);
 }
 
+void test_wrapText_preserves_existing_newlines(void) {
+	char text[256] = "Line one\nLine two";
+
+	// Width is wide enough that no wrapping is needed
+	GFX_wrapText(&mock_font, text, 500, 0);
+
+	// Original newline should be preserved
+	TEST_ASSERT_EQUAL_STRING("Line one\nLine two", text);
+}
+
+void test_wrapText_wraps_after_existing_newline(void) {
+	// First line short, second line needs wrapping
+	// "Short" = 50px, "This is a longer second line" = 280px
+	char text[256] = "Short\nThis is a longer second line";
+
+	// 150px should fit "Short" but not the second line
+	GFX_wrapText(&mock_font, text, 150, 0);
+
+	// First newline preserved, second line should have wrapped
+	TEST_ASSERT_TRUE(strchr(text, '\n') != NULL);
+
+	// Count newlines - should have more than 1 now (original + wrap)
+	int newlines = 0;
+	for (char* p = text; *p; p++) {
+		if (*p == '\n')
+			newlines++;
+	}
+	TEST_ASSERT_GREATER_THAN(1, newlines);
+}
+
+void test_wrapText_multiple_existing_newlines(void) {
+	char text[256] = "A\nB\nC";
+
+	// Wide enough that no wrapping needed
+	GFX_wrapText(&mock_font, text, 500, 0);
+
+	// All newlines preserved
+	TEST_ASSERT_EQUAL_STRING("A\nB\nC", text);
+}
+
+void test_wrapText_existing_newlines_count_toward_max_lines(void) {
+	char text[256] = "Line one\nLine two\nLine three is very long and should wrap";
+
+	// max_lines = 3, but we already have 3 lines from existing newlines
+	GFX_wrapText(&mock_font, text, 100, 3);
+
+	// Count newlines - should not exceed 2 (for 3 lines)
+	int newlines = 0;
+	for (char* p = text; *p; p++) {
+		if (*p == '\n')
+			newlines++;
+	}
+	TEST_ASSERT_LESS_OR_EQUAL(2, newlines);
+}
+
 ///////////////////////////////
 // GFX_sizeText() Tests
 ///////////////////////////////
@@ -466,6 +521,12 @@ int main(void) {
 	RUN_TEST(test_truncateText_empty_string);
 	RUN_TEST(test_wrapText_empty_string);
 	RUN_TEST(test_wrapText_only_spaces);
+
+	// Existing newline handling
+	RUN_TEST(test_wrapText_preserves_existing_newlines);
+	RUN_TEST(test_wrapText_wraps_after_existing_newline);
+	RUN_TEST(test_wrapText_multiple_existing_newlines);
+	RUN_TEST(test_wrapText_existing_newlines_count_toward_max_lines);
 
 	return UNITY_END();
 }
