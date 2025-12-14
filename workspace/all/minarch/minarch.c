@@ -224,14 +224,23 @@ static void Game_open(char* path) {
 	// Handle archive files (.zip, .7z)
 	if (MinArchArchive_isArchive(game.path)) {
 		LOG_info("is archive file");
-		bool supports_archive = false;
 		char exts[128];
 		char* extensions[MINARCH_MAX_EXTENSIONS];
 		strcpy(exts, core.extensions);
-		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS, &supports_archive);
+		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS);
 
-		// Extract if core doesn't support the archive format natively
-		if (!supports_archive) {
+		// Check if core supports this specific archive format natively.
+		// Cores like FBNeo/MAME can handle archives directly (block_extract=true),
+		// but only for formats they explicitly list in their extensions.
+		const char* archive_ext = NULL;
+		if (suffixMatch(".zip", game.path))
+			archive_ext = "zip";
+		else if (suffixMatch(".7z", game.path))
+			archive_ext = "7z";
+
+		bool core_handles_this_archive = archive_ext && strArrayContains(extensions, archive_ext);
+
+		if (!core_handles_this_archive) {
 			int result =
 			    MinArchArchive_extract(game.path, extensions, game.tmp_path, sizeof(game.tmp_path));
 			if (result != MINARCH_ARCHIVE_OK) {
@@ -3664,9 +3673,8 @@ static void core_load_segfault_handler(int sig) {
 	if (in_core_load) {
 		siglongjmp(segfault_jmp, 1);
 	}
-	// Not in core_load - restore default handler and re-raise
-	signal(SIGSEGV, SIG_DFL);
-	raise(SIGSEGV);
+	// Not in core_load - terminate immediately using async-signal-safe function
+	_exit(128 + SIGSEGV);
 }
 
 bool Core_load(void) {

@@ -382,6 +382,23 @@ void test_wrapText_existing_newlines_count_toward_max_lines(void) {
 	TEST_ASSERT_LESS_OR_EQUAL(2, newlines);
 }
 
+void test_wrapText_returned_width_excludes_overflow(void) {
+	// Regression test: after wrapping, the returned max_line_width should NOT
+	// include the pre-wrap overflow width. Bug was: after wrapping we'd fall
+	// through and update max_line_width with the too-long measurement.
+	char text[256] = "aaa bb cc";
+
+	// max_width = 50 (5 chars at 10px each)
+	// "aaa bb" = 60px triggers wrap at space after "aaa"
+	// Result: "aaa\nbb cc"
+	// Line widths: "aaa" = 30px, "bb cc" = 50px
+	// Expected max_line_width: 50 (NOT 60 from the overflow)
+	int width = GFX_wrapText(&mock_font, text, 50, 0);
+
+	TEST_ASSERT_EQUAL_STRING("aaa\nbb cc", text);
+	TEST_ASSERT_EQUAL_INT(50, width); // Bug would return 60
+}
+
 ///////////////////////////////
 // GFX_sizeText() Tests
 ///////////////////////////////
@@ -527,6 +544,9 @@ int main(void) {
 	RUN_TEST(test_wrapText_wraps_after_existing_newline);
 	RUN_TEST(test_wrapText_multiple_existing_newlines);
 	RUN_TEST(test_wrapText_existing_newlines_count_toward_max_lines);
+
+	// Regression tests
+	RUN_TEST(test_wrapText_returned_width_excludes_overflow);
 
 	return UNITY_END();
 }

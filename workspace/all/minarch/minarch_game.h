@@ -31,20 +31,17 @@
  *
  * @param extensions_str Pipe-delimited extension string (e.g., "gb|gbc|dmg")
  *                       Modified in place (strtok)
- * @param out_extensions Array to receive extension pointers
+ * @param out_extensions Array to receive extension pointers (NULL-terminated)
  * @param max_extensions Maximum number of extensions to store
- * @param out_supports_archive Set to true if "zip" or "7z" extension found
  * @return Number of extensions parsed
  *
  * @example
  *   char exts[] = "gb|gbc|zip";
  *   char* ext_array[32];
- *   bool supports_archive;
- *   int count = MinArchGame_parseExtensions(exts, ext_array, 32, &supports_archive);
- *   // count=3, ext_array={"gb","gbc","zip"}, supports_archive=true
+ *   int count = MinArchGame_parseExtensions(exts, ext_array, 32);
+ *   // count=3, ext_array={"gb","gbc","zip",NULL}
  */
-int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions,
-                                bool* out_supports_archive);
+int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions);
 
 /**
  * Checks if a filename matches any of the given extensions.

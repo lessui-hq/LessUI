@@ -137,6 +137,9 @@ int GFX_wrapText(TTF_Font* ttf_font, char* str, int max_width, int max_lines) {
 				line_start = last_space + 1;
 				last_space = NULL;
 				lines++;
+				// Reset p to scan the new line from the start, so we don't miss spaces
+				p = line_start;
+				continue;
 			}
 			// If no space to wrap at, we'll truncate at the end
 		}

@@ -113,6 +113,31 @@ void test_containsString_case_insensitive(void) {
 	TEST_ASSERT_TRUE(containsString("Hello World", "world"));
 }
 
+// strArrayContains tests
+void test_strArrayContains_found(void) {
+	char* arr[] = {"zip", "7z", "nes", NULL};
+	TEST_ASSERT_TRUE(strArrayContains(arr, "zip"));
+	TEST_ASSERT_TRUE(strArrayContains(arr, "7z"));
+	TEST_ASSERT_TRUE(strArrayContains(arr, "nes"));
+}
+
+void test_strArrayContains_not_found(void) {
+	char* arr[] = {"zip", "7z", "nes", NULL};
+	TEST_ASSERT_FALSE(strArrayContains(arr, "gz"));
+	TEST_ASSERT_FALSE(strArrayContains(arr, "ZIP")); // case-sensitive
+}
+
+void test_strArrayContains_empty_array(void) {
+	char* arr[] = {NULL};
+	TEST_ASSERT_FALSE(strArrayContains(arr, "zip"));
+}
+
+void test_strArrayContains_null_inputs(void) {
+	char* arr[] = {"zip", NULL};
+	TEST_ASSERT_FALSE(strArrayContains(NULL, "zip"));
+	TEST_ASSERT_FALSE(strArrayContains(arr, NULL));
+}
+
 void test_hide_hidden_file(void) {
 	TEST_ASSERT_TRUE(hide(".hidden"));
 	TEST_ASSERT_TRUE(hide(".gitignore"));
@@ -906,6 +931,10 @@ int main(void) {
 	RUN_TEST(test_containsString_found);
 	RUN_TEST(test_containsString_not_found);
 	RUN_TEST(test_containsString_case_insensitive);
+	RUN_TEST(test_strArrayContains_found);
+	RUN_TEST(test_strArrayContains_not_found);
+	RUN_TEST(test_strArrayContains_empty_array);
+	RUN_TEST(test_strArrayContains_null_inputs);
 	RUN_TEST(test_hide_hidden_file);
 	RUN_TEST(test_hide_disabled_file);
 	RUN_TEST(test_hide_map_txt);
