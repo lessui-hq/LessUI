@@ -29,7 +29,7 @@
 | Capcom Play System 1                   |     CPS1 | CPS1.pak     | fbneo              | `fbneo_libretro.so`              |
 | Capcom Play System 2                   |     CPS2 | CPS2.pak     | fbneo              | `fbneo_libretro.so`              |
 | Capcom Play System 3                   |     CPS3 | CPS3.pak     | fbneo              | `fbneo_libretro.so`              |
-| Neo Geo (cartridge)                    |   NEOGEO | NEOGEO.pak   | fbneo              | `fbneo_libretro.so`              |
+| Neo Geo (cartridge)                    |       NG | NG.pak       | fbneo              | `fbneo_libretro.so`              |
 
 ### Phase 2
 
@@ -293,7 +293,7 @@ The CPS series uses dedicated Final Burn Alpha 2012 cores optimized specifically
 
 | System                    | Folder | Default Core           |
 | ------------------------- | ------ | ---------------------- |
-| SNK NeoGeo                | NEOGEO | **fbalpha2012_neogeo** |
+| SNK NeoGeo                | NG     | **fbalpha2012_neogeo** |
 | SNK NeoGeo CD             | NEOCD  | **neocd**              |
 | SNK NeoGeo Pocket & Color | NGP    | **mednafen_ngp**       |
 
@@ -375,7 +375,7 @@ All core names listed are without the `_libretro.so` suffix and `lr-` prefix - t
 - MD
 - MS
 - NDS
-- NEOGEO
+- NG
 - PCE
 - PCECD
 - PICO
@@ -401,7 +401,7 @@ All core names listed are without the `_libretro.so` suffix and `lr-` prefix - t
 - GG
 - MD
 - MS
-- NEOGEO
+- NG
 - PCECD
 - PS
 - SEGACD

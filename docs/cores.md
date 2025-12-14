@@ -33,15 +33,15 @@ The main LessUI Makefile downloads cores during the build:
 
 ```makefile
 # Pre-built cores from LessUI-Cores repository (versioned releases)
-MINARCH_CORES_VERSION ?= 20251213-0
+MINARCH_CORES_VERSION ?= 20251214-2
 CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
 
 cores-download:
-	@mkdir -p build/.system/cores/a7 build/.system/cores/a53
-	@curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-a7.zip
-	@unzip -o -j -q /tmp/lessui-cores-a7.zip -d build/.system/cores/a7
-	@curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-a53.zip
-	@unzip -o -j -q /tmp/lessui-cores-a53.zip -d build/.system/cores/a53
+	@mkdir -p build/.system/cores/arm32 build/.system/cores/arm64
+	@curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-arm32.zip
+	@unzip -o -j -q /tmp/lessui-cores-arm32.zip -d build/.system/cores/arm32
+	@curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-arm64.zip
+	@unzip -o -j -q /tmp/lessui-cores-arm64.zip -d build/.system/cores/arm64
 ```
 
 ### Local Override (Development)
@@ -86,12 +86,12 @@ Cores are stored in architecture-specific directories on the SD card:
 
 ```
 /mnt/SDCARD/.system/cores/
-├── a7/                         # ARM Cortex-A7 cores (32-bit)
+├── arm32/                      # ARM 32-bit cores
 │   ├── fceumm_libretro.so
 │   ├── gambatte_libretro.so
 │   ├── gpsp_libretro.so
 │   └── ...
-└── a53/                        # ARM Cortex-A53+ cores (64-bit)
+└── arm64/                      # ARM 64-bit cores
     ├── fceumm_libretro.so
     ├── gambatte_libretro.so
     ├── gpsp_libretro.so
@@ -104,20 +104,11 @@ During LessUI build, cores are downloaded to:
 
 ```
 build/.system/cores/
-├── a7/*.so                     # Copied to all 32-bit platforms
-└── a53/*.so                    # Copied to all 64-bit platforms
+├── arm32/*.so                  # Copied to all 32-bit platforms
+└── arm64/*.so                  # Copied to all 64-bit platforms
 ```
 
-The package target copies the appropriate architecture's cores to each platform:
-
-```makefile
-# Platform determines which architecture to use
-ifeq ($(CORES_ARCH),a7)
-    cp -R ./build/.system/cores/a7 ./build/PAYLOAD/.system/cores/
-else
-    cp -R ./build/.system/cores/a53 ./build/PAYLOAD/.system/cores/
-endif
-```
+The package target copies only the cores referenced in cores.json to each platform.
 
 ## Runtime Core Loading
 

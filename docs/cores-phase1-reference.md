@@ -881,7 +881,7 @@ bind Right = RIGHT
 ## FBNeo Arcade / Neo Geo / CPS (fbneo)
 
 **Core:** `fbneo_libretro.so`
-**Systems:** FBN, CPS1, CPS2, CPS3, NEOGEO
+**Systems:** FBN, CPS1, CPS2, CPS3, NG
 
 ### Extensions
 
@@ -892,7 +892,7 @@ bind Right = RIGHT
 
 ### BIOS Files
 
-**Neo Geo (NEOGEO):**
+**Neo Geo (NG):**
 | Filename | Description | Required |
 |----------|-------------|----------|
 | `neogeo.zip` | Neo Geo BIOS collection | **Required** |
@@ -928,7 +928,7 @@ Uni-BIOS supported via `fbneo/patched/` directory.
 | Select | Select/Coin |
 | D-Pad | Joystick |
 
-**Suggested LessUI Config (NEOGEO):**
+**Suggested LessUI Config (NG):**
 
 ```
 bind A = B
@@ -1021,7 +1021,7 @@ bind Right = RIGHT
 | CPS1   | fbneo              | ~384×224   | No            |
 | CPS2   | fbneo              | ~384×224   | No            |
 | CPS3   | fbneo              | ~384×224   | No            |
-| NEOGEO | fbneo              | 320×224    | **Yes**       |
+| NG     | fbneo              | 320×224    | **Yes**       |
 
 ---
 

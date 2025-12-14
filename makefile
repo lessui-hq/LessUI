@@ -355,12 +355,12 @@ package: tidy
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
 
 	# Copy only the cores referenced in cores.json (not all downloaded cores)
-	mkdir -p ./build/PAYLOAD/.system/cores/a7 ./build/PAYLOAD/.system/cores/a53
+	mkdir -p ./build/PAYLOAD/.system/cores/arm32 ./build/PAYLOAD/.system/cores/arm64
 	jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
-		[ -f "./build/.system/cores/a7/$$core" ] && cp "./build/.system/cores/a7/$$core" "./build/PAYLOAD/.system/cores/a7/"; \
-		[ -f "./build/.system/cores/a53/$$core" ] && cp "./build/.system/cores/a53/$$core" "./build/PAYLOAD/.system/cores/a53/"; \
+		[ -f "./build/.system/cores/arm32/$$core" ] && cp "./build/.system/cores/arm32/$$core" "./build/PAYLOAD/.system/cores/arm32/"; \
+		[ -f "./build/.system/cores/arm64/$$core" ] && cp "./build/.system/cores/arm64/$$core" "./build/PAYLOAD/.system/cores/arm64/"; \
 	done
-	@echo "Copied $$(ls ./build/PAYLOAD/.system/cores/a7/*.so 2>/dev/null | wc -l | tr -d ' ') a7 cores, $$(ls ./build/PAYLOAD/.system/cores/a53/*.so 2>/dev/null | wc -l | tr -d ' ') a53 cores"
+	@echo "Copied $$(ls ./build/PAYLOAD/.system/cores/arm32/*.so 2>/dev/null | wc -l | tr -d ' ') arm32 cores, $$(ls ./build/PAYLOAD/.system/cores/arm64/*.so 2>/dev/null | wc -l | tr -d ' ') arm64 cores"
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 
 	# Create LessUI.7z (-md=16m limits dictionary so 128MB RAM devices can decompress)

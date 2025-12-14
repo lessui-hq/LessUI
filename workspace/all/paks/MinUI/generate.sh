@@ -29,10 +29,10 @@ shutdown_cmd=$(jq -r ".platforms.\"$platform\".shutdown_cmd" "$CONFIG_JSON")
 # Derive values from arch
 if [ "$arch" = "arm32" ]; then
 	platform_arch="arm"
-	cores_subpath=".system/cores/a7"
+	cores_subpath=".system/cores/arm32"
 else
 	platform_arch="arm64"
-	cores_subpath=".system/cores/a53"
+	cores_subpath=".system/cores/arm64"
 fi
 
 mkdir -p "$output_dir"
