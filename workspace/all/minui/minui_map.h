@@ -12,27 +12,46 @@
 #ifndef MINUI_MAP_H
 #define MINUI_MAP_H
 
-#include "collections.h"
+#include "stringmap.h"
 
 /**
- * Loads a map.txt file into a Hash table.
+ * Loads a map.txt file into a StringMap.
  *
- * Parses the tab-delimited file and returns a Hash mapping
+ * Parses the tab-delimited file and returns a StringMap mapping
  * filenames to their display aliases.
  *
  * @param map_path Full path to map.txt file
- * @return Hash table (caller must free with Hash_free), or NULL on error
+ * @return StringMap (caller must free with StringMap_free), or NULL on error
  *
  * @note Tab-delimited format: filename<TAB>display name
  * @note Empty lines are skipped
  */
-Hash* Map_load(const char* map_path);
+StringMap* Map_load(const char* map_path);
+
+/**
+ * Loads merged maps for a ROM directory (pak-bundled + user overrides).
+ *
+ * Efficiently loads both pak-bundled and user maps for batch aliasing.
+ * User entries override pak entries when both exist.
+ *
+ * @param dir_path Full path to ROM directory (e.g., "/mnt/SDCARD/Roms/MAME")
+ * @return Merged StringMap (caller must free), or NULL if no maps exist
+ *
+ * @note For arcade directories with 50k+ entries, this is much more efficient
+ *       than calling Map_getAlias per ROM (loads maps once, not per-ROM)
+ */
+StringMap* Map_loadForDirectory(const char* dir_path);
 
 /**
  * Looks up the display alias for a ROM file from map.txt.
  *
- * Searches for map.txt in the same directory as the ROM file.
- * If found, looks up the ROM's filename in the map and returns the alias.
+ * Searches for map.txt in two locations with precedence:
+ * 1. ROM directory (user's custom map) - highest priority
+ * 2. Pak directory (pak-bundled map) - fallback
+ *
+ * Maps are merged with user overrides taking precedence. This allows paks
+ * to bundle default name mappings (e.g., arcade game names) while users
+ * can override any entry with their own map.txt.
  *
  * @param path Full path to ROM file
  * @param alias Output buffer for alias (min 256 bytes)

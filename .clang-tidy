@@ -12,6 +12,7 @@
 #   - cppcoreguidelines-* (C++ specific)
 #   - google-*, llvm-*, fuchsia-* (style guides not applicable)
 #   - readability-* (too opinionated for legacy codebase with mixed styles)
+#   - bugprone-suspicious-realloc-usage (false positive from khash.h macro expansion)
 
 Checks: >
   -*,
@@ -27,6 +28,7 @@ Checks: >
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-branch-clone,
   -bugprone-not-null-terminated-result,
+  -bugprone-suspicious-realloc-usage,
   clang-analyzer-*,
   -clang-analyzer-security.insecureAPI.strcpy,
   -clang-analyzer-security.ArrayBound,

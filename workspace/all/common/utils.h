@@ -165,6 +165,31 @@ int splitTextLines(char* str, char** lines, int max_lines);
 int exists(char* path);
 
 /**
+ * Finds a system file with platform-specific fallback to common.
+ *
+ * Provides a generic way to share resources across platforms while
+ * allowing platform-specific overrides. Mirrors the .system/{platform}/
+ * directory structure in .system/common/ for shared resources.
+ *
+ * Search order:
+ * 1. /.system/{PLATFORM}/{relative_path}  (platform-specific)
+ * 2. /.system/common/{relative_path}      (shared fallback)
+ *
+ * Example: findSystemFile("paks/Emus/MAME.pak/map.txt", output)
+ * Checks:
+ *   - /.system/miyoomini/paks/Emus/MAME.pak/map.txt
+ *   - /.system/common/paks/Emus/MAME.pak/map.txt
+ *
+ * @param relative_path Path relative to system directory
+ * @param output_path   Output buffer for resolved absolute path (min 512 bytes)
+ * @return 1 if found, 0 if not found
+ *
+ * @note If found, output_path contains the full absolute path
+ * @note If not found, output_path is unchanged
+ */
+int findSystemFile(const char* relative_path, char* output_path);
+
+/**
  * Creates an empty file or updates its timestamp.
  *
  * Equivalent to the Unix 'touch' command.

@@ -22,7 +22,7 @@
  *
  * Data Structures:
  * - Array: Dynamic array for entries, directories, recents
- * - Hash: Simple key-value map for name aliasing
+ * - StringMap: O(1) hash map for name aliasing (backed by khash)
  * - Directory: Represents a folder with entries and rendering state
  * - Entry: Represents a file/folder (ROM, PAK, or directory)
  * - Recent: Recently played game with path and optional alias
@@ -380,10 +380,17 @@ void Directory_index(Directory* self) {
 	int is_collection = prefixMatch(COLLECTIONS_PATH, self->path);
 	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || is_collection; // not alphabetized
 
-	// Load map.txt for name aliasing if present
-	char map_path[256];
-	sprintf(map_path, "%s/map.txt", is_collection ? COLLECTIONS_PATH : self->path);
-	Hash* map = Map_load(map_path);
+	// Load maps for name aliasing (pak-bundled + user overrides)
+	// For collections, just load collection map.txt directly
+	StringMap* map;
+	if (is_collection) {
+		char map_path[256];
+		sprintf(map_path, "%s/map.txt", COLLECTIONS_PATH);
+		map = Map_load(map_path);
+	} else {
+		// Load merged pak + user maps for ROM directories
+		map = Map_loadForDirectory(self->path);
+	}
 
 	// Use DirectoryIndex module for aliasing, filtering, duplicate detection, and alpha index
 	Array* indexed = DirectoryIndex_index(self->entries, self->alphas, map, skip_index);
@@ -395,7 +402,7 @@ void Directory_index(Directory* self) {
 	}
 
 	if (map)
-		Hash_free(map);
+		StringMap_free(map);
 }
 
 // Forward declarations for directory entry getters
@@ -802,13 +809,13 @@ static Array* getRoot(void) {
 	char map_path[256];
 	sprintf(map_path, "%s/map.txt", ROMS_PATH);
 	if (entries->count > 0) {
-		Hash* map = Map_load(map_path);
+		StringMap* map = Map_load(map_path);
 		if (map) {
 			int resort = 0;
 			for (int i = 0; i < entries->count; i++) {
 				Entry* entry = entries->items[i];
 				char* filename = strrchr(entry->path, '/') + 1;
-				char* alias = Hash_get(map, filename);
+				char* alias = StringMap_get(map, filename);
 				if (alias) {
 					if (Entry_setName(entry, alias))
 						resort = 1;
@@ -816,7 +823,7 @@ static Array* getRoot(void) {
 			}
 			if (resort)
 				EntryArray_sort(entries);
-			Hash_free(map);
+			StringMap_free(map);
 		}
 	}
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-EMU_CORE={{CORE}}
+EMU_CORE={{CORE}}.so
 ###############################
 
 EMU_TAG=$(basename "$(dirname "$0")" .pak)

@@ -1,5 +1,5 @@
 /**
- * test_collections.c - Unit tests for Array and Hash data structures
+ * test_collections.c - Unit tests for Array data structure
  *
  * Tests the generic data structures extracted from minui.c.
  * These are pure logic with no dependencies, making them ideal for unit testing.
@@ -11,8 +11,8 @@
  * - Array_reverse - Reverse order
  * - StringArray_indexOf - String search
  * - StringArray_free - String cleanup
- * - Hash_new/free - Hash lifecycle
- * - Hash_set/get - Key-value storage/retrieval
+ *
+ * For hash map tests, see stringmap.h and its tests.
  */
 
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()
@@ -323,145 +323,8 @@ void test_StringArray_free_frees_strings(void) {
 }
 
 ///////////////////////////////
-// Hash basic lifecycle tests
-///////////////////////////////
-
-void test_Hash_new_creates_empty_hash(void) {
-	Hash* hash = Hash_new();
-
-	TEST_ASSERT_NOT_NULL(hash);
-	TEST_ASSERT_NOT_NULL(hash->keys);
-	TEST_ASSERT_NOT_NULL(hash->values);
-	TEST_ASSERT_EQUAL_INT(0, hash->keys->count);
-	TEST_ASSERT_EQUAL_INT(0, hash->values->count);
-
-	Hash_free(hash);
-}
-
-void test_Hash_free_cleans_up(void) {
-	Hash* hash = Hash_new();
-	Hash_free(hash);
-	// If this doesn't crash, it passed
-	TEST_PASS();
-}
-
-///////////////////////////////
-// Hash_set tests
-///////////////////////////////
-
-void test_Hash_set_single_entry(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "name", "MinUI");
-
-	TEST_ASSERT_EQUAL_INT(1, hash->keys->count);
-	TEST_ASSERT_EQUAL_INT(1, hash->values->count);
-
-	Hash_free(hash);
-}
-
-void test_Hash_set_multiple_entries(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "name", "MinUI");
-	Hash_set(hash, "version", "2024");
-	Hash_set(hash, "platform", "miyoomini");
-
-	TEST_ASSERT_EQUAL_INT(3, hash->keys->count);
-	TEST_ASSERT_EQUAL_INT(3, hash->values->count);
-
-	Hash_free(hash);
-}
-
-void test_Hash_set_allows_duplicate_keys(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "key", "value1");
-	Hash_set(hash, "key", "value2");
-
-	// Hash_set does not check for duplicates
-	TEST_ASSERT_EQUAL_INT(2, hash->keys->count);
-
-	Hash_free(hash);
-}
-
-///////////////////////////////
-// Hash_get tests
-///////////////////////////////
-
-void test_Hash_get_retrieves_value(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "name", "MinUI");
-	Hash_set(hash, "version", "2024");
-
-	char* name = Hash_get(hash, "name");
-	char* version = Hash_get(hash, "version");
-
-	TEST_ASSERT_EQUAL_STRING("MinUI", name);
-	TEST_ASSERT_EQUAL_STRING("2024", version);
-
-	Hash_free(hash);
-}
-
-void test_Hash_get_not_found_returns_null(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "name", "MinUI");
-
-	char* missing = Hash_get(hash, "missing");
-
-	TEST_ASSERT_NULL(missing);
-
-	Hash_free(hash);
-}
-
-void test_Hash_get_empty_hash_returns_null(void) {
-	Hash* hash = Hash_new();
-
-	char* value = Hash_get(hash, "anything");
-
-	TEST_ASSERT_NULL(value);
-
-	Hash_free(hash);
-}
-
-void test_Hash_get_with_duplicate_keys_returns_first(void) {
-	Hash* hash = Hash_new();
-
-	Hash_set(hash, "key", "first");
-	Hash_set(hash, "key", "second");
-
-	char* value = Hash_get(hash, "key");
-
-	// Returns the first matching key
-	TEST_ASSERT_EQUAL_STRING("first", value);
-
-	Hash_free(hash);
-}
-
-///////////////////////////////
 // Integration tests
 ///////////////////////////////
-
-void test_Hash_integration_rom_alias_map(void) {
-	Hash* hash = Hash_new();
-
-	// Simulate loading a ROM alias map
-	Hash_set(hash, "Super Mario Land.gb", "Mario Land");
-	Hash_set(hash, "The Legend of Zelda - Link's Awakening.gb", "Zelda LA");
-	Hash_set(hash, "Pokemon Red Version.gb", "Pokemon Red");
-
-	// Retrieve aliases
-	TEST_ASSERT_EQUAL_STRING("Mario Land", Hash_get(hash, "Super Mario Land.gb"));
-	TEST_ASSERT_EQUAL_STRING("Zelda LA", Hash_get(hash, "The Legend of Zelda - Link's Awakening.gb"));
-	TEST_ASSERT_EQUAL_STRING("Pokemon Red", Hash_get(hash, "Pokemon Red Version.gb"));
-
-	// Non-aliased ROM returns NULL
-	TEST_ASSERT_NULL(Hash_get(hash, "Tetris.gb"));
-
-	Hash_free(hash);
-}
 
 void test_Array_integration_recent_games_list(void) {
 	Array* recents = Array_new();
@@ -518,23 +381,7 @@ int main(void) {
 	RUN_TEST(test_StringArray_indexOf_empty_array);
 	RUN_TEST(test_StringArray_free_frees_strings);
 
-	// Hash basic lifecycle
-	RUN_TEST(test_Hash_new_creates_empty_hash);
-	RUN_TEST(test_Hash_free_cleans_up);
-
-	// Hash_set
-	RUN_TEST(test_Hash_set_single_entry);
-	RUN_TEST(test_Hash_set_multiple_entries);
-	RUN_TEST(test_Hash_set_allows_duplicate_keys);
-
-	// Hash_get
-	RUN_TEST(test_Hash_get_retrieves_value);
-	RUN_TEST(test_Hash_get_not_found_returns_null);
-	RUN_TEST(test_Hash_get_empty_hash_returns_null);
-	RUN_TEST(test_Hash_get_with_duplicate_keys_returns_first);
-
 	// Integration tests
-	RUN_TEST(test_Hash_integration_rom_alias_map);
 	RUN_TEST(test_Array_integration_recent_games_list);
 
 	return UNITY_END();

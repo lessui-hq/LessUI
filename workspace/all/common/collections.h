@@ -1,11 +1,10 @@
 /**
  * collections.h - Generic data structures for MinUI
  *
- * Provides Array (dynamic array) and Hash (key-value map) data structures.
+ * Provides Array (dynamic array) data structure.
  * Extracted from minui.c for better testability and reusability.
  *
- * Array: Generic dynamic array that stores void pointers
- * Hash: Simple key-value map using parallel string arrays
+ * For hash maps, use StringMap from stringmap.h (backed by khash).
  */
 
 #ifndef __COLLECTIONS_H__
@@ -98,59 +97,5 @@ int StringArray_indexOf(Array* self, char* str);
  * @param self Array to free
  */
 void StringArray_free(Array* self);
-
-///////////////////////////////
-// Simple hash map (key-value store)
-///////////////////////////////
-
-/**
- * Simple key-value map using parallel arrays.
- *
- * Used for loading map.txt files that alias ROM display names.
- * Not a true hash - just linear search through keys array.
- */
-typedef struct Hash {
-	Array* keys;
-	Array* values;
-} Hash;
-
-/**
- * Creates a new empty hash map.
- *
- * @return Pointer to allocated Hash
- *
- * @warning Caller must free with Hash_free()
- */
-Hash* Hash_new(void);
-
-/**
- * Frees a hash map and all its keys and values.
- *
- * @param self Hash to free
- */
-void Hash_free(Hash* self);
-
-/**
- * Stores a key-value pair in the hash map.
- *
- * Both key and value are duplicated with strdup().
- * Does not check for duplicate keys - allows multiple entries.
- *
- * @param self Hash to modify
- * @param key Key string
- * @param value Value string
- */
-void Hash_set(Hash* self, char* key, char* value);
-
-/**
- * Retrieves a value by key from the hash map.
- *
- * @param self Hash to search
- * @param key Key to look up
- * @return Pointer to value string, or NULL if key not found
- *
- * @note Returned pointer is owned by the Hash - do not free
- */
-char* Hash_get(Hash* self, char* key);
 
 #endif // __COLLECTIONS_H__

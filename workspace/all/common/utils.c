@@ -235,6 +235,31 @@ int exists(char* path) {
 }
 
 /**
+ * Finds a system file with platform-specific fallback to common.
+ *
+ * Checks platform-specific location first, then shared common location.
+ */
+int findSystemFile(const char* relative_path, char* output_path) {
+	char candidate[512];
+
+	// Check platform-specific location first
+	sprintf(candidate, "%s/.system/%s/%s", SDCARD_PATH, PLATFORM, relative_path);
+	if (exists(candidate)) {
+		strcpy(output_path, candidate);
+		return 1;
+	}
+
+	// Fall back to shared common location
+	sprintf(candidate, "%s/.system/common/%s", SDCARD_PATH, relative_path);
+	if (exists(candidate)) {
+		strcpy(output_path, candidate);
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
  * Creates an empty file or updates its timestamp.
  *
  * Equivalent to the Unix 'touch' command.

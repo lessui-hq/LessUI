@@ -220,6 +220,31 @@ generate_pak() {
 }
 export -f generate_pak
 
+# Function to copy shared maps to common directory (called once per pak)
+# Maps are organized by core name (e.g., maps/fbneo_libretro/map.txt)
+# Multiple paks may share the same core, so we copy to each pak that uses it
+copy_shared_maps() {
+    local core=$1
+
+    # Get the core name from cores.json (no .so extension)
+    local core_name=$(jq -r ".cores.\"$core\".core" "$CORES_JSON")
+
+    if [ -z "$core_name" ] || [ "$core_name" = "null" ]; then
+        return
+    fi
+
+    # Map directory matches core name exactly
+    local map_file="$TEMPLATE_DIR/maps/${core_name}/map.txt"
+
+    if [ -f "$map_file" ]; then
+        local common_pak_dir="$BUILD_DIR/SYSTEM/common/paks/Emus/${core}.pak"
+        mkdir -p "$common_pak_dir"
+        cp "$map_file" "$common_pak_dir/map.txt"
+        echo "  Copied shared map: ${core}.pak/map.txt (from ${core_name})"
+    fi
+}
+export -f copy_shared_maps
+
 # Function to check if core is compatible with platform architecture
 is_core_compatible() {
     local platform=$1
@@ -283,6 +308,17 @@ for platform in $PLATFORMS_TO_GENERATE; do
             fi
         done
     fi
+done
+
+# Copy shared maps to common directory (once, not per-platform)
+echo "Copying shared pak maps to .system/common/..."
+CORES=$(jq -r '.cores | keys[]' "$CORES_JSON")
+for core in $CORES; do
+    # Filter by target cores if specified
+    if ! core_in_target_list "$core"; then
+        continue
+    fi
+    copy_shared_maps "$core"
 done
 
 echo "Generated $PAK_COUNT emulator paks"

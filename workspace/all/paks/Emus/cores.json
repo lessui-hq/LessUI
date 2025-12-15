@@ -2,7 +2,7 @@
   "cores": {
     "GB": {
       "name": "Game Boy",
-      "core": "gambatte_libretro.so",
+      "core": "gambatte_libretro",
       "resolution": "160x144",
       "extensions": ["gb", "gbc", "dmg"],
       "bios": [
@@ -15,7 +15,7 @@
     },
     "GBC": {
       "name": "Game Boy Color",
-      "core": "gambatte_libretro.so",
+      "core": "gambatte_libretro",
       "resolution": "160x144",
       "extensions": ["gbc", "gb"],
       "bios": [
@@ -28,7 +28,7 @@
     },
     "GBA": {
       "name": "Game Boy Advance",
-      "core": "gpsp_libretro.so",
+      "core": "gpsp_libretro",
       "resolution": "240x160",
       "extensions": ["gba", "bin"],
       "bios": [
@@ -41,7 +41,7 @@
     },
     "FC": {
       "name": "Nintendo Entertainment System",
-      "core": "fceumm_libretro.so",
+      "core": "fceumm_libretro",
       "resolution": "256x240",
       "extensions": ["nes", "fds", "unif", "unf"],
       "bios": [
@@ -54,21 +54,21 @@
     },
     "SFC": {
       "name": "Super Nintendo",
-      "core": "snes9x2005_plus_libretro.so",
+      "core": "snes9x2005_plus_libretro",
       "resolution": "256x224",
       "extensions": ["smc", "sfc", "fig", "swc", "gd3", "gd7", "dx2", "bsx"],
       "bios": []
     },
     "MD": {
       "name": "Sega Genesis",
-      "core": "picodrive_libretro.so",
+      "core": "picodrive_libretro",
       "resolution": "320x224",
       "extensions": ["bin", "gen", "smd", "md", "68k"],
       "bios": []
     },
     "PS": {
       "name": "Sony PlayStation",
-      "core": "pcsx_rearmed_libretro.so",
+      "core": "pcsx_rearmed_libretro",
       "resolution": "320x240",
       "extensions": [
         "bin",
@@ -104,28 +104,28 @@
     },
     "GG": {
       "name": "Sega Game Gear",
-      "core": "picodrive_libretro.so",
+      "core": "picodrive_libretro",
       "resolution": "160x144",
       "extensions": ["gg"],
       "bios": []
     },
     "SMS": {
       "name": "Sega Master System",
-      "core": "picodrive_libretro.so",
+      "core": "picodrive_libretro",
       "resolution": "256x192",
       "extensions": ["sms"],
       "bios": []
     },
     "PCE": {
       "name": "TurboGrafx-16",
-      "core": "mednafen_pce_fast_libretro.so",
+      "core": "mednafen_pce_fast_libretro",
       "resolution": "512x243",
       "extensions": ["pce"],
       "bios": []
     },
     "PCECD": {
       "name": "TurboGrafx CD",
-      "core": "mednafen_pce_fast_libretro.so",
+      "core": "mednafen_pce_fast_libretro",
       "resolution": "512x243",
       "extensions": ["cue", "ccd", "iso", "img", "bin", "chd"],
       "bios": [
@@ -138,28 +138,28 @@
     },
     "VB": {
       "name": "Nintendo Virtual Boy",
-      "core": "mednafen_vb_libretro.so",
+      "core": "mednafen_vb_libretro",
       "resolution": "384x224",
       "extensions": ["vb", "vboy", "bin"],
       "bios": []
     },
     "NGP": {
       "name": "Neo Geo Pocket",
-      "core": "race_libretro.so",
+      "core": "race_libretro",
       "resolution": "160x152",
       "extensions": ["ngp"],
       "bios": []
     },
     "NGPC": {
       "name": "Neo Geo Pocket Color",
-      "core": "race_libretro.so",
+      "core": "race_libretro",
       "resolution": "160x152",
       "extensions": ["ngc", "ngp"],
       "bios": []
     },
     "PKM": {
       "name": "Pokemon mini",
-      "core": "pokemini_libretro.so",
+      "core": "pokemini_libretro",
       "resolution": "96x64",
       "extensions": ["min"],
       "bios": [
@@ -172,21 +172,21 @@
     },
     "PICO": {
       "name": "Pico-8",
-      "core": "fake08_libretro.so",
+      "core": "fake08_libretro",
       "resolution": "128x128",
       "extensions": ["p8", "p8.png", "png"],
       "bios": []
     },
     "TIC": {
       "name": "TIC-80",
-      "core": "tic80_libretro.so",
+      "core": "tic80_libretro",
       "resolution": "240x136",
       "extensions": ["tic"],
       "bios": []
     },
     "SGB": {
       "name": "Super Game Boy",
-      "core": "mgba_libretro.so",
+      "core": "mgba_libretro",
       "resolution": "256x224",
       "extensions": ["gb", "gbc"],
       "bios": [
@@ -209,7 +209,7 @@
     },
     "MGBA": {
       "name": "Game Boy Advance (mGBA)",
-      "core": "mgba_libretro.so",
+      "core": "mgba_libretro",
       "resolution": "240x160",
       "extensions": ["gba", "gb", "gbc"],
       "bios": [
@@ -222,49 +222,49 @@
     },
     "SUPA": {
       "name": "Super Nintendo (Supafaust)",
-      "core": "mednafen_supafaust_libretro.so",
+      "core": "mednafen_supafaust_libretro",
       "resolution": "256x224",
       "extensions": ["smc", "sfc", "swc", "fig"],
       "bios": []
     },
     "MAME": {
       "name": "Arcade (MAME)",
-      "core": "mame2003_plus_libretro.so",
+      "core": "mame2003_plus_libretro",
       "resolution": "varies",
       "extensions": ["zip", "chd"],
       "bios": [{ "name": "neogeo.zip", "md5": null, "required": false }]
     },
     "FBN": {
       "name": "Arcade (FBNeo)",
-      "core": "fbneo_libretro.so",
+      "core": "fbneo_libretro",
       "resolution": "varies",
       "extensions": ["zip", "7z"],
       "bios": []
     },
     "CPS1": {
       "name": "Capcom Play System 1",
-      "core": "fbneo_libretro.so",
+      "core": "fbneo_libretro",
       "resolution": "384x224",
       "extensions": ["zip", "7z"],
       "bios": []
     },
     "CPS2": {
       "name": "Capcom Play System 2",
-      "core": "fbneo_libretro.so",
+      "core": "fbneo_libretro",
       "resolution": "384x224",
       "extensions": ["zip", "7z"],
       "bios": []
     },
     "CPS3": {
       "name": "Capcom Play System 3",
-      "core": "fbneo_libretro.so",
+      "core": "fbneo_libretro",
       "resolution": "384x224",
       "extensions": ["zip", "7z"],
       "bios": []
     },
     "NG": {
       "name": "Neo Geo",
-      "core": "fbneo_libretro.so",
+      "core": "fbneo_libretro",
       "resolution": "320x224",
       "extensions": ["zip", "7z"],
       "bios": [{ "name": "neogeo.zip", "md5": null, "required": true }]
