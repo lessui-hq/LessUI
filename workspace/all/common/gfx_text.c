@@ -50,7 +50,7 @@ extern int TTF_SizeUTF8(TTF_Font* font, const char* text, int* w, int* h);
 int GFX_truncateText(TTF_Font* ttf_font, const char* in_name, char* out_name, int max_width,
                      int padding) {
 	int text_width;
-	strcpy(out_name, in_name);
+	safe_strcpy(out_name, in_name, 256);
 	TTF_SizeUTF8(ttf_font, out_name, &text_width, NULL);
 	text_width += padding;
 
@@ -59,12 +59,12 @@ int GFX_truncateText(TTF_Font* ttf_font, const char* in_name, char* out_name, in
 		// Need at least 4 chars to truncate (replace last char with "...")
 		// If string is too short, just use "..." directly
 		if (len <= 4) {
-			strcpy(out_name, "...");
+			safe_strcpy(out_name, "...", 256);
 			TTF_SizeUTF8(ttf_font, out_name, &text_width, NULL);
 			text_width += padding;
 			break;
 		}
-		strcpy(&out_name[len - 4], "...");
+		safe_strcpy(&out_name[len - 4], "...", 4);
 		TTF_SizeUTF8(ttf_font, out_name, &text_width, NULL);
 		text_width += padding;
 	}
@@ -158,7 +158,9 @@ int GFX_wrapText(TTF_Font* ttf_font, char* str, int max_width, int max_lines) {
 			// Use GFX_truncateText to truncate with "..."
 			char buffer[MAX_PATH];
 			GFX_truncateText(ttf_font, line_start, buffer, max_width, 0);
-			strcpy(line_start, buffer);
+			// Calculate remaining space in the buffer from line_start
+			size_t remaining = strlen(str) - (line_start - str) + 1;
+			safe_strcpy(line_start, buffer, remaining);
 			TTF_SizeUTF8(ttf_font, line_start, &w, NULL);
 		}
 		if (w > max_line_width)
@@ -196,7 +198,7 @@ void GFX_sizeText(TTF_Font* ttf_font, char* str, int leading, int* w, int* h) {
 			line[len] = '\0';
 		} else {
 			len = strlen(lines[i]);
-			strcpy(line, lines[i]);
+			safe_strcpy(line, lines[i], sizeof(line));
 		}
 
 		if (len) {

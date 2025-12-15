@@ -32,7 +32,7 @@ void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path
 	getEmuName(entry_path, emu_tag);
 
 	// Format: "name (emu_tag)"
-	snprintf(out_name, 256, "%s (%s)", entry_name, emu_tag);
+	(void)snprintf(out_name, 256, "%s (%s)", entry_name, emu_tag);
 }
 
 /**

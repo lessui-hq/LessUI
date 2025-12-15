@@ -41,7 +41,7 @@ int MinUI_getIndexChar(char* str) {
 int MinUI_isConsoleDir(char* path, const char* roms_path) {
 	char* tmp;
 	char parent_dir[256];
-	strcpy(parent_dir, path);
+	SAFE_STRCPY(parent_dir, path);
 	tmp = strrchr(parent_dir, '/');
 	if (!tmp)
 		return 0;

@@ -29,12 +29,12 @@ int MinUI_hasEmu(char* emu_name, const char* paks_path, const char* sdcard_path,
 	char pak_path[256];
 
 	// Try shared location first
-	sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", paks_path, emu_name);
+	(void)sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", paks_path, emu_name);
 	if (exists(pak_path))
 		return 1;
 
 	// Try platform-specific location
-	sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", sdcard_path, platform, emu_name);
+	(void)sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", sdcard_path, platform, emu_name);
 	return exists(pak_path);
 }
 
@@ -53,7 +53,7 @@ int MinUI_hasCue(char* dir_path, char* cue_path) {
 		return 0;
 
 	tmp += 1; // Move past the slash to get folder name
-	sprintf(cue_path, "%s/%s.cue", dir_path, tmp);
+	(void)sprintf(cue_path, "%s/%s.cue", dir_path, tmp);
 	return exists(cue_path);
 }
 
@@ -70,7 +70,7 @@ int MinUI_hasM3u(char* rom_path, char* m3u_path) {
 	char* tmp;
 
 	// Start with rom_path: /Roms/PS1/FF7/disc1.bin
-	strcpy(m3u_path, rom_path);
+	safe_strcpy(m3u_path, rom_path, MAX_PATH);
 
 	// Remove filename to get directory: /Roms/PS1/FF7/
 	tmp = strrchr(m3u_path, '/');
@@ -90,18 +90,18 @@ int MinUI_hasM3u(char* rom_path, char* m3u_path) {
 	tmp = strrchr(m3u_path, '/');
 	if (!tmp)
 		return 0;
-	strcpy(dir_name, tmp); // dir_name = "/FF7"
+	SAFE_STRCPY(dir_name, tmp); // dir_name = "/FF7"
 
 	// Remove the game directory: /Roms/PS1
 	tmp[0] = '\0';
 
 	// Append game directory name: /Roms/PS1/FF7
 	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, dir_name);
+	safe_strcpy(tmp, dir_name, MAX_PATH - (tmp - m3u_path));
 
 	// Add extension: /Roms/PS1/FF7.m3u
 	tmp = m3u_path + strlen(m3u_path);
-	strcpy(tmp, ".m3u");
+	safe_strcpy(tmp, ".m3u", MAX_PATH - (tmp - m3u_path));
 
 	return exists(m3u_path);
 }
@@ -132,9 +132,9 @@ int MinUI_buildThumbPath(const char* entry_path, char* out_path) {
 
 	// For root-level files (dir_len == 0), use "/" as directory
 	if (dir_len == 0) {
-		snprintf(out_path, MAX_PATH, "/.res/%s.png", last_slash + 1);
+		(void)snprintf(out_path, MAX_PATH, "/.res/%s.png", last_slash + 1);
 	} else {
-		snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
+		(void)snprintf(out_path, MAX_PATH, "%.*s/.res/%s.png", dir_len, entry_path, last_slash + 1);
 	}
 	return 1;
 }

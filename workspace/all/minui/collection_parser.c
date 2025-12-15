@@ -52,7 +52,7 @@ Collection_Entry** Collection_parse(char* collection_path, const char* sdcard_pa
 
 			// Construct full path (collection paths are relative to sdcard)
 			char sd_path[256];
-			sprintf(sd_path, "%s%s", sdcard_path, line);
+			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", sdcard_path, line);
 
 			// Only include ROMs that exist
 			if (exists(sd_path)) {
@@ -74,7 +74,7 @@ Collection_Entry** Collection_parse(char* collection_path, const char* sdcard_pa
 				(*entry_count)++;
 			}
 		}
-		fclose(file);
+		(void)fclose(file); // Read-only file, no actionable error handling needed
 	}
 
 	return entries;

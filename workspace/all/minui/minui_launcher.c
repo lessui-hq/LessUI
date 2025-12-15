@@ -98,7 +98,7 @@ int MinUI_queueCommand(const char* filepath, const char* cmd) {
 	}
 
 	int result = fputs(cmd, f);
-	fclose(f);
+	(void)fclose(f); // File was opened for writing, safe to ignore close result
 
 	return (result >= 0) ? 0 : -1;
 }

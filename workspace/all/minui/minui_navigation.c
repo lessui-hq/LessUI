@@ -41,8 +41,8 @@ void MinUINav_determineAction(const Entry* entry, const char* current_path,
 		    prefixMatch((char*)collections_path, (char*)current_path)) {
 			char* tmp = strrchr(entry->path, '/');
 			if (tmp) {
-				snprintf(out_action->last_path, sizeof(out_action->last_path), "%s%s", current_path,
-				         tmp);
+				(void)snprintf(out_action->last_path, sizeof(out_action->last_path), "%s%s",
+				               current_path, tmp);
 			}
 		}
 		break;
@@ -77,13 +77,13 @@ bool MinUINav_shouldAutoLaunch(const char* dir_path, char* out_launch_path, int 
 	dir_name++; // Skip the slash
 
 	// Check for .cue file
-	snprintf(out_launch_path, launch_path_size, "%s/%s.cue", dir_path, dir_name);
+	(void)snprintf(out_launch_path, launch_path_size, "%s/%s.cue", dir_path, dir_name);
 	if (exists(out_launch_path)) {
 		return true;
 	}
 
 	// Check for .m3u file
-	snprintf(out_launch_path, launch_path_size, "%s/%s.m3u", dir_path, dir_name);
+	(void)snprintf(out_launch_path, launch_path_size, "%s/%s.m3u", dir_path, dir_name);
 	if (exists(out_launch_path)) {
 		return true;
 	}

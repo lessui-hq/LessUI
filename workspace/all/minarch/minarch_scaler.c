@@ -72,7 +72,7 @@ static void calculate_native_cropped(const MinArchScalerInput* input, MinArchSca
 
 	if (scale == 0) {
 		// Source is larger than device - forced crop
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "forced crop");
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "forced crop");
 		result->dst_w = input->device_w;
 		result->dst_h = input->device_h;
 		result->dst_p = input->device_p;
@@ -97,7 +97,7 @@ static void calculate_native_cropped(const MinArchScalerInput* input, MinArchSca
 		int scale_y = CEIL_DIV(input->device_h, src_h);
 		scale = MIN(scale_x, scale_y);
 
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "cropped");
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "cropped");
 		result->dst_w = input->device_w;
 		result->dst_h = input->device_h;
 		result->dst_p = input->device_p;
@@ -125,7 +125,7 @@ static void calculate_native_cropped(const MinArchScalerInput* input, MinArchSca
 		result->scale = scale;
 	} else {
 		// Native integer scaling
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "integer");
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "integer");
 		int scaled_w = src_w * scale;
 		int scaled_h = src_h * scale;
 		result->dst_w = input->device_w;
@@ -143,7 +143,7 @@ static void calculate_native_cropped(const MinArchScalerInput* input, MinArchSca
 static void calculate_fit_mode(const MinArchScalerInput* input, MinArchScalerResult* result,
                                int src_w, int src_h, int aspect_w, int aspect_h) {
 	if (input->mode == SCALER_MODE_FULLSCREEN) {
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "full fit");
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "full fit");
 		result->dst_w = input->device_w;
 		result->dst_h = input->device_h;
 		result->dst_p = input->device_p;
@@ -153,7 +153,7 @@ static void calculate_fit_mode(const MinArchScalerInput* input, MinArchScalerRes
 		double scale_f =
 		    MIN(((double)input->device_w) / aspect_w, ((double)input->device_h) / aspect_h);
 
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect fit");
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect fit");
 		result->dst_w = (int)(aspect_w * scale_f);
 		result->dst_h = (int)(aspect_h * scale_f);
 		result->dst_p = input->device_p;
@@ -188,7 +188,7 @@ static void calculate_oversized(const MinArchScalerInput* input, MinArchScalerRe
 	int scaled_h = src_h * scale;
 
 	if (input->mode == SCALER_MODE_FULLSCREEN) {
-		snprintf(result->scaler_name, sizeof(result->scaler_name), "full%d", scale);
+		(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "full%d", scale);
 		result->dst_w = scaled_w;
 		result->dst_h = scaled_h;
 		result->dst_p = result->dst_w * input->bpp;
@@ -201,7 +201,7 @@ static void calculate_oversized(const MinArchScalerInput* input, MinArchScalerRe
 
 		if (core_aspect > fixed_aspect) {
 			// Letterbox (black bars top/bottom)
-			snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dL", scale);
+			(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dL", scale);
 			int letterbox_h = (int)(input->device_w / aspect_ratio);
 			double aspect_hr = ((double)letterbox_h) / input->device_h;
 			result->dst_w = scaled_w;
@@ -209,7 +209,7 @@ static void calculate_oversized(const MinArchScalerInput* input, MinArchScalerRe
 			result->dst_y = (result->dst_h - scaled_h) / 2;
 		} else if (core_aspect < fixed_aspect) {
 			// Pillarbox (black bars left/right)
-			snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dP", scale);
+			(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dP", scale);
 			int pillar_w = (int)(input->device_h * aspect_ratio);
 			double aspect_wr = ((double)pillar_w) / input->device_w;
 			result->dst_w = (int)(scaled_w / aspect_wr);
@@ -218,7 +218,7 @@ static void calculate_oversized(const MinArchScalerInput* input, MinArchScalerRe
 			result->dst_x = (result->dst_w - scaled_w) / 2;
 		} else {
 			// Perfect aspect match
-			snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dM", scale);
+			(void)snprintf(result->scaler_name, sizeof(result->scaler_name), "aspect%dM", scale);
 			result->dst_w = scaled_w;
 			result->dst_h = scaled_h;
 		}

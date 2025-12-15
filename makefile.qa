@@ -246,7 +246,7 @@ tests/audio_resampler_test: tests/unit/all/common/test_audio_resampler.c workspa
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build MinArch path generation tests (pure sprintf logic)
-tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
+tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building MinArch path generation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -316,12 +316,12 @@ tests/effect_system_test: tests/unit/all/common/test_effect_system.c $(TEST_UNIT
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build minarch utility tests (pure functions extracted from minarch.c)
-tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c $(TEST_UNITY)
+tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building minarch utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build minarch configuration tests (config path and option utilities)
-tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
+tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building minarch configuration tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -356,7 +356,7 @@ tests/minarch_memory_test: tests/unit/all/common/test_minarch_memory.c workspace
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build save state system tests (with mock core callbacks, uses real temp files)
-tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c tests/support/libretro_mocks.c $(TEST_UNITY)
+tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c $(TEST_UNITY)
 	@echo "Building save state system tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
@@ -412,6 +412,9 @@ tests/minarch_env_test: tests/unit/all/common/test_minarch_env.c \
 # Build game file handling tests (ZIP parsing, M3U detection, extension matching)
 tests/minarch_game_test: tests/unit/all/common/test_minarch_game.c \
 	workspace/all/minarch/minarch_game.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building game file handling tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DMINARCH_GAME_TEST

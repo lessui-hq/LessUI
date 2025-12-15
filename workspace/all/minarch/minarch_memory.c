@@ -30,13 +30,13 @@ MinArchMemoryResult MinArchMemory_read(const char* filepath, unsigned memory_typ
 	// Get memory pointer from core
 	void* mem_data = get_data(memory_type);
 	if (!mem_data) {
-		fclose(file);
+		(void)fclose(file); // File opened for reading
 		return MINARCH_MEM_NULL_POINTER;
 	}
 
 	// Read data into memory
 	size_t bytes_read = fread(mem_data, 1, mem_size, file);
-	fclose(file);
+	(void)fclose(file); // File opened for reading
 
 	// Allow partial reads (some games save different sizes)
 	if (bytes_read == 0) {
@@ -69,7 +69,7 @@ MinArchMemoryResult MinArchMemory_write(const char* filepath, unsigned memory_ty
 
 	// Write data to file
 	size_t bytes_written = fwrite(mem_data, 1, mem_size, file);
-	fclose(file);
+	(void)fclose(file); // File opened for writing
 
 	if (bytes_written != mem_size) {
 		return MINARCH_MEM_FILE_ERROR;

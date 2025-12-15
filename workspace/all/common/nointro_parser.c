@@ -158,21 +158,21 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 
 	// Status flags (single character)
 	if (strlen(tag) == 1) {
-		strcpy(parsed->status, tag);
+		safe_strcpy(parsed->status, tag, NOINTRO_MAX_FIELD);
 		parsed->has_tags = true;
 		return;
 	}
 
 	// License (Unl)
 	if (strcmp(tag, "Unl") == 0) {
-		strcpy(parsed->license, tag);
+		safe_strcpy(parsed->license, tag, NOINTRO_MAX_FIELD);
 		parsed->has_tags = true;
 		return;
 	}
 
 	// Development status
 	if (strstr(tag, "Beta") || strstr(tag, "Proto") || strstr(tag, "Sample")) {
-		strcpy(parsed->dev_status, tag);
+		safe_strcpy(parsed->dev_status, tag, NOINTRO_MAX_FIELD);
 		parsed->has_tags = true;
 		return;
 	}
@@ -180,7 +180,7 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 	// Version (starts with 'v' followed by digit, or 'Rev')
 	if ((tag[0] == 'v' && strlen(tag) > 1 && isdigit((unsigned char)tag[1])) ||
 	    prefixMatch("Rev ", (char*)tag)) {
-		strcpy(parsed->version, tag);
+		safe_strcpy(parsed->version, tag, NOINTRO_MAX_FIELD);
 		parsed->has_tags = true;
 		return;
 	}
@@ -200,7 +200,7 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 			p += (*p == ',') ? 1 : 2;
 		}
 		if (looks_like_lang && parsed->language[0] == '\0') {
-			strcpy(parsed->language, tag);
+			safe_strcpy(parsed->language, tag, NOINTRO_MAX_FIELD);
 			parsed->has_tags = true;
 			return;
 		}
@@ -214,7 +214,7 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 		    strstr(tag, "China") || strstr(tag, "Australia") || strstr(tag, "Brazil") ||
 		    strstr(tag, "Canada") || strstr(tag, "France") || strstr(tag, "Germany") ||
 		    strstr(tag, "Spain") || strstr(tag, "Italy")) {
-			strcpy(parsed->region, tag);
+			safe_strcpy(parsed->region, tag, NOINTRO_MAX_FIELD);
 			parsed->has_tags = true;
 			return;
 		}
@@ -222,7 +222,7 @@ static void classifyTag(const char* tag, NoIntroName* parsed) {
 
 	// Default: additional info (Disc 1, Rumble Version, etc.)
 	if (parsed->additional[0] == '\0') {
-		strcpy(parsed->additional, tag);
+		safe_strcpy(parsed->additional, tag, NOINTRO_MAX_FIELD);
 		parsed->has_tags = true;
 	}
 }
@@ -258,9 +258,9 @@ void parseNoIntroName(const char* filename, NoIntroName* parsed) {
 	work[len] = '\0';
 
 	// What's left is the title
-	strcpy(parsed->title, work);
+	safe_strcpy(parsed->title, work, NOINTRO_MAX_TITLE);
 
 	// Create display name by moving article to front
-	strcpy(parsed->display_name, work);
+	safe_strcpy(parsed->display_name, work, NOINTRO_MAX_TITLE);
 	fixArticle(parsed->display_name);
 }

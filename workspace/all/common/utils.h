@@ -85,6 +85,37 @@ int containsString(char* haystack, char* needle);
 int strArrayContains(char** arr, const char* str);
 
 /**
+ * Safe string copy with bounds checking.
+ *
+ * Like BSD strlcpy - always null-terminates the destination buffer,
+ * never writes more than dest_size bytes, and returns the length of
+ * the source string (allowing truncation detection).
+ *
+ * @param dest Destination buffer
+ * @param src Source string (must be null-terminated)
+ * @param dest_size Size of destination buffer (must be > 0)
+ * @return Length of src. If return value >= dest_size, truncation occurred.
+ *
+ * @example
+ *   char buf[32];
+ *   safe_strcpy(buf, "hello", sizeof(buf));  // buf = "hello", returns 5
+ *   safe_strcpy(buf, long_string, sizeof(buf));  // truncates safely
+ */
+size_t safe_strcpy(char* dest, const char* src, size_t dest_size);
+
+/**
+ * Convenience macro for safe_strcpy when destination is an array.
+ *
+ * Automatically uses sizeof(dest) for the size parameter.
+ * Only works when dest is a fixed-size array, not a pointer.
+ *
+ * @example
+ *   char path[MAX_PATH];
+ *   SAFE_STRCPY(path, some_string);  // Equivalent to safe_strcpy(path, some_string, sizeof(path))
+ */
+#define SAFE_STRCPY(dest, src) safe_strcpy((dest), (src), sizeof(dest))
+
+/**
  * Determines if a file should be hidden in the UI.
  *
  * Files are hidden if they:

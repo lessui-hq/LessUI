@@ -881,7 +881,6 @@ void PLAT_setCPUSpeed(int speed) {
 	}
 
 	LOG_info("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
-	(void)level_name; // Silence warning when LOG_info compiled out
 	char cmd[32];
 	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq);
 	int ret = system(cmd);

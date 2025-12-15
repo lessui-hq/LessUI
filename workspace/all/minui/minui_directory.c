@@ -83,7 +83,7 @@ int MinUIDir_hasRoms(const char* dir_name, const char* roms_path, const char* pa
 
 	// Check for at least one non-hidden file in the ROM directory
 	char rom_path[MINUI_DIR_MAX_PATH];
-	snprintf(rom_path, sizeof(rom_path), "%s/%s", roms_path, dir_name);
+	(void)snprintf(rom_path, sizeof(rom_path), "%s/%s", roms_path, dir_name);
 
 	return MinUI_hasNonHiddenFiles(rom_path);
 }
@@ -243,7 +243,7 @@ MinUIDirScanResult* MinUIDir_scan(const char* dir_path) {
 		}
 
 		// Build full path
-		snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, dp->d_name);
+		(void)snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, dp->d_name);
 
 		int is_dir = (dp->d_type == DT_DIR);
 
@@ -299,7 +299,7 @@ MinUIDirScanResult* MinUIDir_scanCollated(const char* roms_path, const char* col
 			continue;
 		}
 
-		snprintf(full_path, sizeof(full_path), "%s/%s", roms_path, dp->d_name);
+		(void)snprintf(full_path, sizeof(full_path), "%s/%s", roms_path, dp->d_name);
 
 		if (!prefixMatch((char*)collation_prefix, full_path)) {
 			continue;

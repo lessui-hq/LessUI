@@ -83,7 +83,7 @@ int MinArchArchive_findMatch(const char* archive_path, char* const* extensions, 
 	// Build command: 7z l -slt <archive>
 	// -slt = show technical information (one property per line)
 	char cmd[CMD_BUF_SIZE];
-	snprintf(cmd, sizeof(cmd), "7z l -slt %s 2>/dev/null", escaped_path);
+	(void)snprintf(cmd, sizeof(cmd), "7z l -slt %s 2>/dev/null", escaped_path);
 
 	LOG_debug("Running: %s", cmd);
 
@@ -132,7 +132,7 @@ int MinArchArchive_findMatch(const char* archive_path, char* const* extensions, 
 					return MINARCH_ARCHIVE_ERR_NO_MATCH;
 				}
 
-				strcpy(out_filename, base);
+				safe_strcpy(out_filename, base, filename_size);
 				found = true;
 				break;
 			}
@@ -165,7 +165,7 @@ int MinArchArchive_extract(const char* archive_path, char* const* extensions,
 
 	// Create temp directory
 	char tmp_template[MAX_PATH];
-	strcpy(tmp_template, "/tmp/minarch-XXXXXX");
+	SAFE_STRCPY(tmp_template, "/tmp/minarch-XXXXXX");
 	char* tmp_dirname = mkdtemp(tmp_template);
 	if (!tmp_dirname) {
 		LOG_error("Failed to create temp directory: %s", strerror(errno));
@@ -192,8 +192,8 @@ int MinArchArchive_extract(const char* archive_path, char* const* extensions,
 	// -y = assume yes to all prompts
 	// -o = output directory (no space after -o)
 	char cmd[CMD_BUF_SIZE];
-	snprintf(cmd, sizeof(cmd), "7z e -y -o%s %s %s >/dev/null 2>&1", escaped_outdir,
-	         escaped_archive, escaped_filename);
+	(void)snprintf(cmd, sizeof(cmd), "7z e -y -o%s %s %s >/dev/null 2>&1", escaped_outdir,
+	               escaped_archive, escaped_filename);
 
 	LOG_debug("Running: %s", cmd);
 

@@ -25,7 +25,7 @@ StringMap* Map_load(const char* map_path) {
 
 	StringMap* map = StringMap_new();
 	if (!map) {
-		fclose(file);
+		(void)fclose(file); // Map file opened for reading
 		return NULL;
 	}
 
@@ -45,7 +45,7 @@ StringMap* Map_load(const char* map_path) {
 			StringMap_set(map, key, value);
 		}
 	}
-	fclose(file);
+	(void)fclose(file); // Map file opened for reading
 
 	return map;
 }
@@ -59,7 +59,7 @@ StringMap* Map_load(const char* map_path) {
  */
 static int getPakMapPathForEmu(const char* emu_name, char* pak_map_path) {
 	char relative_path[512];
-	sprintf(relative_path, "paks/Emus/%s.pak/map.txt", emu_name);
+	(void)sprintf(relative_path, "paks/Emus/%s.pak/map.txt", emu_name);
 	return findSystemFile(relative_path, pak_map_path);
 }
 
@@ -92,7 +92,7 @@ StringMap* Map_loadForDirectory(const char* dir_path) {
 	getEmuName(dir_path, emu_name);
 
 	// Build user map path
-	snprintf(user_map_path, sizeof(user_map_path), "%s/map.txt", dir_path);
+	(void)snprintf(user_map_path, sizeof(user_map_path), "%s/map.txt", dir_path);
 
 	// Check what maps exist
 	int has_pak_map = getPakMapPathForEmu(emu_name, pak_map_path);
@@ -129,7 +129,7 @@ StringMap* Map_loadForDirectory(const char* dir_path) {
 				StringMap_set(merged, line, tmp + 1); // User entry overrides
 			}
 		}
-		fclose(file);
+		(void)fclose(file); // User map file opened for reading
 	}
 
 	return merged;
@@ -154,11 +154,11 @@ char* Map_getAlias(char* path, char* alias) {
 	file_name += 1;
 
 	// Build user map path (ROM directory)
-	strcpy(user_map_path, path);
+	SAFE_STRCPY(user_map_path, path);
 	tmp = strrchr(user_map_path, '/');
 	if (tmp) {
 		tmp += 1;
-		strcpy(tmp, "map.txt");
+		safe_strcpy(tmp, "map.txt", sizeof(user_map_path) - (tmp - user_map_path));
 	}
 
 	// Try user map first (highest priority)
@@ -166,7 +166,7 @@ char* Map_getAlias(char* path, char* alias) {
 	if (user_map) {
 		char* found = StringMap_get(user_map, file_name);
 		if (found) {
-			strcpy(alias, found);
+			safe_strcpy(alias, found, MAX_PATH);
 			StringMap_free(user_map);
 			return alias;
 		}
@@ -179,7 +179,7 @@ char* Map_getAlias(char* path, char* alias) {
 		if (pak_map) {
 			char* found = StringMap_get(pak_map, file_name);
 			if (found) {
-				strcpy(alias, found);
+				safe_strcpy(alias, found, MAX_PATH);
 			}
 			StringMap_free(pak_map);
 		}

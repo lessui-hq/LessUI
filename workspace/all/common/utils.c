@@ -111,6 +111,31 @@ int strArrayContains(char** arr, const char* str) {
 }
 
 /**
+ * Safe string copy with bounds checking.
+ *
+ * Like BSD strlcpy - always null-terminates the destination buffer,
+ * never writes more than dest_size bytes, and returns the length of
+ * the source string (allowing truncation detection).
+ *
+ * @param dest Destination buffer
+ * @param src Source string (must be null-terminated)
+ * @param dest_size Size of destination buffer (must be > 0)
+ * @return Length of src. If return value >= dest_size, truncation occurred.
+ */
+size_t safe_strcpy(char* dest, const char* src, size_t dest_size) {
+	if (dest_size == 0)
+		return 0;
+
+	size_t src_len = strlen(src);
+	size_t copy_len = (src_len < dest_size - 1) ? src_len : dest_size - 1;
+
+	memcpy(dest, src, copy_len);
+	dest[copy_len] = '\0';
+
+	return src_len;
+}
+
+/**
  * Determines if a file should be hidden in the UI.
  *
  * Files are hidden if they:
@@ -243,16 +268,16 @@ int findSystemFile(const char* relative_path, char* output_path) {
 	char candidate[512];
 
 	// Check platform-specific location first
-	sprintf(candidate, "%s/.system/%s/%s", SDCARD_PATH, PLATFORM, relative_path);
+	(void)sprintf(candidate, "%s/.system/%s/%s", SDCARD_PATH, PLATFORM, relative_path);
 	if (exists(candidate)) {
-		strcpy(output_path, candidate);
+		safe_strcpy(output_path, candidate, MAX_PATH);
 		return 1;
 	}
 
 	// Fall back to shared common location
-	sprintf(candidate, "%s/.system/common/%s", SDCARD_PATH, relative_path);
+	(void)sprintf(candidate, "%s/.system/common/%s", SDCARD_PATH, relative_path);
 	if (exists(candidate)) {
-		strcpy(output_path, candidate);
+		safe_strcpy(output_path, candidate, MAX_PATH);
 		return 1;
 	}
 
@@ -285,8 +310,8 @@ void putFile(const char* path, const char* contents) {
 		LOG_errno_warn("Failed to write file %s", path);
 		return;
 	}
-	fputs(contents, file);
-	fclose(file);
+	(void)fputs(contents, file);
+	(void)fclose(file); // File operation done
 }
 
 /**
@@ -333,7 +358,7 @@ void getFile(const char* path, char* buffer, size_t buffer_size) {
 	}
 
 cleanup:
-	fclose(file);
+	(void)fclose(file); // File operation done
 	buffer[bytes_read] = '\0';
 }
 
@@ -356,25 +381,25 @@ char* allocFile(const char* path) {
 		return NULL;
 	}
 
-	fseek(file, 0L, SEEK_END);
+	(void)fseek(file, 0L, SEEK_END);
 	long file_size = ftell(file);
 	if (file_size < 0) {
 		LOG_errno("Failed to get file size for %s", path);
-		fclose(file);
+		(void)fclose(file); // File operation done
 		return NULL;
 	}
 	size_t size = (size_t)file_size;
 	contents = calloc(size + 1, sizeof(char));
 	if (!contents) {
 		LOG_error("Failed to allocate %zu bytes for file %s", size + 1, path);
-		fclose(file);
+		(void)fclose(file); // File operation done
 		return NULL;
 	}
 
-	fseek(file, 0L, SEEK_SET);
-	fread(contents, sizeof(char), size, file);
+	(void)fseek(file, 0L, SEEK_SET);
+	(void)fread(contents, sizeof(char), size, file);
 	contents[size] = '\0';
-	fclose(file);
+	(void)fclose(file); // File operation done
 
 	return contents;
 }
@@ -395,8 +420,8 @@ int getInt(const char* path) {
 		LOG_debug("Could not read integer from %s: %s", path, strerror(errno));
 		return 0;
 	}
-	fscanf(file, "%i", &i);
-	fclose(file);
+	(void)fscanf(file, "%i", &i);
+	(void)fclose(file); // File operation done
 	return i;
 }
 
@@ -410,7 +435,7 @@ int getInt(const char* path) {
  */
 void putInt(const char* path, int value) {
 	char buffer[8];
-	sprintf(buffer, "%d", value);
+	(void)sprintf(buffer, "%d", value);
 	putFile(path, buffer);
 }
 
@@ -483,7 +508,7 @@ void fixArticle(char* name) {
 void getDisplayName(const char* in_name, char* out_name) {
 	char work_name[256];
 	char* tmp;
-	strcpy(work_name, in_name);
+	SAFE_STRCPY(work_name, in_name);
 
 	// Special case: hide platform suffix from Tools paths
 	if (suffixMatch("/" PLATFORM, work_name)) {
@@ -495,7 +520,7 @@ void getDisplayName(const char* in_name, char* out_name) {
 	// Use No-Intro parser to get clean display name
 	NoIntroName parsed;
 	parseNoIntroName(work_name, &parsed);
-	strcpy(out_name, parsed.display_name);
+	safe_strcpy(out_name, parsed.display_name, 256);
 }
 
 /**
@@ -517,7 +542,7 @@ void getDisplayName(const char* in_name, char* out_name) {
  */
 void getEmuName(const char* in_name, char* out_name) {
 	char* tmp;
-	strcpy(out_name, in_name);
+	safe_strcpy(out_name, in_name, MAX_PATH);
 	tmp = out_name;
 
 	// Extract just the Roms folder name if this is a full path
@@ -556,10 +581,10 @@ void getEmuName(const char* in_name, char* out_name) {
  * @note pak_path is always modified, even if file doesn't exist
  */
 void getEmuPath(char* emu_name, char* pak_path) {
-	sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM, emu_name);
+	(void)sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM, emu_name);
 	if (exists(pak_path))
 		return;
-	sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
+	(void)sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
 }
 
 ///////////////////////////////

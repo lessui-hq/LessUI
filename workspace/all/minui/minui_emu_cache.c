@@ -44,7 +44,7 @@ static int scanPakDirectory(const char* dir_path) {
 
 		// Verify launch.sh exists inside the pak
 		char launch_path[512];
-		snprintf(launch_path, sizeof(launch_path), "%s/%s/launch.sh", dir_path, dp->d_name);
+		(void)snprintf(launch_path, sizeof(launch_path), "%s/%s/launch.sh", dir_path, dp->d_name);
 		if (!exists(launch_path))
 			continue;
 
@@ -74,11 +74,11 @@ int EmuCache_init(const char* paks_path, const char* sdcard_path, const char* pl
 	char scan_path[512];
 
 	// Scan shared location: {paks_path}/Emus/
-	snprintf(scan_path, sizeof(scan_path), "%s/Emus", paks_path);
+	(void)snprintf(scan_path, sizeof(scan_path), "%s/Emus", paks_path);
 	total += scanPakDirectory(scan_path);
 
 	// Scan platform-specific location: {sdcard_path}/Emus/{platform}/
-	snprintf(scan_path, sizeof(scan_path), "%s/Emus/%s", sdcard_path, platform);
+	(void)snprintf(scan_path, sizeof(scan_path), "%s/Emus/%s", sdcard_path, platform);
 	total += scanPakDirectory(scan_path);
 
 	return total;
