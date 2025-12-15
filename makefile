@@ -355,11 +355,12 @@ package: tidy
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
 
 	# Copy only the cores referenced in cores.json (not all downloaded cores)
+	# cores.json stores core names without .so extension, actual files have .so
 	mkdir -p ./build/PAYLOAD/.system/cores/arm32 ./build/PAYLOAD/.system/cores/arm64
 	jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
-		[ -f "./build/.system/cores/arm32/$$core" ] && cp "./build/.system/cores/arm32/$$core" "./build/PAYLOAD/.system/cores/arm32/"; \
-		[ -f "./build/.system/cores/arm64/$$core" ] && cp "./build/.system/cores/arm64/$$core" "./build/PAYLOAD/.system/cores/arm64/"; \
-	done
+		if [ -f "./build/.system/cores/arm32/$${core}.so" ]; then cp "./build/.system/cores/arm32/$${core}.so" "./build/PAYLOAD/.system/cores/arm32/"; fi; \
+			if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/cores/arm64/"; fi; \
+			done
 	@echo "Copied $$(ls ./build/PAYLOAD/.system/cores/arm32/*.so 2>/dev/null | wc -l | tr -d ' ') arm32 cores, $$(ls ./build/PAYLOAD/.system/cores/arm64/*.so 2>/dev/null | wc -l | tr -d ' ') arm64 cores"
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 

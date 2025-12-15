@@ -46,6 +46,7 @@
 #include "directory_index.h"
 #include "minui_context.h"
 #include "minui_directory.h"
+#include "minui_emu_cache.h"
 #include "minui_entry.h"
 #include "minui_file_utils.h"
 #include "minui_launcher.h"
@@ -595,10 +596,12 @@ static void addRecent(char* path, char* alias) {
 
 /**
  * Checks if an emulator is installed.
- * Wrapper around MinUI_hasEmu with platform-specific paths.
+ *
+ * Uses cached lookup (O(1)) instead of filesystem checks.
+ * Cache is initialized at startup by EmuCache_init().
  */
 static int hasEmu(char* emu_name) {
-	return MinUI_hasEmu(emu_name, PAKS_PATH, SDCARD_PATH, PLATFORM);
+	return EmuCache_hasEmu(emu_name);
 }
 
 /**
@@ -1571,6 +1574,7 @@ static void Menu_init(void) {
 static void Menu_quit(void) {
 	RecentArray_free_local(recents);
 	DirectoryArray_free(stack);
+	EmuCache_free();
 }
 
 ///////////////////////////////
@@ -1704,6 +1708,10 @@ int main(int argc, char* argv[]) {
 
 	LOG_debug("MinUIThumbnail_loaderInit");
 	MinUIThumbnail_loaderInit();
+
+	LOG_debug("EmuCache_init");
+	int emu_count = EmuCache_init(PAKS_PATH, SDCARD_PATH, PLATFORM);
+	LOG_info("Cached %d emulators", emu_count);
 
 	LOG_debug("Menu_init");
 	Menu_init();

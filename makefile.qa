@@ -82,16 +82,20 @@ else
 endif
 
 # Compiler flags for clang-tidy (needs to understand how to compile the code)
-# Uses desktop platform which works for both macOS development and Linux CI
-TIDY_COMPILE_FLAGS = -DPLATFORM=\"desktop\" \
-                     -DSDCARD_PATH=\"../../desktop/FAKESD\" \
+# Uses tg5040 platform (SDL2-based, representative of modern platforms)
+# Enable logging macros so arguments are seen as used by the analyzer
+TIDY_COMPILE_FLAGS = -DPLATFORM=\"tg5040\" \
+                     -DSDCARD_PATH=\"/mnt/SDCARD\" \
                      -DUSE_SDL2 \
+                     -DENABLE_INFO_LOGS \
+                     -DENABLE_DEBUG_LOGS \
                      -DBUILD_DATE=\"$(shell date +%Y%m%d)\" \
                      -DBUILD_HASH=\"tidy\" \
                      -I workspace/all/common \
                      -I workspace/all/minui \
                      -I workspace/all/minarch \
-                     -I workspace/desktop/platform \
+                     -I workspace/tg5040/platform \
+                     -I workspace/tg5040/libmsettings \
                      -I workspace/all/minarch/libretro-common/include \
                      -iquote workspace/all/minarch/libretro-common/include \
                      -I tests/support \
@@ -190,7 +194,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common 
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_archive_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_archive_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/emu_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -468,6 +472,17 @@ tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
 	$(TEST_UNITY)
 	@echo "Building MinUI context tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+
+# Build emulator cache tests (O(1) emu lookup caching)
+tests/emu_cache_test: tests/unit/all/minui/test_emu_cache.c \
+	workspace/all/minui/minui_emu_cache.c \
+	workspace/all/common/stringmap.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building emulator cache tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
 # Build render common tests (pure math functions, no dependencies)
 tests/render_common_test: tests/unit/all/common/test_render_common.c \

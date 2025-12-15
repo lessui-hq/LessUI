@@ -43,27 +43,15 @@ const char* skip_article(const char* s) {
 }
 
 /**
- * Natural string comparison (case-insensitive).
+ * Internal natural comparison without article stripping.
  *
  * Algorithm:
- * 1. Skip leading articles ("The ", "A ", "An ") for sorting
- * 2. Skip leading zeros in numeric sequences
- * 3. Compare digit sequences by length first (longer = larger)
- * 4. If same length, compare digit by digit
- * 5. Non-numeric characters compared case-insensitively
+ * 1. Skip leading zeros in numeric sequences
+ * 2. Compare digit sequences by length first (longer = larger)
+ * 3. If same length, compare digit by digit
+ * 4. Non-numeric characters compared case-insensitively
  */
-int strnatcasecmp(const char* s1, const char* s2) {
-	if (!s1 && !s2)
-		return 0;
-	if (!s1)
-		return -1;
-	if (!s2)
-		return 1;
-
-	// Skip leading articles for sorting
-	s1 = skip_article(s1);
-	s2 = skip_article(s2);
-
+static int strnatcasecmp_raw(const char* s1, const char* s2) {
 	while (*s1 && *s2) {
 		// Both are digits - compare as numbers
 		if (isdigit((unsigned char)*s1) && isdigit((unsigned char)*s2)) {
@@ -116,4 +104,46 @@ int strnatcasecmp(const char* s1, const char* s2) {
 	if (*s2)
 		return -1;
 	return 0;
+}
+
+/**
+ * Natural string comparison (case-insensitive).
+ *
+ * Strips leading articles ("The ", "A ", "An ") before comparison.
+ * Use this for raw strings that haven't been pre-processed.
+ *
+ * @param s1 First string
+ * @param s2 Second string
+ * @return <0 if s1 < s2, 0 if equal, >0 if s1 > s2
+ */
+int strnatcasecmp(const char* s1, const char* s2) {
+	if (!s1 && !s2)
+		return 0;
+	if (!s1)
+		return -1;
+	if (!s2)
+		return 1;
+
+	return strnatcasecmp_raw(skip_article(s1), skip_article(s2));
+}
+
+/**
+ * Natural string comparison for pre-sorted keys.
+ *
+ * Use this when comparing strings that have already had articles stripped
+ * (e.g., Entry->sort_key). Avoids redundant article stripping.
+ *
+ * @param s1 First pre-sorted string
+ * @param s2 Second pre-sorted string
+ * @return <0 if s1 < s2, 0 if equal, >0 if s1 > s2
+ */
+int strnatcasecmp_presorted(const char* s1, const char* s2) {
+	if (!s1 && !s2)
+		return 0;
+	if (!s1)
+		return -1;
+	if (!s2)
+		return 1;
+
+	return strnatcasecmp_raw(s1, s2);
 }
