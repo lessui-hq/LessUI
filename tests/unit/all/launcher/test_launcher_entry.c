@@ -16,6 +16,7 @@
 
 #include "unity.h"
 #include "launcher_entry.h"
+#include "stb_ds.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -147,13 +148,13 @@ void test_Entry_free_handles_entry_with_unique(void) {
 ///////////////////////////////
 
 void test_EntryArray_indexOf_finds_first(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/A.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/B.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/C.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	int idx = EntryArray_indexOf(arr, "/Roms/GB/A.gb");
 	TEST_ASSERT_EQUAL(0, idx);
@@ -162,13 +163,13 @@ void test_EntryArray_indexOf_finds_first(void) {
 }
 
 void test_EntryArray_indexOf_finds_middle(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/A.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/B.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/C.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	int idx = EntryArray_indexOf(arr, "/Roms/GB/B.gb");
 	TEST_ASSERT_EQUAL(1, idx);
@@ -177,13 +178,13 @@ void test_EntryArray_indexOf_finds_middle(void) {
 }
 
 void test_EntryArray_indexOf_finds_last(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/A.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/B.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/C.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	int idx = EntryArray_indexOf(arr, "/Roms/GB/C.gb");
 	TEST_ASSERT_EQUAL(2, idx);
@@ -192,9 +193,9 @@ void test_EntryArray_indexOf_finds_last(void) {
 }
 
 void test_EntryArray_indexOf_returns_negative_for_missing(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/A.gb", ENTRY_ROM);
-	Array_push(arr, e1);
+	arrpush(arr, e1);
 
 	int idx = EntryArray_indexOf(arr, "/Roms/GB/NotHere.gb");
 	TEST_ASSERT_EQUAL(-1, idx);
@@ -203,12 +204,12 @@ void test_EntryArray_indexOf_returns_negative_for_missing(void) {
 }
 
 void test_EntryArray_indexOf_handles_empty_array(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 
 	int idx = EntryArray_indexOf(arr, "/Roms/GB/A.gb");
 	TEST_ASSERT_EQUAL(-1, idx);
 
-	Array_free(arr);
+	arrfree(arr);
 }
 
 ///////////////////////////////
@@ -216,75 +217,75 @@ void test_EntryArray_indexOf_handles_empty_array(void) {
 ///////////////////////////////
 
 void test_EntryArray_sort_alphabetical(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Zelda.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Mario.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Aladdin.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	EntryArray_sort(arr);
 
-	TEST_ASSERT_EQUAL_STRING("Aladdin", ((Entry*)arr->items[0])->name);
-	TEST_ASSERT_EQUAL_STRING("Mario", ((Entry*)arr->items[1])->name);
-	TEST_ASSERT_EQUAL_STRING("Zelda", ((Entry*)arr->items[2])->name);
+	TEST_ASSERT_EQUAL_STRING("Aladdin", arr[0]->name);
+	TEST_ASSERT_EQUAL_STRING("Mario", arr[1]->name);
+	TEST_ASSERT_EQUAL_STRING("Zelda", arr[2]->name);
 
 	EntryArray_free(arr);
 }
 
 void test_EntryArray_sort_natural_numbers(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Game 10.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Game 2.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Game 1.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	EntryArray_sort(arr);
 
 	// Natural sort: 1 < 2 < 10
-	TEST_ASSERT_EQUAL_STRING("Game 1", ((Entry*)arr->items[0])->name);
-	TEST_ASSERT_EQUAL_STRING("Game 2", ((Entry*)arr->items[1])->name);
-	TEST_ASSERT_EQUAL_STRING("Game 10", ((Entry*)arr->items[2])->name);
+	TEST_ASSERT_EQUAL_STRING("Game 1", arr[0]->name);
+	TEST_ASSERT_EQUAL_STRING("Game 2", arr[1]->name);
+	TEST_ASSERT_EQUAL_STRING("Game 10", arr[2]->name);
 
 	EntryArray_free(arr);
 }
 
 void test_EntryArray_sort_ignores_leading_article(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/NES/The Legend of Zelda.nes", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/NES/Mario.nes", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/NES/Kirby.nes", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	EntryArray_sort(arr);
 
 	// "The Legend" sorts under L, not T
-	TEST_ASSERT_EQUAL_STRING("Kirby", ((Entry*)arr->items[0])->name);
-	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", ((Entry*)arr->items[1])->name);
-	TEST_ASSERT_EQUAL_STRING("Mario", ((Entry*)arr->items[2])->name);
+	TEST_ASSERT_EQUAL_STRING("Kirby", arr[0]->name);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", arr[1]->name);
+	TEST_ASSERT_EQUAL_STRING("Mario", arr[2]->name);
 
 	EntryArray_free(arr);
 }
 
 void test_EntryArray_sort_case_insensitive(void) {
-	Array* arr = Array_new();
+	Entry** arr = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/ZELDA.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/mario.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Kirby.gb", ENTRY_ROM);
-	Array_push(arr, e1);
-	Array_push(arr, e2);
-	Array_push(arr, e3);
+	arrpush(arr, e1);
+	arrpush(arr, e2);
+	arrpush(arr, e3);
 
 	EntryArray_sort(arr);
 
-	TEST_ASSERT_EQUAL_STRING("Kirby", ((Entry*)arr->items[0])->name);
-	TEST_ASSERT_EQUAL_STRING("mario", ((Entry*)arr->items[1])->name);
-	TEST_ASSERT_EQUAL_STRING("ZELDA", ((Entry*)arr->items[2])->name);
+	TEST_ASSERT_EQUAL_STRING("Kirby", arr[0]->name);
+	TEST_ASSERT_EQUAL_STRING("mario", arr[1]->name);
+	TEST_ASSERT_EQUAL_STRING("ZELDA", arr[2]->name);
 
 	EntryArray_free(arr);
 }

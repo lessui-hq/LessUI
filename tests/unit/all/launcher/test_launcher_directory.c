@@ -15,6 +15,7 @@
 
 #include "unity.h"
 #include "launcher_directory.h"
+#include "stb_ds.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -519,7 +520,7 @@ void test_Directory_free_frees_all_fields(void) {
 
 	dir->path = strdup("/test/path");
 	dir->name = strdup("TestDir");
-	dir->entries = Array_new();
+	dir->entries = NULL; // stb_ds dynamic array
 	dir->alphas = IntArray_new();
 	dir->selected = 0;
 	dir->start = 0;
@@ -527,7 +528,7 @@ void test_Directory_free_frees_all_fields(void) {
 
 	// Add an entry to entries array
 	Entry* entry = Entry_new("/test/path/game.gb", ENTRY_ROM);
-	Array_push(dir->entries, entry);
+	arrpush(dir->entries, entry);
 
 	// Add an alpha index
 	IntArray_push(dir->alphas, 0);
@@ -541,34 +542,34 @@ void test_Directory_free_frees_all_fields(void) {
 ///////////////////////////////
 
 void test_DirectoryArray_pop_removes_and_frees(void) {
-	Array* arr = Array_new();
+	Directory** arr = NULL;
 
 	// Create two directories
 	Directory* dir1 = malloc(sizeof(Directory));
 	dir1->path = strdup("/path1");
 	dir1->name = strdup("Dir1");
-	dir1->entries = Array_new();
+	dir1->entries = NULL;
 	dir1->alphas = IntArray_new();
 
 	Directory* dir2 = malloc(sizeof(Directory));
 	dir2->path = strdup("/path2");
 	dir2->name = strdup("Dir2");
-	dir2->entries = Array_new();
+	dir2->entries = NULL;
 	dir2->alphas = IntArray_new();
 
-	Array_push(arr, dir1);
-	Array_push(arr, dir2);
+	arrpush(arr, dir1);
+	arrpush(arr, dir2);
 
-	TEST_ASSERT_EQUAL(2, arr->count);
+	TEST_ASSERT_EQUAL(2, arrlen(arr));
 
 	// Pop should remove and free the last directory
 	DirectoryArray_pop(arr);
-	TEST_ASSERT_EQUAL(1, arr->count);
+	TEST_ASSERT_EQUAL(1, arrlen(arr));
 
 	DirectoryArray_pop(arr);
-	TEST_ASSERT_EQUAL(0, arr->count);
+	TEST_ASSERT_EQUAL(0, arrlen(arr));
 
-	Array_free(arr);
+	arrfree(arr);
 }
 
 void test_DirectoryArray_pop_handles_null(void) {
@@ -577,7 +578,7 @@ void test_DirectoryArray_pop_handles_null(void) {
 }
 
 void test_DirectoryArray_free_frees_all_directories(void) {
-	Array* arr = Array_new();
+	Directory** arr = NULL;
 
 	// Create and add directories
 	for (int i = 0; i < 3; i++) {
@@ -587,12 +588,12 @@ void test_DirectoryArray_free_frees_all_directories(void) {
 		snprintf(name, sizeof(name), "Dir%d", i);
 		dir->path = strdup(path);
 		dir->name = strdup(name);
-		dir->entries = Array_new();
+		dir->entries = NULL;
 		dir->alphas = IntArray_new();
-		Array_push(arr, dir);
+		arrpush(arr, dir);
 	}
 
-	TEST_ASSERT_EQUAL(3, arr->count);
+	TEST_ASSERT_EQUAL(3, arrlen(arr));
 
 	// Should free all directories and the array
 	DirectoryArray_free(arr);

@@ -7,6 +7,7 @@
 #include "launcher_entry.h"
 #include "launcher_str_compare.h"
 #include "utils.h"
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -112,13 +113,14 @@ void Entry_free(Entry* self) {
 /**
  * Finds an entry by path in an entry array.
  *
- * @param self Array of Entry pointers
+ * @param self Entry** dynamic array (stb_ds)
  * @param path Path to search for
  * @return Index of matching entry, or -1 if not found
  */
-int EntryArray_indexOf(Array* self, const char* path) {
-	for (int i = 0; i < self->count; i++) {
-		Entry* entry = self->items[i];
+int EntryArray_indexOf(Entry** self, const char* path) {
+	int count = (int)arrlen(self);
+	for (int i = 0; i < count; i++) {
+		Entry* entry = self[i];
 		if (exactMatch(entry->path, path))
 			return i;
 	}
@@ -144,24 +146,25 @@ static int EntryArray_sortEntry(const void* a, const void* b) {
 /**
  * Sorts an entry array alphabetically by display name.
  *
- * @param self Array to sort (modified in place)
+ * @param self Entry** to sort (modified in place)
  */
-void EntryArray_sort(Array* self) {
-	qsort(self->items, self->count, sizeof(void*), EntryArray_sortEntry);
+void EntryArray_sort(Entry** self) {
+	qsort(self, arrlen(self), sizeof(Entry*), EntryArray_sortEntry);
 }
 
 /**
  * Frees an entry array and all entries it contains.
  *
- * @param self Array to free
+ * @param self Entry** to free
  */
-void EntryArray_free(Array* self) {
+void EntryArray_free(Entry** self) {
 	if (!self)
 		return;
-	for (int i = 0; i < self->count; i++) {
-		Entry_free(self->items[i]);
+	int count = (int)arrlen(self);
+	for (int i = 0; i < count; i++) {
+		Entry_free(self[i]);
 	}
-	Array_free(self);
+	arrfree(self);
 }
 
 ///////////////////////////////

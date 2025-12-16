@@ -166,7 +166,7 @@ LauncherDirScanResult* LauncherDir_scanCollated(const char* roms_path,
 typedef struct Directory {
 	char* path; // Full path to directory
 	char* name; // Display name
-	Array* entries; // Array of Entry pointers
+	Entry** entries; // Entry** dynamic array (stb_ds)
 	IntArray* alphas; // Alphabetical index for L1/R1 navigation
 	// Rendering state
 	int selected; // Currently selected entry index
@@ -233,15 +233,15 @@ void Directory_index(Directory* self);
 /**
  * Pops and frees the top directory from a directory array.
  *
- * @param self Array of Directory pointers
+ * @param self Directory** dynamic array (stb_ds)
  */
-void DirectoryArray_pop(Array* self);
+void DirectoryArray_pop(Directory** self);
 
 /**
  * Frees a directory array and all directories it contains.
  *
- * @param self Array to free
+ * @param self Directory** dynamic array (stb_ds)
  */
-void DirectoryArray_free(Array* self);
+void DirectoryArray_free(Directory** self);
 
 #endif // __LAUNCHER_DIRECTORY_H__

@@ -38,13 +38,14 @@ void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path
 /**
  * Applies map.txt aliases to entries.
  */
-int DirectoryIndex_applyAliases(Array* entries, MapEntry* map) {
+int DirectoryIndex_applyAliases(Entry** entries, MapEntry* map) {
 	if (!entries || !map)
 		return 0;
 
 	int resort = 0;
-	for (int i = 0; i < entries->count; i++) {
-		Entry* entry = entries->items[i];
+	int count = (int)arrlen(entries);
+	for (int i = 0; i < count; i++) {
+		Entry* entry = entries[i];
 		char* filename = strrchr(entry->path, '/');
 		if (!filename)
 			continue;
@@ -63,20 +64,19 @@ int DirectoryIndex_applyAliases(Array* entries, MapEntry* map) {
 /**
  * Removes hidden entries from an array.
  */
-Array* DirectoryIndex_filterHidden(Array* entries) {
+Entry** DirectoryIndex_filterHidden(Entry** entries) {
 	if (!entries)
 		return NULL;
 
-	Array* result = Array_new();
-	if (!result)
-		return NULL;
+	Entry** result = NULL;
 
-	for (int i = 0; i < entries->count; i++) {
-		Entry* entry = entries->items[i];
+	int count = (int)arrlen(entries);
+	for (int i = 0; i < count; i++) {
+		Entry* entry = entries[i];
 		if (hide(entry->name)) {
 			Entry_free(entry);
 		} else {
-			Array_push(result, entry);
+			arrpush(result, entry);
 		}
 	}
 
@@ -86,9 +86,10 @@ Array* DirectoryIndex_filterHidden(Array* entries) {
 /**
  * Checks if any entry has a hidden name.
  */
-static int hasHiddenEntries(Array* entries) {
-	for (int i = 0; i < entries->count; i++) {
-		Entry* entry = entries->items[i];
+static int hasHiddenEntries(Entry** entries) {
+	int count = (int)arrlen(entries);
+	for (int i = 0; i < count; i++) {
+		Entry* entry = entries[i];
 		if (hide(entry->name))
 			return 1;
 	}
@@ -98,13 +99,14 @@ static int hasHiddenEntries(Array* entries) {
 /**
  * Marks entries with duplicate display names for disambiguation.
  */
-void DirectoryIndex_markDuplicates(Array* entries) {
-	if (!entries || entries->count < 2)
+void DirectoryIndex_markDuplicates(Entry** entries) {
+	int count = (int)arrlen(entries);
+	if (!entries || count < 2)
 		return;
 
 	Entry* prior = NULL;
-	for (int i = 0; i < entries->count; i++) {
-		Entry* entry = entries->items[i];
+	for (int i = 0; i < count; i++) {
+		Entry* entry = entries[i];
 
 		// Detect duplicate display names
 		if (prior != NULL && exactMatch(prior->name, entry->name)) {
@@ -148,15 +150,16 @@ void DirectoryIndex_markDuplicates(Array* entries) {
 /**
  * Builds alphabetical navigation index.
  */
-void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas) {
+void DirectoryIndex_buildAlphaIndex(Entry** entries, IntArray* alphas) {
 	if (!entries || !alphas)
 		return;
 
 	int alpha = -1;
 	int index = 0;
 
-	for (int i = 0; i < entries->count; i++) {
-		Entry* entry = entries->items[i];
+	int count = (int)arrlen(entries);
+	for (int i = 0; i < count; i++) {
+		Entry* entry = entries[i];
 
 		int a = DirectoryIndex_getAlphaChar(entry->sort_key);
 		if (a != alpha) {
@@ -171,12 +174,12 @@ void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas) {
 /**
  * Performs full directory indexing.
  */
-Array* DirectoryIndex_index(Array* entries, IntArray* alphas, MapEntry* map,
-                            int skip_alpha_index) {
+Entry** DirectoryIndex_index(Entry** entries, IntArray* alphas, MapEntry* map,
+                             int skip_alpha_index) {
 	if (!entries)
 		return NULL;
 
-	Array* result = entries;
+	Entry** result = entries;
 
 	// Apply aliases from map
 	if (map) {
@@ -184,9 +187,9 @@ Array* DirectoryIndex_index(Array* entries, IntArray* alphas, MapEntry* map,
 
 		// Filter hidden entries if any aliases created hidden names
 		if (hasHiddenEntries(result)) {
-			Array* filtered = DirectoryIndex_filterHidden(result);
+			Entry** filtered = DirectoryIndex_filterHidden(result);
 			if (filtered) {
-				Array_free(result); // Don't use EntryArray_free - entries were moved
+				arrfree(result); // Don't use EntryArray_free - entries were moved
 				result = filtered;
 			}
 		}

@@ -242,9 +242,9 @@ void LauncherNav_closeDirectory(LauncherContext* ctx) {
 
 	// Note: Directory is defined in launcher.c, we use void* here
 	void* top = ctx_getTop(ctx);
-	Array* stack = ctx_getStack(ctx);
+	Directory** stack = ctx_getStack(ctx);
 
-	if (!top || !stack || stack->count <= 1) {
+	if (!top || !stack || arrlen(stack) <= 1) {
 		return;
 	}
 

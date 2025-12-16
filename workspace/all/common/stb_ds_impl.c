@@ -6,4 +6,4 @@
  */
 
 #define STB_DS_IMPLEMENTATION
-#include "../vendor/stb/stb_ds.h"
+#include "stb_ds.h"

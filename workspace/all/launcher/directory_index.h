@@ -44,11 +44,11 @@ void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path
  * For each entry, looks up its filename in the map. If found,
  * updates the entry's name to the alias value.
  *
- * @param entries Array of Entry pointers (modified in place)
+ * @param entries Entry** dynamic array (stb_ds)
  * @param map MapEntry* hash map from launcher_map.h (use shget to query)
  * @return 1 if any aliases were applied (entries need resorting), 0 otherwise
  */
-int DirectoryIndex_applyAliases(Array* entries, MapEntry* map);
+int DirectoryIndex_applyAliases(Entry** entries, MapEntry* map);
 
 /**
  * Removes hidden entries from an array.
@@ -56,14 +56,14 @@ int DirectoryIndex_applyAliases(Array* entries, MapEntry* map);
  * An entry is hidden if its name starts with '.' or ends with ".disabled".
  * Hidden entries are freed and removed from the array.
  *
- * @param entries Array of Entry pointers (modified in place)
- * @return New array with hidden entries removed, or NULL on error
+ * @param entries Entry** dynamic array (stb_ds)
+ * @return New Entry** with hidden entries removed, or NULL on error
  *
- * @note Caller must free returned array with Array_free() (not EntryArray_free
+ * @note Caller must free returned array with arrfree() (not EntryArray_free
  *       since entries were moved, not copied)
- * @note Original array should be freed with Array_free() after this call
+ * @note Original array should be freed with arrfree() after this call
  */
-Array* DirectoryIndex_filterHidden(Array* entries);
+Entry** DirectoryIndex_filterHidden(Entry** entries);
 
 /**
  * Marks entries with duplicate display names for disambiguation.
@@ -72,9 +72,9 @@ Array* DirectoryIndex_filterHidden(Array* entries);
  * - If their filenames differ, sets unique to the filename
  * - If filenames are identical (cross-platform ROM), sets unique to emulator name
  *
- * @param entries Sorted array of Entry pointers (modified in place)
+ * @param entries Sorted Entry** dynamic array (stb_ds)
  */
-void DirectoryIndex_markDuplicates(Array* entries);
+void DirectoryIndex_markDuplicates(Entry** entries);
 
 /**
  * Builds alphabetical navigation index.
@@ -82,10 +82,10 @@ void DirectoryIndex_markDuplicates(Array* entries);
  * Creates an index mapping letter groups to entry positions for L1/R1
  * shoulder button navigation. Also sets each entry's alpha field.
  *
- * @param entries Array of Entry pointers (modified in place to set alpha)
+ * @param entries Entry** dynamic array (stb_ds, modified in place to set alpha)
  * @param alphas IntArray to populate with letter group positions
  */
-void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas);
+void DirectoryIndex_buildAlphaIndex(Entry** entries, IntArray* alphas);
 
 /**
  * Performs full directory indexing.
@@ -93,12 +93,13 @@ void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas);
  * Convenience function that applies aliases, filters hidden entries,
  * marks duplicates, and builds the alpha index.
  *
- * @param entries Array of Entry pointers (may be replaced with new array)
+ * @param entries Entry** dynamic array (may be replaced with new array)
  * @param alphas IntArray to populate with letter group positions
  * @param map Optional MapEntry* hash map of filename->alias mappings (NULL to skip aliasing)
  * @param skip_alpha_index If true, skip building alphabetical index
- * @return Updated entries array (may be different from input if filtering occurred)
+ * @return Updated Entry** array (may be different from input if filtering occurred)
  */
-Array* DirectoryIndex_index(Array* entries, IntArray* alphas, MapEntry* map, int skip_alpha_index);
+Entry** DirectoryIndex_index(Entry** entries, IntArray* alphas, MapEntry* map,
+                             int skip_alpha_index);
 
 #endif // DIRECTORY_INDEX_H

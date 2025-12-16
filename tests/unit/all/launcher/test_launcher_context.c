@@ -137,12 +137,11 @@ void test_ctx_getStack_returns_null_when_ctx_null(void) {
 }
 
 void test_ctx_getStack_returns_array(void) {
-	Array arr = {0};
-	Array* stack = &arr;
+	Directory** stack = NULL;
 	LauncherContext ctx = {0};
 	ctx.stack = &stack;
 
-	TEST_ASSERT_EQUAL_PTR(&arr, ctx_getStack(&ctx));
+	TEST_ASSERT_EQUAL_PTR(NULL, ctx_getStack(&ctx)); // Empty stb_ds array is NULL
 }
 
 ///////////////////////////////
@@ -161,12 +160,11 @@ void test_ctx_getRecents_returns_null_when_ctx_null(void) {
 }
 
 void test_ctx_getRecents_returns_array(void) {
-	Array arr = {0};
-	Array* recents = &arr;
+	Recent** recents = NULL;
 	LauncherContext ctx = {0};
 	ctx.recents = &recents;
 
-	TEST_ASSERT_EQUAL_PTR(&arr, ctx_getRecents(&ctx));
+	TEST_ASSERT_EQUAL_PTR(NULL, ctx_getRecents(&ctx)); // Empty stb_ds array is NULL
 }
 
 ///////////////////////////////

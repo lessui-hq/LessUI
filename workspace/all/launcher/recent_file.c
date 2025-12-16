@@ -174,17 +174,20 @@ void Recent_free(Recent* self) {
 	free(self);
 }
 
-int RecentArray_indexOf(void** self, int count, char* str) {
+int RecentArray_indexOf(Recent** self, char* str) {
+	int count = (int)arrlen(self);
 	for (int i = 0; i < count; i++) {
-		Recent* item = (Recent*)self[i];
+		Recent* item = self[i];
 		if (exactMatch(item->path, str))
 			return i;
 	}
 	return -1;
 }
 
-void RecentArray_free(void** self, int count) {
+void RecentArray_free(Recent** self) {
+	int count = (int)arrlen(self);
 	for (int i = 0; i < count; i++) {
-		Recent_free((Recent*)self[i]);
+		Recent_free(self[i]);
 	}
+	arrfree(self);
 }

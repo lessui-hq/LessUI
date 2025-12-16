@@ -17,7 +17,7 @@
 #ifndef LAUNCHER_MAP_H
 #define LAUNCHER_MAP_H
 
-#include "../vendor/stb/stb_ds.h"
+#include "stb_ds.h"
 
 /**
  * Map entry type for stb_ds string hash maps.

@@ -14,6 +14,7 @@
 
 #include "unity.h"
 #include "recent_file.h"
+#include "stb_ds.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -111,28 +112,30 @@ void test_RecentArray_indexOf_finds_entry(void) {
 	Recent* r1 = Recent_new("/Roms/GB/game1.gb", NULL, "/mnt/SDCARD", mock_hasEmu);
 	Recent* r2 = Recent_new("/Roms/GB/game2.gb", NULL, "/mnt/SDCARD", mock_hasEmu);
 	Recent* r3 = Recent_new("/Roms/GB/game3.gb", NULL, "/mnt/SDCARD", mock_hasEmu);
-	void* items[] = {r1, r2, r3};
+	Recent** arr = NULL;
+	arrpush(arr, r1);
+	arrpush(arr, r2);
+	arrpush(arr, r3);
 
-	TEST_ASSERT_EQUAL(0, RecentArray_indexOf(items, 3, "/Roms/GB/game1.gb"));
-	TEST_ASSERT_EQUAL(1, RecentArray_indexOf(items, 3, "/Roms/GB/game2.gb"));
-	TEST_ASSERT_EQUAL(2, RecentArray_indexOf(items, 3, "/Roms/GB/game3.gb"));
+	TEST_ASSERT_EQUAL(0, RecentArray_indexOf(arr, "/Roms/GB/game1.gb"));
+	TEST_ASSERT_EQUAL(1, RecentArray_indexOf(arr, "/Roms/GB/game2.gb"));
+	TEST_ASSERT_EQUAL(2, RecentArray_indexOf(arr, "/Roms/GB/game3.gb"));
 
-	Recent_free(r1);
-	Recent_free(r2);
-	Recent_free(r3);
+	RecentArray_free(arr);
 }
 
 void test_RecentArray_indexOf_returns_negative_for_missing(void) {
 	Recent* r1 = Recent_new("/Roms/GB/game1.gb", NULL, "/mnt/SDCARD", mock_hasEmu);
-	void* items[] = {r1};
+	Recent** arr = NULL;
+	arrpush(arr, r1);
 
-	TEST_ASSERT_EQUAL(-1, RecentArray_indexOf(items, 1, "/Roms/GB/notfound.gb"));
+	TEST_ASSERT_EQUAL(-1, RecentArray_indexOf(arr, "/Roms/GB/notfound.gb"));
 
-	Recent_free(r1);
+	RecentArray_free(arr);
 }
 
 void test_RecentArray_indexOf_handles_empty_array(void) {
-	TEST_ASSERT_EQUAL(-1, RecentArray_indexOf(NULL, 0, "/Roms/GB/game.gb"));
+	TEST_ASSERT_EQUAL(-1, RecentArray_indexOf(NULL, "/Roms/GB/game.gb"));
 }
 
 ///////////////////////////////
@@ -142,15 +145,17 @@ void test_RecentArray_indexOf_handles_empty_array(void) {
 void test_RecentArray_free_frees_all_entries(void) {
 	Recent* r1 = Recent_new("/Roms/GB/game1.gb", NULL, "/mnt/SDCARD", mock_hasEmu);
 	Recent* r2 = Recent_new("/Roms/GB/game2.gb", "Test", "/mnt/SDCARD", mock_hasEmu);
-	void* items[] = {r1, r2};
+	Recent** arr = NULL;
+	arrpush(arr, r1);
+	arrpush(arr, r2);
 
 	// Should not crash or leak
-	RecentArray_free(items, 2);
+	RecentArray_free(arr);
 }
 
 void test_RecentArray_free_handles_empty(void) {
 	// Should not crash
-	RecentArray_free(NULL, 0);
+	RecentArray_free(NULL);
 }
 
 ///////////////////////////////

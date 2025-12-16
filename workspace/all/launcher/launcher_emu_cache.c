@@ -6,7 +6,7 @@
  */
 
 #include "launcher_emu_cache.h"
-#include "../vendor/stb/stb_ds.h"
+#include "stb_ds.h"
 #include "utils.h"
 #include <dirent.h>
 #include <stdio.h>

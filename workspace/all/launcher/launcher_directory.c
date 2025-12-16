@@ -354,17 +354,18 @@ void Directory_free(Directory* self) {
 	free(self);
 }
 
-void DirectoryArray_pop(Array* self) {
-	if (!self)
+void DirectoryArray_pop(Directory** self) {
+	if (!self || arrlen(self) == 0)
 		return;
-	Directory_free(Array_pop(self));
+	Directory_free(arrpop(self));
 }
 
-void DirectoryArray_free(Array* self) {
+void DirectoryArray_free(Directory** self) {
 	if (!self)
 		return;
-	for (int i = 0; i < self->count; i++) {
-		Directory_free(self->items[i]);
+	int count = (int)arrlen(self);
+	for (int i = 0; i < count; i++) {
+		Directory_free(self[i]);
 	}
-	Array_free(self);
+	arrfree(self);
 }

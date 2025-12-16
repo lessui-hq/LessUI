@@ -49,7 +49,7 @@ endif
 
 # Compiler and flags (native macOS)
 CC = gcc
-INCDIR = -I workspace/all/launcher -I workspace/all/common -I workspace/desktop/platform $(SDL_INCLUDES)
+INCDIR = -I workspace/all/launcher -I workspace/all/common -I workspace/all/vendor/stb -I workspace/desktop/platform $(SDL_INCLUDES)
 # Dev builds always use full logging (INFO + DEBUG) and debug symbols
 # Keep -O3 for dev since ASan already catches memory issues; -O0 would make it too slow
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
@@ -71,7 +71,7 @@ LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
                workspace/all/common/nointro_parser.c \
                workspace/all/common/api.c \
                workspace/all/common/log.c \
-               workspace/all/common/collections.c \
+               workspace/all/common/stb_ds_impl.c \
                workspace/all/common/pad.c \
                workspace/all/common/gfx_text.c \
                workspace/all/common/platform_variant.c \
@@ -88,6 +88,7 @@ LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
                workspace/all/launcher/launcher_navigation.c \
                workspace/all/launcher/launcher_thumbnail.c \
                workspace/all/launcher/recent_file.c \
+               workspace/all/launcher/launcher_emu_cache.c \
                workspace/all/common/effect_system.c \
                workspace/all/common/render_common.c \
                workspace/all/common/render_sdl2.c \
