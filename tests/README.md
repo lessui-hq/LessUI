@@ -36,7 +36,6 @@ tests/
 │       ├── common/                 # Tests for workspace/all/common/
 │       │   ├── test_utils.c              # Utils (string, file, name, date, math)
 │       │   ├── test_api_pad.c            # Input state machine
-│       │   ├── test_collections.c        # Array/Hash data structures
 │       │   ├── test_gfx_text.c           # Text truncation/wrapping
 │       │   ├── test_audio_resampler.c    # Audio resampling
 │       │   ├── test_binary_file_utils.c  # Binary file I/O
@@ -380,7 +379,7 @@ See `tests/unit/all/common/test_gfx_text.c` for a comprehensive demonstration of
 
 ### When to Extract vs. Mock
 
-**Extract to separate module** (like `pad.c`, `collections.c`) when:
+**Extract to separate module** (like `pad.c`, `gfx_text.c`) when:
 - Logic is pure (no SDL dependencies)
 - Functions can be reused across components
 - Code is tightly coupled to complex global state
@@ -615,7 +614,6 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 | player_options.c | ~70 | 36 | player.c | Option list search and manipulation |
 | pad.c | 183 | 36 | api.c | Button state machine, analog input |
 | gfx_text.c | 170 | 32 | api.c | Text truncation, wrapping, sizing |
-| collections.c | 193 | 30 | launcher.c | Array, Hash data structures |
 | launcher_file_utils.c | 130 | 25 | launcher.c | File/dir checking (hasEmu, hasCue, hasM3u) |
 | map_parser.c | 64 | 22 | launcher.c/player.c | ROM display name aliasing (map.txt) |
 | m3u_parser.c | 132 | 20 | launcher.c | M3U playlist parsing |
@@ -723,20 +721,6 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 **Coverage:** Complete coverage of input state machine logic.
 
 **Note:** Extracted from `api.c` for testability without SDL dependencies.
-
-### workspace/all/common/collections.c - ✅ 30 tests
-**File:** `tests/unit/all/common/test_collections.c`
-
-- Array lifecycle (Array_new, Array_free)
-- Array operations (push, pop, unshift, reverse)
-- Capacity growth (doubling when full)
-- StringArray operations (indexOf, StringArray_free)
-- Hash map operations (Hash_new, Hash_set, Hash_get, Hash_free)
-- Integration tests (ROM alias maps, recent games lists)
-
-**Coverage:** Complete coverage of dynamic array and hash map data structures.
-
-**Note:** Extracted from `launcher.c` for reusability across all components.
 
 ### workspace/all/common/gfx_text.c - ✅ 32 tests
 **File:** `tests/unit/all/common/test_gfx_text.c`

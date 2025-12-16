@@ -6,14 +6,21 @@
  */
 
 #include "launcher_emu_cache.h"
-#include "stringmap.h"
+#include "stb_ds.h"
 #include "utils.h"
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+// Map entry type for string -> string
+typedef struct {
+	char* key;
+	char* value;
+} EmuCacheEntry;
+
 // Global cache - initialized once at startup
-static StringMap* emu_cache = NULL;
+static EmuCacheEntry* emu_cache = NULL;
 
 /**
  * Scans a directory for .pak subdirectories and adds them to the cache.
@@ -53,8 +60,8 @@ static int scanPakDirectory(const char* dir_path) {
 		strncpy(emu_name, dp->d_name, len - 4);
 		emu_name[len - 4] = '\0';
 
-		// Add to cache (value is just "1" to mark presence)
-		StringMap_set(emu_cache, emu_name, "1");
+		// Add to cache (NULL value - we only need key presence)
+		shput(emu_cache, emu_name, NULL);
 		count++;
 	}
 
@@ -66,9 +73,8 @@ int EmuCache_init(const char* paks_path, const char* sdcard_path, const char* pl
 	// Free existing cache if reinitializing
 	EmuCache_free();
 
-	emu_cache = StringMap_new();
-	if (!emu_cache)
-		return -1;
+	// Initialize with key duplication (stb_ds copies keys)
+	sh_new_strdup(emu_cache);
 
 	int total = 0;
 	char scan_path[512];
@@ -88,12 +94,14 @@ int EmuCache_hasEmu(const char* emu_name) {
 	if (!emu_cache || !emu_name)
 		return 0;
 
-	return StringMap_get(emu_cache, emu_name) != NULL;
+	return shgeti(emu_cache, emu_name) >= 0;
 }
 
 void EmuCache_free(void) {
 	if (emu_cache) {
-		StringMap_free(emu_cache);
+		// Keys are freed by shfree when using sh_new_strdup
+		// Values are NULL so no need to free them
+		shfree(emu_cache);
 		emu_cache = NULL;
 	}
 }
@@ -101,5 +109,5 @@ void EmuCache_free(void) {
 int EmuCache_count(void) {
 	if (!emu_cache)
 		return 0;
-	return StringMap_count(emu_cache);
+	return (int)shlen(emu_cache);
 }

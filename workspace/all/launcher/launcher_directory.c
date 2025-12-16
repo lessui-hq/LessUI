@@ -47,15 +47,14 @@ int LauncherDir_determineEntryType(const char* filename, int is_dir, const char*
 
 	if (is_dir) {
 		// Check if it's a .pak application
-		if (suffixMatch(".pak", (char*)filename)) {
+		if (suffixMatch(".pak", filename)) {
 			return ENTRY_PAK;
 		}
 		return ENTRY_DIR;
 	}
 
 	// Not a directory - check if we're in collections
-	if (collections_path && parent_path &&
-	    prefixMatch((char*)collections_path, (char*)parent_path)) {
+	if (collections_path && parent_path && prefixMatch(collections_path, parent_path)) {
 		// Collection entries are treated as pseudo-directories
 		return ENTRY_DIR;
 	}
@@ -74,7 +73,7 @@ int LauncherDir_hasRoms(const char* dir_name, const char* roms_path, const char*
 
 	// Get emulator name from directory name
 	char emu_name[256];
-	getEmuName((char*)dir_name, emu_name);
+	getEmuName(dir_name, emu_name);
 
 	// Check for emulator pak
 	if (!Launcher_hasEmu(emu_name, paks_path, sdcard_path, platform)) {
@@ -124,82 +123,29 @@ int LauncherDir_matchesCollation(const char* path, const char* collation_prefix)
 		return 0;
 	}
 
-	return prefixMatch((char*)collation_prefix, (char*)path);
+	return prefixMatch(collation_prefix, path);
 }
 
 /**
- * Creates a new scan result structure.
+ * Frees a scan result and all its contents.
  */
-LauncherDirScanResult* LauncherDirScanResult_new(int initial_capacity) {
-	if (initial_capacity <= 0) {
-		initial_capacity = 16;
-	}
-
-	LauncherDirScanResult* result = malloc(sizeof(LauncherDirScanResult));
-	if (!result) {
-		return NULL;
-	}
-
-	result->paths = malloc(sizeof(char*) * initial_capacity);
-	result->is_dirs = malloc(sizeof(int) * initial_capacity);
-
-	if (!result->paths || !result->is_dirs) {
-		free(result->paths);
-		free(result->is_dirs);
-		free(result);
-		return NULL;
-	}
-
-	result->count = 0;
-	result->capacity = initial_capacity;
-	return result;
-}
-
-/**
- * Frees a scan result structure and all its contents.
- */
-void LauncherDirScanResult_free(LauncherDirScanResult* result) {
+void LauncherDirScanResult_free(LauncherDirScanResult result) {
 	if (!result) {
 		return;
 	}
 
-	if (result->paths) {
-		for (int i = 0; i < result->count; i++) {
-			free(result->paths[i]);
-		}
-		free(result->paths);
+	for (int i = 0; i < arrlen(result); i++) {
+		free(result[i].path);
 	}
-
-	free(result->is_dirs);
-	free(result);
+	arrfree(result);
 }
 
 /**
  * Adds an entry to scan results.
  */
-int LauncherDirScanResult_add(LauncherDirScanResult* result, const char* path, int is_dir) {
-	if (!result || !path) {
+int LauncherDirScanResult_add(LauncherDirScanResult* result_ptr, const char* path, int is_dir) {
+	if (!result_ptr || !path) {
 		return 0;
-	}
-
-	// Grow arrays if needed
-	if (result->count >= result->capacity) {
-		int new_capacity = result->capacity * 2;
-
-		// Realloc paths first, save to temp to avoid losing old pointer on failure
-		char** new_paths = realloc(result->paths, sizeof(char*) * new_capacity);
-		if (!new_paths) {
-			return 0;
-		}
-		result->paths = new_paths;
-
-		// Realloc is_dirs - if this fails, paths array is already resized (harmless)
-		int* new_is_dirs = realloc(result->is_dirs, sizeof(int) * new_capacity);
-		if (!new_is_dirs) {
-			return 0;
-		}
-		result->is_dirs = new_is_dirs;
-		result->capacity = new_capacity;
 	}
 
 	char* path_copy = strdup(path);
@@ -207,9 +153,8 @@ int LauncherDirScanResult_add(LauncherDirScanResult* result, const char* path, i
 		return 0;
 	}
 
-	result->paths[result->count] = path_copy;
-	result->is_dirs[result->count] = is_dir;
-	result->count++;
+	LauncherDirScanEntry entry = {.path = path_copy, .is_dir = is_dir};
+	arrpush(*result_ptr, entry);
 
 	return 1;
 }
@@ -217,7 +162,7 @@ int LauncherDirScanResult_add(LauncherDirScanResult* result, const char* path, i
 /**
  * Scans a directory and returns non-hidden entries.
  */
-LauncherDirScanResult* LauncherDir_scan(const char* dir_path) {
+LauncherDirScanResult LauncherDir_scan(const char* dir_path) {
 	if (!dir_path) {
 		return NULL;
 	}
@@ -227,11 +172,7 @@ LauncherDirScanResult* LauncherDir_scan(const char* dir_path) {
 		return NULL;
 	}
 
-	LauncherDirScanResult* result = LauncherDirScanResult_new(32);
-	if (!result) {
-		closedir(dh);
-		return NULL;
-	}
+	LauncherDirScanResult result = NULL;
 
 	char full_path[LAUNCHER_DIR_MAX_PATH];
 	struct dirent* dp;
@@ -247,7 +188,7 @@ LauncherDirScanResult* LauncherDir_scan(const char* dir_path) {
 
 		int is_dir = (dp->d_type == DT_DIR);
 
-		if (!LauncherDirScanResult_add(result, full_path, is_dir)) {
+		if (!LauncherDirScanResult_add(&result, full_path, is_dir)) {
 			// Allocation failure - return what we have
 			break;
 		}
@@ -260,8 +201,8 @@ LauncherDirScanResult* LauncherDir_scan(const char* dir_path) {
 /**
  * Scans multiple directories with collation support.
  */
-LauncherDirScanResult* LauncherDir_scanCollated(const char* roms_path,
-                                                const char* collation_prefix) {
+LauncherDirScanResult LauncherDir_scanCollated(const char* roms_path,
+                                               const char* collation_prefix) {
 	if (!roms_path || !collation_prefix || collation_prefix[0] == '\0') {
 		return NULL;
 	}
@@ -271,26 +212,13 @@ LauncherDirScanResult* LauncherDir_scanCollated(const char* roms_path,
 		return NULL;
 	}
 
-	LauncherDirScanResult* result = LauncherDirScanResult_new(64);
-	if (!result) {
-		closedir(dh);
-		return NULL;
-	}
+	LauncherDirScanResult result = NULL;
 
 	char full_path[LAUNCHER_DIR_MAX_PATH];
 	struct dirent* dp;
 
-	// First pass: find all matching console directories
+	// First pass: find all matching console directories (using stb_ds)
 	char** matching_dirs = NULL;
-	int matching_count = 0;
-	int matching_capacity = 8;
-
-	matching_dirs = malloc(sizeof(char*) * matching_capacity);
-	if (!matching_dirs) {
-		closedir(dh);
-		LauncherDirScanResult_free(result);
-		return NULL;
-	}
 
 	while ((dp = readdir(dh)) != NULL) {
 		if (hide(dp->d_name)) {
@@ -302,41 +230,32 @@ LauncherDirScanResult* LauncherDir_scanCollated(const char* roms_path,
 
 		(void)snprintf(full_path, sizeof(full_path), "%s/%s", roms_path, dp->d_name);
 
-		if (!prefixMatch((char*)collation_prefix, full_path)) {
+		if (!prefixMatch(collation_prefix, full_path)) {
 			continue;
 		}
 
 		// This directory matches our collation
-		if (matching_count >= matching_capacity) {
-			matching_capacity *= 2;
-			char** new_dirs = realloc(matching_dirs, sizeof(char*) * matching_capacity);
-			if (!new_dirs) {
-				break;
-			}
-			matching_dirs = new_dirs;
-		}
-
-		matching_dirs[matching_count] = strdup(full_path);
-		if (matching_dirs[matching_count]) {
-			matching_count++;
+		char* dir_copy = strdup(full_path);
+		if (dir_copy) {
+			arrpush(matching_dirs, dir_copy);
 		}
 	}
 
 	closedir(dh);
 
 	// Second pass: scan each matching directory and add entries
-	for (int i = 0; i < matching_count; i++) {
-		LauncherDirScanResult* sub_result = LauncherDir_scan(matching_dirs[i]);
+	for (int i = 0; i < arrlen(matching_dirs); i++) {
+		LauncherDirScanResult sub_result = LauncherDir_scan(matching_dirs[i]);
 		if (sub_result) {
-			for (int j = 0; j < sub_result->count; j++) {
-				LauncherDirScanResult_add(result, sub_result->paths[j], sub_result->is_dirs[j]);
+			for (int j = 0; j < arrlen(sub_result); j++) {
+				LauncherDirScanResult_add(&result, sub_result[j].path, sub_result[j].is_dir);
 			}
 			LauncherDirScanResult_free(sub_result);
 		}
 		free(matching_dirs[i]);
 	}
 
-	free(matching_dirs);
+	arrfree(matching_dirs);
 	return result;
 }
 
@@ -354,17 +273,18 @@ void Directory_free(Directory* self) {
 	free(self);
 }
 
-void DirectoryArray_pop(Array* self) {
-	if (!self)
+void DirectoryArray_pop(Directory** self) {
+	if (!self || arrlen(self) == 0)
 		return;
-	Directory_free(Array_pop(self));
+	Directory_free(arrpop(self));
 }
 
-void DirectoryArray_free(Array* self) {
+void DirectoryArray_free(Directory** self) {
 	if (!self)
 		return;
-	for (int i = 0; i < self->count; i++) {
-		Directory_free(self->items[i]);
+	int count = (int)arrlen(self);
+	for (int i = 0; i < count; i++) {
+		Directory_free(self[i]);
 	}
-	Array_free(self);
+	arrfree(self);
 }

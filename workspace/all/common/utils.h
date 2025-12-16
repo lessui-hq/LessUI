@@ -36,7 +36,7 @@ uint64_t getMicroseconds(void);
  * @param str String to search in
  * @return 1 if str starts with pre, 0 otherwise
  */
-int prefixMatch(char* pre, char* str);
+int prefixMatch(const char* pre, const char* str);
 
 /**
  * Checks if a string ends with a given suffix (case-insensitive).
@@ -47,7 +47,7 @@ int prefixMatch(char* pre, char* str);
  * @param str String to search in
  * @return 1 if str ends with suf, 0 otherwise
  */
-int suffixMatch(char* suf, char* str);
+int suffixMatch(const char* suf, const char* str);
 
 /**
  * Checks if two strings are exactly equal (case-sensitive).
@@ -193,7 +193,7 @@ int splitTextLines(char* str, char** lines, int max_lines);
  * @param path Path to check
  * @return 1 if path exists, 0 otherwise
  */
-int exists(char* path);
+int exists(const char* path);
 
 /**
  * Finds a system file with platform-specific fallback to common.

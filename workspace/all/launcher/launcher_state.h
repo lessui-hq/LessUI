@@ -11,6 +11,7 @@
 #ifndef __LAUNCHER_STATE_H__
 #define __LAUNCHER_STATE_H__
 
+#include "stb_ds.h"
 #include <stdbool.h>
 
 /**
@@ -20,52 +21,39 @@
 
 /**
  * Path component for path reconstruction.
+ * Used with stb_ds dynamic arrays.
  */
 typedef struct {
 	char path[LAUNCHER_STATE_MAX_PATH];
 } LauncherPathComponent;
 
 /**
- * Stack of path components.
+ * LauncherPathStack is a stb_ds dynamic array of LauncherPathComponent.
+ * Usage: LauncherPathComponent* stack = NULL;
+ *        arrpush(stack, component);
+ *        arrlen(stack)  // count
+ *        arrcap(stack)  // capacity
+ *        arrfree(stack)
  */
-typedef struct {
-	LauncherPathComponent* items;
-	int count;
-	int capacity;
-} LauncherPathStack;
-
-/**
- * Creates a new path stack.
- *
- * @param capacity Initial capacity
- * @return New stack, or NULL on allocation failure
- */
-LauncherPathStack* LauncherPathStack_new(int capacity);
-
-/**
- * Frees a path stack.
- *
- * @param stack Stack to free
- */
-void LauncherPathStack_free(LauncherPathStack* stack);
+typedef LauncherPathComponent* LauncherPathStack;
 
 /**
  * Pushes a path onto the stack.
  *
- * @param stack Stack to push to
+ * @param stack_ptr Pointer to stack array (may be reallocated)
  * @param path Path to push (copied)
  * @return true on success, false on failure
  */
-bool LauncherPathStack_push(LauncherPathStack* stack, const char* path);
+bool LauncherPathStack_push(LauncherPathStack* stack_ptr, const char* path);
 
 /**
  * Pops a path from the stack.
  *
- * @param stack Stack to pop from
+ * @param stack_ptr Pointer to stack array
  * @param out_path Buffer to receive path (at least LAUNCHER_STATE_MAX_PATH bytes)
  * @return true if popped, false if stack was empty
  */
-bool LauncherPathStack_pop(LauncherPathStack* stack, char* out_path);
+bool LauncherPathStack_pop(LauncherPathStack* stack_ptr, char* out_path);
 
 /**
  * Decomposes a full path into a stack of parent directories.
@@ -78,9 +66,9 @@ bool LauncherPathStack_pop(LauncherPathStack* stack, char* out_path);
  *
  * @param full_path Path to decompose
  * @param root_path Root path to stop at (not included in stack)
- * @return Stack of path components (caller must free), or NULL on error
+ * @return Stack of path components (caller must arrfree), or NULL on error
  */
-LauncherPathStack* LauncherState_decomposePath(const char* full_path, const char* root_path);
+LauncherPathStack LauncherState_decomposePath(const char* full_path, const char* root_path);
 
 /**
  * Extracts the filename from a full path.

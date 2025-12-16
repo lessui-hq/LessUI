@@ -15,6 +15,7 @@
 
 #include "unity.h"
 #include "launcher_directory.h"
+#include "stb_ds.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -188,56 +189,52 @@ void test_matchesCollation_handles_null(void) {
 // ScanResult Tests
 ///////////////////////////////
 
-void test_ScanResult_new_creates_valid_struct(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(10);
+void test_ScanResult_init_creates_empty(void) {
+	LauncherDirScanResult result = NULL;
 
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_NOT_NULL(result->paths);
-	TEST_ASSERT_NOT_NULL(result->is_dirs);
-	TEST_ASSERT_EQUAL(0, result->count);
-	TEST_ASSERT_EQUAL(10, result->capacity);
+	TEST_ASSERT_EQUAL(0, arrlen(result));
 
 	LauncherDirScanResult_free(result);
 }
 
 void test_ScanResult_add_stores_entry(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(10);
+	LauncherDirScanResult result = NULL;
 
-	int ok = LauncherDirScanResult_add(result, "/test/path", 1);
+	int ok = LauncherDirScanResult_add(&result, "/test/path", 1);
 
 	TEST_ASSERT_TRUE(ok);
-	TEST_ASSERT_EQUAL(1, result->count);
-	TEST_ASSERT_EQUAL_STRING("/test/path", result->paths[0]);
-	TEST_ASSERT_TRUE(result->is_dirs[0]);
+	TEST_ASSERT_EQUAL(1, arrlen(result));
+	TEST_ASSERT_EQUAL_STRING("/test/path", result[0].path);
+	TEST_ASSERT_TRUE(result[0].is_dir);
 
 	LauncherDirScanResult_free(result);
 }
 
-void test_ScanResult_add_grows_capacity(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(2);
+void test_ScanResult_add_grows_automatically(void) {
+	LauncherDirScanResult result = NULL;
 
-	LauncherDirScanResult_add(result, "/path1", 0);
-	LauncherDirScanResult_add(result, "/path2", 1);
-	LauncherDirScanResult_add(result, "/path3", 0); // Should trigger growth
+	LauncherDirScanResult_add(&result, "/path1", 0);
+	LauncherDirScanResult_add(&result, "/path2", 1);
+	LauncherDirScanResult_add(&result, "/path3", 0); // stb_ds grows automatically
 
-	TEST_ASSERT_EQUAL(3, result->count);
-	TEST_ASSERT_TRUE(result->capacity >= 3);
-	TEST_ASSERT_EQUAL_STRING("/path3", result->paths[2]);
+	TEST_ASSERT_EQUAL(3, arrlen(result));
+	TEST_ASSERT_TRUE(arrcap(result) >= 3);
+	TEST_ASSERT_EQUAL_STRING("/path3", result[2].path);
 
 	LauncherDirScanResult_free(result);
 }
 
 void test_ScanResult_add_copies_path(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(10);
+	LauncherDirScanResult result = NULL;
 	char path[] = "/mutable/path";
 
-	LauncherDirScanResult_add(result, path, 0);
+	LauncherDirScanResult_add(&result, path, 0);
 
 	// Modify original
 	path[0] = 'X';
 
 	// Stored copy should be unaffected
-	TEST_ASSERT_EQUAL_STRING("/mutable/path", result->paths[0]);
+	TEST_ASSERT_EQUAL_STRING("/mutable/path", result[0].path);
 
 	LauncherDirScanResult_free(result);
 }
@@ -270,15 +267,15 @@ void test_scan_returns_non_hidden_entries(void) {
 	fputs("hidden", f);
 	fclose(f);
 
-	LauncherDirScanResult* result = LauncherDir_scan(temp_dir);
+	LauncherDirScanResult result = LauncherDir_scan(temp_dir);
 
 	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(1, result->count);
+	TEST_ASSERT_EQUAL(1, arrlen(result));
 
 	// Find the visible file
 	int found = 0;
-	for (int i = 0; i < result->count; i++) {
-		if (strstr(result->paths[i], "visible.txt")) {
+	for (int i = 0; i < arrlen(result); i++) {
+		if (strstr(result[i].path, "visible.txt")) {
 			found = 1;
 		}
 	}
@@ -308,19 +305,19 @@ void test_scan_detects_directories(void) {
 	fputs("content", f);
 	fclose(f);
 
-	LauncherDirScanResult* result = LauncherDir_scan(temp_dir);
+	LauncherDirScanResult result = LauncherDir_scan(temp_dir);
 
 	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(2, result->count);
+	TEST_ASSERT_EQUAL(2, arrlen(result));
 
 	// Find each entry (order may vary)
 	int found_dir = 0, found_file = 0;
-	for (int i = 0; i < result->count; i++) {
-		if (strstr(result->paths[i], "subdir")) {
-			TEST_ASSERT_TRUE(result->is_dirs[i]);
+	for (int i = 0; i < arrlen(result); i++) {
+		if (strstr(result[i].path, "subdir")) {
+			TEST_ASSERT_TRUE(result[i].is_dir);
 			found_dir = 1;
-		} else if (strstr(result->paths[i], "file.txt")) {
-			TEST_ASSERT_FALSE(result->is_dirs[i]);
+		} else if (strstr(result[i].path, "file.txt")) {
+			TEST_ASSERT_FALSE(result[i].is_dir);
 			found_file = 1;
 		}
 	}
@@ -336,12 +333,12 @@ void test_scan_detects_directories(void) {
 }
 
 void test_scan_returns_null_for_nonexistent_dir(void) {
-	LauncherDirScanResult* result = LauncherDir_scan("/nonexistent/path/that/does/not/exist");
+	LauncherDirScanResult result = LauncherDir_scan("/nonexistent/path/that/does/not/exist");
 	TEST_ASSERT_NULL(result);
 }
 
 void test_scan_handles_null_path(void) {
-	LauncherDirScanResult* result = LauncherDir_scan(NULL);
+	LauncherDirScanResult result = LauncherDir_scan(NULL);
 	TEST_ASSERT_NULL(result);
 }
 
@@ -349,10 +346,10 @@ void test_scan_empty_directory(void) {
 	char temp_dir[] = "/tmp/scantest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
-	LauncherDirScanResult* result = LauncherDir_scan(temp_dir);
+	LauncherDirScanResult result = LauncherDir_scan(temp_dir);
 
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(0, result->count);
+	// Empty scan returns NULL (no entries)
+	TEST_ASSERT_EQUAL(0, arrlen(result));
 
 	LauncherDirScanResult_free(result);
 	rmdir(temp_dir);
@@ -390,17 +387,17 @@ void test_scanCollated_finds_matching_region_dirs(void) {
 	LauncherDir_buildCollationPrefix(gb_usa, prefix);
 
 	// Scan with collation
-	LauncherDirScanResult* result = LauncherDir_scanCollated(temp_dir, prefix);
+	LauncherDirScanResult result = LauncherDir_scanCollated(temp_dir, prefix);
 
 	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(2, result->count); // Should find both ROMs
+	TEST_ASSERT_EQUAL(2, arrlen(result)); // Should find both ROMs
 
 	// Verify both ROMs are found
 	int found_tetris = 0, found_mario = 0;
-	for (int i = 0; i < result->count; i++) {
-		if (strstr(result->paths[i], "tetris.gb"))
+	for (int i = 0; i < arrlen(result); i++) {
+		if (strstr(result[i].path, "tetris.gb"))
 			found_tetris = 1;
-		if (strstr(result->paths[i], "mario.gb"))
+		if (strstr(result[i].path, "mario.gb"))
 			found_mario = 1;
 	}
 	TEST_ASSERT_TRUE(found_tetris);
@@ -442,17 +439,17 @@ void test_scanCollated_excludes_non_matching_dirs(void) {
 	char prefix[LAUNCHER_DIR_MAX_PATH];
 	LauncherDir_buildCollationPrefix(gb_usa, prefix);
 
-	LauncherDirScanResult* result = LauncherDir_scanCollated(temp_dir, prefix);
+	LauncherDirScanResult result = LauncherDir_scanCollated(temp_dir, prefix);
 
 	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(1, result->count); // Only Game Boy ROM
+	TEST_ASSERT_EQUAL(1, arrlen(result)); // Only Game Boy ROM
 
 	// Should find tetris but not pokemon
 	int found_tetris = 0, found_pokemon = 0;
-	for (int i = 0; i < result->count; i++) {
-		if (strstr(result->paths[i], "tetris.gb"))
+	for (int i = 0; i < arrlen(result); i++) {
+		if (strstr(result[i].path, "tetris.gb"))
 			found_tetris = 1;
-		if (strstr(result->paths[i], "pokemon.gba"))
+		if (strstr(result[i].path, "pokemon.gba"))
 			found_pokemon = 1;
 	}
 	TEST_ASSERT_TRUE(found_tetris);
@@ -475,7 +472,7 @@ void test_scanCollated_returns_null_for_null_inputs(void) {
 }
 
 void test_scanCollated_returns_null_for_nonexistent_dir(void) {
-	LauncherDirScanResult* result = LauncherDir_scanCollated("/nonexistent/path", "/nonexistent/path/Game (");
+	LauncherDirScanResult result = LauncherDir_scanCollated("/nonexistent/path", "/nonexistent/path/Game (");
 	TEST_ASSERT_NULL(result);
 }
 
@@ -492,10 +489,10 @@ void test_scanCollated_returns_empty_when_no_matches(void) {
 	char prefix[LAUNCHER_DIR_MAX_PATH];
 	snprintf(prefix, sizeof(prefix), "%s/Game Boy (", temp_dir);
 
-	LauncherDirScanResult* result = LauncherDir_scanCollated(temp_dir, prefix);
+	LauncherDirScanResult result = LauncherDir_scanCollated(temp_dir, prefix);
 
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL(0, result->count);
+	// Empty scan returns NULL (no entries)
+	TEST_ASSERT_EQUAL(0, arrlen(result));
 
 	LauncherDirScanResult_free(result);
 
@@ -519,7 +516,7 @@ void test_Directory_free_frees_all_fields(void) {
 
 	dir->path = strdup("/test/path");
 	dir->name = strdup("TestDir");
-	dir->entries = Array_new();
+	dir->entries = NULL; // stb_ds dynamic array
 	dir->alphas = IntArray_new();
 	dir->selected = 0;
 	dir->start = 0;
@@ -527,7 +524,7 @@ void test_Directory_free_frees_all_fields(void) {
 
 	// Add an entry to entries array
 	Entry* entry = Entry_new("/test/path/game.gb", ENTRY_ROM);
-	Array_push(dir->entries, entry);
+	arrpush(dir->entries, entry);
 
 	// Add an alpha index
 	IntArray_push(dir->alphas, 0);
@@ -541,34 +538,34 @@ void test_Directory_free_frees_all_fields(void) {
 ///////////////////////////////
 
 void test_DirectoryArray_pop_removes_and_frees(void) {
-	Array* arr = Array_new();
+	Directory** arr = NULL;
 
 	// Create two directories
 	Directory* dir1 = malloc(sizeof(Directory));
 	dir1->path = strdup("/path1");
 	dir1->name = strdup("Dir1");
-	dir1->entries = Array_new();
+	dir1->entries = NULL;
 	dir1->alphas = IntArray_new();
 
 	Directory* dir2 = malloc(sizeof(Directory));
 	dir2->path = strdup("/path2");
 	dir2->name = strdup("Dir2");
-	dir2->entries = Array_new();
+	dir2->entries = NULL;
 	dir2->alphas = IntArray_new();
 
-	Array_push(arr, dir1);
-	Array_push(arr, dir2);
+	arrpush(arr, dir1);
+	arrpush(arr, dir2);
 
-	TEST_ASSERT_EQUAL(2, arr->count);
+	TEST_ASSERT_EQUAL(2, arrlen(arr));
 
 	// Pop should remove and free the last directory
 	DirectoryArray_pop(arr);
-	TEST_ASSERT_EQUAL(1, arr->count);
+	TEST_ASSERT_EQUAL(1, arrlen(arr));
 
 	DirectoryArray_pop(arr);
-	TEST_ASSERT_EQUAL(0, arr->count);
+	TEST_ASSERT_EQUAL(0, arrlen(arr));
 
-	Array_free(arr);
+	arrfree(arr);
 }
 
 void test_DirectoryArray_pop_handles_null(void) {
@@ -577,7 +574,7 @@ void test_DirectoryArray_pop_handles_null(void) {
 }
 
 void test_DirectoryArray_free_frees_all_directories(void) {
-	Array* arr = Array_new();
+	Directory** arr = NULL;
 
 	// Create and add directories
 	for (int i = 0; i < 3; i++) {
@@ -587,12 +584,12 @@ void test_DirectoryArray_free_frees_all_directories(void) {
 		snprintf(name, sizeof(name), "Dir%d", i);
 		dir->path = strdup(path);
 		dir->name = strdup(name);
-		dir->entries = Array_new();
+		dir->entries = NULL;
 		dir->alphas = IntArray_new();
-		Array_push(arr, dir);
+		arrpush(arr, dir);
 	}
 
-	TEST_ASSERT_EQUAL(3, arr->count);
+	TEST_ASSERT_EQUAL(3, arrlen(arr));
 
 	// Should free all directories and the array
 	DirectoryArray_free(arr);
@@ -604,26 +601,8 @@ void test_DirectoryArray_free_handles_null(void) {
 }
 
 ///////////////////////////////
-// ScanResult capacity growth edge cases
+// ScanResult edge cases
 ///////////////////////////////
-
-void test_ScanResult_new_uses_default_capacity_for_zero(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(0);
-
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_GREATER_THAN(0, result->capacity); // Has some default when <= 0
-
-	LauncherDirScanResult_free(result);
-}
-
-void test_ScanResult_new_uses_default_capacity_for_negative(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(-5);
-
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_GREATER_THAN(0, result->capacity); // Has some default when <= 0
-
-	LauncherDirScanResult_free(result);
-}
 
 void test_ScanResult_add_handles_null_result(void) {
 	int ok = LauncherDirScanResult_add(NULL, "/path", 0);
@@ -631,11 +610,11 @@ void test_ScanResult_add_handles_null_result(void) {
 }
 
 void test_ScanResult_add_handles_null_path(void) {
-	LauncherDirScanResult* result = LauncherDirScanResult_new(10);
+	LauncherDirScanResult result = NULL;
 
-	int ok = LauncherDirScanResult_add(result, NULL, 0);
+	int ok = LauncherDirScanResult_add(&result, NULL, 0);
 	TEST_ASSERT_FALSE(ok);
-	TEST_ASSERT_EQUAL(0, result->count); // Nothing added
+	TEST_ASSERT_EQUAL(0, arrlen(result)); // Nothing added
 
 	LauncherDirScanResult_free(result);
 }
@@ -678,9 +657,9 @@ int main(void) {
 	RUN_TEST(test_matchesCollation_handles_null);
 
 	// ScanResult tests
-	RUN_TEST(test_ScanResult_new_creates_valid_struct);
+	RUN_TEST(test_ScanResult_init_creates_empty);
 	RUN_TEST(test_ScanResult_add_stores_entry);
-	RUN_TEST(test_ScanResult_add_grows_capacity);
+	RUN_TEST(test_ScanResult_add_grows_automatically);
 	RUN_TEST(test_ScanResult_add_copies_path);
 	RUN_TEST(test_ScanResult_free_handles_null);
 
@@ -709,8 +688,6 @@ int main(void) {
 	RUN_TEST(test_DirectoryArray_free_handles_null);
 
 	// ScanResult edge cases
-	RUN_TEST(test_ScanResult_new_uses_default_capacity_for_zero);
-	RUN_TEST(test_ScanResult_new_uses_default_capacity_for_negative);
 	RUN_TEST(test_ScanResult_add_handles_null_result);
 	RUN_TEST(test_ScanResult_add_handles_null_path);
 

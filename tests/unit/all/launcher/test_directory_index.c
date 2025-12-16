@@ -15,8 +15,9 @@
 #include "unity.h"
 #include "directory_index.h"
 #include "launcher_entry.h"
-#include "../../../../workspace/all/common/stringmap.h"
+#include "launcher_map.h"
 #include "../../../../workspace/all/common/defines.h"
+#include "stb_ds.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -102,51 +103,54 @@ void test_getUniqueName_gba_system(void) {
 ///////////////////////////////
 
 void test_applyAliases_updates_name(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
-	Array_push(entries, e);
+	arrpush(entries, e);
 
-	StringMap* map = StringMap_new();
-	StringMap_set(map, "game.gb", "Custom Name");
+	MapEntry* map = NULL;
+	sh_new_strdup(map);
+	shput(map, "game.gb", strdup("Custom Name"));
 
 	int result = DirectoryIndex_applyAliases(entries, map);
 
 	TEST_ASSERT_EQUAL(1, result);
 	TEST_ASSERT_EQUAL_STRING("Custom Name", e->name);
 
-	StringMap_free(map);
+	Map_free(map);
 	EntryArray_free(entries);
 }
 
 void test_applyAliases_no_match_returns_0(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
-	Array_push(entries, e);
+	arrpush(entries, e);
 
-	StringMap* map = StringMap_new();
-	StringMap_set(map, "other.gb", "Other Name");
+	MapEntry* map = NULL;
+	sh_new_strdup(map);
+	shput(map, "other.gb", strdup("Other Name"));
 
 	int result = DirectoryIndex_applyAliases(entries, map);
 
 	TEST_ASSERT_EQUAL(0, result);
 	TEST_ASSERT_EQUAL_STRING("game", e->name);
 
-	StringMap_free(map);
+	Map_free(map);
 	EntryArray_free(entries);
 }
 
 void test_applyAliases_multiple_entries(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/a.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/b.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/c.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
-	StringMap* map = StringMap_new();
-	StringMap_set(map, "a.gb", "Alpha");
-	StringMap_set(map, "c.gb", "Charlie");
+	MapEntry* map = NULL;
+	sh_new_strdup(map);
+	shput(map, "a.gb", strdup("Alpha"));
+	shput(map, "c.gb", strdup("Charlie"));
 
 	DirectoryIndex_applyAliases(entries, map);
 
@@ -154,14 +158,14 @@ void test_applyAliases_multiple_entries(void) {
 	TEST_ASSERT_EQUAL_STRING("b", e2->name);
 	TEST_ASSERT_EQUAL_STRING("Charlie", e3->name);
 
-	StringMap_free(map);
+	Map_free(map);
 	EntryArray_free(entries);
 }
 
 void test_applyAliases_null_map_returns_0(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
-	Array_push(entries, e);
+	arrpush(entries, e);
 
 	int result = DirectoryIndex_applyAliases(entries, NULL);
 
@@ -171,14 +175,15 @@ void test_applyAliases_null_map_returns_0(void) {
 }
 
 void test_applyAliases_null_entries_returns_0(void) {
-	StringMap* map = StringMap_new();
-	StringMap_set(map, "game.gb", "Name");
+	MapEntry* map = NULL;
+	sh_new_strdup(map);
+	shput(map, "game.gb", strdup("Name"));
 
 	int result = DirectoryIndex_applyAliases(NULL, map);
 
 	TEST_ASSERT_EQUAL(0, result);
 
-	StringMap_free(map);
+	Map_free(map);
 }
 
 ///////////////////////////////
@@ -186,80 +191,80 @@ void test_applyAliases_null_entries_returns_0(void) {
 ///////////////////////////////
 
 void test_filterHidden_removes_dot_prefix(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/visible.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/hidden.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	// Manually set hidden name
 	Entry_setName(e2, ".hidden");
 
-	Array* result = DirectoryIndex_filterHidden(entries);
+	Entry** result = DirectoryIndex_filterHidden(entries);
 
-	TEST_ASSERT_EQUAL(1, result->count);
-	TEST_ASSERT_EQUAL_STRING("visible", ((Entry*)result->items[0])->name);
+	TEST_ASSERT_EQUAL(1, arrlen(result));
+	TEST_ASSERT_EQUAL_STRING("visible", result[0]->name);
 
-	Array_free(entries);
+	arrfree(entries);
 	EntryArray_free(result);
 }
 
 void test_filterHidden_removes_disabled_suffix(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/active.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/inactive.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	// Manually set disabled name
 	Entry_setName(e2, "inactive.disabled");
 
-	Array* result = DirectoryIndex_filterHidden(entries);
+	Entry** result = DirectoryIndex_filterHidden(entries);
 
-	TEST_ASSERT_EQUAL(1, result->count);
-	TEST_ASSERT_EQUAL_STRING("active", ((Entry*)result->items[0])->name);
+	TEST_ASSERT_EQUAL(1, arrlen(result));
+	TEST_ASSERT_EQUAL_STRING("active", result[0]->name);
 
-	Array_free(entries);
+	arrfree(entries);
 	EntryArray_free(result);
 }
 
 void test_filterHidden_keeps_all_visible(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/a.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/b.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/c.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
-	Array* result = DirectoryIndex_filterHidden(entries);
+	Entry** result = DirectoryIndex_filterHidden(entries);
 
-	TEST_ASSERT_EQUAL(3, result->count);
+	TEST_ASSERT_EQUAL(3, arrlen(result));
 
-	Array_free(entries);
+	arrfree(entries);
 	EntryArray_free(result);
 }
 
 void test_filterHidden_removes_all_hidden(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/a.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/b.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	Entry_setName(e1, ".hidden1");
 	Entry_setName(e2, ".hidden2");
 
-	Array* result = DirectoryIndex_filterHidden(entries);
+	Entry** result = DirectoryIndex_filterHidden(entries);
 
-	TEST_ASSERT_EQUAL(0, result->count);
+	TEST_ASSERT_EQUAL(0, arrlen(result));
 
-	Array_free(entries);
-	Array_free(result);
+	arrfree(entries);
+	arrfree(result);
 }
 
 void test_filterHidden_null_returns_null(void) {
-	Array* result = DirectoryIndex_filterHidden(NULL);
+	Entry** result = DirectoryIndex_filterHidden(NULL);
 	TEST_ASSERT_NULL(result);
 }
 
@@ -268,11 +273,11 @@ void test_filterHidden_null_returns_null(void) {
 ///////////////////////////////
 
 void test_markDuplicates_no_duplicates(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Mario.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Zelda.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	DirectoryIndex_markDuplicates(entries);
 
@@ -283,11 +288,11 @@ void test_markDuplicates_no_duplicates(void) {
 }
 
 void test_markDuplicates_different_filenames(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/tetris_v1.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/tetris_v2.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	// Set same display name
 	Entry_setName(e1, "Tetris");
@@ -303,11 +308,11 @@ void test_markDuplicates_different_filenames(void) {
 }
 
 void test_markDuplicates_same_filename_different_systems(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Tetris.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/NES/Tetris.nes", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	// Set same display name (as would happen after extension stripping)
 	Entry_setName(e1, "Tetris");
@@ -323,12 +328,12 @@ void test_markDuplicates_same_filename_different_systems(void) {
 }
 
 void test_markDuplicates_same_filename_uses_emu(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	// Same filename in different system folders (cross-platform ROM)
 	Entry* e1 = Entry_new(TEST_ROM_PATH("GB", "Tetris.zip"), ENTRY_ROM);
 	Entry* e2 = Entry_new(TEST_ROM_PATH("NES", "Tetris.zip"), ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	Entry_setName(e1, "Tetris");
 	Entry_setName(e2, "Tetris");
@@ -343,13 +348,13 @@ void test_markDuplicates_same_filename_uses_emu(void) {
 }
 
 void test_markDuplicates_three_way(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GBC/game.gbc", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GBA/game.gba", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
 	Entry_setName(e1, "Game");
 	Entry_setName(e2, "Game");
@@ -372,9 +377,9 @@ void test_markDuplicates_null_entries(void) {
 }
 
 void test_markDuplicates_single_entry(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
-	Array_push(entries, e);
+	arrpush(entries, e);
 
 	DirectoryIndex_markDuplicates(entries);
 
@@ -384,12 +389,12 @@ void test_markDuplicates_single_entry(void) {
 }
 
 void test_markDuplicates_empty_array(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 
 	// Should not crash
 	DirectoryIndex_markDuplicates(entries);
 
-	Array_free(entries);
+	arrfree(entries);
 }
 
 ///////////////////////////////
@@ -397,13 +402,13 @@ void test_markDuplicates_empty_array(void) {
 ///////////////////////////////
 
 void test_buildAlphaIndex_single_letter(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Aardvark.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Apple.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Aztec.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
 	IntArray* alphas = IntArray_new();
 	DirectoryIndex_buildAlphaIndex(entries, alphas);
@@ -422,13 +427,13 @@ void test_buildAlphaIndex_single_letter(void) {
 }
 
 void test_buildAlphaIndex_multiple_letters(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Apple.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Banana.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Cherry.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
 	IntArray* alphas = IntArray_new();
 	DirectoryIndex_buildAlphaIndex(entries, alphas);
@@ -449,11 +454,11 @@ void test_buildAlphaIndex_multiple_letters(void) {
 }
 
 void test_buildAlphaIndex_with_numbers(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/123 Game.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Apple.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	IntArray* alphas = IntArray_new();
 	DirectoryIndex_buildAlphaIndex(entries, alphas);
@@ -471,17 +476,17 @@ void test_buildAlphaIndex_with_numbers(void) {
 }
 
 void test_buildAlphaIndex_mixed_letters(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/Apple.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/Apricot.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/Banana.gb", ENTRY_ROM);
 	Entry* e4 = Entry_new("/Roms/GB/Blueberry.gb", ENTRY_ROM);
 	Entry* e5 = Entry_new("/Roms/GB/Cantaloupe.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
-	Array_push(entries, e4);
-	Array_push(entries, e5);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
+	arrpush(entries, e4);
+	arrpush(entries, e5);
 
 	IntArray* alphas = IntArray_new();
 	DirectoryIndex_buildAlphaIndex(entries, alphas);
@@ -517,9 +522,9 @@ void test_buildAlphaIndex_null_entries(void) {
 }
 
 void test_buildAlphaIndex_null_alphas(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
-	Array_push(entries, e);
+	arrpush(entries, e);
 
 	// Should not crash
 	DirectoryIndex_buildAlphaIndex(entries, NULL);
@@ -528,7 +533,7 @@ void test_buildAlphaIndex_null_alphas(void) {
 }
 
 void test_buildAlphaIndex_empty_entries(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	IntArray* alphas = IntArray_new();
 
 	DirectoryIndex_buildAlphaIndex(entries, alphas);
@@ -536,7 +541,7 @@ void test_buildAlphaIndex_empty_entries(void) {
 	TEST_ASSERT_EQUAL(0, alphas->count);
 
 	IntArray_free(alphas);
-	Array_free(entries);
+	arrfree(entries);
 }
 
 ///////////////////////////////
@@ -544,51 +549,52 @@ void test_buildAlphaIndex_empty_entries(void) {
 ///////////////////////////////
 
 void test_index_full_workflow(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/zelda.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/mario.gb", ENTRY_ROM);
 	Entry* e3 = Entry_new("/Roms/GB/hidden.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
-	Array_push(entries, e3);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
+	arrpush(entries, e3);
 
 	// Create map with alias and hidden entry
-	StringMap* map = StringMap_new();
-	StringMap_set(map, "zelda.gb", "The Legend of Zelda");
-	StringMap_set(map, "hidden.gb", ".hidden");
+	MapEntry* map = NULL;
+	sh_new_strdup(map);
+	shput(map, "zelda.gb", strdup("The Legend of Zelda"));
+	shput(map, "hidden.gb", strdup(".hidden"));
 
 	IntArray* alphas = IntArray_new();
 
-	Array* result = DirectoryIndex_index(entries, alphas, map, 0);
+	Entry** result = DirectoryIndex_index(entries, alphas, map, 0);
 
 	// Should have 2 entries (hidden removed)
-	TEST_ASSERT_EQUAL(2, result->count);
+	TEST_ASSERT_EQUAL(2, arrlen(result));
 
 	// Should be sorted: "Legend of Zelda" (sort_key) < "mario"
 	// "The Legend of Zelda" sorts under L, before M
-	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", ((Entry*)result->items[0])->name);
-	TEST_ASSERT_EQUAL_STRING("mario", ((Entry*)result->items[1])->name);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", result[0]->name);
+	TEST_ASSERT_EQUAL_STRING("mario", result[1]->name);
 
 	// Alpha index should have 2 groups (L and M)
 	TEST_ASSERT_EQUAL(2, alphas->count);
 
-	StringMap_free(map);
+	Map_free(map);
 	IntArray_free(alphas);
 	EntryArray_free(result);
 }
 
 void test_index_no_map(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/apple.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/banana.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	IntArray* alphas = IntArray_new();
 
-	Array* result = DirectoryIndex_index(entries, alphas, NULL, 0);
+	Entry** result = DirectoryIndex_index(entries, alphas, NULL, 0);
 
-	TEST_ASSERT_EQUAL(2, result->count);
+	TEST_ASSERT_EQUAL(2, arrlen(result));
 	TEST_ASSERT_EQUAL(2, alphas->count);
 
 	IntArray_free(alphas);
@@ -596,17 +602,17 @@ void test_index_no_map(void) {
 }
 
 void test_index_skip_alpha(void) {
-	Array* entries = Array_new();
+	Entry** entries = NULL;
 	Entry* e1 = Entry_new("/Roms/GB/apple.gb", ENTRY_ROM);
 	Entry* e2 = Entry_new("/Roms/GB/banana.gb", ENTRY_ROM);
-	Array_push(entries, e1);
-	Array_push(entries, e2);
+	arrpush(entries, e1);
+	arrpush(entries, e2);
 
 	IntArray* alphas = IntArray_new();
 
-	Array* result = DirectoryIndex_index(entries, alphas, NULL, 1);
+	Entry** result = DirectoryIndex_index(entries, alphas, NULL, 1);
 
-	TEST_ASSERT_EQUAL(2, result->count);
+	TEST_ASSERT_EQUAL(2, arrlen(result));
 	// Alpha index should not be built
 	TEST_ASSERT_EQUAL(0, alphas->count);
 

@@ -510,9 +510,8 @@ void test_closeDirectory_ctx_empty_stack_does_nothing(void) {
 	LauncherCallbacks callbacks = {0};
 	LauncherContext* ctx = create_mock_context(&callbacks);
 
-	// Set up empty stack
-	static Array empty_stack;
-	empty_stack.count = 0;
+	// Set up empty stack (stb_ds NULL array)
+	Directory** empty_stack = NULL;
 	ctx->stack = &empty_stack;
 
 	// Should not crash with empty stack

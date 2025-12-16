@@ -25,7 +25,6 @@
 #ifndef LAUNCHER_CONTEXT_H
 #define LAUNCHER_CONTEXT_H
 
-#include "collections.h"
 #include "launcher_entry.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -68,7 +67,7 @@ typedef Directory* (*LauncherDirectoryNewFunc)(char* path, int selected);
  * File operation callbacks (allows mocking in tests)
  * Note: Signatures match actual functions in utils.h
  */
-typedef int (*LauncherExistsFunc)(char* path);
+typedef int (*LauncherExistsFunc)(const char* path);
 typedef void (*LauncherPutFileFunc)(const char* path, const char* content);
 typedef void (*LauncherGetFileFunc)(const char* path, char* buffer, size_t size);
 typedef void (*LauncherPutIntFunc)(const char* path, int value);
@@ -148,8 +147,8 @@ typedef struct LauncherContext {
 	// Navigation state
 	//----------------------------------
 	Directory** top; // Current directory being viewed
-	Array** stack; // Stack of open Directory* (use DirectoryArray_* functions)
-	Array** recents; // Array of Recent* (use RecentArray_* functions)
+	Directory*** stack; // Pointer to Directory** stack (stb_ds dynamic array)
+	Recent*** recents; // Pointer to Recent** recents (stb_ds dynamic array)
 
 	//----------------------------------
 	// Runtime flags
@@ -224,11 +223,11 @@ static inline Directory* ctx_getTop(LauncherContext* ctx) {
 	return (ctx && ctx->top) ? *ctx->top : NULL;
 }
 
-static inline Array* ctx_getStack(LauncherContext* ctx) {
+static inline Directory** ctx_getStack(LauncherContext* ctx) {
 	return (ctx && ctx->stack) ? *ctx->stack : NULL;
 }
 
-static inline Array* ctx_getRecents(LauncherContext* ctx) {
+static inline Recent** ctx_getRecents(LauncherContext* ctx) {
 	return (ctx && ctx->recents) ? *ctx->recents : NULL;
 }
 

@@ -21,7 +21,7 @@ LessUI uses a **platform abstraction layer** to support 15+ different handheld d
 ```
 workspace/
 ├── all/                    # Platform-independent code (the core)
-│   ├── common/            # Shared utilities (utils.c, api.c, collections.c)
+│   ├── common/            # Shared utilities (utils.c, api.c, stb_ds_impl.c)
 │   ├── launcher/             # Launcher + modules (launcher.c, launcher_*.c)
 │   ├── player/           # Emulator frontend + modules (player.c, player_*.c)
 │   ├── clock/             # Clock app
@@ -557,7 +557,6 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | pad.c                          | 36    | api.c               | Button state machine, analog input                                |
 | launcher_launcher.c            | 32    | launcher.c          | Shell command construction, quote escaping                        |
 | gfx_text.c                     | 32    | api.c               | Text truncation, wrapping, sizing                                 |
-| collections.c                  | 30    | launcher.c          | Array, Hash data structures                                       |
 | str_compare.c                  | 28    | (original)          | Natural string sorting                                            |
 | launcher_state.c               | 27    | launcher.c          | Path decomposition, collation, resume                             |
 | launcher_entry.c               | 25    | launcher.c          | Entry type, array operations, IntArray                            |

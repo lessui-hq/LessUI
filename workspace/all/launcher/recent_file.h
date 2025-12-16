@@ -13,6 +13,8 @@
 #ifndef __RECENT_FILE_H__
 #define __RECENT_FILE_H__
 
+#include "stb_ds.h"
+
 /**
  * Recent game entry (for file I/O)
  */
@@ -106,19 +108,17 @@ void Recent_free(Recent* self);
 /**
  * Finds a recent by path in a recent array.
  *
- * @param self Array of Recent pointers (as void**)
- * @param count Array size
+ * @param self Recent** dynamic array (stb_ds)
  * @param str Path to search for (relative to SDCARD_PATH)
  * @return Index of matching recent, or -1 if not found
  */
-int RecentArray_indexOf(void** self, int count, char* str);
+int RecentArray_indexOf(Recent** self, char* str);
 
 /**
  * Frees a recent array and all recents it contains.
  *
- * @param self Array of Recent pointers (as void**)
- * @param count Array size
+ * @param self Recent** dynamic array (stb_ds)
  */
-void RecentArray_free(void** self, int count);
+void RecentArray_free(Recent** self);
 
 #endif // __RECENT_FILE_H__

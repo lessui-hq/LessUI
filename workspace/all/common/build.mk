@@ -64,14 +64,14 @@ PLATFORM_DIR ?= $(PLATFORM_DEPTH)$(PLATFORM)/platform
 ###########################################################
 # Paths and sources
 
-INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ $(EXTRA_INCDIR)
+INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
 
 COMMON_SOURCE = \
 	$(COMMON_DIR)/utils.c \
 	$(COMMON_DIR)/nointro_parser.c \
 	$(COMMON_DIR)/api.c \
 	$(COMMON_DIR)/log.c \
-	$(COMMON_DIR)/collections.c \
+	$(COMMON_DIR)/stb_ds_impl.c \
 	$(COMMON_DIR)/pad.c \
 	$(COMMON_DIR)/gfx_text.c \
 	$(COMMON_DIR)/scaler.c \

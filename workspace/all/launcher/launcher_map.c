@@ -8,13 +8,26 @@
 #include "utils.h"
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /**
- * Loads a map.txt file into a StringMap.
+ * Frees a MapEntry hash map (values and map itself).
  */
-StringMap* Map_load(const char* map_path) {
-	if (!exists((char*)map_path))
+void Map_free(MapEntry* map) {
+	if (!map)
+		return;
+	for (ptrdiff_t i = 0; i < shlen(map); i++) {
+		free(map[i].value);
+	}
+	shfree(map);
+}
+
+/**
+ * Loads a map.txt file into a stb_ds hash map.
+ */
+MapEntry* Map_load(const char* map_path) {
+	if (!exists(map_path))
 		return NULL;
 
 	FILE* file = fopen(map_path, "r");
@@ -23,11 +36,8 @@ StringMap* Map_load(const char* map_path) {
 		return NULL;
 	}
 
-	StringMap* map = StringMap_new();
-	if (!map) {
-		(void)fclose(file); // Map file opened for reading
-		return NULL;
-	}
+	MapEntry* map = NULL;
+	sh_new_strdup(map); // Enable key copying
 
 	char line[256];
 	while (fgets(line, 256, file) != NULL) {
@@ -42,20 +52,29 @@ StringMap* Map_load(const char* map_path) {
 			tmp[0] = '\0';
 			char* key = line;
 			char* value = tmp + 1;
-			StringMap_set(map, key, value);
+			// Check if key already exists (update value)
+			ptrdiff_t idx = shgeti(map, key);
+			if (idx >= 0) {
+				char* value_copy = strdup(value);
+				if (value_copy) {
+					free(map[idx].value);
+					map[idx].value = value_copy;
+				}
+			} else {
+				char* value_copy = strdup(value);
+				if (value_copy) {
+					shput(map, key, value_copy);
+				}
+			}
 		}
 	}
-	(void)fclose(file); // Map file opened for reading
+	(void)fclose(file);
 
 	return map;
 }
 
 /**
  * Finds the pak map.txt path for a given emulator name.
- *
- * @param emu_name Emulator name (e.g., "MAME")
- * @param pak_map_path Output buffer (min 512 bytes)
- * @return 1 if found, 0 otherwise
  */
 static int getPakMapPathForEmu(const char* emu_name, char* pak_map_path) {
 	char relative_path[512];
@@ -65,14 +84,6 @@ static int getPakMapPathForEmu(const char* emu_name, char* pak_map_path) {
 
 /**
  * Finds the map.txt path in the associated pak for a ROM.
- *
- * Uses the new generic system file finder to check:
- * 1. Platform-specific: /.system/{platform}/paks/Emus/{emu}.pak/map.txt
- * 2. Shared common:     /.system/common/paks/Emus/{emu}.pak/map.txt
- *
- * @param rom_path Full path to ROM file
- * @param pak_map_path Output buffer for pak's map.txt path (min 256 bytes)
- * @return 1 if pak map.txt exists, 0 otherwise
  */
 static int getPakMapPath(const char* rom_path, char* pak_map_path) {
 	char emu_name[256];
@@ -83,7 +94,7 @@ static int getPakMapPath(const char* rom_path, char* pak_map_path) {
 /**
  * Loads merged maps for a ROM directory (pak-bundled + user overrides).
  */
-StringMap* Map_loadForDirectory(const char* dir_path) {
+MapEntry* Map_loadForDirectory(const char* dir_path) {
 	char user_map_path[512];
 	char pak_map_path[512];
 	char emu_name[256];
@@ -108,7 +119,7 @@ StringMap* Map_loadForDirectory(const char* dir_path) {
 		return Map_load(user_map_path);
 
 	// Both exist - load pak first, then apply user overrides
-	StringMap* merged = Map_load(pak_map_path);
+	MapEntry* merged = Map_load(pak_map_path);
 	if (!merged) {
 		// Pak load failed, try user map
 		return Map_load(user_map_path);
@@ -126,10 +137,25 @@ StringMap* Map_loadForDirectory(const char* dir_path) {
 			char* tmp = strchr(line, '\t');
 			if (tmp) {
 				tmp[0] = '\0';
-				StringMap_set(merged, line, tmp + 1); // User entry overrides
+				char* key = line;
+				char* value = tmp + 1;
+				// Update or insert
+				ptrdiff_t idx = shgeti(merged, key);
+				if (idx >= 0) {
+					char* value_copy = strdup(value);
+					if (value_copy) {
+						free(merged[idx].value);
+						merged[idx].value = value_copy;
+					}
+				} else {
+					char* value_copy = strdup(value);
+					if (value_copy) {
+						shput(merged, key, value_copy);
+					}
+				}
 			}
 		}
-		(void)fclose(file); // User map file opened for reading
+		(void)fclose(file);
 	}
 
 	return merged;
@@ -137,12 +163,11 @@ StringMap* Map_loadForDirectory(const char* dir_path) {
 
 /**
  * Looks up the display alias for a ROM file from map.txt.
- *
- * Searches for map.txt in two locations with precedence:
- * 1. ROM directory (user's custom map) - highest priority
- * 2. Pak directory (pak-bundled map) - fallback
  */
-char* Map_getAlias(char* path, char* alias) {
+char* Map_getAlias(const char* path, char* alias) {
+	if (!path || !alias)
+		return alias;
+
 	char* tmp;
 	char user_map_path[256];
 	char pak_map_path[256];
@@ -162,26 +187,26 @@ char* Map_getAlias(char* path, char* alias) {
 	}
 
 	// Try user map first (highest priority)
-	StringMap* user_map = Map_load(user_map_path);
+	MapEntry* user_map = Map_load(user_map_path);
 	if (user_map) {
-		char* found = StringMap_get(user_map, file_name);
+		char* found = shget(user_map, file_name);
 		if (found) {
 			safe_strcpy(alias, found, MAX_PATH);
-			StringMap_free(user_map);
+			Map_free(user_map);
 			return alias;
 		}
-		StringMap_free(user_map);
+		Map_free(user_map);
 	}
 
 	// Fall back to pak-bundled map
 	if (getPakMapPath(path, pak_map_path)) {
-		StringMap* pak_map = Map_load(pak_map_path);
+		MapEntry* pak_map = Map_load(pak_map_path);
 		if (pak_map) {
-			char* found = StringMap_get(pak_map, file_name);
+			char* found = shget(pak_map, file_name);
 			if (found) {
 				safe_strcpy(alias, found, MAX_PATH);
 			}
-			StringMap_free(pak_map);
+			Map_free(pak_map);
 		}
 	}
 

@@ -8,7 +8,7 @@
 #ifndef LAUNCHER_ENTRY_H
 #define LAUNCHER_ENTRY_H
 
-#include "collections.h"
+#include "stb_ds.h"
 
 /**
  * Type of entry in the file browser.
@@ -51,10 +51,10 @@ Entry* Entry_new(const char* path, int type);
 void Entry_free(Entry* self);
 int Entry_setName(Entry* self, const char* name);
 
-// EntryArray functions (operate on Array of Entry*)
-int EntryArray_indexOf(Array* self, const char* path);
-void EntryArray_sort(Array* self);
-void EntryArray_free(Array* self);
+// EntryArray functions (operate on Entry** dynamic arrays via stb_ds)
+int EntryArray_indexOf(Entry** self, const char* path);
+void EntryArray_sort(Entry** self);
+void EntryArray_free(Entry** self);
 
 // IntArray functions
 IntArray* IntArray_new(void);

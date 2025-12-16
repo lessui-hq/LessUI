@@ -26,7 +26,7 @@
 bool PlayerArchive_isArchive(const char* path) {
 	if (!path)
 		return false;
-	return suffixMatch(".zip", (char*)path) || suffixMatch(".7z", (char*)path);
+	return suffixMatch(".zip", path) || suffixMatch(".7z", path);
 }
 
 /**
