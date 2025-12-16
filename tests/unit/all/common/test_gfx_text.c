@@ -9,8 +9,8 @@
  * - GFX_wrapText() - Multi-line text wrapping
  */
 
-#include "../../../support/unity/unity.h"
-#include "../../../support/fff/fff.h"
+#include "unity.h"
+#include "fff.h"
 #include "../../../support/sdl_stubs.h"
 #include "../../../support/sdl_fakes.h"
 #include "../../../../workspace/all/common/gfx_text.h"

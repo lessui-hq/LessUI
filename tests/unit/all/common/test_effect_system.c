@@ -19,7 +19,7 @@
  * - EFFECT_getPatternPath - Path generation
  */
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>

@@ -17,7 +17,7 @@
 
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/collections.h"
 #include <string.h>
 

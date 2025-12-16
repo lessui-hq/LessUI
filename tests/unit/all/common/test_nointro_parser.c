@@ -7,7 +7,7 @@
 
 #include "../../../../workspace/all/common/nointro_parser.h"
 #include "../../../../workspace/all/common/utils.h"
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 
 void setUp(void) {
 }

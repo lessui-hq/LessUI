@@ -461,7 +461,7 @@ See `.clang-format` for complete style definition.
 
 2. **Build in Docker** - Don't try to compile ARM binaries directly on macOS/Linux host. Use `make PLATFORM=<platform> shell`.
 
-3. **Test directory structure** - Tests must mirror source structure for consistency. Create `tests/unit/all/common/test_foo.c` for `workspace/all/common/foo.c`.
+3. **Test directory structure** - Tests must mirror source structure for consistency. Create `tests/unit/all/common/test_foo.c` for `workspace/all/common/foo.c`, `tests/unit/all/launcher/test_bar.c` for `workspace/all/launcher/bar.c`, etc.
 
 4. **libretro-common is third-party** - Don't modify files in `workspace/all/player/libretro-common/`. This is upstream code.
 
@@ -518,7 +518,7 @@ See `.clang-format` for complete style definition.
 | Launcher pak templates        | `workspace/all/paks/Launcher/`                 |
 | Emulator pak generation       | `scripts/generate-paks.sh`                     |
 | Launcher pak generation       | `scripts/generate-launcher-pak.sh`             |
-| Test suite                    | `tests/unit/all/common/`                       |
+| Test suite                    | `tests/unit/all/{common,launcher,player}/`     |
 | Refactoring guide             | `docs/player-refactoring.md`                   |
 | Build orchestration           | `Makefile` (host-side)                         |
 | QA tools                      | `makefile.qa`                                  |
@@ -532,7 +532,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 1408 tests across 45 test suites** ✅
+**Total: 1470 tests across 47 test suites** ✅
 
 ### Extracted and Tested Modules
 

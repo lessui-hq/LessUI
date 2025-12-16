@@ -22,7 +22,7 @@
 #include "launcher_file_utils.h"
 #include "recent_file.h"
 #include "../support/platform.h"
-#include "../support/unity/unity.h"
+#include "unity.h"
 #include "integration_support.h"
 
 // Test directory (created in setUp, removed in tearDown)

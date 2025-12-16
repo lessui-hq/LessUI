@@ -24,7 +24,7 @@
 #ifndef SDL_FAKES_H
 #define SDL_FAKES_H
 
-#include "fff/fff.h"
+#include "fff.h"
 #include "sdl_stubs.h"
 
 ///////////////////////////////

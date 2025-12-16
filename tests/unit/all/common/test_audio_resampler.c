@@ -13,7 +13,7 @@
  * - Buffer wrapping behavior
  */
 
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/audio_resampler.h"
 
 #include <math.h>

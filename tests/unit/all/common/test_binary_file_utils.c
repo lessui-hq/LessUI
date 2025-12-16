@@ -5,7 +5,7 @@
  * Demonstrates binary data handling patterns used in player.c (SRAM, RTC, save states).
  */
 
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/binary_file_utils.h"
 
 #include <string.h>

@@ -6,7 +6,7 @@
  */
 
 #include "launcher_emu_cache.h"
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

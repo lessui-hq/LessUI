@@ -2,12 +2,12 @@
 
 This directory contains the test suite for LessUI, organized to mirror the source code structure.
 
-**Current Status: 1408 tests, all passing** ✅
+**Current Status: 1470 tests, all passing** ✅
 
 ## Quick Start
 
 ```bash
-make test   # Run all 1408 tests in Docker (recommended)
+make test   # Run all 1470 tests in Docker (recommended)
 ```
 
 Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across development environments and catches platform-specific issues.
@@ -33,41 +33,47 @@ Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across d
 tests/
 ├── unit/                           # Unit tests (mirror workspace/ structure)
 │   └── all/
-│       └── common/
-│           ├── test_utils.c              # Utils (string, file, name, date, math) - 100 tests
-│           ├── test_api_pad.c            # Input state machine - 21 tests
-│           ├── test_collections.c        # Array/Hash data structures - 30 tests
-│           ├── test_gfx_text.c           # Text truncation/wrapping - 32 tests
-│           ├── test_audio_resampler.c    # Audio resampling - 18 tests
-│           ├── test_player_paths.c      # Save file paths - 16 tests
-│           ├── test_launcher_utils.c        # Launcher helpers - 17 tests
-│           ├── test_m3u_parser.c         # M3U parsing - 20 tests
-│           ├── test_launcher_file_utils.c   # File/dir checking - 25 tests
-│           ├── test_map_parser.c         # map.txt aliasing - 22 tests
-│           ├── test_collection_parser.c  # Collection lists - 11 tests
-│           ├── test_recent_file.c        # Recent games parsing - 13 tests
-│           ├── test_recent_writer.c      # Recent games writing - 5 tests
-│           ├── test_directory_utils.c    # Directory ops (→ launcher_file_utils) - 7 tests
-│           ├── test_binary_file_utils.c  # Binary file I/O - 12 tests
-│           ├── test_effect_system.c      # Visual effect state - 43 tests
-│           ├── test_player_utils.c      # Player utilities - 41 tests
-│           ├── test_player_config.c     # Config path generation - 19 tests
-│           ├── test_player_options.c    # Option management - 36 tests
-│           ├── test_platform_variant.c   # Platform detection - 14 tests
-│           ├── test_launcher_entry.c        # Entry type, sorting - 25 tests
-│           └── test_directory_index.c    # Directory indexing - 38 tests
+│       ├── common/                 # Tests for workspace/all/common/
+│       │   ├── test_utils.c              # Utils (string, file, name, date, math)
+│       │   ├── test_api_pad.c            # Input state machine
+│       │   ├── test_collections.c        # Array/Hash data structures
+│       │   ├── test_gfx_text.c           # Text truncation/wrapping
+│       │   ├── test_audio_resampler.c    # Audio resampling
+│       │   ├── test_binary_file_utils.c  # Binary file I/O
+│       │   ├── test_effect_system.c      # Visual effect state
+│       │   ├── test_platform_variant.c   # Platform detection
+│       │   └── ...                       # Other common module tests
+│       ├── launcher/               # Tests for workspace/all/launcher/
+│       │   ├── test_launcher_utils.c     # Launcher helpers
+│       │   ├── test_launcher_entry.c     # Entry type, sorting
+│       │   ├── test_launcher_state.c     # State persistence
+│       │   ├── test_m3u_parser.c         # M3U parsing
+│       │   ├── test_map_parser.c         # map.txt aliasing
+│       │   ├── test_collection_parser.c  # Collection lists
+│       │   ├── test_recent_*.c           # Recent games (read/write/runtime)
+│       │   ├── test_directory_index.c    # Directory indexing
+│       │   └── ...                       # Other launcher module tests
+│       └── player/                 # Tests for workspace/all/player/
+│           ├── test_player_paths.c       # Save file paths
+│           ├── test_player_utils.c       # Player utilities
+│           ├── test_player_config.c      # Config path generation
+│           ├── test_player_options.c     # Option management
+│           ├── test_player_cpu.c         # CPU scaling algorithm
+│           ├── test_player_menu.c        # Menu system
+│           ├── test_player_env.c         # Environment callbacks
+│           └── ...                       # Other player module tests
 ├── integration/                    # Integration tests (end-to-end tests)
 ├── fixtures/                       # Test data, sample ROMs, configs
-├── support/                        # Test infrastructure
+├── vendor/                         # Third-party test libraries
 │   ├── unity/                      # Unity test framework
-│   ├── fff/                        # Fake Function Framework (SDL mocking)
-│   │   └── fff.h                   # Header-only mocking library
+│   └── fff/                        # Fake Function Framework (SDL mocking)
+│       └── fff.h                   # Header-only mocking library
+├── support/                        # Test infrastructure
 │   ├── platform.h                  # Platform stubs for testing
 │   ├── sdl_stubs.h                 # Minimal SDL type definitions
 │   ├── sdl_fakes.h/c               # SDL function mocks (fff-based)
 │   ├── platform_mocks.h/c          # Platform function mocks
 │   └── fs_mocks.h/c                # File system mocks (--wrap-based)
-├── Dockerfile                      # Test environment (Ubuntu 24.04)
 └── README.md                       # This file
 ```
 
@@ -183,7 +189,7 @@ touch tests/unit/all/launcher/test_launcher.c
 
 ```c
 #include "../../../../workspace/all/launcher/launcher.h"
-#include "../../../support/unity/unity.h"
+#include "unity.h"  // Via -I tests/vendor/unity include path
 
 void setUp(void) {
     // Run before each test
@@ -224,7 +230,7 @@ TEST_ASSERT_NOT_NULL(pointer)
 TEST_ASSERT_NULL(pointer)
 ```
 
-See `support/unity/unity.h` for full list.
+See `vendor/unity/unity.h` for full list.
 
 ## SDL Function Mocking
 
@@ -233,14 +239,16 @@ LessUI uses SDL extensively for graphics, input, and audio. Testing SDL-dependen
 ### Infrastructure Overview
 
 ```
-tests/support/
-├── fff/
-│   └── fff.h              # Fake Function Framework (MIT licensed)
-├── sdl_stubs.h            # Minimal SDL type definitions
-├── sdl_fakes.h            # fff-based SDL function fakes (declarations)
-├── sdl_fakes.c            # fff-based SDL function fakes (definitions)
-├── platform_mocks.h       # Mock PLAT_* interface
-└── platform_mocks.c       # Mock PLAT_* implementations
+tests/
+├── vendor/
+│   └── fff/
+│       └── fff.h          # Fake Function Framework (MIT licensed)
+└── support/
+    ├── sdl_stubs.h        # Minimal SDL type definitions
+    ├── sdl_fakes.h        # fff-based SDL function fakes (declarations)
+    ├── sdl_fakes.c        # fff-based SDL function fakes (definitions)
+    ├── platform_mocks.h   # Mock PLAT_* interface
+    └── platform_mocks.c   # Mock PLAT_* implementations
 ```
 
 ### What is fff?
@@ -257,10 +265,10 @@ The **Fake Function Framework** is a header-only C mocking library that generate
 #### Example: Mocking SDL_PollEvent
 
 ```c
-#include "../../../support/unity/unity.h"
-#include "../../../support/fff/fff.h"
-#include "../../../support/sdl_stubs.h"
-#include "../../../support/sdl_fakes.h"
+#include "unity.h"      // Via -I tests/vendor/unity
+#include "fff.h"        // Via -I tests/vendor/fff
+#include "sdl_stubs.h"  // Via -I tests/support
+#include "sdl_fakes.h"
 
 DEFINE_FFF_GLOBALS;
 
@@ -352,7 +360,7 @@ RESET_FAKE(SDL_BlitSurface);
 For mocking platform-specific `PLAT_*` functions, use `platform_mocks.c`:
 
 ```c
-#include "../../../support/platform_mocks.h"
+#include "platform_mocks.h"  // Via -I tests/support
 
 void test_battery_status(void) {
     // Configure mock battery state
@@ -391,7 +399,7 @@ See `tests/unit/all/common/test_gfx_text.c` for a comprehensive demonstration of
 
 For more fff features, see:
 - [fff GitHub](https://github.com/meekrosoft/fff)
-- `tests/support/fff/fff.h` (inline documentation)
+- `tests/vendor/fff/fff.h` (inline documentation)
 - `tests/unit/all/common/test_gfx_text.c` (real-world usage examples)
 
 ## File System Function Mocking
@@ -429,9 +437,9 @@ gcc ... -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fgets
 #### Example: Testing M3U Parser
 
 ```c
-#include "../../../support/unity/unity.h"
-#include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/m3u_parser.h"
+#include "unity.h"      // Via -I tests/vendor/unity
+#include "fs_mocks.h"   // Via -I tests/support
+#include "../../../../workspace/all/launcher/launcher_m3u.h"
 
 void setUp(void) {
     // Reset mock file system before each test
@@ -472,9 +480,9 @@ int mock_fs_exists(const char* path);               // Check if mock file exists
 ### Complete Examples
 
 **Real-world usage:**
-- `tests/unit/all/common/test_m3u_parser.c` - M3U playlist parsing (read-only with mocking)
-- `tests/unit/all/common/test_launcher_file_utils.c` - File existence checking
-- `tests/unit/all/common/test_recent_writer.c` - File writing with real temp files
+- `tests/unit/all/launcher/test_m3u_parser.c` - M3U playlist parsing (read-only with mocking)
+- `tests/unit/all/launcher/test_launcher_file_utils.c` - File existence checking
+- `tests/unit/all/launcher/test_recent_writer.c` - File writing with real temp files
 
 ### Compilation Requirements
 
@@ -589,7 +597,7 @@ void test_getEmuName_with_parens(void) {
 
 ## Test Summary
 
-**Total: 1408 tests across 45 test suites**
+**Total: 1470 tests across 47 test suites**
 
 ### Extracted Modules (Testable Logic)
 
@@ -1028,9 +1036,9 @@ Follow the same pattern as existing integration tests:
 
 ```c
 // 1. Include required modules
-#include "../../workspace/all/common/m3u_parser.h"
-#include "../../workspace/all/common/map_parser.h"
-#include "../support/unity/unity.h"
+#include "../../workspace/all/launcher/launcher_m3u.h"
+#include "../../workspace/all/launcher/launcher_map.h"
+#include "unity.h"  // Via -I tests/vendor/unity
 #include "integration_support.h"
 
 // 2. Use setUp/tearDown for temp directory management
@@ -1108,9 +1116,9 @@ make -f makefile.qa clean-tests test-native
 
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \
-    workspace/all/common/utils/utils.c \
-    tests/support/unity/unity.c \
-    -I tests/support -I tests/support/unity -I workspace/all/common \
+    workspace/all/common/utils.c \
+    tests/vendor/unity/unity.c \
+    -I tests/support -I tests/vendor/unity -I workspace/all/common \
     -std=c99
 
 # Run with gdb
@@ -1123,9 +1131,9 @@ gdb tests/utils_test_debug
 ```bash
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \
-    workspace/all/common/utils/utils.c \
-    tests/support/unity/unity.c \
-    -I tests/support -I tests/support/unity -I workspace/all/common \
+    workspace/all/common/utils.c \
+    tests/vendor/unity/unity.c \
+    -I tests/support -I tests/vendor/unity -I workspace/all/common \
     -std=c99
 
 # macOS
@@ -1157,11 +1165,11 @@ gdb tests/utils_test_debug
 
 - **Unity Framework**: https://github.com/ThrowTheSwitch/Unity
 - **Test Organization Best Practices**: See this README's structure section
-- **C Testing Tutorial**: support/unity/README.md
+- **C Testing Tutorial**: vendor/unity/README.md
 
 ## Questions?
 
 If you're adding tests and need help:
 1. Look at existing tests in `unit/all/common/test_utils.c`
-2. Check Unity documentation in `support/unity/`
+2. Check Unity documentation in `vendor/unity/`
 3. Ask in discussions or open an issue
