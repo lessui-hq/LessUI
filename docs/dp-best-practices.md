@@ -289,7 +289,7 @@ SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){DP(text_x_dp), DP(y_dp), 0, 0});
 
 ### Emulation Rendering vs UI Layout
 
-**Important distinction in minarch.c:**
+**Important distinction in player.c:**
 
 ```c
 // EMULATION RENDERING - Uses pixels directly (core video output)

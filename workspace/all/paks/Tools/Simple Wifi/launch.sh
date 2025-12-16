@@ -20,7 +20,7 @@ done <./wifi.txt
 
 ##############
 
-. /etc/profile # NOTE: this nukes MinUI's PATH modifications
+. /etc/profile # NOTE: this nukes Launcher's PATH modifications
 PATH=/storage/roms/.system/rgb30/bin:$PATH
 
 CUR_NAME=$(get_setting wifi.ssid)

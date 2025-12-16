@@ -91,10 +91,10 @@ workspace/all/paks/
       "arch_binary": true,
       "url_template": "https://github.com/jqlang/jq/releases/download/jq-{{VERSION}}/jq-linux-{{ARCH}}"
     },
-    "minui-presenter": {
+    "launcher-presenter": {
       "version": "0.10.0",
       "platform_binary": true,
-      "url_template": "https://github.com/josegonzalez/minui-presenter/releases/download/{{VERSION}}/minui-presenter-{{PLATFORM}}"
+      "url_template": "https://github.com/josegonzalez/launcher-presenter/releases/download/{{VERSION}}/launcher-presenter-{{PLATFORM}}"
     }
   },
 
@@ -306,14 +306,14 @@ mkdir -p "$BIOS_PATH/$EMU_TAG"
 mkdir -p "$SAVES_PATH/$EMU_TAG"
 HOME="$USERDATA_PATH"
 cd "$HOME"
-{{NICE_PREFIX}}minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM"
+{{NICE_PREFIX}}player.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM"
 ```
 
 ## Platform Handling Patterns
 
 ### Pattern 1: Environment Variables
 
-Scripts can use environment variables set by MinUI:
+Scripts can use environment variables set by Launcher:
 
 - `$PLATFORM` - Platform ID (e.g., "miyoomini", "rg35xxplus")
 - `$DEVICE` - Device variant (e.g., "miyoominiplus", "brick")
@@ -420,12 +420,12 @@ Tool paks are constructed entirely during `make system`, not `make setup`. This 
 
 All high and medium priority tool paks have been successfully migrated:
 
-| Pak          | Type                       | Old Location            | New Location                    | Highlights                                                                                       |
-| ------------ | -------------------------- | ----------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Clock**    | Native                     | `workspace/all/clock/`  | `workspace/all/paks/Clock/src/` | First migration, 11 duplicates eliminated                                                        |
-| **Input**    | Native                     | `workspace/all/minput/` | `workspace/all/paks/Input/src/` | Second native pak, validates pattern                                                             |
-| **Bootlogo** | Hybrid                     | (was duplicated ×7)     | `workspace/all/paks/Bootlogo/`  | Native for miyoomini, shell for others; platform-specific resources; minui-presenter integration |
-| **Files**    | Platform-Specific Binaries | (was duplicated ×10)    | `workspace/all/paks/Files/`     | Multiple file managers (DinguxCommander, 351Files); `bin/<platform>/` pattern                    |
+| Pak          | Type                       | Old Location            | New Location                    | Highlights                                                                                          |
+| ------------ | -------------------------- | ----------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Clock**    | Native                     | `workspace/all/clock/`  | `workspace/all/paks/Clock/src/` | First migration, 11 duplicates eliminated                                                           |
+| **Input**    | Native                     | `workspace/all/minput/` | `workspace/all/paks/Input/src/` | Second native pak, validates pattern                                                                |
+| **Bootlogo** | Hybrid                     | (was duplicated ×7)     | `workspace/all/paks/Bootlogo/`  | Native for miyoomini, shell for others; platform-specific resources; launcher-presenter integration |
+| **Files**    | Platform-Specific Binaries | (was duplicated ×10)    | `workspace/all/paks/Files/`     | Multiple file managers (DinguxCommander, 351Files); `bin/<platform>/` pattern                       |
 
 ### Migration Steps (Template)
 
@@ -533,6 +533,6 @@ cp workspace/all/clock/makefile paks/MyApp.pak/src/makefile
 
 ## References
 
-- Jose Gonzalez's MinUI paks: https://github.com/josegonzalez?tab=repositories&q=minui
+- Jose Gonzalez's Launcher paks: https://github.com/josegonzalez?tab=repositories&q=launcher
 - Emulator pak templates: `workspace/all/paks/Emus/`
 - Pak generation script: `scripts/generate-paks.sh`

@@ -23,7 +23,7 @@ if [ -f $UPDATE_PATH ]; then
 	fi
 
 	# show action
-	dd if=/usr/config/minui/$ACTION.bmp of=/dev/fb0 bs=1 skip=54
+	dd if=/usr/config/launcher/$ACTION.bmp of=/dev/fb0 bs=1 skip=54
 	echo 0,0 >/sys/class/graphics/fb0/pan
 
 	log_info "Starting LessUI $ACTION_NOUN..."
@@ -35,7 +35,7 @@ if [ -f $UPDATE_PATH ]; then
 	run_platform_install "$SYSTEM_PATH/bin/install.sh" "$LOG_FILE"
 fi
 
-LAUNCH_PATH=$SYSTEM_PATH/paks/MinUI.pak/launch.sh
+LAUNCH_PATH=$SYSTEM_PATH/paks/LessUI.pak/launch.sh
 if [ -f $LAUNCH_PATH ]; then
 	$LAUNCH_PATH
 fi

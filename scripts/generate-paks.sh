@@ -2,7 +2,7 @@
 # Generate platform-specific paks from templates
 #
 # This script generates all .pak directories for all platforms from canonical templates.
-# - Emulator paks: skeleton/TEMPLATES/minarch-paks/
+# - Emulator paks: Generated from workspace/all/paks/Emus/
 # - Tool paks: workspace/all/paks/
 #
 # Usage:

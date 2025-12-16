@@ -1,7 +1,7 @@
 /**
  * test_collection_parser.c - Unit tests for collection file parser
  *
- * Tests collection .txt parsing logic extracted from minui.c.
+ * Tests collection .txt parsing logic extracted from launcher.c.
  * Collections are custom ROM lists (one path per line).
  *
  * Test coverage:

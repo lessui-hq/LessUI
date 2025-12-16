@@ -9,8 +9,8 @@
 #   clean   - Remove downloaded cores
 ###########################################################
 
-MINARCH_CORES_VERSION ?= 20251214-2
-CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
+PLAYER_CORES_VERSION ?= 20251214-2
+CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(PLAYER_CORES_VERSION)
 
 # All core management happens in cores/ directory
 CORES_DIR = $(CURDIR)/cores
@@ -36,18 +36,18 @@ setup:
 			rsync -a "$(CORES_DIR)/extracted/override/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		fi; \
 	else \
-		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm32" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm32)" = "$(MINARCH_CORES_VERSION)" ]; then \
-			echo "Using cached remote arm32 cores ($(MINARCH_CORES_VERSION))..."; \
+		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm32" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm32)" = "$(PLAYER_CORES_VERSION)" ]; then \
+			echo "Using cached remote arm32 cores ($(PLAYER_CORES_VERSION))..."; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		else \
-			echo "Downloading remote arm32 cores (ARM32) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote arm32 cores (ARM32) from LessUI-Cores $(PLAYER_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
 			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-arm32.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/arm32"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/arm32"; \
 			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm32" /tmp/lessui-cores-arm32.zip >/dev/null; \
 			rm /tmp/lessui-cores-arm32.zip; \
-			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm32"; \
+			echo "$(PLAYER_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm32"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		fi; \
 	fi; \
@@ -66,18 +66,18 @@ setup:
 			rsync -a "$(CORES_DIR)/extracted/override/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		fi; \
 	else \
-		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm64" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm64)" = "$(MINARCH_CORES_VERSION)" ]; then \
-			echo "Using cached remote arm64 cores ($(MINARCH_CORES_VERSION))..."; \
+		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm64" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm64)" = "$(PLAYER_CORES_VERSION)" ]; then \
+			echo "Using cached remote arm64 cores ($(PLAYER_CORES_VERSION))..."; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		else \
-			echo "Downloading remote arm64 cores (ARM64) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote arm64 cores (ARM64) from LessUI-Cores $(PLAYER_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
 			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-arm64.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/arm64"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/arm64"; \
 			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm64" /tmp/lessui-cores-arm64.zip >/dev/null; \
 			rm /tmp/lessui-cores-arm64.zip; \
-			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm64"; \
+			echo "$(PLAYER_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm64"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		fi; \
 	fi; \

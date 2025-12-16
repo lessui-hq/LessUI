@@ -1,6 +1,6 @@
 #!/bin/sh
 # Wifi.pak - Manage WiFi settings
-# Based on Jose Gonzalez's minui-wifi-pak, adapted for LessUI cross-platform paks
+# Based on Jose Gonzalez's launcher-wifi-pak, adapted for LessUI cross-platform paks
 
 PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR" .pak)"
@@ -263,9 +263,9 @@ wifi_off() {
 # ============================================================================
 
 main_screen() {
-	minui_list_file="/tmp/minui-list"
-	rm -f "$minui_list_file" "/tmp/minui-output"
-	touch "$minui_list_file"
+	launcher_list_file="/tmp/launcher-list"
+	rm -f "$launcher_list_file" "/tmp/launcher-output"
+	touch "$launcher_list_file"
 
 	template_file="$PAK_DIR/res/settings.json"
 
@@ -288,30 +288,30 @@ main_screen() {
 		fi
 	fi
 
-	cp "$template_file" "$minui_list_file"
+	cp "$template_file" "$launcher_list_file"
 
 	if [ "$enabled" = true ]; then
-		sed -i "s/IS_ENABLED/1/" "$minui_list_file"
+		sed -i "s/IS_ENABLED/1/" "$launcher_list_file"
 	else
-		sed -i "s/IS_ENABLED/0/" "$minui_list_file"
+		sed -i "s/IS_ENABLED/0/" "$launcher_list_file"
 	fi
 
 	if [ "$start_on_boot" = true ]; then
-		sed -i "s/IS_START_ON_BOOT/1/" "$minui_list_file"
+		sed -i "s/IS_START_ON_BOOT/1/" "$launcher_list_file"
 	else
-		sed -i "s/IS_START_ON_BOOT/0/" "$minui_list_file"
+		sed -i "s/IS_START_ON_BOOT/0/" "$launcher_list_file"
 	fi
 
-	sed -i "s/NETWORK_SSID/$ssid/" "$minui_list_file"
-	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$minui_list_file"
+	sed -i "s/NETWORK_SSID/$ssid/" "$launcher_list_file"
+	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$launcher_list_file"
 
-	shui list --item-key settings --file "$minui_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/minui-output --write-value state
+	shui list --item-key settings --file "$launcher_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/launcher-output --write-value state
 }
 
 networks_screen() {
-	minui_list_file="/tmp/minui-list"
-	rm -f "$minui_list_file" "/tmp/minui-output"
-	touch "$minui_list_file"
+	launcher_list_file="/tmp/launcher-list"
+	rm -f "$launcher_list_file" "/tmp/launcher-output"
+	touch "$launcher_list_file"
 
 	DELAY=30
 
@@ -319,46 +319,46 @@ networks_screen() {
 		wpa_cli -i wlan0 scan
 		for _ in $(seq 1 "$DELAY"); do
 			shui progress "Scanning for networks..." --indeterminate
-			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$minui_list_file"
-			[ -s "$minui_list_file" ] && break
+			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$launcher_list_file"
+			[ -s "$launcher_list_file" ] && break
 			sleep 1
 		done
 	else
 		for _ in $(seq 1 "$DELAY"); do
 			shui progress "Scanning for networks..." --indeterminate
-			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$minui_list_file"
-			[ -s "$minui_list_file" ] && break
+			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$launcher_list_file"
+			[ -s "$launcher_list_file" ] && break
 			sleep 1
 		done
 	fi
 
-	shui list --file "$minui_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/minui-output
+	shui list --file "$launcher_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/launcher-output
 }
 
 saved_networks_screen() {
-	minui_list_file="/tmp/minui-list"
-	rm -f "$minui_list_file" "/tmp/minui-output"
-	touch "$minui_list_file"
+	launcher_list_file="/tmp/launcher-list"
+	rm -f "$launcher_list_file" "/tmp/launcher-output"
+	touch "$launcher_list_file"
 
 	if [ ! -f "$SDCARD_PATH/wifi.txt" ]; then
 		show_message_wait "No wifi.txt file found"
 		return 1
 	fi
 
-	sed '/^#/d; /^$/d; s/:.*//' "$SDCARD_PATH/wifi.txt" >"$minui_list_file"
+	sed '/^#/d; /^$/d; s/:.*//' "$SDCARD_PATH/wifi.txt" >"$launcher_list_file"
 
-	if [ ! -s "$minui_list_file" ]; then
+	if [ ! -s "$launcher_list_file" ]; then
 		show_message_wait "No saved networks found"
 		return 1
 	fi
 
-	shui list --file "$minui_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/minui-output
+	shui list --file "$launcher_list_file" --format text --title "Saved Networks" --confirm "Forget" --write-location /tmp/launcher-output
 }
 
 password_screen() {
 	SSID="$1"
 
-	rm -f "/tmp/minui-output"
+	rm -f "/tmp/launcher-output"
 	touch "$SDCARD_PATH/wifi.txt"
 
 	initial_password=""
@@ -366,7 +366,7 @@ password_screen() {
 		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | xargs)"
 	fi
 
-	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/minui-output
+	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/launcher-output
 	exit_code=$?
 
 	[ "$exit_code" -eq 2 ] && return 2
@@ -377,7 +377,7 @@ password_screen() {
 		return 1
 	fi
 
-	password="$(cat /tmp/minui-output)"
+	password="$(cat /tmp/launcher-output)"
 	# Allow empty passwords for open networks
 
 	touch "$SDCARD_PATH/wifi.txt"
@@ -412,7 +412,7 @@ forget_network_loop() {
 			break
 		fi
 
-		SSID="$(cat /tmp/minui-output)"
+		SSID="$(cat /tmp/launcher-output)"
 		# Use grep -Fv for literal matching to avoid SSID injection attacks
 		grep -Fv "$SSID:" "$SDCARD_PATH/wifi.txt" >/tmp/wifi.txt.tmp \
 			&& mv /tmp/wifi.txt.tmp "$SDCARD_PATH/wifi.txt"
@@ -465,7 +465,7 @@ network_loop() {
 			break
 		fi
 
-		SSID="$(cat /tmp/minui-output)"
+		SSID="$(cat /tmp/launcher-output)"
 		password_screen "$SSID"
 		exit_code=$?
 
@@ -562,7 +562,7 @@ main() {
 		# Exit on back or menu button
 		[ "$exit_code" -ne 0 ] && break
 
-		output="$(cat /tmp/minui-output)"
+		output="$(cat /tmp/launcher-output)"
 		selected_index="$(echo "$output" | jq -r '.selected')"
 		selection="$(echo "$output" | jq -r ".settings[$selected_index].name")"
 

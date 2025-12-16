@@ -58,7 +58,7 @@ File Server runs a web server ([dufs](https://github.com/sigoden/dufs/)) that le
 
 - Powered by [dufs](https://github.com/sigoden/dufs/) - A lightweight HTTP file server
 - Runs as background service
-- Auto-start via MinUI's auto.sh mechanism
+- Auto-start via Launcher's auto.sh mechanism
 - Supports ARM32 and ARM64 architectures
 
 ## Credits

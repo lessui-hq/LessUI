@@ -1,7 +1,7 @@
 /**
  * desktop/platform/platform.h - Platform definitions for desktop development/testing/CI
  *
- * This is a development platform for testing MinUI on desktop systems (macOS, Linux):
+ * This is a development platform for testing Launcher on desktop systems (macOS, Linux):
  * - 640x480 display (VGA resolution, 2x scaled)
  * - Uses SDL2 for cross-platform compatibility
  * - FAKESD path for local development, /tmp for CI

@@ -6,7 +6,7 @@
  */
 
 #include "../../../support/unity/unity.h"
-#include "minui_file_utils.h"
+#include "launcher_file_utils.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -25,20 +25,20 @@ void tearDown(void) {
 // hasNonHiddenFiles Tests
 ///////////////////////////////
 
-void test_MinUI_hasNonHiddenFiles_empty_directory(void) {
+void test_Launcher_hasNonHiddenFiles_empty_directory(void) {
 	// Create temp directory
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
 	// Empty directory should return 0
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_FALSE(result);
 
 	// Cleanup
 	rmdir(temp_dir);
 }
 
-void test_MinUI_hasNonHiddenFiles_with_visible_file(void) {
+void test_Launcher_hasNonHiddenFiles_with_visible_file(void) {
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
@@ -50,7 +50,7 @@ void test_MinUI_hasNonHiddenFiles_with_visible_file(void) {
 	fclose(f);
 
 	// Should return 1
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_TRUE(result);
 
 	// Cleanup
@@ -58,7 +58,7 @@ void test_MinUI_hasNonHiddenFiles_with_visible_file(void) {
 	rmdir(temp_dir);
 }
 
-void test_MinUI_hasNonHiddenFiles_only_hidden_files(void) {
+void test_Launcher_hasNonHiddenFiles_only_hidden_files(void) {
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
@@ -76,7 +76,7 @@ void test_MinUI_hasNonHiddenFiles_only_hidden_files(void) {
 	fclose(f2);
 
 	// Should return 0 (only hidden files)
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_FALSE(result);
 
 	// Cleanup
@@ -85,7 +85,7 @@ void test_MinUI_hasNonHiddenFiles_only_hidden_files(void) {
 	rmdir(temp_dir);
 }
 
-void test_MinUI_hasNonHiddenFiles_mixed_files(void) {
+void test_Launcher_hasNonHiddenFiles_mixed_files(void) {
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
@@ -103,7 +103,7 @@ void test_MinUI_hasNonHiddenFiles_mixed_files(void) {
 	fclose(f2);
 
 	// Should return 1 (has at least one visible file)
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_TRUE(result);
 
 	// Cleanup
@@ -112,13 +112,13 @@ void test_MinUI_hasNonHiddenFiles_mixed_files(void) {
 	rmdir(temp_dir);
 }
 
-void test_MinUI_hasNonHiddenFiles_nonexistent_directory(void) {
+void test_Launcher_hasNonHiddenFiles_nonexistent_directory(void) {
 	// Should return 0 for nonexistent directory
-	int result = MinUI_hasNonHiddenFiles("/nonexistent/path/to/dir");
+	int result = Launcher_hasNonHiddenFiles("/nonexistent/path/to/dir");
 	TEST_ASSERT_FALSE(result);
 }
 
-void test_MinUI_hasNonHiddenFiles_with_subdirectories(void) {
+void test_Launcher_hasNonHiddenFiles_with_subdirectories(void) {
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
@@ -128,7 +128,7 @@ void test_MinUI_hasNonHiddenFiles_with_subdirectories(void) {
 	mkdir(subdir, 0755);
 
 	// Should return 1 (subdirectory counts as non-hidden entry)
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_TRUE(result);
 
 	// Cleanup
@@ -136,7 +136,7 @@ void test_MinUI_hasNonHiddenFiles_with_subdirectories(void) {
 	rmdir(temp_dir);
 }
 
-void test_MinUI_hasNonHiddenFiles_with_dotfiles(void) {
+void test_Launcher_hasNonHiddenFiles_with_dotfiles(void) {
 	char temp_dir[] = "/tmp/dirtest_XXXXXX";
 	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
 
@@ -154,7 +154,7 @@ void test_MinUI_hasNonHiddenFiles_with_dotfiles(void) {
 	fclose(f3);
 
 	// Should return 0 (all hidden)
-	int result = MinUI_hasNonHiddenFiles(temp_dir);
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
 	TEST_ASSERT_FALSE(result);
 
 	// Cleanup
@@ -171,13 +171,13 @@ void test_MinUI_hasNonHiddenFiles_with_dotfiles(void) {
 int main(void) {
 	UNITY_BEGIN();
 
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_empty_directory);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_with_visible_file);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_only_hidden_files);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_mixed_files);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_nonexistent_directory);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_with_subdirectories);
-	RUN_TEST(test_MinUI_hasNonHiddenFiles_with_dotfiles);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_empty_directory);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_with_visible_file);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_only_hidden_files);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_mixed_files);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_nonexistent_directory);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_with_subdirectories);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_with_dotfiles);
 
 	return UNITY_END();
 }

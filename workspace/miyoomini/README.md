@@ -149,7 +149,7 @@ LessUI installs to the SD card with the following structure:
 │   ├── miyoomini/          Platform-specific binaries
 │   │   ├── bin/           Utilities (batmon, lumon, overclock, etc.)
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
@@ -172,7 +172,7 @@ LessUI installs to the SD card with the following structure:
    - Display `installing.png` (first install) or `updating.png` (update)
    - Extract `LessUI.7z` to SD card
    - Run `.system/miyoomini/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/miyoomini/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/miyoomini/paks/LessUI.pak/launch.sh`
 5. If launcher exits, reboot (prevents stock firmware from accessing card)
 
 ### Update Process
@@ -265,7 +265,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 

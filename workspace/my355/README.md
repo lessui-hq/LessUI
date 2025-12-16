@@ -192,7 +192,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/            Utilities (keymon, etc.)
 │   │   │   └── install.sh  Post-update installation script
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Scanline overlay effects (various scales)
@@ -233,7 +233,7 @@ After initialization, device boots as follows:
    - Extract archive to SD card root
    - Delete archive
    - Run `.system/my355/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/my355/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/my355/paks/LessUI.pak/launch.sh`
 5. Loop: if launcher exits, relaunch (prevents stock firmware access)
 6. On critical failure: power off device
 
@@ -446,7 +446,7 @@ DinguxCommander-SDL2 based file manager with:
 3. **HDMI Hotplug**: While supported, frequent cable swapping may cause brief visual glitches
 4. **Rotation Overhead**: 270-degree rotation adds minimal overhead but is always active on built-in screen
 5. **Rumble Quality**: Vibration motor feels low quality (subjective)
-6. **HDMI Performance**: Minarch runs at 30fps over HDMI instead of 60fps; UI padding reverts to 640x480 layout after first dirty frame
+6. **HDMI Performance**: Player runs at 30fps over HDMI instead of 60fps; UI padding reverts to 640x480 layout after first dirty frame
 
 ### Development Notes
 1. **Go Dependency**: Build system requires Go compiler for rsce-go tool
@@ -489,7 +489,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Platform implementation: `./platform/platform.c` (advanced features)

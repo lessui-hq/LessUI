@@ -3,7 +3,7 @@
  * Tests natural sorting (human-friendly alphanumeric ordering)
  */
 
-#include "minui_str_compare.h"
+#include "launcher_str_compare.h"
 #include "../../../support/unity/unity.h"
 #include <string.h>
 

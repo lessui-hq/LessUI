@@ -31,10 +31,10 @@ clean:
 ###########################################################
 
 $(REQUIRES_COMMANDER):
-	git clone --depth 1 --branch minui-rgb30 https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
+	git clone --depth 1 --branch launcher-rgb30 https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
 
 $(REQUIRES_SDLCOMPAT):
-	git clone --depth 1 --branch minui-rgb30 https://github.com/shauninman/sdl12-compat.git $(REQUIRES_SDLCOMPAT)
+	git clone --depth 1 --branch launcher-rgb30 https://github.com/shauninman/sdl12-compat.git $(REQUIRES_SDLCOMPAT)
 
 $(REQUIRES_SDLCOMPAT)/build: $(REQUIRES_SDLCOMPAT)
 	cd $(REQUIRES_SDLCOMPAT) && cmake --toolchain ./toolchain.cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .

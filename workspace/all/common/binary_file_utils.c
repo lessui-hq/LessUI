@@ -1,7 +1,7 @@
 /**
  * binary_file_utils.c - Binary file I/O utilities
  *
- * Extracted from minarch.c for testability.
+ * Extracted from player.c for testability.
  */
 
 #include "binary_file_utils.h"

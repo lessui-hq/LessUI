@@ -456,7 +456,7 @@ When testing UI on different platforms, verify:
 | ------------------------------------------ | ------------------------------------------- |
 | `workspace/<platform>/platform/platform.h` | Platform-specific display configuration     |
 | `workspace/all/common/defines.h`           | Default values and scaling macros           |
-| `workspace/all/minui/minui.c`              | Launcher UI rendering (uses PADDING)        |
+| `workspace/all/launcher/launcher.c`        | Launcher UI rendering (uses PADDING)        |
 | `workspace/all/common/api.c`               | Graphics API (GFX\_\* functions)            |
 | `CLAUDE.md`                                | Development guide and architecture overview |
 

@@ -8,7 +8,7 @@ This directory contains the master source files for all LessUI visual assets. Th
 - **`assets.png`** - UI sprite sheet (icons, buttons, UI elements)
   - **Ideal resolution:** 512×512 (square, RGBA)
   - **Current:** 512×512 ✓
-  - Used by minui launcher for all UI rendering
+  - Used by launcher launcher for all UI rendering
 
 ### Boot Screens
 These 4:3 images are displayed during system operations:

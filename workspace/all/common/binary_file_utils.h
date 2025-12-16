@@ -2,7 +2,7 @@
  * binary_file_utils.h - Binary file I/O utilities
  *
  * Simple utilities for reading/writing binary data to files.
- * Extracted from minarch.c for testability and reusability.
+ * Extracted from player.c for testability and reusability.
  */
 
 #ifndef __BINARY_FILE_UTILS_H__

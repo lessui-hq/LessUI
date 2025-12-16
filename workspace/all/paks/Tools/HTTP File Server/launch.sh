@@ -11,7 +11,7 @@ echo "$0" "$@"
 cd "$PAK_DIR" || exit 1
 mkdir -p "$USERDATA_PATH/$PAK_NAME"
 
-# dufs binary is in common/bin/$PLATFORM_ARCH (added to PATH by MinUI.pak)
+# dufs binary is in common/bin/$PLATFORM_ARCH (added to PATH by LessUI.pak)
 # Only need pak's bin dir for service scripts
 export PATH="$PAK_DIR/bin:$PATH"
 

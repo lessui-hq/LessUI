@@ -24,9 +24,9 @@ for pak in "$SOURCE_DIR"/*.pak; do
             echo "  Extracting $pak_name.cfg"
 
             # Replace the first line with template variable
-            # (first line is always the platform-specific minarch setting)
+            # (first line is always the platform-specific player setting)
             tail -n +2 "$config_file" > "$output_file.tmp"
-            echo "{{PLATFORM_MINARCH_SETTING}}" > "$output_file"
+            echo "{{PLATFORM_PLAYER_SETTING}}" > "$output_file"
             if [ -s "$output_file.tmp" ]; then
                 cat "$output_file.tmp" >> "$output_file"
             fi

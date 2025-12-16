@@ -1,6 +1,6 @@
-# Changes from MinUI
+# Changes from Launcher
 
-LessUI is a fork of [MinUI](https://github.com/shauninman/MinUI) by Shaun Inman. This document summarizes the major changes made since forking in October 2025.
+LessUI is a fork of [Launcher](https://github.com/shauninman/Launcher) by Shaun Inman. This document summarizes the major changes made since forking in October 2025.
 
 ## Overview
 
@@ -20,7 +20,7 @@ Since forking, LessUI has seen 412 commits across several major areas:
 
 **Added a comprehensive test suite from scratch.**
 
-MinUI had no automated tests. LessUI now has 1470 tests across 47 test suites covering the core business logic.
+Launcher had no automated tests. LessUI now has 1470 tests across 47 test suites covering the core business logic.
 
 Key additions:
 
@@ -39,47 +39,47 @@ The testing approach focuses on extracting pure logic into testable modules whil
 
 **Extracted monolithic files into focused, testable modules.**
 
-The main files `minarch.c` (peaked at ~7200 lines) and `minui.c` (peaked at ~2900 lines) have been systematically refactored, extracting reusable logic into 50+ focused modules with standardized naming conventions.
+The main files `player.c` (peaked at ~7200 lines) and `launcher.c` (peaked at ~2900 lines) have been systematically refactored, extracting reusable logic into 50+ focused modules with standardized naming conventions.
 
-### MinArch Modules (libretro frontend)
+### Player Modules (libretro frontend)
 
-| Module          | Purpose                                        |
-| --------------- | ---------------------------------------------- |
-| minarch_config  | Config path generation, option mapping         |
-| minarch_options | Option list search and manipulation            |
-| minarch_paths   | Save file path generation                      |
-| minarch_memory  | SRAM/RTC persistence with injectable callbacks |
-| minarch_state   | Save state read/write, auto-resume             |
-| minarch_utils   | Core name extraction, string utilities         |
-| minarch_zip     | ZIP extraction (copy, deflate)                 |
-| minarch_input   | Input state queries, button mapping            |
-| minarch_core    | Core AV info processing, aspect ratio          |
-| minarch_menu    | In-game menu system                            |
-| minarch_env     | Libretro environment callback handlers         |
-| minarch_cpu     | Auto CPU scaling algorithm                     |
-| minarch_game    | ZIP parsing, extension matching, M3U detection |
-| minarch_scaler  | Video scaling geometry calculations            |
-| minarch_archive | 7z/ZIP archive extraction                      |
+| Module         | Purpose                                        |
+| -------------- | ---------------------------------------------- |
+| player_config  | Config path generation, option mapping         |
+| player_options | Option list search and manipulation            |
+| player_paths   | Save file path generation                      |
+| player_memory  | SRAM/RTC persistence with injectable callbacks |
+| player_state   | Save state read/write, auto-resume             |
+| player_utils   | Core name extraction, string utilities         |
+| player_zip     | ZIP extraction (copy, deflate)                 |
+| player_input   | Input state queries, button mapping            |
+| player_core    | Core AV info processing, aspect ratio          |
+| player_menu    | In-game menu system                            |
+| player_env     | Libretro environment callback handlers         |
+| player_cpu     | Auto CPU scaling algorithm                     |
+| player_game    | ZIP parsing, extension matching, M3U detection |
+| player_scaler  | Video scaling geometry calculations            |
+| player_archive | 7z/ZIP archive extraction                      |
 
-### MinUI Modules (launcher)
+### Launcher Modules (launcher)
 
-| Module            | Purpose                                                |
-| ----------------- | ------------------------------------------------------ |
-| minui_entry       | Entry type, array operations, IntArray                 |
-| minui_launcher    | Shell command construction, quote escaping             |
-| minui_state       | Path decomposition, resume handling                    |
-| minui_file_utils  | File/directory checking utilities                      |
-| minui_utils       | Index char, console detection                          |
-| minui_directory   | Console detection, entry scanning, collation           |
-| minui_navigation  | Navigation logic, entry dispatch, auto-launch          |
-| minui_thumbnail   | Thumbnail cache, fade animation, preload hints         |
-| minui_context     | Global state management                                |
-| minui_m3u         | M3U playlist parsing                                   |
-| minui_map         | ROM display name aliasing                              |
-| minui_str_compare | Natural string sorting                                 |
-| directory_index   | Alias application, duplicate detection, alpha indexing |
-| collection_parser | Custom ROM list parsing                                |
-| recent_file       | Recent games I/O and array operations                  |
+| Module               | Purpose                                                |
+| -------------------- | ------------------------------------------------------ |
+| launcher_entry       | Entry type, array operations, IntArray                 |
+| launcher_launcher    | Shell command construction, quote escaping             |
+| launcher_state       | Path decomposition, resume handling                    |
+| launcher_file_utils  | File/directory checking utilities                      |
+| launcher_utils       | Index char, console detection                          |
+| launcher_directory   | Console detection, entry scanning, collation           |
+| launcher_navigation  | Navigation logic, entry dispatch, auto-launch          |
+| launcher_thumbnail   | Thumbnail cache, fade animation, preload hints         |
+| launcher_context     | Global state management                                |
+| launcher_m3u         | M3U playlist parsing                                   |
+| launcher_map         | ROM display name aliasing                              |
+| launcher_str_compare | Natural string sorting                                 |
+| directory_index      | Alias application, duplicate detection, alpha indexing |
+| collection_parser    | Custom ROM list parsing                                |
+| recent_file          | Recent games I/O and array operations                  |
 
 ### Common Modules
 
@@ -97,7 +97,7 @@ The main files `minarch.c` (peaked at ~7200 lines) and `minui.c` (peaked at ~290
 | render_sdl2      | Unified SDL2 rendering backend (8 platforms)            |
 | frame_pacer      | Bresenham-style frame pacing                            |
 
-All modules follow standardized naming: `MinArch[Module]_functionName()` or `MinUI[Module]_functionName()`.
+All modules follow standardized naming: `Player[Module]_functionName()` or `Launcher[Module]_functionName()`.
 
 ### Rendering Refactor
 
@@ -260,7 +260,7 @@ New algorithm calculates optimal rows from screen space:
    - Build-time config merge: base + platform (reduces configs by 95%)
    - Per-core configuration with platform-specific overrides
 
-3. **MinUI System Pak** (`workspace/all/paks/MinUI/`)
+3. **Launcher System Pak** (`workspace/all/paks/Launcher/`)
    - Template system with platform-specific configs and hooks
    - Replaces 11 redundant skeleton files (79-162 lines each)
    - Adding new platform requires only config + hook scripts
@@ -369,7 +369,7 @@ Migrated from cppcheck to clang-tidy:
 - Fixed critical bugs found during migration:
   - Memory leak in api.c (unsafe realloc pattern)
   - Memory leak in collections.c (unsafe realloc pattern)
-  - Uninitialized state_file variables in minarch.c
+  - Uninitialized state_file variables in player.c
   - Null pointer checks before strlen
 
 ### Logging System
@@ -377,7 +377,7 @@ Migrated from cppcheck to clang-tidy:
 - Crash-safe native logging (binaries write directly via `LOG_FILE` env var)
 - Optional `LOG_SYNC=1` for fsync after each write
 - Debug tracing through init sequences
-- Per-component log files (minui.log, shui.log, etc.)
+- Per-component log files (launcher.log, shui.log, etc.)
 
 ### Code Formatting
 
@@ -431,7 +431,7 @@ These enable hardware integer division, NEON SIMD, and hardware floating-point f
 
 ### Upstream Fixes Integrated
 
-Ported bug fixes from MinUI:
+Ported bug fixes from Launcher:
 
 - Miyoo Mini Flip USB audio and lid detection
 - rg35xxplus poweroff fix
@@ -443,10 +443,10 @@ Ported bug fixes from MinUI:
 
 ## Branding
 
-- Renamed from MinUI to LessUI
+- Renamed from Launcher to LessUI
 - New boot assets and UI graphics
 - Font changed to Inter Tight (was BPreplayBold)
 
 ---
 
-_LessUI maintains MinUI's core philosophy of simplicity while improving code quality, adding modern features, and enabling sustainable long-term development through comprehensive testing._
+_LessUI maintains Launcher's core philosophy of simplicity while improving code quality, adding modern features, and enabling sustainable long-term development through comprehensive testing._

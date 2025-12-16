@@ -124,7 +124,7 @@ done
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 export LD_LIBRARY_PATH=/usr/lib/:/lib/
 export HOME=$SDCARD_PATH
-busybox chroot $ROOTFS_MOUNTPOINT $SYSTEM_PATH/paks/MinUI.pak/launch.sh
+busybox chroot $ROOTFS_MOUNTPOINT $SYSTEM_PATH/paks/LessUI.pak/launch.sh
 
 umount $ROOTFS_MOUNTPOINT
 busybox losetup --detach $LOOPDEVICE

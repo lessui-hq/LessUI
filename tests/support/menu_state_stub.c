@@ -1,7 +1,7 @@
 /**
  * menu_state_stub.c - Menu state and testable function implementations
  *
- * Provides MinArchMenuState structure and real implementations of
+ * Provides PlayerMenuState structure and real implementations of
  * testable menu functions (initState, updateState, getAlias).
  *
  * These functions have no SDL dependencies and can be tested directly.
@@ -12,16 +12,16 @@
 #include <string.h>
 
 // Include just the type definitions
-#include "minarch_menu.h"
+#include "player_menu.h"
 
 // Utils functions we depend on (linked from utils.c)
 #include "utils.h"
 
 ///////////////////////////////
-// Menu State (from minarch_menu.c)
+// Menu State (from player_menu.c)
 ///////////////////////////////
 
-static MinArchMenuState menu = {
+static PlayerMenuState menu = {
     .bitmap = NULL,
     .overlay = NULL,
     .items =
@@ -33,7 +33,7 @@ static MinArchMenuState menu = {
             [MENU_ITEM_QUIT] = "Quit",
         },
     .disc_paths = {NULL},
-    .minui_dir = {0},
+    .launcher_dir = {0},
     .slot_path = {0},
     .base_path = {0},
     .bmp_path = {0},
@@ -45,17 +45,17 @@ static MinArchMenuState menu = {
     .preview_exists = 0,
 };
 
-MinArchMenuState* MinArchMenu_getState(void) {
+PlayerMenuState* PlayerMenu_getState(void) {
 	return &menu;
 }
 
 ///////////////////////////////
-// External dependencies from minarch.c
+// External dependencies from player.c
 // Stubbed here for testing
 ///////////////////////////////
 
 // State path generation stub - generates predictable paths for testing
-// The actual implementation is in minarch_state.c but we stub it here
+// The actual implementation is in player_state.c but we stub it here
 // Tests configure this behavior by setting mock_state_slot
 extern struct Game mock_game;
 extern int mock_state_slot;
@@ -67,11 +67,11 @@ void State_getPath(char* filename) {
 
 ///////////////////////////////
 // Real implementations of testable menu functions
-// (extracted from minarch_menu.c, no SDL dependencies)
+// (extracted from player_menu.c, no SDL dependencies)
 ///////////////////////////////
 
-static void Menu_initState_ctx(MinArchContext* ctx) {
-	MinArchMenuState* m = ctx->menu;
+static void Menu_initState_ctx(PlayerContext* ctx) {
+	PlayerMenuState* m = ctx->menu;
 	if (exists(m->slot_path))
 		m->slot = getInt(m->slot_path);
 	if (m->slot == 8)
@@ -81,8 +81,8 @@ static void Menu_initState_ctx(MinArchContext* ctx) {
 	m->preview_exists = 0;
 }
 
-static void Menu_updateState_ctx(MinArchContext* ctx) {
-	MinArchMenuState* m = ctx->menu;
+static void Menu_updateState_ctx(PlayerContext* ctx) {
+	PlayerMenuState* m = ctx->menu;
 	struct Game* g = ctx->game;
 
 	int last_slot = *ctx->state_slot;
@@ -93,8 +93,8 @@ static void Menu_updateState_ctx(MinArchContext* ctx) {
 
 	*ctx->state_slot = last_slot;
 
-	sprintf(m->bmp_path, "%s/%s.%d.bmp", m->minui_dir, g->name, m->slot);
-	sprintf(m->txt_path, "%s/%s.%d.txt", m->minui_dir, g->name, m->slot);
+	sprintf(m->bmp_path, "%s/%s.%d.bmp", m->launcher_dir, g->name, m->slot);
+	sprintf(m->txt_path, "%s/%s.%d.txt", m->launcher_dir, g->name, m->slot);
 
 	m->save_exists = exists(save_path);
 	m->preview_exists = m->save_exists && exists(m->bmp_path);
@@ -144,15 +144,15 @@ static void getAlias(char* path, char* alias) {
 // Public API implementations
 ///////////////////////////////
 
-void MinArchMenu_initState(MinArchContext* ctx) {
+void PlayerMenu_initState(PlayerContext* ctx) {
 	Menu_initState_ctx(ctx);
 }
 
-void MinArchMenu_updateState(MinArchContext* ctx) {
+void PlayerMenu_updateState(PlayerContext* ctx) {
 	Menu_updateState_ctx(ctx);
 }
 
-void MinArchMenu_getAlias(MinArchContext* ctx, char* path, char* alias) {
+void PlayerMenu_getAlias(PlayerContext* ctx, char* path, char* alias) {
 	(void)ctx;
 	getAlias(path, alias);
 }
@@ -162,25 +162,25 @@ void MinArchMenu_getAlias(MinArchContext* ctx, char* path, char* alias) {
 // (required for linking but not tested yet)
 ///////////////////////////////
 
-void MinArchMenu_init(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_quit(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_loop(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_beforeSleep(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_afterSleep(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_saveState(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_loadState(MinArchContext* ctx) { (void)ctx; }
-void MinArchMenu_scale(MinArchContext* ctx, struct SDL_Surface* src, struct SDL_Surface* dst) {
+void PlayerMenu_init(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_quit(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_loop(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_beforeSleep(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_afterSleep(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_saveState(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_loadState(PlayerContext* ctx) { (void)ctx; }
+void PlayerMenu_scale(PlayerContext* ctx, struct SDL_Surface* src, struct SDL_Surface* dst) {
 	(void)ctx;
 	(void)src;
 	(void)dst;
 }
-int MinArchMenu_message(MinArchContext* ctx, char* message, char** pairs) {
+int PlayerMenu_message(PlayerContext* ctx, char* message, char** pairs) {
 	(void)ctx;
 	(void)message;
 	(void)pairs;
 	return 0;
 }
-int MinArchMenu_options(MinArchContext* ctx, MenuList* list) {
+int PlayerMenu_options(PlayerContext* ctx, MenuList* list) {
 	(void)ctx;
 	(void)list;
 	return 0;
@@ -188,10 +188,10 @@ int MinArchMenu_options(MinArchContext* ctx, MenuList* list) {
 
 ///////////////////////////////
 // Navigation functions (testable, pure logic)
-// These are copied from minarch_menu.c for unit testing
+// These are copied from player_menu.c for unit testing
 ///////////////////////////////
 
-void MinArchMenuNav_init(MinArchMenuNavState* state, int count, int max_visible) {
+void PlayerMenuNav_init(PlayerMenuNavState* state, int count, int max_visible) {
 	state->count = count;
 	state->max_visible = max_visible;
 	state->selected = 0;
@@ -203,7 +203,7 @@ void MinArchMenuNav_init(MinArchMenuNavState* state, int count, int max_visible)
 	state->should_exit = 0;
 }
 
-int MinArchMenuNav_navigate(MinArchMenuNavState* state, int direction) {
+int PlayerMenuNav_navigate(PlayerMenuNavState* state, int direction) {
 	if (state->count <= 0)
 		return 0;
 
@@ -240,7 +240,7 @@ int MinArchMenuNav_navigate(MinArchMenuNavState* state, int direction) {
 	return 1;
 }
 
-void MinArchMenuNav_advanceItem(MinArchMenuNavState* state) {
+void PlayerMenuNav_advanceItem(PlayerMenuNavState* state) {
 	state->selected += 1;
 	if (state->selected >= state->count) {
 		// Wrap to top
@@ -254,7 +254,7 @@ void MinArchMenuNav_advanceItem(MinArchMenuNavState* state) {
 	}
 }
 
-int MinArchMenuNav_cycleValue(MenuItem* item, int direction) {
+int PlayerMenuNav_cycleValue(MenuItem* item, int direction) {
 	if (!item->values)
 		return 0;
 
@@ -283,7 +283,7 @@ int MinArchMenuNav_cycleValue(MenuItem* item, int direction) {
 	return 1;
 }
 
-MinArchMenuAction MinArchMenuNav_getAction(MenuList* list, MenuItem* item, int menu_type, int btn_a,
+PlayerMenuAction PlayerMenuNav_getAction(MenuList* list, MenuItem* item, int menu_type, int btn_a,
                                            int btn_b, int btn_x, char** button_labels) {
 	if (btn_b) {
 		return MENU_ACTION_EXIT;

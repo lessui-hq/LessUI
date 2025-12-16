@@ -4,7 +4,7 @@
  * REFACTORED VERSION - Uses shared effect_system for effect state management
  *
  * Provides hardware-specific implementations for the Miyoo Mini family of devices.
- * This is one of the most complex platform implementations in MinUI, featuring:
+ * This is one of the most complex platform implementations in Launcher, featuring:
  *
  * - Hardware-accelerated blitting via MI_GFX API (zero-copy rendering)
  * - ION memory allocator for physically contiguous buffers

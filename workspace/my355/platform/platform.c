@@ -298,7 +298,7 @@ void PLAT_enableBacklight(int enable) {
  * Performs graceful system shutdown.
  *
  * Calls shutdown script directly for consistent behavior regardless of
- * which process triggers the shutdown (minui, minarch, shui, or paks).
+ * which process triggers the shutdown (launcher, player, shui, or paks).
  */
 void PLAT_powerOff(void) {
 	sleep(2);

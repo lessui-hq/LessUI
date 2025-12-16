@@ -1,6 +1,6 @@
-# MinArch Libretro Implementation Gap Analysis
+# Player Libretro Implementation Gap Analysis
 
-This document analyzes the MinArch libretro frontend implementation against the full libretro API specification, identifying implemented features, gaps, and recommendations.
+This document analyzes the Player libretro frontend implementation against the full libretro API specification, identifying implemented features, gaps, and recommendations.
 
 ## Table of Contents
 
@@ -15,9 +15,9 @@ This document analyzes the MinArch libretro frontend implementation against the 
 
 ## Overview
 
-**MinArch** is a lightweight libretro frontend focused on retro handheld gaming devices. It prioritizes simplicity and performance over feature completeness.
+**Player** is a lightweight libretro frontend focused on retro handheld gaming devices. It prioritizes simplicity and performance over feature completeness.
 
-**Implementation Location:** `workspace/all/minarch/minarch.c`
+**Implementation Location:** `workspace/all/player/player.c`
 
 ### Design Philosophy
 
@@ -78,7 +78,7 @@ This document analyzes the MinArch libretro frontend implementation against the 
 
 ## Environment Callback Analysis
 
-The environment callback is the primary interface for core-frontend communication. MinArch implements a subset focused on its target use case.
+The environment callback is the primary interface for core-frontend communication. Player implements a subset focused on its target use case.
 
 ### ✅ Implemented (Functional)
 
@@ -253,9 +253,9 @@ The environment callback is the primary interface for core-frontend communicatio
    - Would need external achievement service integration
    - Effort: High
 
-### Not Recommended for MinArch
+### Not Recommended for Player
 
-- **SET_HW_RENDER (14)** - Would require OpenGL/Vulkan support, contrary to MinArch's software-only design
+- **SET_HW_RENDER (14)** - Would require OpenGL/Vulkan support, contrary to Player's software-only design
 - **GET_CAMERA_INTERFACE (26)** - Not applicable to handheld gaming devices
 - **GET_LOCATION_INTERFACE (29)** - Not applicable
 - **GET_MIDI_INTERFACE (48)** - Very niche
@@ -271,11 +271,11 @@ Implemented (Partial):       6 (7%)
 Not Implemented:           ~42 (53%)
 ```
 
-MinArch implements the core functionality needed for most retro gaming scenarios. The primary gaps are:
+Player implements the core functionality needed for most retro gaming scenarios. The primary gaps are:
 
 1. Hardware rendering (by design)
 2. Modern core options (v2)
 3. On-screen messages
 4. Achievement support
 
-For MinArch's target use case (handheld retro gaming with software rendering), the current implementation covers the essential libretro features. The recommended improvements focus on better core compatibility rather than adding fundamentally new capabilities.
+For Player's target use case (handheld retro gaming with software rendering), the current implementation covers the essential libretro features. The recommended improvements focus on better core compatibility rather than adding fundamentally new capabilities.

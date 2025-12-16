@@ -14,7 +14,7 @@
 #   - Standard hook targets (setup, build, install, clean)
 #
 # Required variables (set before include):
-#   TARGET      - Binary name (e.g., "clock", "minui-keyboard")
+#   TARGET      - Binary name (e.g., "clock", "keyboard")
 #
 # Optional variables (set before include):
 #   EXTRA_SOURCE  - Additional source files beyond common set

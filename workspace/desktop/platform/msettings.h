@@ -2,7 +2,7 @@
  * msettings.h - macOS platform settings API
  *
  * Provides platform-specific settings management for the macOS development
- * environment. This is a stub implementation that allows MinUI to be built
+ * environment. This is a stub implementation that allows Launcher to be built
  * and tested on macOS without requiring actual hardware access.
  *
  * @note This is a development-only header for macOS builds. Real hardware

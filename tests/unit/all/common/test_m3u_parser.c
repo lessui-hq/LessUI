@@ -1,7 +1,7 @@
 /**
  * test_m3u_parser.c - Unit tests for M3U playlist parser
  *
- * Tests M3U parsing logic extracted from minui.c.
+ * Tests M3U parsing logic extracted from launcher.c.
  * Uses file system mocking to test file reading without actual files.
  *
  * Test coverage:
@@ -16,7 +16,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "minui_m3u.h"
+#include "launcher_m3u.h"
 
 #include <string.h>
 

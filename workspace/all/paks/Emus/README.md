@@ -1,6 +1,6 @@
-# MinArch Pak Templates
+# Player Pak Templates
 
-This directory contains templates for generating minarch libretro core paks across all platforms.
+This directory contains templates for generating player libretro core paks across all platforms.
 
 ## Overview
 
@@ -11,7 +11,7 @@ Paks are generated from these templates via `scripts/generate-paks.sh`. The scri
 ## Directory Structure
 
 ```
-minarch-paks/
+player-paks/
 ├── cores.json              # Core definitions (43 cores)
 ├── platforms.json          # Platform metadata
 ├── launch.sh.template      # Shared launch script template
@@ -70,12 +70,12 @@ When the same key appears in both files, the platform value wins (last-one-wins)
 Base configs use **Aspect** scaling and **Crisp** sharpness as defaults. This follows the principle that most users want games to fill their screens as much as possible while looking as good as possible.
 
 **Standard displays (4:3, 16:9):**
-- `minarch_screen_scaling = Aspect` - Fill the screen while preserving aspect ratio
-- `minarch_screen_sharpness = Crisp` - Sharp pixels with subtle smoothing
+- `player_screen_scaling = Aspect` - Fill the screen while preserving aspect ratio
+- `player_screen_sharpness = Crisp` - Sharp pixels with subtle smoothing
 
 **Square displays (cube, rgb30):**
-- `minarch_screen_scaling = Native` or `Cropped` - Integer scaling for pixel-perfect display
-- `minarch_screen_sharpness = Sharp` - Maximum crispness for integer-scaled pixels
+- `player_screen_scaling = Native` or `Cropped` - Integer scaling for pixel-perfect display
+- `player_screen_sharpness = Sharp` - Maximum crispness for integer-scaled pixels
 
 Platform overrides exist only when truly needed:
 - **Square screens**: Different scaling for integer-pixel modes (cube, rgb30)
@@ -87,19 +87,19 @@ Instead of duplicating all 15 lines from base, a platform config only needs the 
 
 ```cfg
 # configs/rg35xxplus/GBA/default-cube.cfg (just 2 lines!)
-minarch_screen_scaling = Native
-minarch_screen_sharpness = Sharp
+player_screen_scaling = Native
+player_screen_sharpness = Sharp
 ```
 
 The build script merges this with `base/GBA/default.cfg` to produce a complete 16-line config.
 
 ## Config Loading Hierarchy (Runtime)
 
-When minarch runs, it uses a **cascading config system** with last-one-wins:
+When player runs, it uses a **cascading config system** with last-one-wins:
 
 ### Stage 1: Select Most Specific File Per Category
 
-For each config category, minarch picks ONE file (most specific):
+For each config category, player picks ONE file (most specific):
 
 **System Config (platform-wide frontend defaults):**
 ```
@@ -119,8 +119,8 @@ Else:      default.cfg
 ```
 If exists: {game}-{device}.cfg    (e.g., Pokemon.gbc-brick.cfg)
 Else if:   {game}.cfg              (e.g., Pokemon.gbc.cfg)
-Else if:   minarch-{device}.cfg   (e.g., minarch-brick.cfg)
-Else:      minarch.cfg
+Else if:   player-{device}.cfg   (e.g., player-brick.cfg)
+Else:      player.cfg
 → Loaded into: config.user_cfg
 ```
 
@@ -137,30 +137,30 @@ Config_readOptionsString(config.user_cfg);      // Overwrites both (highest prio
 ### Example: tg5040 Brick Playing GBA
 
 **Files selected:**
-1. `system-brick.cfg` → Sets `minarch_screen_scaling = Native`
-2. `GBA.pak/default-brick.cfg` → Sets `minarch_cpu_speed = Powersave`, `bind A = A`
-3. `minarch-brick.cfg` (if exists) → Could override anything
+1. `system-brick.cfg` → Sets `player_screen_scaling = Native`
+2. `GBA.pak/default-brick.cfg` → Sets `player_cpu_speed = Powersave`, `bind A = A`
+3. `player-brick.cfg` (if exists) → Could override anything
 
 **Loading order:**
 ```
 1. Load system-brick.cfg      → screen_scaling = Native
 2. Load default-brick.cfg     → cpu_speed = Powersave (screen_scaling still Native)
-3. Load minarch-brick.cfg     → Could override screen_scaling or cpu_speed
+3. Load player-brick.cfg     → Could override screen_scaling or cpu_speed
 ```
 
 **Final state:**
-- `minarch_screen_scaling = Native` (from system-brick.cfg, not overridden)
-- `minarch_cpu_speed = Powersave` (from default-brick.cfg)
+- `player_screen_scaling = Native` (from system-brick.cfg, not overridden)
+- `player_cpu_speed = Powersave` (from default-brick.cfg)
 - All button bindings from default-brick.cfg
-- Any user overrides from minarch-brick.cfg
+- Any user overrides from player-brick.cfg
 
 ### Lock Prefix
 
 Settings prefixed with `-` in config files are **locked** and won't appear in the in-game menu:
 
 ```cfg
--minarch_screen_sharpness = Crisp     # Locked (user can't change in menu)
-minarch_cpu_speed = Powersave         # Unlocked (user can change in menu)
+-player_screen_sharpness = Crisp     # Locked (user can't change in menu)
+player_cpu_speed = Powersave         # Unlocked (user can change in menu)
 ```
 
 ## Device Variants
@@ -178,7 +178,7 @@ minarch_cpu_speed = Powersave         # Unlocked (user can change in menu)
 
 ### Device Detection
 
-Device variants are detected at boot in `MinUI.pak/launch.sh`:
+Device variants are detected at boot in `LessUI.pak/launch.sh`:
 
 **rg35xxplus:**
 ```bash
@@ -197,7 +197,7 @@ if [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
 fi
 ```
 
-The `$DEVICE` environment variable is then used by minarch to load device-specific configs.
+The `$DEVICE` environment variable is then used by player to load device-specific configs.
 
 ## Adding Device-Specific Configs
 
@@ -219,8 +219,8 @@ Create `default-{device}.cfg` when a specific core needs different settings on a
 
 2. **Add device-specific settings (sparse - only what differs from base):**
    ```cfg
-   minarch_screen_scaling = Native
-   minarch_screen_sharpness = Sharp
+   player_screen_scaling = Native
+   player_screen_sharpness = Sharp
    ```
 
 3. **Regenerate paks:**
@@ -238,9 +238,9 @@ Create `default-{device}.cfg` when a specific core needs different settings on a
 ### Common Device Differences
 
 **Square screens (cube, rgb30):**
-- `minarch_screen_scaling = Native` for systems that fit perfectly (GBA on 720×720)
-- `minarch_screen_scaling = Cropped` for 4:3 systems (FC, SFC) to maximize size
-- `minarch_screen_sharpness = Sharp` for pixel-perfect integer scaling
+- `player_screen_scaling = Native` for systems that fit perfectly (GBA on 720×720)
+- `player_screen_scaling = Cropped` for 4:3 systems (FC, SFC) to maximize size
+- `player_screen_sharpness = Sharp` for pixel-perfect integer scaling
 
 **Brick (smaller 4:3 screen):**
 - Uses base defaults (Aspect + Crisp) - no overrides needed
@@ -254,8 +254,8 @@ Full cascading order from lowest to highest priority:
 2. system-{device}.cfg           (Device-specific platform defaults)
 3. default.cfg                   (Core defaults from pak)
 4. default-{device}.cfg          (Device-specific core defaults from pak)
-5. minarch.cfg                   (User console-wide preferences)
-6. minarch-{device}.cfg          (Device-specific user preferences)
+5. player.cfg                   (User console-wide preferences)
+6. player-{device}.cfg          (Device-specific user preferences)
 7. {game}.cfg                    (Per-game overrides)
 8. {game}-{device}.cfg           (Device-specific per-game overrides)
 ```

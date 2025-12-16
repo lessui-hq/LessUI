@@ -1,5 +1,5 @@
 /**
- * gfx_text.c - Text rendering utilities for MinUI
+ * gfx_text.c - Text rendering utilities for Launcher
  *
  * Provides text manipulation functions for the graphics system.
  * Extracted from api.c for better testability and reusability.

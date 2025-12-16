@@ -4,7 +4,7 @@
  * Defines the actual fake function instances using fff macros.
  * This file must be included/compiled exactly once in the test suite.
  *
- * Provides comprehensive SDL mocking for unit testing MinArch/MinUI
+ * Provides comprehensive SDL mocking for unit testing Player/Launcher
  * components that depend on SDL without requiring actual SDL.
  */
 

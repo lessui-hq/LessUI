@@ -1,5 +1,5 @@
 /**
- * test_workflows.c - Integration tests for MinUI workflows
+ * test_workflows.c - Integration tests for Launcher workflows
  *
  * Tests multiple components working together with real file I/O to verify
  * end-to-end functionality. Uses real temp directories and files instead of mocks.
@@ -16,10 +16,10 @@
 
 #include "../../workspace/all/common/binary_file_utils.h"
 #include "collection_parser.h"
-#include "minui_m3u.h"
-#include "minui_map.h"
-#include "minarch_paths.h"
-#include "minui_file_utils.h"
+#include "launcher_m3u.h"
+#include "launcher_map.h"
+#include "player_paths.h"
+#include "launcher_file_utils.h"
 #include "recent_file.h"
 #include "../support/platform.h"
 #include "../support/unity/unity.h"
@@ -30,8 +30,8 @@ static char test_dir[256];
 
 void setUp(void) {
 	// Create temp directory for each test
-	strcpy(test_dir, "/tmp/minui_integration_XXXXXX");
-	char* result = create_test_minui_structure(test_dir);
+	strcpy(test_dir, "/tmp/launcher_integration_XXXXXX");
+	char* result = create_test_launcher_structure(test_dir);
 	TEST_ASSERT_NOT_NULL(result);
 }
 
@@ -115,7 +115,7 @@ void test_multi_disc_game_complete_workflow(void) {
 	entries[0] = entry;
 
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 
 	int saved = Recent_save(recent_path, entries, 1);
@@ -140,15 +140,15 @@ void test_multi_disc_game_complete_workflow(void) {
  *
  * Workflow:
  * 1. Create game with .m3u and .cue files
- * 2. Verify MinUI_hasM3u() detects M3U
- * 3. Verify MinUI_hasCue() detects CUE
+ * 2. Verify Launcher_hasM3u() detects M3U
+ * 3. Verify Launcher_hasCue() detects CUE
  * 4. Test interaction between M3U and CUE detection
  */
 void test_multi_disc_detection(void) {
 	char path[512];
 
 	// Create multi-disc game structure
-	// MinUI_hasM3u expects: /Roms/PS1/Game/disc.bin and looks for /Roms/PS1/Game.m3u
+	// Launcher_hasM3u expects: /Roms/PS1/Game/disc.bin and looks for /Roms/PS1/Game.m3u
 	snprintf(path, sizeof(path), "%s/Roms/PS1/Game/disc1.bin", test_dir);
 	TEST_ASSERT_TRUE(create_test_rom(path));
 
@@ -157,7 +157,7 @@ void test_multi_disc_detection(void) {
 	TEST_ASSERT_TRUE(create_test_m3u(path, disc_files, 1));
 
 	// Create CUE file in game directory
-	// MinUI_hasCue expects directory path and looks for dir/dirname.cue
+	// Launcher_hasCue expects directory path and looks for dir/dirname.cue
 	snprintf(path, sizeof(path), "%s/Roms/PS1/Game/Game.cue", test_dir);
 	TEST_ASSERT_TRUE(create_test_rom(path));
 
@@ -166,7 +166,7 @@ void test_multi_disc_detection(void) {
 	snprintf(rom_path, sizeof(rom_path), "%s/Roms/PS1/Game/disc1.bin", test_dir);
 
 	char m3u_path[512];
-	int has_m3u = MinUI_hasM3u(rom_path, m3u_path);
+	int has_m3u = Launcher_hasM3u(rom_path, m3u_path);
 	TEST_ASSERT_TRUE(has_m3u);
 	TEST_ASSERT_EQUAL_STRING_LEN("/Roms/PS1/Game.m3u", m3u_path + strlen(test_dir),
 	                             strlen("/Roms/PS1/Game.m3u"));
@@ -176,7 +176,7 @@ void test_multi_disc_detection(void) {
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/PS1/Game", test_dir);
 
 	char cue_path[512];
-	int has_cue = MinUI_hasCue(dir_path, cue_path);
+	int has_cue = Launcher_hasCue(dir_path, cue_path);
 	TEST_ASSERT_TRUE(has_cue);
 
 	// Both should be detected
@@ -306,7 +306,7 @@ void test_recent_games_roundtrip(void) {
 
 	// Save to recent.txt
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 
 	int saved = Recent_save(recent_path, entries, 3);
@@ -371,19 +371,19 @@ void test_recent_games_roundtrip(void) {
 }
 
 ///////////////////////////////
-// MinArch Save File Workflows
+// Player Save File Workflows
 ///////////////////////////////
 
 /**
  * Integration test: Save state path generation + binary file I/O
  *
  * Workflow:
- * 1. Generate save state paths using MinArch_getSaveStatePath
+ * 1. Generate save state paths using Player_getSaveStatePath
  * 2. Write save state data using BinaryFile_write
  * 3. Read back using BinaryFile_read
  * 4. Verify data integrity across path generation and file I/O
  */
-void test_minarch_save_state_workflow(void) {
+void test_player_save_state_workflow(void) {
 	char path[512];
 	char save_path[256];
 	char states_dir[512];
@@ -395,7 +395,7 @@ void test_minarch_save_state_workflow(void) {
 	// Generate save state path for slot 0
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArchPaths_getState(save_path, states_dir, "mario", 0);
+	PlayerPaths_getState(save_path, states_dir, "mario", 0);
 
 	// Verify path format
 	TEST_ASSERT_TRUE(strstr(save_path, ".st0") != NULL);
@@ -431,9 +431,9 @@ void test_minarch_save_state_workflow(void) {
  * 1. Generate SRAM and RTC paths
  * 2. Write data to both files
  * 3. Verify both exist and contain correct data
- * 4. Test MinArch save file integration
+ * 4. Test Player save file integration
  */
-void test_minarch_sram_rtc_workflow(void) {
+void test_player_sram_rtc_workflow(void) {
 	char sram_path[256];
 	char rtc_path[256];
 	char saves_dir[512];
@@ -443,11 +443,11 @@ void test_minarch_sram_rtc_workflow(void) {
 	         test_dir);
 
 	// Generate SRAM path
-	MinArchPaths_getSRAM(sram_path, saves_dir, "pokemon");
+	PlayerPaths_getSRAM(sram_path, saves_dir, "pokemon");
 	TEST_ASSERT_TRUE(strstr(sram_path, ".sav") != NULL);
 
 	// Generate RTC path
-	MinArchPaths_getRTC(rtc_path, saves_dir, "pokemon");
+	PlayerPaths_getRTC(rtc_path, saves_dir, "pokemon");
 	TEST_ASSERT_TRUE(strstr(rtc_path, ".rtc") != NULL);
 
 	// Create parent directories
@@ -604,33 +604,33 @@ void test_file_detection_integration(void) {
 	// Test emulator detection
 	char paks_path[512];
 	snprintf(paks_path, sizeof(paks_path), "%s/Paks", test_dir);
-	int has_emu = MinUI_hasEmu("PCSX", paks_path, test_dir, "miyoomini");
+	int has_emu = Launcher_hasEmu("PCSX", paks_path, test_dir, "miyoomini");
 	TEST_ASSERT_TRUE(has_emu);
 
 	// Test M3U detection
 	char rom_path[512];
 	snprintf(rom_path, sizeof(rom_path), "%s/Roms/PS1/Game/disc1.bin", test_dir);
 	char m3u_path[512];
-	has_emu = MinUI_hasM3u(rom_path, m3u_path);
+	has_emu = Launcher_hasM3u(rom_path, m3u_path);
 	TEST_ASSERT_TRUE(has_emu);
 
 	// Test CUE detection
 	char dir_path[512];
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/PS1/Game", test_dir);
 	char cue_path[512];
-	int has_cue = MinUI_hasCue(dir_path, cue_path);
+	int has_cue = Launcher_hasCue(dir_path, cue_path);
 	TEST_ASSERT_TRUE(has_cue);
 
 	// Test hasNonHiddenFiles (should see ROM files, not hidden files)
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/PS1", test_dir);
-	int has_files = MinUI_hasNonHiddenFiles(dir_path);
+	int has_files = Launcher_hasNonHiddenFiles(dir_path);
 	TEST_ASSERT_TRUE(has_files);
 
 	// Test directory with ONLY hidden files
 	snprintf(path, sizeof(path), "%s/Roms/Empty/.DS_Store", test_dir);
 	TEST_ASSERT_TRUE(create_test_rom(path));
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/Empty", test_dir);
-	has_files = MinUI_hasNonHiddenFiles(dir_path);
+	has_files = Launcher_hasNonHiddenFiles(dir_path);
 	TEST_ASSERT_FALSE(has_files);
 }
 
@@ -674,7 +674,7 @@ void test_error_handling_integration(void) {
 
 	// Save and load
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 	int saved = Recent_save(recent_path, recent_entries, 2);
 	TEST_ASSERT_TRUE(saved);
@@ -807,7 +807,7 @@ void test_recent_with_save_states(void) {
 	char states_dir[512];
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArchPaths_getState(save_path, states_dir, "game", 0);
+	PlayerPaths_getState(save_path, states_dir, "game", 0);
 
 	// Create parent directory
 	TEST_ASSERT_TRUE(create_parent_dir(save_path));
@@ -825,7 +825,7 @@ void test_recent_with_save_states(void) {
 	entries[0]->alias = strdup("My Game");
 
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 	int saved = Recent_save(recent_path, entries, 1);
 	TEST_ASSERT_TRUE(saved);
@@ -837,7 +837,7 @@ void test_recent_with_save_states(void) {
 
 	// Verify save state path matches what we used earlier
 	char verify_save_path[256];
-	MinArchPaths_getState(verify_save_path, states_dir, "game", 0);
+	PlayerPaths_getState(verify_save_path, states_dir, "game", 0);
 	TEST_ASSERT_EQUAL_STRING(save_path, verify_save_path);
 
 	// Verify can read save state data
@@ -856,7 +856,7 @@ void test_recent_with_save_states(void) {
 ///////////////////////////////
 
 /**
- * Integration test: MinArch config file path generation + file I/O
+ * Integration test: Player config file path generation + file I/O
  *
  * Workflow:
  * 1. Generate game-specific config path
@@ -864,7 +864,7 @@ void test_recent_with_save_states(void) {
  * 3. Generate global config path
  * 4. Verify both configs can coexist
  */
-void test_minarch_config_file_integration(void) {
+void test_player_config_file_integration(void) {
 	char game_cfg[256];
 	char global_cfg[256];
 	char config_dir[512];
@@ -873,12 +873,12 @@ void test_minarch_config_file_integration(void) {
 	         test_dir);
 
 	// Generate game-specific config
-	MinArchConfig_getPath(game_cfg, config_dir, "Pokemon", NULL);
+	PlayerConfig_getPath(game_cfg, config_dir, "Pokemon", NULL);
 	TEST_ASSERT_TRUE(strstr(game_cfg, "Pokemon.cfg") != NULL);
 
 	// Generate global config
-	MinArchConfig_getPath(global_cfg, config_dir, NULL, NULL);
-	TEST_ASSERT_TRUE(strstr(global_cfg, "minarch.cfg") != NULL);
+	PlayerConfig_getPath(global_cfg, config_dir, NULL, NULL);
+	TEST_ASSERT_TRUE(strstr(global_cfg, "player.cfg") != NULL);
 
 	// Verify they're different
 	TEST_ASSERT_NOT_EQUAL(strcmp(game_cfg, global_cfg), 0);
@@ -926,11 +926,11 @@ void test_config_device_tags(void) {
 	snprintf(config_dir, sizeof(config_dir), "%s/.userdata/shared/gpsp", test_dir);
 
 	// Generate miyoomini config
-	MinArchConfig_getPath(miyoo_cfg, config_dir, "Game", "miyoomini");
+	PlayerConfig_getPath(miyoo_cfg, config_dir, "Game", "miyoomini");
 	TEST_ASSERT_TRUE(strstr(miyoo_cfg, "-miyoomini.cfg") != NULL);
 
 	// Generate rg35xx config
-	MinArchConfig_getPath(rg35_cfg, config_dir, "Game", "rg35xx");
+	PlayerConfig_getPath(rg35_cfg, config_dir, "Game", "rg35xx");
 	TEST_ASSERT_TRUE(strstr(rg35_cfg, "-rg35xx.cfg") != NULL);
 
 	// Verify they're different
@@ -965,7 +965,7 @@ void test_auto_resume_slot_9(void) {
 	// Generate slot 9 save state (auto-resume)
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/gambatte",
 	         test_dir);
-	MinArchPaths_getState(save_path, states_dir, "zelda", 9);
+	PlayerPaths_getState(save_path, states_dir, "zelda", 9);
 
 	TEST_ASSERT_TRUE(strstr(save_path, ".st9") != NULL);
 
@@ -983,7 +983,7 @@ void test_auto_resume_slot_9(void) {
 	entries[0]->alias = strdup("The Legend of Zelda");
 
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 	int saved = Recent_save(recent_path, entries, 1);
 	TEST_ASSERT_TRUE(saved);
@@ -997,7 +997,7 @@ void test_auto_resume_slot_9(void) {
 	char verify_path[256];
 	char full_rom[512];
 	snprintf(full_rom, sizeof(full_rom), "%s%s", test_dir, loaded[0]->path);
-	MinArchPaths_getState(verify_path, states_dir, "zelda", 9);
+	PlayerPaths_getState(verify_path, states_dir, "zelda", 9);
 	TEST_ASSERT_EQUAL_STRING(save_path, verify_path);
 
 	// Verify save data is intact
@@ -1026,7 +1026,7 @@ void test_all_save_slots(void) {
 	// Create saves for all 10 slots
 	for (int slot = 0; slot < 10; slot++) {
 		char save_path[256];
-		MinArchPaths_getState(save_path, states_dir, "metroid", slot);
+		PlayerPaths_getState(save_path, states_dir, "metroid", slot);
 
 		// Verify slot number in filename
 		char expected[10];
@@ -1045,7 +1045,7 @@ void test_all_save_slots(void) {
 	// Read back and verify each slot has correct data
 	for (int slot = 0; slot < 10; slot++) {
 		char save_path[256];
-		MinArchPaths_getState(save_path, states_dir, "metroid", slot);
+		PlayerPaths_getState(save_path, states_dir, "metroid", slot);
 
 		unsigned char data[64];
 		int read = BinaryFile_read(save_path, data, sizeof(data));
@@ -1210,7 +1210,7 @@ void test_empty_directory_collection(void) {
 
 	// Verify it's empty
 	snprintf(path, sizeof(path), "%s/Roms/N64", test_dir);
-	int has_files = MinUI_hasNonHiddenFiles(path);
+	int has_files = Launcher_hasNonHiddenFiles(path);
 	TEST_ASSERT_FALSE(has_files);
 
 	// Create collection pointing to non-existent ROMs in empty dir
@@ -1273,7 +1273,7 @@ void test_rom_with_all_features(void) {
 	char save_path[256];
 	char states_dir[512];
 	snprintf(states_dir, sizeof(states_dir), "%s/.userdata/miyoomini/pcsx", test_dir);
-	MinArchPaths_getState(save_path, states_dir, "FF8", 0);
+	PlayerPaths_getState(save_path, states_dir, "FF8", 0);
 	TEST_ASSERT_TRUE(create_parent_dir(save_path));
 
 	unsigned char save[512];
@@ -1282,7 +1282,7 @@ void test_rom_with_all_features(void) {
 
 	// Create SRAM
 	char sram_path[256];
-	MinArchPaths_getSRAM(sram_path, states_dir, "FF8");
+	PlayerPaths_getSRAM(sram_path, states_dir, "FF8");
 	TEST_ASSERT_TRUE(create_parent_dir(sram_path));
 
 	unsigned char sram[8192];
@@ -1296,7 +1296,7 @@ void test_rom_with_all_features(void) {
 	entries[0]->alias = NULL; // Will get from map.txt
 
 	char recent_path[512];
-	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.minui/recent.txt",
+	snprintf(recent_path, sizeof(recent_path), "%s/.userdata/.launcher/recent.txt",
 	         test_dir);
 	TEST_ASSERT_TRUE(Recent_save(recent_path, entries, 1));
 
@@ -1319,7 +1319,7 @@ void test_rom_with_all_features(void) {
 	char dir_path[512];
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/PS1/FF8", test_dir);
 	char cue_path[512];
-	TEST_ASSERT_TRUE(MinUI_hasCue(dir_path, cue_path));
+	TEST_ASSERT_TRUE(Launcher_hasCue(dir_path, cue_path));
 
 	// 4. Recent games
 	int count = 0;
@@ -1329,14 +1329,14 @@ void test_rom_with_all_features(void) {
 
 	// 5. Save states exist
 	char verify_save[256];
-	MinArchPaths_getState(verify_save, states_dir, "FF8", 0);
+	PlayerPaths_getState(verify_save, states_dir, "FF8", 0);
 	unsigned char verify_data[512];
 	TEST_ASSERT_EQUAL(512, BinaryFile_read(verify_save, verify_data, sizeof(verify_data)));
 	TEST_ASSERT_EQUAL(0xF8, verify_data[0]);
 
 	// 6. SRAM exists
 	char verify_sram[256];
-	MinArchPaths_getSRAM(verify_sram, states_dir, "FF8");
+	PlayerPaths_getSRAM(verify_sram, states_dir, "FF8");
 	unsigned char verify_sram_data[8192];
 	TEST_ASSERT_EQUAL(8192,
 	                  BinaryFile_read(verify_sram, verify_sram_data, sizeof(verify_sram_data)));
@@ -1362,11 +1362,11 @@ void test_multi_platform_save_isolation(void) {
 
 	// Generate paths for miyoomini
 	snprintf(miyoo_dir, sizeof(miyoo_dir), "%s/.userdata/miyoomini/gpsp", test_dir);
-	MinArchPaths_getState(miyoo_save, miyoo_dir, "pokemon", 0);
+	PlayerPaths_getState(miyoo_save, miyoo_dir, "pokemon", 0);
 
 	// Generate paths for rg35xx
 	snprintf(rg35_dir, sizeof(rg35_dir), "%s/.userdata/rg35xx/gpsp", test_dir);
-	MinArchPaths_getState(rg35_save, rg35_dir, "pokemon", 0);
+	PlayerPaths_getState(rg35_save, rg35_dir, "pokemon", 0);
 
 	// Verify they're different
 	TEST_ASSERT_NOT_EQUAL(strcmp(miyoo_save, rg35_save), 0);
@@ -1437,7 +1437,7 @@ void test_m3u_with_multiple_cues(void) {
 	char dir_path[512];
 	snprintf(dir_path, sizeof(dir_path), "%s/Roms/PS1/Game", test_dir);
 	char cue_path[512];
-	TEST_ASSERT_TRUE(MinUI_hasCue(dir_path, cue_path));
+	TEST_ASSERT_TRUE(Launcher_hasCue(dir_path, cue_path));
 
 	// Verify individual CUE files exist
 	snprintf(path, sizeof(path), "%s/Roms/PS1/Game/disc1.cue", test_dir);
@@ -1472,14 +1472,14 @@ int main(void) {
 	RUN_TEST(test_recent_games_roundtrip);
 	RUN_TEST(test_recent_with_save_states);
 
-	// MinArch save file workflows
-	RUN_TEST(test_minarch_save_state_workflow);
-	RUN_TEST(test_minarch_sram_rtc_workflow);
+	// Player save file workflows
+	RUN_TEST(test_player_save_state_workflow);
+	RUN_TEST(test_player_sram_rtc_workflow);
 	RUN_TEST(test_all_save_slots);
 	RUN_TEST(test_auto_resume_slot_9);
 
 	// Config file workflows
-	RUN_TEST(test_minarch_config_file_integration);
+	RUN_TEST(test_player_config_file_integration);
 	RUN_TEST(test_config_device_tags);
 
 	// File detection integration

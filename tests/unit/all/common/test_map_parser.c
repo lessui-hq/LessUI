@@ -1,7 +1,7 @@
 /**
  * test_map_parser.c - Unit tests for map.txt parser
  *
- * Tests ROM display name aliasing logic extracted from minarch.c/minui.c.
+ * Tests ROM display name aliasing logic extracted from player.c/launcher.c.
  * Uses file system mocking to test file reading without actual files.
  *
  * Test coverage:
@@ -18,7 +18,7 @@
 
 #include "../../../support/unity/unity.h"
 #include "../../../support/fs_mocks.h"
-#include "minui_map.h"
+#include "launcher_map.h"
 
 #include <string.h>
 

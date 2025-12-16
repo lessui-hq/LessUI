@@ -14,7 +14,7 @@
 
 #include "../../support/unity/unity.h"
 #include "directory_index.h"
-#include "minui_entry.h"
+#include "launcher_entry.h"
 #include "../../../../workspace/all/common/stringmap.h"
 #include "../../../../workspace/all/common/defines.h"
 #include <stdlib.h>

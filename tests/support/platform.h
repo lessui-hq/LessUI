@@ -22,7 +22,7 @@
 #define FIXED_SIZE 307200
 #define SCREEN_DIAGONAL 3.5f
 
-// HDMI support (for platform_variant.c and minarch_menu.c)
+// HDMI support (for platform_variant.c and player_menu.c)
 #define HAS_HDMI 0
 #define HDMI_WIDTH 1280
 #define HDMI_HEIGHT 720

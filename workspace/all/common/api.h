@@ -1,10 +1,10 @@
 /**
- * api.h - Platform abstraction API for MinUI
+ * api.h - Platform abstraction API for Launcher
  *
  * Provides a unified interface for graphics (GFX_*), sound (SND_*), input (PAD_*),
  * power management (PWR_*), and platform-specific functionality (PLAT_*).
  *
- * This header defines the public API used by minui (launcher) and minarch (emulator).
+ * This header defines the public API used by launcher and player (emulator).
  * Each platform implements the PLAT_* functions in their workspace/<platform>/ directory,
  * while common GFX_/SND_/PAD_/PWR_ functions are in workspace/all/common/api.c.
  */
@@ -237,7 +237,7 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches);
  * not manually configured. This eliminates over-allocation while ensuring
  * buffers are always large enough for worst-case scaling scenarios.
  *
- * When hardware scaling is used (fit=0), minarch renders content larger
+ * When hardware scaling is used (fit=0), player renders content larger
  * than the screen, then hardware scales it down. The buffer must hold
  * this intermediate oversized frame.
  *
@@ -410,7 +410,7 @@ enum {
 /**
  * Rendering context for video scaling operations.
  *
- * Used by minarch to configure how emulator video output is scaled and
+ * Used by player to configure how emulator video output is scaled and
  * positioned on the physical screen.
  */
 typedef struct GFX_Renderer {

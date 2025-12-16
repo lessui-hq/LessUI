@@ -220,7 +220,7 @@ LessUI installs across two SD cards:
 │   │   ├── dat/
 │   │   │   └── dmenu.bin  Updated stock menu binary
 │   │   └── paks/          Applications and emulators
-│   │       └── MinUI.pak/ Main launcher
+│   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
@@ -249,7 +249,7 @@ LessUI installs across two SD cards:
    - Delete archive
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
-6. Launch LessUI via `.system/rg35xxplus/paks/MinUI.pak/launch.sh`
+6. Launch LessUI via `.system/rg35xxplus/paks/LessUI.pak/launch.sh`
 7. If launcher exits, shutdown device (prevents stock firmware from accessing card)
 
 ### Update Process
@@ -416,7 +416,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (runtime-configurable definitions)
 

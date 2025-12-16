@@ -2359,7 +2359,7 @@ fn_special_hardware() {
 fn_environment() {
 	log_h1 "ENVIRONMENT"
 
-	log_h2 "MinUI Environment Variables"
+	log_h2 "LessUI Environment Variables"
 	echo "| Variable | Value |"
 	echo "|----------|-------|"
 	echo "| PLATFORM | \`${PLATFORM:-unset}\` |"

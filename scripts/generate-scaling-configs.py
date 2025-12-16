@@ -141,8 +141,8 @@ def generate_config_content(platform, core, variant, scaling, fill):
         lines = ["# Auto-generated: Cropped fills screen by scaling up and trimming edges"]
     else:
         lines = [f"# Auto-generated: {fill:.0f}% fill with integer scaling"]
-    lines.append(f"minarch_screen_scaling = {scaling}")
-    # Note: Sharpness is automatic - minarch forces Sharp for Native/Cropped modes
+    lines.append(f"player_screen_scaling = {scaling}")
+    # Note: Sharpness is automatic - player forces Sharp for Native/Cropped modes
 
     # Add any extra lines for this combo
     key = (platform, core, variant)

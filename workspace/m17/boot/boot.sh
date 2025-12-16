@@ -63,7 +63,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	dd if=/dev/zero of=/dev/fb0
 fi
 
-LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
+LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
 while [ -f "$LAUNCH_PATH" ]; do
 	taskset 8 "$LAUNCH_PATH"
 done

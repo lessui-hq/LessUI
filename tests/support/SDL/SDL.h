@@ -10,7 +10,7 @@
 
 #include "../sdl_stubs.h"
 
-// Additional SDL constants needed by minarch code
+// Additional SDL constants needed by player code
 #define SDL_SWSURFACE 0x00000000
 #define SDL_SRCALPHA  0x00010000
 

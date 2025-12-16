@@ -34,7 +34,7 @@ OUT_DIR = "skeleton/SYSTEM/res"
 
 # Lines: horizontal scanline shadow with dimensional falloff
 LINES_LEADIN = 128      # Light lead-in before scanline
-LINES_SHADOW = 255      # Primary scanline (dark) - full opacity like MinUI
+LINES_SHADOW = 255      # Primary scanline (dark) - full opacity like Launcher
 LINES_TRAIL = 64        # Very light trail after scanline
 
 # Grid: 2×2 pixel grid

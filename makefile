@@ -9,8 +9,8 @@
 #   make test                       - Run unit tests (uses Docker)
 #   make lint                       - Run static analysis
 #   make format                     - Format code with clang-format
-#   make dev                        - Build minui for macOS (native, for development)
-#   make dev-run                    - Build and run minui on macOS
+#   make dev                        - Build launcher for macOS (native, for development)
+#   make dev-run                    - Build and run launcher on macOS
 #   make all                        - Build all platforms (creates release ZIPs)
 #
 # Platform-specific build:
@@ -158,8 +158,8 @@ system:
 	# populate system (binaries that makefile.copy may reference)
 	# keymon.elf is installed by utils install hook, show.elf is platform-specific
 	cp ./workspace/$(PLATFORM)/libmsettings/libmsettings.so ./build/SYSTEM/$(PLATFORM)/lib
-	cp ./workspace/all/minui/build/$(PLATFORM)/minui.elf ./build/SYSTEM/$(PLATFORM)/bin/
-	cp ./workspace/all/minarch/build/$(PLATFORM)/minarch.elf ./build/SYSTEM/$(PLATFORM)/bin/
+	cp ./workspace/all/launcher/build/$(PLATFORM)/launcher.elf ./build/SYSTEM/$(PLATFORM)/bin/
+	cp ./workspace/all/player/build/$(PLATFORM)/player.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	# Install utils (calls install hook for each util - includes keymon.elf)
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
@@ -230,24 +230,27 @@ system:
 # Build everything for a platform: binaries, system files
 common: build system
 
-# Remove build artifacts
+# Remove build artifacts (aligns with .gitignore)
 clean:
+	# Core build directories
 	rm -rf ./build
 	rm -rf ./workspace/readmes
-	# Clean workspace/all component build directories
-	rm -rf workspace/all/minui/build
-	rm -rf workspace/all/minarch/build
+	rm -f workspace/hash.txt
+	# Component build directories
+	rm -rf workspace/all/build
+	rm -rf workspace/all/launcher/build
+	rm -rf workspace/all/player/build
 	rm -rf workspace/all/paks/Tools/*/build
 	rm -rf workspace/all/utils/*/build
 	rm -rf workspace/all/syncsettings/build
-	# Clean platform-specific boot outputs
-	rm -rf workspace/rg35xxplus/boot/output
-	rm -rf workspace/rg35xx/boot/output
-	rm -rf workspace/m17/boot/output
-	# Clean copied boot assets
-	rm -f workspace/rg35xxplus/boot/*.bmp
-	rm -f workspace/rg35xx/boot/*.bmp workspace/rg35xx/boot/boot_logo.png
-	rm -f workspace/m17/boot/*.bmp
+	# Platform-specific build outputs (boot, squashfs, etc.)
+	find workspace -type d -name "output" -path "*/boot/output" -exec rm -rf {} + 2>/dev/null || true
+	find workspace -type d -name "output" -path "*/squashfs/output" -exec rm -rf {} + 2>/dev/null || true
+	# Copied boot assets
+	find workspace -type f -name "*.bmp" -path "*/boot/*.bmp" -delete 2>/dev/null || true
+	find workspace -type f -name "boot_logo.png" -path "*/boot/boot_logo.png" -delete 2>/dev/null || true
+	# Downloaded cores cache (can be re-downloaded during setup)
+	rm -rf workspace/all/paks/Emus/cores/
 
 # Prepare fresh build directory and skeleton
 setup: name
@@ -335,8 +338,8 @@ ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
 	rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/
 endif
 ifneq (,$(findstring tg5040, $(PLATFORMS)))
-	mkdir -p ./build/SYSTEM/tg3040/paks/MinUI.pak/
-	rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/MinUI.pak/launch.sh
+	mkdir -p ./build/SYSTEM/tg3040/paks/LessUI.pak/
+	rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/LessUI.pak/launch.sh
 endif
 
 # Create final release ZIP files

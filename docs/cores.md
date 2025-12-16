@@ -4,11 +4,11 @@ How libretro cores work in LessUI - their organization, distribution, runtime lo
 
 ## What Are Cores?
 
-LessUI uses **libretro cores** to emulate different gaming systems. Libretro is a simple API that allows emulator cores to be used across different frontends. LessUI's libretro frontend is called **minarch** (`workspace/all/minarch/`).
+LessUI uses **libretro cores** to emulate different gaming systems. Libretro is a simple API that allows emulator cores to be used across different frontends. LessUI's libretro frontend is called **player** (`workspace/all/player/`).
 
 **Core**: A compiled `.so` library implementing a specific emulator (e.g., `gambatte_libretro.so` for Game Boy)
 
-**Frontend**: MinArch loads cores dynamically and provides video/audio/input services
+**Frontend**: Player loads cores dynamically and provides video/audio/input services
 
 **Platform Abstraction**: Same cores run on all devices with architecture-specific compilation
 
@@ -33,8 +33,8 @@ The main LessUI Makefile downloads cores during the build:
 
 ```makefile
 # Pre-built cores from LessUI-Cores repository (versioned releases)
-MINARCH_CORES_VERSION ?= 20251214-2
-CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
+PLAYER_CORES_VERSION ?= 20251214-2
+CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(PLAYER_CORES_VERSION)
 
 cores-download:
 	@mkdir -p build/.system/cores/arm32 build/.system/cores/arm64
@@ -74,7 +74,7 @@ LessUI ships with 43 emulator cores covering systems from the NES to PlayStation
 | race               | Neo Geo Pocket / Neo Geo Pocket Color | `.ngp`, `.ngc`                        |
 | mednafen_vb        | Virtual Boy                           | `.vb`                                 |
 | fake-08            | PICO-8                                | `.p8`, `.p8.png`                      |
-| ...                | _(see minarch-cores for full list)_   |                                       |
+| ...                | _(see player-cores for full list)_    |                                       |
 
 All cores are included in the base install via the pak template system.
 
@@ -114,7 +114,7 @@ The package target copies only the cores referenced in cores.json to each platfo
 
 ### Core Structure in Memory
 
-When MinArch loads a core, it creates a global `core` structure:
+When Player loads a core, it creates a global `core` structure:
 
 ```c
 static struct Core {
@@ -157,7 +157,7 @@ static struct Core {
 
 ### Core Loading Process
 
-Function: `Core_open()` in `workspace/all/minarch/minarch.c:3399`
+Function: `Core_open()` in `workspace/all/player/player.c:3399`
 
 ```c
 void Core_open(const char* core_path, const char* tag_name) {
@@ -268,7 +268,7 @@ Each emulator is packaged as a `.pak` directory:
 
 ```
 GB.pak/
-├── launch.sh       # Shell script that launches minarch with core
+├── launch.sh       # Shell script that launches player with core
 └── default.cfg     # Default core options and input mappings
 ```
 
@@ -293,8 +293,8 @@ mkdir -p "$SAVES_PATH/$EMU_TAG"
 HOME="$USERDATA_PATH"
 cd "$HOME"
 
-# Launch minarch with core and ROM
-nice -20 minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" \
+# Launch player with core and ROM
+nice -20 player.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" \
     &> "$LOGS_PATH/$EMU_TAG.txt"
 ```
 
@@ -314,8 +314,8 @@ Environment variables (set by `LessUI.pak/launch.sh`):
 Example: `GB.pak/default.cfg`
 
 ```ini
-# MinArch settings (frontend)
-minarch_screen_scaling = Native
+# Player settings (frontend)
+player_screen_scaling = Native
 
 # Core-specific options (passed to gambatte core)
 gambatte_gb_colorization = internal
@@ -336,14 +336,14 @@ bind Next Palette = NONE:R1
 
 ### Configuration Hierarchy
 
-MinArch uses a three-tier configuration system:
+Player uses a three-tier configuration system:
 
 1. **System-wide defaults** (`SYSTEM/<platform>/system.cfg`):
 
    ```ini
-   -minarch_screen_sharpness = Crisp
-   -minarch_prevent_tearing = Lenient
-   -minarch_thread_video = Off
+   -player_screen_sharpness = Crisp
+   -player_prevent_tearing = Lenient
+   -player_thread_video = Off
    ```
 
    (The `-` prefix means "hidden from in-game menu")
@@ -391,13 +391,13 @@ All paths are constructed from environment variables, allowing the same SD card 
 
 ### The Libretro Interface
 
-Header: `workspace/all/minarch/libretro-common/include/libretro.h`
+Header: `workspace/all/player/libretro-common/include/libretro.h`
 
-Libretro defines a **callback-based API** between cores (emulators) and frontends (MinArch):
+Libretro defines a **callback-based API** between cores (emulators) and frontends (Player):
 
 ### Core Functions (Exported by .so)
 
-These functions are implemented by the core and called by MinArch:
+These functions are implemented by the core and called by Player:
 
 ```c
 void retro_init(void);
@@ -420,9 +420,9 @@ void retro_set_input_poll(retro_input_poll_t callback);
 void retro_set_input_state(retro_input_state_t callback);
 ```
 
-### Frontend Callbacks (Provided by MinArch)
+### Frontend Callbacks (Provided by Player)
 
-These callbacks are implemented by MinArch and called by the core during `retro_run()`:
+These callbacks are implemented by Player and called by the core during `retro_run()`:
 
 ```c
 // Video: Core calls this to display a frame
@@ -502,7 +502,7 @@ static bool environment_callback(unsigned cmd, void* data) {
 ### Core-Frontend Communication Flow
 
 ```
-[Core .so file]                    [MinArch Frontend]
+[Core .so file]                    [Player Frontend]
      |                                     |
      |<--------- dlopen() -----------------|
      |                                     |
@@ -569,18 +569,18 @@ static bool environment_callback(unsigned cmd, void* data) {
 
 ### Core Loading and Management
 
-| File                              | Lines     | Purpose                                                |
-| --------------------------------- | --------- | ------------------------------------------------------ |
-| `workspace/all/minarch/minarch.c` | 3399-3518 | `Core_open()` - Dynamic loading of .so files           |
-| `workspace/all/minarch/minarch.c` | 2241-2680 | `environment_callback()` - Core-frontend communication |
-| `workspace/all/minarch/minarch.c` | 3951-4052 | `Core_init()`, `Core_load()` - Initialization          |
-| `workspace/all/minarch/minarch.c` | 4530-4580 | Main loop - calls `core.run()`                         |
+| File                            | Lines     | Purpose                                                |
+| ------------------------------- | --------- | ------------------------------------------------------ |
+| `workspace/all/player/player.c` | 3399-3518 | `Core_open()` - Dynamic loading of .so files           |
+| `workspace/all/player/player.c` | 2241-2680 | `environment_callback()` - Core-frontend communication |
+| `workspace/all/player/player.c` | 3951-4052 | `Core_init()`, `Core_load()` - Initialization          |
+| `workspace/all/player/player.c` | 4530-4580 | Main loop - calls `core.run()`                         |
 
 ### Libretro API
 
-| File                                                       | Purpose                             |
-| ---------------------------------------------------------- | ----------------------------------- |
-| `workspace/all/minarch/libretro-common/include/libretro.h` | Official libretro API specification |
+| File                                                      | Purpose                             |
+| --------------------------------------------------------- | ----------------------------------- |
+| `workspace/all/player/libretro-common/include/libretro.h` | Official libretro API specification |
 
 ### Configuration
 

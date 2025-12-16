@@ -12,13 +12,13 @@ LessUI uses a **platform abstraction layer** to run the same code on 20+ differe
 
 Platform-independent C code that works everywhere:
 
-- **minui** (`minui.c`) - The launcher
+- **launcher** (`launcher.c`) - The launcher
   - Browse ROMs by folder
   - Track recently played games
   - Launch emulator paks
   - Display hardware status (battery, volume, brightness)
 
-- **minarch** (`minarch.c`) - The libretro frontend
+- **player** (`player.c`) - The libretro frontend
   - Load and run emulator cores (see [cores.md](cores.md) for details)
   - Save state management (auto-save to slot 9)
   - In-game menu (states, disc changing, options)
@@ -58,7 +58,7 @@ Device-specific daemons and utilities:
 
 - **libmsettings** - Settings library
   - Persists volume, brightness, etc.
-  - Shared between minui, minarch, and tools
+  - Shared between launcher, player, and tools
   - Uses shared memory or files for IPC
 
 - **Other components** (platform-specific):
@@ -80,8 +80,8 @@ Device-specific daemons and utilities:
 
 1. User selects ROM in launcher
 2. LessUI calls the appropriate pak's `launch.sh` script
-3. Pak script runs `minarch.elf <core> <rom>`
-4. Minarch loads the libretro core and starts emulation
+3. Pak script runs `player.elf <core> <rom>`
+4. Player loads the libretro core and starts emulation
 5. User presses MENU → in-game menu appears
 6. User saves state, changes settings, etc.
 7. User quits → returns to launcher
@@ -112,8 +112,8 @@ The abstraction hides complexity. Common code doesn't care how buttons work.
 ```
 workspace/
 ├── all/                   # Runs everywhere
-│   ├── minui/            # Launcher
-│   ├── minarch/          # Emulator frontend
+│   ├── launcher/            # Launcher
+│   ├── player/           # Emulator frontend
 │   └── common/           # Shared API
 │
 └── miyoomini/            # Example platform
@@ -325,7 +325,7 @@ Users can override per-game in `.userdata/<platform>/<tag>/<rom-name>/`.
 
 ### Recent Games
 
-`/.minui/recent.txt` tracks recently played games:
+`/.launcher/recent.txt` tracks recently played games:
 
 ```
 /path/to/rom.gb
@@ -364,7 +364,7 @@ Used in `scaler.c` for fast pixel scaling.
 
 ### Frame Pacing
 
-Minarch maintains 60fps by:
+Player maintains 60fps by:
 
 - Locking to vsync when possible
 - Throttling with `SDL_Delay()` when vsync unavailable

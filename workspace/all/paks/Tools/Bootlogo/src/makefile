@@ -5,7 +5,7 @@
 # - other platforms: shell script only
 #
 # Note: Does not use common/build.mk because it builds multiple
-# standalone utilities without the common MinUI source files.
+# standalone utilities without the common Launcher source files.
 
 ###########################################################
 # Hook interface gate - setup, install, and clean don't need PLATFORM

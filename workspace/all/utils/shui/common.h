@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-// Exit codes matching existing minui-* utilities
+// Exit codes matching existing launcher-* utilities
 typedef enum {
 	EXIT_SUCCESS_CODE = 0,
 	EXIT_ERROR = 1,

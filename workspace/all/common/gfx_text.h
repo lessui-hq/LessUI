@@ -1,5 +1,5 @@
 /**
- * gfx_text.h - Text rendering utilities for MinUI
+ * gfx_text.h - Text rendering utilities for Launcher
  *
  * Provides text manipulation functions for the graphics system:
  * - Text truncation with ellipsis

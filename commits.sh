@@ -135,7 +135,7 @@ count_toolchains() {
 # Main output block (piped through sed to clean up any stray newlines)
 {
 	# Main repository
-	printf '%-26s%-10s%-12s%s\n' MINUI HASH DATE USER/REPO
+	printf '%-26s%-10s%-12s%s\n' LESSUI HASH DATE USER/REPO
 	rule
 	show ./
 	bump
@@ -148,7 +148,7 @@ count_toolchains() {
 
 	# Shared libretro code
 	tell LIBRETRO
-	show ./workspace/all/minarch/libretro-common
+	show ./workspace/all/player/libretro-common
 	bump
 
 	# RG35XX platform

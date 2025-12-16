@@ -166,7 +166,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/              Utilities (keymon, etc.)
 │   │   │   └── install.sh    Post-update installation script
 │   │   └── paks/             Applications and emulators
-│   │       └── MinUI.pak/     Main launcher
+│   │       └── LessUI.pak/     Main launcher
 │   └── res/                  Shared UI assets
 │       ├── assets.png        UI sprite sheet (1x scale, 320x240)
 │       └── InterTight-Bold.ttf
@@ -190,7 +190,7 @@ LessUI installs to the SD card with the following structure:
    - Extract `LessUI.7z` to SD card
    - Delete `LessUI.7z` after successful extraction
    - Run `.system/trimuismart/bin/install.sh` to complete setup
-4. Launch LessUI via `.system/trimuismart/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via `.system/trimuismart/paks/LessUI.pak/launch.sh`
 5. If launcher exits, poweroff device (prevents stock firmware from accessing card)
 
 ### Update Process
@@ -389,7 +389,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Display engine: `./platform/platform.c` (DE2 implementation details)

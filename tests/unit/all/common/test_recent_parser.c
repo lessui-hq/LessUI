@@ -1,7 +1,7 @@
 /**
  * test_recent_parser.c - Unit tests for recent.txt parser
  *
- * Tests recently played games file parsing extracted from minui.c.
+ * Tests recently played games file parsing extracted from launcher.c.
  * Recent.txt uses tab-delimited format: path<TAB>alias
  *
  * Test coverage:
@@ -219,7 +219,7 @@ void test_Recent_parse_all_roms_missing_returns_zero(void) {
 ///////////////////////////////
 
 void test_Recent_parse_realistic_recent_list(void) {
-	mock_fs_add_file("/mnt/SDCARD/.minui/recent.txt",
+	mock_fs_add_file("/mnt/SDCARD/.launcher/recent.txt",
 	                 "/Roms/PS1/Final Fantasy VII/FF7 (Disc 1).bin\tFF7\n"
 	                 "/Roms/GB/Pokemon - Red Version (USA).gb\tPokemon Red\n"
 	                 "/Roms/NES/Super Mario Bros (World).nes\n"
@@ -232,7 +232,7 @@ void test_Recent_parse_realistic_recent_list(void) {
 
 	int count;
 	Recent_Entry** entries =
-	    Recent_parse("/mnt/SDCARD/.minui/recent.txt", "/mnt/SDCARD", &count);
+	    Recent_parse("/mnt/SDCARD/.launcher/recent.txt", "/mnt/SDCARD", &count);
 
 	TEST_ASSERT_EQUAL_INT(4, count);
 
