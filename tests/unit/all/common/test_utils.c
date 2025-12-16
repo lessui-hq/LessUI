@@ -138,6 +138,62 @@ void test_strArrayContains_null_inputs(void) {
 	TEST_ASSERT_FALSE(strArrayContains(arr, NULL));
 }
 
+// safe_strcpy tests
+void test_safe_strcpy_normal(void) {
+	char buf[32];
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hello", buf);
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_exact_fit(void) {
+	char buf[6]; // exactly fits "hello" + null
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hello", buf);
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_truncation(void) {
+	char buf[4]; // will truncate "hello" to "hel"
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hel", buf);
+	TEST_ASSERT_EQUAL(5, len); // returns full source length for truncation detection
+}
+
+void test_safe_strcpy_empty_src(void) {
+	char buf[32] = "garbage";
+	size_t len = safe_strcpy(buf, "", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("", buf);
+	TEST_ASSERT_EQUAL(0, len);
+}
+
+void test_safe_strcpy_single_byte_buffer(void) {
+	char buf[1];
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("", buf); // only null terminator fits
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_zero_size(void) {
+	char buf[32] = "unchanged";
+	size_t len = safe_strcpy(buf, "hello", 0);
+	TEST_ASSERT_EQUAL_STRING("unchanged", buf); // buffer unchanged
+	TEST_ASSERT_EQUAL(0, len);
+}
+
+void test_SAFE_STRCPY_macro(void) {
+	char buf[32];
+	SAFE_STRCPY(buf, "macro test");
+	TEST_ASSERT_EQUAL_STRING("macro test", buf);
+}
+
+void test_SAFE_STRCPY_macro_truncation(void) {
+	char buf[8];
+	SAFE_STRCPY(buf, "long string that gets truncated");
+	TEST_ASSERT_EQUAL_STRING("long st", buf);
+	TEST_ASSERT_EQUAL(7, strlen(buf)); // 8 - 1 for null
+}
+
 void test_hide_hidden_file(void) {
 	TEST_ASSERT_TRUE(hide(".hidden"));
 	TEST_ASSERT_TRUE(hide(".gitignore"));
@@ -935,6 +991,14 @@ int main(void) {
 	RUN_TEST(test_strArrayContains_not_found);
 	RUN_TEST(test_strArrayContains_empty_array);
 	RUN_TEST(test_strArrayContains_null_inputs);
+	RUN_TEST(test_safe_strcpy_normal);
+	RUN_TEST(test_safe_strcpy_exact_fit);
+	RUN_TEST(test_safe_strcpy_truncation);
+	RUN_TEST(test_safe_strcpy_empty_src);
+	RUN_TEST(test_safe_strcpy_single_byte_buffer);
+	RUN_TEST(test_safe_strcpy_zero_size);
+	RUN_TEST(test_SAFE_STRCPY_macro);
+	RUN_TEST(test_SAFE_STRCPY_macro_truncation);
 	RUN_TEST(test_hide_hidden_file);
 	RUN_TEST(test_hide_disabled_file);
 	RUN_TEST(test_hide_map_txt);

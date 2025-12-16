@@ -13,10 +13,8 @@
 
 #include <string.h>
 
-// For exists() function - only needed for detectM3uPath
-#ifndef MINARCH_GAME_TEST
+#include "defines.h"
 #include "utils.h"
-#endif
 
 int MinArchGame_parseExtensions(char* extensions_str, char** out_extensions, int max_extensions) {
 	if (!extensions_str || !out_extensions || max_extensions <= 0)
@@ -68,7 +66,7 @@ bool MinArchGame_buildM3uPath(const char* rom_path, char* out_m3u_path, size_t m
 	if (path_len >= m3u_path_size)
 		return false;
 
-	strcpy(out_m3u_path, rom_path);
+	safe_strcpy(out_m3u_path, rom_path, m3u_path_size);
 
 	// Find the filename part and remove it
 	// "/path/to/Game (Disc 1)/image.cue" -> "/path/to/Game (Disc 1)/"
@@ -100,7 +98,7 @@ bool MinArchGame_buildM3uPath(const char* rom_path, char* out_m3u_path, size_t m
 	if (dir_name_len >= sizeof(dir_name))
 		return false;
 
-	strcpy(dir_name, second_last_slash); // Includes leading slash: "/Game (Disc 1)"
+	SAFE_STRCPY(dir_name, second_last_slash); // Includes leading slash: "/Game (Disc 1)"
 
 	// Truncate to parent: "/path/to"
 	second_last_slash[0] = '\0';
@@ -111,8 +109,9 @@ bool MinArchGame_buildM3uPath(const char* rom_path, char* out_m3u_path, size_t m
 	if (needed > m3u_path_size)
 		return false;
 
-	strcat(out_m3u_path, dir_name);
-	strcat(out_m3u_path, ".m3u");
+	safe_strcpy(out_m3u_path + base_len, dir_name, m3u_path_size - base_len);
+	base_len = strlen(out_m3u_path);
+	safe_strcpy(out_m3u_path + base_len, ".m3u", m3u_path_size - base_len);
 
 	return true;
 }

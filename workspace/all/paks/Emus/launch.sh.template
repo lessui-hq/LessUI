@@ -1,6 +1,6 @@
 #!/bin/sh
 
-EMU_EXE={{EMU_EXE}}
+EMU_CORE={{CORE}}.so
 ###############################
 
 EMU_TAG=$(basename "$(dirname "$0")" .pak)
@@ -9,4 +9,4 @@ mkdir -p "$BIOS_PATH/$EMU_TAG"
 mkdir -p "$SAVES_PATH/$EMU_TAG"
 HOME="$USERDATA_PATH"
 cd "$HOME"
-{{NICE_PREFIX}}minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" > "$LOGS_PATH/$EMU_TAG.log" 2>&1
+{{NICE_PREFIX}}minarch.elf "$CORES_PATH/$EMU_CORE" "$ROM" > "$LOGS_PATH/$EMU_TAG.log" 2>&1

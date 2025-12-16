@@ -102,7 +102,7 @@ if [[ -n "$PLATFORM_FILTER" ]]; then
         echo -n "Available:"
         for d in "$PAYLOAD_DIR/.system"/*/; do
             p=$(basename "$d")
-            [[ "$p" =~ ^(res|common|cores)$ ]] || echo -n " $p"
+            [[ "$p" =~ ^(res|common)$ ]] || echo -n " $p"
         done
         echo ""
         exit 1
@@ -110,7 +110,6 @@ if [[ -n "$PLATFORM_FILTER" ]]; then
     sync_dir "$PAYLOAD_DIR/.system/$PLATFORM_FILTER" "$SD_CARD/.system/$PLATFORM_FILTER" ".system/$PLATFORM_FILTER" --delete
     sync_dir "$PAYLOAD_DIR/.system/res" "$SD_CARD/.system/res" ".system/res"
     sync_dir "$PAYLOAD_DIR/.system/common" "$SD_CARD/.system/common" ".system/common"
-    sync_dir "$PAYLOAD_DIR/.system/cores" "$SD_CARD/.system/cores" ".system/cores"
     sync_file "$PAYLOAD_DIR/.system/version.txt" "$SD_CARD/.system/" ".system/version.txt"
 else
     sync_dir "$PAYLOAD_DIR/.system" "$SD_CARD/.system" ".system" --delete

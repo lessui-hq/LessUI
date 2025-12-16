@@ -9,7 +9,7 @@
 #   clean   - Remove downloaded cores
 ###########################################################
 
-MINARCH_CORES_VERSION ?= 20251213-0
+MINARCH_CORES_VERSION ?= 20251214-2
 CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(MINARCH_CORES_VERSION)
 
 # All core management happens in cores/ directory
@@ -20,71 +20,71 @@ CORES_DIR = $(CURDIR)/cores
 # Cores go in build/.system/cores (3 levels up from SYSTEM, then down to .system)
 setup:
 	@BUILD_CORES_DIR="$(DESTDIR)/../../../.system/cores"; \
-	mkdir -p "$$BUILD_CORES_DIR/a7" "$$BUILD_CORES_DIR/a53" "$(CORES_DIR)"; \
+	mkdir -p "$$BUILD_CORES_DIR/arm32" "$$BUILD_CORES_DIR/arm64" "$(CORES_DIR)"; \
  \
 	if [ -f "$(CORES_DIR)/override/linux-arm32.zip" ]; then \
 		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm32.zip" 2>/dev/null || echo "unknown"); \
-		if [ -f "$(CORES_DIR)/extracted/override/.version-a7" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-a7)" = "$$OVERRIDE_VERSION" ]; then \
-			echo "Using cached override a7 cores ($$OVERRIDE_VERSION)..."; \
-			rsync -a "$(CORES_DIR)/extracted/override/a7/" "$$BUILD_CORES_DIR/a7/"; \
+		if [ -f "$(CORES_DIR)/extracted/override/.version-arm32" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-arm32)" = "$$OVERRIDE_VERSION" ]; then \
+			echo "Using cached override arm32 cores ($$OVERRIDE_VERSION)..."; \
+			rsync -a "$(CORES_DIR)/extracted/override/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		else \
-			echo "Extracting override a7 cores ($$OVERRIDE_VERSION)..."; \
-			rm -rf "$(CORES_DIR)/extracted/override/a7"; \
-			mkdir -p "$(CORES_DIR)/extracted/override/a7"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/override/a7" "$(CORES_DIR)/override/linux-arm32.zip" >/dev/null; \
-			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-a7"; \
-			rsync -a "$(CORES_DIR)/extracted/override/a7/" "$$BUILD_CORES_DIR/a7/"; \
+			echo "Extracting override arm32 cores ($$OVERRIDE_VERSION)..."; \
+			rm -rf "$(CORES_DIR)/extracted/override/arm32"; \
+			mkdir -p "$(CORES_DIR)/extracted/override/arm32"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/override/arm32" "$(CORES_DIR)/override/linux-arm32.zip" >/dev/null; \
+			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-arm32"; \
+			rsync -a "$(CORES_DIR)/extracted/override/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		fi; \
 	else \
-		if [ -f "$(CORES_DIR)/extracted/remote/.version-a7" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-a7)" = "$(MINARCH_CORES_VERSION)" ]; then \
-			echo "Using cached remote a7 cores ($(MINARCH_CORES_VERSION))..."; \
-			rsync -a "$(CORES_DIR)/extracted/remote/a7/" "$$BUILD_CORES_DIR/a7/"; \
+		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm32" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm32)" = "$(MINARCH_CORES_VERSION)" ]; then \
+			echo "Using cached remote arm32 cores ($(MINARCH_CORES_VERSION))..."; \
+			rsync -a "$(CORES_DIR)/extracted/remote/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		else \
-			echo "Downloading remote a7 cores (ARM32) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote arm32 cores (ARM32) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
-			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-a7.zip; \
-			rm -rf "$(CORES_DIR)/extracted/remote/a7"; \
-			mkdir -p "$(CORES_DIR)/extracted/remote/a7"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/remote/a7" /tmp/lessui-cores-a7.zip >/dev/null; \
-			rm /tmp/lessui-cores-a7.zip; \
-			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-a7"; \
-			rsync -a "$(CORES_DIR)/extracted/remote/a7/" "$$BUILD_CORES_DIR/a7/"; \
+			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-arm32.zip; \
+			rm -rf "$(CORES_DIR)/extracted/remote/arm32"; \
+			mkdir -p "$(CORES_DIR)/extracted/remote/arm32"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm32" /tmp/lessui-cores-arm32.zip >/dev/null; \
+			rm /tmp/lessui-cores-arm32.zip; \
+			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm32"; \
+			rsync -a "$(CORES_DIR)/extracted/remote/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		fi; \
 	fi; \
  \
 	if [ -f "$(CORES_DIR)/override/linux-arm64.zip" ]; then \
 		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm64.zip" 2>/dev/null || echo "unknown"); \
-		if [ -f "$(CORES_DIR)/extracted/override/.version-a53" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-a53)" = "$$OVERRIDE_VERSION" ]; then \
-			echo "Using cached override a53 cores ($$OVERRIDE_VERSION)..."; \
-			rsync -a "$(CORES_DIR)/extracted/override/a53/" "$$BUILD_CORES_DIR/a53/"; \
+		if [ -f "$(CORES_DIR)/extracted/override/.version-arm64" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-arm64)" = "$$OVERRIDE_VERSION" ]; then \
+			echo "Using cached override arm64 cores ($$OVERRIDE_VERSION)..."; \
+			rsync -a "$(CORES_DIR)/extracted/override/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		else \
-			echo "Extracting override a53 cores ($$OVERRIDE_VERSION)..."; \
-			rm -rf "$(CORES_DIR)/extracted/override/a53"; \
-			mkdir -p "$(CORES_DIR)/extracted/override/a53"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/override/a53" "$(CORES_DIR)/override/linux-arm64.zip" >/dev/null; \
-			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-a53"; \
-			rsync -a "$(CORES_DIR)/extracted/override/a53/" "$$BUILD_CORES_DIR/a53/"; \
+			echo "Extracting override arm64 cores ($$OVERRIDE_VERSION)..."; \
+			rm -rf "$(CORES_DIR)/extracted/override/arm64"; \
+			mkdir -p "$(CORES_DIR)/extracted/override/arm64"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/override/arm64" "$(CORES_DIR)/override/linux-arm64.zip" >/dev/null; \
+			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-arm64"; \
+			rsync -a "$(CORES_DIR)/extracted/override/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		fi; \
 	else \
-		if [ -f "$(CORES_DIR)/extracted/remote/.version-a53" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-a53)" = "$(MINARCH_CORES_VERSION)" ]; then \
-			echo "Using cached remote a53 cores ($(MINARCH_CORES_VERSION))..."; \
-			rsync -a "$(CORES_DIR)/extracted/remote/a53/" "$$BUILD_CORES_DIR/a53/"; \
+		if [ -f "$(CORES_DIR)/extracted/remote/.version-arm64" ] && [ "$$(cat $(CORES_DIR)/extracted/remote/.version-arm64)" = "$(MINARCH_CORES_VERSION)" ]; then \
+			echo "Using cached remote arm64 cores ($(MINARCH_CORES_VERSION))..."; \
+			rsync -a "$(CORES_DIR)/extracted/remote/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		else \
-			echo "Downloading remote a53 cores (ARM64) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
+			echo "Downloading remote arm64 cores (ARM64) from LessUI-Cores $(MINARCH_CORES_VERSION)..."; \
 			mkdir -p "$(CORES_DIR)/extracted/remote"; \
-			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-a53.zip; \
-			rm -rf "$(CORES_DIR)/extracted/remote/a53"; \
-			mkdir -p "$(CORES_DIR)/extracted/remote/a53"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/remote/a53" /tmp/lessui-cores-a53.zip >/dev/null; \
-			rm /tmp/lessui-cores-a53.zip; \
-			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-a53"; \
-			rsync -a "$(CORES_DIR)/extracted/remote/a53/" "$$BUILD_CORES_DIR/a53/"; \
+			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-arm64.zip; \
+			rm -rf "$(CORES_DIR)/extracted/remote/arm64"; \
+			mkdir -p "$(CORES_DIR)/extracted/remote/arm64"; \
+			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm64" /tmp/lessui-cores-arm64.zip >/dev/null; \
+			rm /tmp/lessui-cores-arm64.zip; \
+			echo "$(MINARCH_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm64"; \
+			rsync -a "$(CORES_DIR)/extracted/remote/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		fi; \
 	fi; \
  \
 	echo "Cores deployed successfully:"; \
-	echo "  a7:  $$(ls "$$BUILD_CORES_DIR/a7"/*.so 2>/dev/null | wc -l | tr -d ' ') cores (ARM32)"; \
-	echo "  a53: $$(ls "$$BUILD_CORES_DIR/a53"/*.so 2>/dev/null | wc -l | tr -d ' ') cores (ARM64)"
+	echo "  arm32: $$(ls "$$BUILD_CORES_DIR/arm32"/*.so 2>/dev/null | wc -l | tr -d ' ') cores"; \
+	echo "  arm64: $$(ls "$$BUILD_CORES_DIR/arm64"/*.so 2>/dev/null | wc -l | tr -d ' ') cores"
 
 # Build hook - not needed (cores are pre-built)
 build:

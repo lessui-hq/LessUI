@@ -85,6 +85,37 @@ int containsString(char* haystack, char* needle);
 int strArrayContains(char** arr, const char* str);
 
 /**
+ * Safe string copy with bounds checking.
+ *
+ * Like BSD strlcpy - always null-terminates the destination buffer,
+ * never writes more than dest_size bytes, and returns the length of
+ * the source string (allowing truncation detection).
+ *
+ * @param dest Destination buffer
+ * @param src Source string (must be null-terminated)
+ * @param dest_size Size of destination buffer (must be > 0)
+ * @return Length of src. If return value >= dest_size, truncation occurred.
+ *
+ * @example
+ *   char buf[32];
+ *   safe_strcpy(buf, "hello", sizeof(buf));  // buf = "hello", returns 5
+ *   safe_strcpy(buf, long_string, sizeof(buf));  // truncates safely
+ */
+size_t safe_strcpy(char* dest, const char* src, size_t dest_size);
+
+/**
+ * Convenience macro for safe_strcpy when destination is an array.
+ *
+ * Automatically uses sizeof(dest) for the size parameter.
+ * Only works when dest is a fixed-size array, not a pointer.
+ *
+ * @example
+ *   char path[MAX_PATH];
+ *   SAFE_STRCPY(path, some_string);  // Equivalent to safe_strcpy(path, some_string, sizeof(path))
+ */
+#define SAFE_STRCPY(dest, src) safe_strcpy((dest), (src), sizeof(dest))
+
+/**
  * Determines if a file should be hidden in the UI.
  *
  * Files are hidden if they:
@@ -163,6 +194,31 @@ int splitTextLines(char* str, char** lines, int max_lines);
  * @return 1 if path exists, 0 otherwise
  */
 int exists(char* path);
+
+/**
+ * Finds a system file with platform-specific fallback to common.
+ *
+ * Provides a generic way to share resources across platforms while
+ * allowing platform-specific overrides. Mirrors the .system/{platform}/
+ * directory structure in .system/common/ for shared resources.
+ *
+ * Search order:
+ * 1. /.system/{PLATFORM}/{relative_path}  (platform-specific)
+ * 2. /.system/common/{relative_path}      (shared fallback)
+ *
+ * Example: findSystemFile("paks/Emus/MAME.pak/map.txt", output)
+ * Checks:
+ *   - /.system/miyoomini/paks/Emus/MAME.pak/map.txt
+ *   - /.system/common/paks/Emus/MAME.pak/map.txt
+ *
+ * @param relative_path Path relative to system directory
+ * @param output_path   Output buffer for resolved absolute path (min 512 bytes)
+ * @return 1 if found, 0 if not found
+ *
+ * @note If found, output_path contains the full absolute path
+ * @note If not found, output_path is unchanged
+ */
+int findSystemFile(const char* relative_path, char* output_path);
 
 /**
  * Creates an empty file or updates its timestamp.

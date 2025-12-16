@@ -32,13 +32,13 @@ void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path
 	getEmuName(entry_path, emu_tag);
 
 	// Format: "name (emu_tag)"
-	snprintf(out_name, 256, "%s (%s)", entry_name, emu_tag);
+	(void)snprintf(out_name, 256, "%s (%s)", entry_name, emu_tag);
 }
 
 /**
  * Applies map.txt aliases to entries.
  */
-int DirectoryIndex_applyAliases(Array* entries, Hash* map) {
+int DirectoryIndex_applyAliases(Array* entries, StringMap* map) {
 	if (!entries || !map)
 		return 0;
 
@@ -50,7 +50,7 @@ int DirectoryIndex_applyAliases(Array* entries, Hash* map) {
 			continue;
 		filename++; // Skip the '/'
 
-		char* alias = Hash_get(map, filename);
+		char* alias = StringMap_get(map, filename);
 		if (alias) {
 			if (Entry_setName(entry, alias))
 				resort = 1;
@@ -171,7 +171,8 @@ void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas) {
 /**
  * Performs full directory indexing.
  */
-Array* DirectoryIndex_index(Array* entries, IntArray* alphas, Hash* map, int skip_alpha_index) {
+Array* DirectoryIndex_index(Array* entries, IntArray* alphas, StringMap* map,
+                            int skip_alpha_index) {
 	if (!entries)
 		return NULL;
 

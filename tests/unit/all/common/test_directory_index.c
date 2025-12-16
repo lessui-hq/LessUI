@@ -15,7 +15,7 @@
 #include "../../support/unity/unity.h"
 #include "directory_index.h"
 #include "minui_entry.h"
-#include "../../../../workspace/all/common/collections.h"
+#include "../../../../workspace/all/common/stringmap.h"
 #include "../../../../workspace/all/common/defines.h"
 #include <stdlib.h>
 #include <string.h>
@@ -106,15 +106,15 @@ void test_applyAliases_updates_name(void) {
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
 	Array_push(entries, e);
 
-	Hash* map = Hash_new();
-	Hash_set(map, "game.gb", "Custom Name");
+	StringMap* map = StringMap_new();
+	StringMap_set(map, "game.gb", "Custom Name");
 
 	int result = DirectoryIndex_applyAliases(entries, map);
 
 	TEST_ASSERT_EQUAL(1, result);
 	TEST_ASSERT_EQUAL_STRING("Custom Name", e->name);
 
-	Hash_free(map);
+	StringMap_free(map);
 	EntryArray_free(entries);
 }
 
@@ -123,15 +123,15 @@ void test_applyAliases_no_match_returns_0(void) {
 	Entry* e = Entry_new("/Roms/GB/game.gb", ENTRY_ROM);
 	Array_push(entries, e);
 
-	Hash* map = Hash_new();
-	Hash_set(map, "other.gb", "Other Name");
+	StringMap* map = StringMap_new();
+	StringMap_set(map, "other.gb", "Other Name");
 
 	int result = DirectoryIndex_applyAliases(entries, map);
 
 	TEST_ASSERT_EQUAL(0, result);
 	TEST_ASSERT_EQUAL_STRING("game", e->name);
 
-	Hash_free(map);
+	StringMap_free(map);
 	EntryArray_free(entries);
 }
 
@@ -144,9 +144,9 @@ void test_applyAliases_multiple_entries(void) {
 	Array_push(entries, e2);
 	Array_push(entries, e3);
 
-	Hash* map = Hash_new();
-	Hash_set(map, "a.gb", "Alpha");
-	Hash_set(map, "c.gb", "Charlie");
+	StringMap* map = StringMap_new();
+	StringMap_set(map, "a.gb", "Alpha");
+	StringMap_set(map, "c.gb", "Charlie");
 
 	DirectoryIndex_applyAliases(entries, map);
 
@@ -154,7 +154,7 @@ void test_applyAliases_multiple_entries(void) {
 	TEST_ASSERT_EQUAL_STRING("b", e2->name);
 	TEST_ASSERT_EQUAL_STRING("Charlie", e3->name);
 
-	Hash_free(map);
+	StringMap_free(map);
 	EntryArray_free(entries);
 }
 
@@ -171,14 +171,14 @@ void test_applyAliases_null_map_returns_0(void) {
 }
 
 void test_applyAliases_null_entries_returns_0(void) {
-	Hash* map = Hash_new();
-	Hash_set(map, "game.gb", "Name");
+	StringMap* map = StringMap_new();
+	StringMap_set(map, "game.gb", "Name");
 
 	int result = DirectoryIndex_applyAliases(NULL, map);
 
 	TEST_ASSERT_EQUAL(0, result);
 
-	Hash_free(map);
+	StringMap_free(map);
 }
 
 ///////////////////////////////
@@ -553,9 +553,9 @@ void test_index_full_workflow(void) {
 	Array_push(entries, e3);
 
 	// Create map with alias and hidden entry
-	Hash* map = Hash_new();
-	Hash_set(map, "zelda.gb", "The Legend of Zelda");
-	Hash_set(map, "hidden.gb", ".hidden");
+	StringMap* map = StringMap_new();
+	StringMap_set(map, "zelda.gb", "The Legend of Zelda");
+	StringMap_set(map, "hidden.gb", ".hidden");
 
 	IntArray* alphas = IntArray_new();
 
@@ -572,7 +572,7 @@ void test_index_full_workflow(void) {
 	// Alpha index should have 2 groups (L and M)
 	TEST_ASSERT_EQUAL(2, alphas->count);
 
-	Hash_free(map);
+	StringMap_free(map);
 	IntArray_free(alphas);
 	EntryArray_free(result);
 }

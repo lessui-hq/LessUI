@@ -11,6 +11,7 @@
  * - Missing files/entries
  * - Empty lines and malformed entries
  * - Hidden ROMs (alias starts with '.')
+ * - Merged maps (pak-bundled + user maps with precedence)
  *
  * Note: Uses GCC --wrap for file mocking (Docker-only)
  */
@@ -306,8 +307,8 @@ void test_getAlias_path_without_directory(void) {
 	TEST_ASSERT_EQUAL_STRING("Default", alias);
 }
 
-void test_getAlias_stops_at_first_match(void) {
-	// Duplicate entries (should use first)
+void test_getAlias_duplicate_uses_last_value(void) {
+	// Duplicate entries - hash map semantics: last value wins
 	mock_fs_add_file("/Roms/map.txt",
 	                 "game.rom\tFirst Alias\n"
 	                 "game.rom\tSecond Alias\n");
@@ -315,7 +316,131 @@ void test_getAlias_stops_at_first_match(void) {
 	char alias[256] = "";
 	Map_getAlias("/Roms/game.rom", alias);
 
-	TEST_ASSERT_EQUAL_STRING("First Alias", alias);
+	TEST_ASSERT_EQUAL_STRING("Second Alias", alias);
+}
+
+///////////////////////////////
+// Merged Map Tests (Pak + User)
+///////////////////////////////
+
+void test_getAlias_shared_common_map(void) {
+	// Test shared map in .system/common/ (new generic shared system)
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/MAME.pak/map.txt",
+	                 "test.zip\tTest Game (Shared)\n");
+
+	char alias[256] = "";
+	Map_getAlias("/tmp/test/Roms/MAME/test.zip", alias);
+	TEST_ASSERT_EQUAL_STRING("Test Game (Shared)", alias);
+}
+
+void test_getAlias_platform_overrides_common(void) {
+	// Test that platform-specific map overrides shared common map
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/MAME.pak/map.txt",
+	                 "test.zip\tTest Game (Shared)\n");
+	mock_fs_add_file("/tmp/test/.system/test/paks/Emus/MAME.pak/map.txt",
+	                 "test.zip\tTest Game (Platform)\n");
+
+	char alias[256] = "";
+	Map_getAlias("/tmp/test/Roms/MAME/test.zip", alias);
+
+	// Platform-specific should win
+	TEST_ASSERT_EQUAL_STRING("Test Game (Platform)", alias);
+}
+
+void test_getAlias_uses_pak_map_when_no_user_map(void) {
+	// Set up shared common pak map
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/MAME.pak/map.txt",
+	                 "mslug.zip\tMetal Slug\n"
+	                 "kof98.zip\tThe King of Fighters '98\n");
+
+	char alias[256] = "";
+	Map_getAlias("/tmp/test/Roms/MAME/mslug.zip", alias);
+
+	TEST_ASSERT_EQUAL_STRING("Metal Slug", alias);
+}
+
+void test_getAlias_user_map_overrides_pak_map(void) {
+	// Set up shared pak map with default name
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/MAME.pak/map.txt",
+	                 "mslug.zip\tMetal Slug (Default)\n");
+
+	// Set up user map with custom name
+	mock_fs_add_file("/tmp/test/Roms/MAME/map.txt",
+	                 "mslug.zip\tMetal Slug (Custom)\n");
+
+	char alias[256] = "";
+	Map_getAlias("/tmp/test/Roms/MAME/mslug.zip", alias);
+
+	// User map should win
+	TEST_ASSERT_EQUAL_STRING("Metal Slug (Custom)", alias);
+}
+
+void test_getAlias_merges_pak_and_user_maps(void) {
+	// Shared pak map has game1 and game2
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/MAME.pak/map.txt",
+	                 "game1.zip\tGame One (Pak)\n"
+	                 "game2.zip\tGame Two (Pak)\n");
+
+	// User map has game2 (override) and game3 (new)
+	mock_fs_add_file("/tmp/test/Roms/MAME/map.txt",
+	                 "game2.zip\tGame Two (User)\n"
+	                 "game3.zip\tGame Three (User)\n");
+
+	char alias1[256] = "";
+	char alias2[256] = "";
+	char alias3[256] = "";
+
+	// game1 should come from pak
+	Map_getAlias("/tmp/test/Roms/MAME/game1.zip", alias1);
+	TEST_ASSERT_EQUAL_STRING("Game One (Pak)", alias1);
+
+	// game2 should come from user (override)
+	Map_getAlias("/tmp/test/Roms/MAME/game2.zip", alias2);
+	TEST_ASSERT_EQUAL_STRING("Game Two (User)", alias2);
+
+	// game3 should come from user (new)
+	Map_getAlias("/tmp/test/Roms/MAME/game3.zip", alias3);
+	TEST_ASSERT_EQUAL_STRING("Game Three (User)", alias3);
+}
+
+void test_getAlias_user_map_only_still_works(void) {
+	// No pak map, only user map (backward compatibility)
+	mock_fs_add_file("/tmp/test/Roms/GB/map.txt",
+	                 "mario.gb\tSuper Mario Land\n");
+
+	char alias[256] = "";
+	Map_getAlias("/tmp/test/Roms/GB/mario.gb", alias);
+
+	TEST_ASSERT_EQUAL_STRING("Super Mario Land", alias);
+}
+
+void test_getAlias_arcade_game_realistic_workflow(void) {
+	// Realistic arcade setup: shared pak has 100+ games, user overrides a few
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/FBNEO.pak/map.txt",
+	                 "mslug.zip\tMetal Slug\n"
+	                 "mslug2.zip\tMetal Slug 2\n"
+	                 "mslugx.zip\tMetal Slug X\n"
+	                 "kof98.zip\tThe King of Fighters '98\n"
+	                 "sf2.zip\tStreet Fighter II\n");
+
+	// User only overrides one game
+	mock_fs_add_file("/tmp/test/Roms/FBNEO/map.txt",
+	                 "sf2.zip\tSF2 (My Favorite!)\n");
+
+	char ms_alias[256] = "";
+	char kof_alias[256] = "";
+	char sf2_alias[256] = "";
+
+	// Most games use shared pak defaults
+	Map_getAlias("/tmp/test/Roms/FBNEO/mslug.zip", ms_alias);
+	TEST_ASSERT_EQUAL_STRING("Metal Slug", ms_alias);
+
+	Map_getAlias("/tmp/test/Roms/FBNEO/kof98.zip", kof_alias);
+	TEST_ASSERT_EQUAL_STRING("The King of Fighters '98", kof_alias);
+
+	// User's custom name wins
+	Map_getAlias("/tmp/test/Roms/FBNEO/sf2.zip", sf2_alias);
+	TEST_ASSERT_EQUAL_STRING("SF2 (My Favorite!)", sf2_alias);
 }
 
 ///////////////////////////////
@@ -359,7 +484,16 @@ int main(void) {
 
 	// Edge cases
 	RUN_TEST(test_getAlias_path_without_directory);
-	RUN_TEST(test_getAlias_stops_at_first_match);
+	RUN_TEST(test_getAlias_duplicate_uses_last_value);
+
+	// Merged maps (pak + user) with .system/common/ shared resources
+	RUN_TEST(test_getAlias_shared_common_map);
+	RUN_TEST(test_getAlias_platform_overrides_common);
+	RUN_TEST(test_getAlias_uses_pak_map_when_no_user_map);
+	RUN_TEST(test_getAlias_user_map_overrides_pak_map);
+	RUN_TEST(test_getAlias_merges_pak_and_user_maps);
+	RUN_TEST(test_getAlias_user_map_only_still_works);
+	RUN_TEST(test_getAlias_arcade_game_realistic_workflow);
 
 	return UNITY_END();
 }

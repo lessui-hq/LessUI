@@ -41,4 +41,21 @@ const char* skip_article(const char* s);
  */
 int strnatcasecmp(const char* s1, const char* s2);
 
+/**
+ * Natural string comparison for pre-sorted keys.
+ *
+ * Use this when comparing strings that have already had articles stripped
+ * (e.g., Entry->sort_key). Avoids redundant article stripping that would
+ * otherwise happen in strnatcasecmp().
+ *
+ * For a directory with 5000 entries, sorting requires ~60k comparisons.
+ * Using this function instead of strnatcasecmp() eliminates ~120k
+ * unnecessary skip_article() calls.
+ *
+ * @param s1 First pre-sorted string
+ * @param s2 Second pre-sorted string
+ * @return Negative if s1 < s2, 0 if equal, positive if s1 > s2
+ */
+int strnatcasecmp_presorted(const char* s1, const char* s2);
+
 #endif // MINUI_STR_COMPARE_H

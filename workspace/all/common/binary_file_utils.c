@@ -30,7 +30,7 @@ size_t BinaryFile_read(const char* filepath, void* buffer, size_t size) {
 		LOG_error("Failed to read %zu bytes from %s: only read %zu bytes", size, filepath,
 		          bytes_read);
 	}
-	fclose(file);
+	(void)fclose(file); // Binary file opened for reading
 
 	return bytes_read;
 }
@@ -55,7 +55,7 @@ size_t BinaryFile_write(const char* filepath, const void* buffer, size_t size) {
 		LOG_error("Failed to write %zu bytes to %s: only wrote %zu bytes", size, filepath,
 		          bytes_written);
 	}
-	fclose(file);
+	(void)fclose(file); // Binary file opened for writing
 
 	return bytes_written;
 }

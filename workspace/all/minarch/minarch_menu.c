@@ -111,17 +111,17 @@ static void Menu_init_ctx(MinArchContext* ctx) {
 
 	char emu_name[256];
 	getEmuName(g->path, emu_name);
-	sprintf(m->minui_dir, SHARED_USERDATA_PATH "/.minui/%s", emu_name);
+	(void)sprintf(m->minui_dir, SHARED_USERDATA_PATH "/.minui/%s", emu_name);
 	mkdir(m->minui_dir, 0755);
 
-	sprintf(m->slot_path, "%s/%s.txt", m->minui_dir, g->name);
+	(void)sprintf(m->slot_path, "%s/%s.txt", m->minui_dir, g->name);
 
 	if (*ctx->simple_mode)
 		m->items[ITEM_OPTS] = "Reset";
 
 	if (g->m3u_path[0]) {
 		char* tmp;
-		strcpy(m->base_path, g->m3u_path);
+		SAFE_STRCPY(m->base_path, g->m3u_path);
 		tmp = strrchr(m->base_path, '/') + 1;
 		tmp[0] = '\0';
 
@@ -136,9 +136,9 @@ static void Menu_init_ctx(MinArchContext* ctx) {
 					continue;
 
 				char disc_path[256];
-				strcpy(disc_path, m->base_path);
+				SAFE_STRCPY(disc_path, m->base_path);
 				tmp = disc_path + strlen(disc_path);
-				strcpy(tmp, line);
+				safe_strcpy(tmp, line, sizeof(disc_path) - (tmp - disc_path));
 
 				if (exists(disc_path)) {
 					m->disc_paths[m->total_discs] = strdup(disc_path);
@@ -148,7 +148,7 @@ static void Menu_init_ctx(MinArchContext* ctx) {
 					m->total_discs += 1;
 				}
 			}
-			fclose(file);
+			(void)fclose(file); // M3U file opened for reading
 		}
 	}
 }
@@ -205,8 +205,8 @@ static void Menu_updateState_ctx(MinArchContext* ctx) {
 
 	*ctx->state_slot = last_slot;
 
-	sprintf(m->bmp_path, "%s/%s.%d.bmp", m->minui_dir, g->name, m->slot);
-	sprintf(m->txt_path, "%s/%s.%d.txt", m->minui_dir, g->name, m->slot);
+	(void)sprintf(m->bmp_path, "%s/%s.%d.bmp", m->minui_dir, g->name, m->slot);
+	(void)sprintf(m->txt_path, "%s/%s.%d.txt", m->minui_dir, g->name, m->slot);
 
 	m->save_exists = exists(save_path);
 	m->preview_exists = m->save_exists && exists(m->bmp_path);
@@ -252,9 +252,9 @@ static void Menu_loadState_ctx(MinArchContext* ctx) {
 
 			char slot_disc_path[256];
 			if (slot_disc_name[0] == '/')
-				strcpy(slot_disc_path, slot_disc_name);
+				SAFE_STRCPY(slot_disc_path, slot_disc_name);
 			else
-				sprintf(slot_disc_path, "%s%s", m->base_path, slot_disc_name);
+				(void)sprintf(slot_disc_path, "%s%s", m->base_path, slot_disc_name);
 
 			char* disc_path = m->disc_paths[m->disc];
 			if (!exactMatch(slot_disc_path, disc_path)) {
@@ -394,11 +394,11 @@ static void Menu_scale_ctx(MinArchContext* ctx, SDL_Surface* src, SDL_Surface* d
 static void getAlias(char* path, char* alias) {
 	char* tmp;
 	char map_path[256];
-	strcpy(map_path, path);
+	SAFE_STRCPY(map_path, path);
 	tmp = strrchr(map_path, '/');
 	if (tmp) {
 		tmp += 1;
-		strcpy(tmp, "map.txt");
+		safe_strcpy(tmp, "map.txt", sizeof(map_path) - (tmp - map_path));
 	}
 	char* file_name = strrchr(path, '/');
 	if (file_name)
@@ -421,12 +421,12 @@ static void getAlias(char* path, char* alias) {
 				tmp += 1;
 
 				if (exactMatch(line, file_name)) {
-					strcpy(alias, tmp);
-					fclose(file);
+					safe_strcpy(alias, tmp, MAX_PATH);
+					(void)fclose(file); // M3U file opened for reading
 					return;
 				}
 			}
-			fclose(file);
+			(void)fclose(file); // M3U file opened for reading
 		}
 	}
 }
@@ -492,7 +492,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 	char disc_name[16];
 	if (m->total_discs) {
 		rom_disc = m->disc;
-		sprintf(disc_name, "Disc %i", m->disc + 1);
+		(void)sprintf(disc_name, "Disc %i", m->disc + 1);
 	}
 
 	int selected = 0;
@@ -526,7 +526,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				if (m->disc < 0)
 					m->disc += m->total_discs;
 				dirty = 1;
-				sprintf(disc_name, "Disc %i", m->disc + 1);
+				(void)sprintf(disc_name, "Disc %i", m->disc + 1);
 			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
 				m->slot -= 1;
 				if (m->slot < 0)
@@ -539,7 +539,7 @@ static void Menu_loop_ctx(MinArchContext* ctx) {
 				if (m->disc == m->total_discs)
 					m->disc -= m->total_discs;
 				dirty = 1;
-				sprintf(disc_name, "Disc %i", m->disc + 1);
+				(void)sprintf(disc_name, "Disc %i", m->disc + 1);
 			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
 				m->slot += 1;
 				if (m->slot >= MENU_SLOT_COUNT)

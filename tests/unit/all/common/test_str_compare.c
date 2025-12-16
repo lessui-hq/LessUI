@@ -175,6 +175,72 @@ void test_strnatcasecmp_zelda_realistic(void) {
 }
 
 ///////////////////////////////
+// strnatcasecmp_presorted tests
+// For pre-stripped sort keys (Entry->sort_key)
+///////////////////////////////
+
+void test_presorted_basic_comparison(void) {
+	TEST_ASSERT_EQUAL_INT(0, strnatcasecmp_presorted("hello", "hello"));
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("apple", "banana") < 0);
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("banana", "apple") > 0);
+}
+
+void test_presorted_null_handling(void) {
+	TEST_ASSERT_EQUAL_INT(0, strnatcasecmp_presorted(NULL, NULL));
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted(NULL, "a") < 0);
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("a", NULL) > 0);
+}
+
+void test_presorted_case_insensitive(void) {
+	TEST_ASSERT_EQUAL_INT(0, strnatcasecmp_presorted("Hello", "hello"));
+	TEST_ASSERT_EQUAL_INT(0, strnatcasecmp_presorted("LEGEND", "legend"));
+}
+
+void test_presorted_natural_numbers(void) {
+	// Key feature: natural number sorting
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("Game 2", "Game 10") < 0);
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("file1", "file2") < 0);
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("file9", "file10") < 0);
+}
+
+void test_presorted_does_not_strip_articles(void) {
+	// CRITICAL: presorted should NOT strip articles
+	// "The" should be compared as-is, not skipped
+	// If articles were stripped, "The Legend" would compare as "Legend" and be < "Mario"
+	// But presorted keeps "The", so "The Legend" > "Mario" (T > M)
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("The Legend of Zelda", "Mario") > 0);  // T > M
+
+	// Similarly for "A" - without stripping, "A Link" > "Batman" (no, A < B)
+	// Actually A < B, so "A Link" < "Batman"
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("A Link to the Past", "Batman") < 0);  // A < B
+}
+
+void test_presorted_articles_compared_literally(void) {
+	// Verify articles are treated as regular text
+	// "The" starts with T, "An" starts with A, so "An..." < "The..."
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("An American Tail", "The Legend") < 0);  // A < T
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("A Link", "An American") < 0);  // "A " < "An" (space < 'n')
+}
+
+void test_presorted_pre_stripped_zelda(void) {
+	// When sort_key is pre-stripped (as Entry does), both should just be "Legend..."
+	// This is how it's actually used in practice
+	TEST_ASSERT_EQUAL_INT(0, strnatcasecmp_presorted("Legend of Zelda", "Legend of Zelda"));
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("Legend of Zelda", "Legend of Zelda 2") < 0);
+	TEST_ASSERT_TRUE(strnatcasecmp_presorted("Legend of Zelda", "Mario") < 0);  // L < M
+}
+
+void test_presorted_matches_strnatcasecmp_for_articleless_strings(void) {
+	// For strings without articles, both functions should behave identically
+	TEST_ASSERT_EQUAL_INT(strnatcasecmp("Mario", "Zelda"),
+	                      strnatcasecmp_presorted("Mario", "Zelda"));
+	TEST_ASSERT_EQUAL_INT(strnatcasecmp("Game 2", "Game 10"),
+	                      strnatcasecmp_presorted("Game 2", "Game 10"));
+	TEST_ASSERT_EQUAL_INT(strnatcasecmp("Final Fantasy 9", "Final Fantasy 10"),
+	                      strnatcasecmp_presorted("Final Fantasy 9", "Final Fantasy 10"));
+}
+
+///////////////////////////////
 // Edge cases
 ///////////////////////////////
 
@@ -240,6 +306,16 @@ int main(void) {
 	RUN_TEST(test_strnatcasecmp_article_case_insensitive);
 	RUN_TEST(test_strnatcasecmp_article_needs_space);
 	RUN_TEST(test_strnatcasecmp_zelda_realistic);
+
+	// strnatcasecmp_presorted tests
+	RUN_TEST(test_presorted_basic_comparison);
+	RUN_TEST(test_presorted_null_handling);
+	RUN_TEST(test_presorted_case_insensitive);
+	RUN_TEST(test_presorted_natural_numbers);
+	RUN_TEST(test_presorted_does_not_strip_articles);
+	RUN_TEST(test_presorted_articles_compared_literally);
+	RUN_TEST(test_presorted_pre_stripped_zelda);
+	RUN_TEST(test_presorted_matches_strnatcasecmp_for_articleless_strings);
 
 	// Edge cases
 	RUN_TEST(test_strnatcasecmp_only_numbers);

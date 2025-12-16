@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "utils.h"
+
 // Use libgen.h basename on POSIX systems, or provide fallback
 #ifdef _WIN32
 static char* basename_impl(const char* path) {
@@ -32,7 +34,7 @@ void MinArchUtils_getCoreName(const char* in_name, char* out_name) {
 	temp[sizeof(temp) - 1] = '\0';
 
 	char* base = basename(temp);
-	strcpy(out_name, base);
+	safe_strcpy(out_name, base, 256); // Assume out_name is at least 256 bytes like temp
 
 	// Find the last underscore and truncate there
 	// "fceumm_libretro.so" -> "fceumm"

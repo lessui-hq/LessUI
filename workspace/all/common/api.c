@@ -261,7 +261,6 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	int content_bottom_px = edge_padding_px + (ui.row_count * best_pill_px);
 	int footer_top_px = screen_height - edge_padding_px - best_pill_px;
 	int gap_px = footer_top_px - content_bottom_px;
-	(void)gap_px; // Used in LOG_info below
 
 	LOG_info("Row calc: FINAL → %d rows, %ddp (%dpx) pills, %dpx gap\n", ui.row_count,
 	         ui.pill_height, ui.pill_height_px, gap_px);
@@ -593,7 +592,7 @@ SDL_Surface* GFX_init(int mode) {
 
 	// Load asset sprite sheet at selected tier
 	char asset_path[MAX_PATH];
-	sprintf(asset_path, RES_PATH "/assets@%ix.png", asset_scale);
+	(void)sprintf(asset_path, RES_PATH "/assets@%ix.png", asset_scale);
 	LOG_debug("GFX_init: Loading assets from: %s", asset_path);
 	if (!exists(asset_path))
 		LOG_error("GFX_init: Missing assets at %s, about to segfault!", asset_path);
@@ -1579,7 +1578,7 @@ void GFX_blitMessage(TTF_Font* ttf_font, const char* msg, SDL_Surface* dst,
 			line[len] = '\0';
 		} else {
 			len = strlen(rows[i]);
-			strcpy(line, rows[i]);
+			SAFE_STRCPY(line, rows[i]);
 		}
 
 
@@ -1814,7 +1813,7 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 			line[len] = '\0';
 		} else {
 			len = strlen(lines[i]);
-			strcpy(line, lines[i]);
+			SAFE_STRCPY(line, lines[i]);
 		}
 
 		if (len) {
@@ -3364,7 +3363,7 @@ int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count) {
 				token = strtok(NULL, " \t\n");
 			}
 		}
-		fclose(fp);
+		(void)fclose(fp); // sysfs file opened for reading
 
 		if (count > 0) {
 			break; // Found frequencies, don't try other paths
@@ -3413,18 +3412,18 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 
 				// If not already userspace, set it
 				if (strcmp(governor, "userspace") != 0) {
-					fclose(fp);
+					(void)fclose(fp); // sysfs file opened for reading
 					fp = fopen(governor_paths[i], "w");
 					if (fp) {
-						fprintf(fp, "userspace\n");
-						fclose(fp);
+						(void)fprintf(fp, "userspace\n");
+						(void)fclose(fp); // sysfs file opened for reading
 						fp = NULL;
 						usleep(10000); // 10ms delay for governor switch
 					}
 				}
 			}
 			if (fp)
-				fclose(fp);
+				(void)fclose(fp); // sysfs file opened for reading
 			break;
 		}
 	}
@@ -3433,8 +3432,8 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 	for (int i = 0; setspeed_paths[i] != NULL; i++) {
 		FILE* fp = fopen(setspeed_paths[i], "w");
 		if (fp) {
-			fprintf(fp, "%d\n", freq_khz);
-			fclose(fp);
+			(void)fprintf(fp, "%d\n", freq_khz);
+			(void)fclose(fp); // sysfs file opened for reading
 			return 0;
 		}
 	}
@@ -3463,7 +3462,7 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
  */
 int PLAT_setDateTime(int y, int m, int d, int h, int i, int s) {
 	char cmd[512];
-	sprintf(cmd, "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i, s);
+	(void)sprintf(cmd, "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i, s);
 	system(cmd);
 	return 0; // why does this return an int?
 }

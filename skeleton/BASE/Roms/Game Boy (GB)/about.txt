@@ -1,0 +1,11 @@
+Game Boy
+
+Core: gambatte
+
+Supported file types:
+  .gb, .gbc, .dmg
+
+BIOS (optional):
+  gb_bios.bin - enables boot animation
+
+Place BIOS files in: /Bios/GB/

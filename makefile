@@ -353,7 +353,15 @@ package: tidy
 	cd ./build && find . -type f -name '.DS_Store' -delete
 	mkdir -p ./build/PAYLOAD
 	mv ./build/SYSTEM ./build/PAYLOAD/.system
-	rsync -a ./build/.system/cores/ ./build/PAYLOAD/.system/cores/
+
+	# Copy only the cores referenced in cores.json (not all downloaded cores)
+	# cores.json stores core names without .so extension, actual files have .so
+	mkdir -p ./build/PAYLOAD/.system/common/cores/arm32 ./build/PAYLOAD/.system/common/cores/arm64
+	jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
+		if [ -f "./build/.system/cores/arm32/$${core}.so" ]; then cp "./build/.system/cores/arm32/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm32/"; fi; \
+			if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm64/"; fi; \
+			done
+	@echo "Copied $$(ls ./build/PAYLOAD/.system/common/cores/arm32/*.so 2>/dev/null | wc -l | tr -d ' ') arm32 cores, $$(ls ./build/PAYLOAD/.system/common/cores/arm64/*.so 2>/dev/null | wc -l | tr -d ' ') arm64 cores"
 	rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
 
 	# Create LessUI.7z (-md=16m limits dictionary so 128MB RAM devices can decompress)

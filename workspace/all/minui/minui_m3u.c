@@ -28,7 +28,7 @@ int M3U_getFirstDisc(char* m3u_path, char* disc_path) {
 
 	// Extract base directory from M3U path
 	char base_path[256];
-	strcpy(base_path, m3u_path);
+	SAFE_STRCPY(base_path, m3u_path);
 	char* tmp = strrchr(base_path, '/');
 	if (tmp) {
 		tmp += 1;
@@ -51,14 +51,14 @@ int M3U_getFirstDisc(char* m3u_path, char* disc_path) {
 				continue; // skip empty lines
 
 			// Construct full disc path (M3U paths are relative to M3U location)
-			sprintf(disc_path, "%s%s", base_path, line);
+			(void)sprintf(disc_path, "%s%s", base_path, line);
 
 			// Verify disc exists
 			if (exists(disc_path))
 				found = 1;
 			break; // Only need first disc
 		}
-		fclose(file);
+		(void)fclose(file); // M3U file opened for reading
 	}
 	return found;
 }
@@ -85,7 +85,7 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 
 	// Extract base directory from M3U path
 	char base_path[256];
-	strcpy(base_path, m3u_path);
+	SAFE_STRCPY(base_path, m3u_path);
 	char* tmp = strrchr(base_path, '/');
 	if (tmp) {
 		tmp += 1;
@@ -111,7 +111,7 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 
 			// Construct full disc path
 			char disc_path[MAX_PATH];
-			snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
+			(void)snprintf(disc_path, sizeof(disc_path), "%s%s", base_path, line);
 
 			// Only include discs that exist
 			if (exists(disc_path)) {
@@ -131,7 +131,7 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 				}
 
 				char name[24];
-				snprintf(name, sizeof(name), "Disc %i", disc_num);
+				(void)snprintf(name, sizeof(name), "Disc %i", disc_num);
 				disc->name = strdup(name);
 				if (!disc->name) {
 					LOG_warn("Failed to duplicate disc name: %s", name);
@@ -146,7 +146,7 @@ M3U_Disc** M3U_getAllDiscs(char* m3u_path, int* disc_count) {
 				(*disc_count)++;
 			}
 		}
-		fclose(file);
+		(void)fclose(file); // M3U file opened for reading
 	}
 
 	return discs;

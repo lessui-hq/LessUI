@@ -1,0 +1,6 @@
+Nintendo Entertainment System
+
+Core: fceumm
+
+BIOS (optional):
+  disksys.rom - required for Famicom Disk System games

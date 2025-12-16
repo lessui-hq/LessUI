@@ -65,7 +65,7 @@ bool MinUIPathStack_pop(MinUIPathStack* stack, char* out_path) {
 
 	stack->count--;
 	if (out_path) {
-		strcpy(out_path, stack->items[stack->count].path);
+		(void)snprintf(out_path, MINUI_STATE_MAX_PATH, "%s", stack->items[stack->count].path);
 	}
 	return true;
 }
@@ -109,9 +109,9 @@ void MinUIState_extractFilename(const char* full_path, char* out_filename) {
 
 	const char* slash = strrchr(full_path, '/');
 	if (slash) {
-		strcpy(out_filename, slash + 1);
+		(void)snprintf(out_filename, MINUI_STATE_MAX_PATH, "%s", slash + 1);
 	} else {
-		strcpy(out_filename, full_path);
+		(void)snprintf(out_filename, MINUI_STATE_MAX_PATH, "%s", full_path);
 	}
 }
 
@@ -183,8 +183,8 @@ void MinUIState_getResumeSlotPath(const char* rom_path, const char* userdata_pat
 	char rom_file[MINUI_STATE_MAX_PATH];
 	MinUIState_extractFilename(rom_path, rom_file);
 
-	snprintf(out_path, MINUI_STATE_MAX_PATH, "%s/.minui/%s/%s.txt", userdata_path, emu_name,
-	         rom_file);
+	(void)snprintf(out_path, MINUI_STATE_MAX_PATH, "%s/.minui/%s/%s.txt", userdata_path, emu_name,
+	               rom_file);
 }
 
 void MinUIState_buildResumeCommand(const char* emu_path, const char* rom_path, char* out_cmd) {
@@ -201,7 +201,8 @@ void MinUIState_buildResumeCommand(const char* emu_path, const char* rom_path, c
 	MinUIState_escapeQuotes(emu_path, escaped_emu, sizeof(escaped_emu));
 	MinUIState_escapeQuotes(rom_path, escaped_rom, sizeof(escaped_rom));
 
-	snprintf(out_cmd, MINUI_STATE_MAX_PATH * 2, "'%s' '%s'", escaped_emu, escaped_rom);
+	(void)snprintf(out_cmd, (size_t)MINUI_STATE_MAX_PATH * 2, "'%s' '%s'", escaped_emu,
+	               escaped_rom);
 }
 
 ///////////////////////////////
@@ -238,7 +239,7 @@ void MinUIState_makeAbsolutePath(const char* relative_path, const char* sd_path,
 	if (!relative_path || !sd_path)
 		return;
 
-	snprintf(out_path, MINUI_STATE_MAX_PATH, "%s%s", sd_path, relative_path);
+	(void)snprintf(out_path, MINUI_STATE_MAX_PATH, "%s%s", sd_path, relative_path);
 }
 
 ///////////////////////////////

@@ -23,10 +23,11 @@ TARGET = minui
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
-         ../common/gfx_text.c ../common/platform_variant.c \
+         ../common/gfx_text.c ../common/platform_variant.c ../common/stringmap.c \
          minui_entry.c minui_launcher.c directory_index.c minui_str_compare.c \
          minui_state.c minui_m3u.c minui_map.c minui_file_utils.c minui_directory.c \
          minui_context.c minui_navigation.c minui_thumbnail.c recent_file.c \
+         minui_emu_cache.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules

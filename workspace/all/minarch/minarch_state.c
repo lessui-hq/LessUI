@@ -57,7 +57,7 @@ cleanup:
 	if (state_buffer)
 		free(state_buffer);
 	if (state_file)
-		fclose(state_file);
+		(void)fclose(state_file); // State file opened for reading
 
 	return result;
 }
@@ -102,7 +102,7 @@ cleanup:
 	if (state_buffer)
 		free(state_buffer);
 	if (state_file)
-		fclose(state_file);
+		(void)fclose(state_file); // State file opened for writing
 
 	return result;
 }

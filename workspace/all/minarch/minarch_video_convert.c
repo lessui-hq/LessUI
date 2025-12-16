@@ -28,7 +28,7 @@ void MinArchVideoConvert_freeBuffer(void) {
 
 void MinArchVideoConvert_allocBuffer(int w, int h) {
 	MinArchVideoConvert_freeBuffer();
-	size_t buffer_size = (w * FIXED_BPP) * h;
+	size_t buffer_size = (size_t)(w * FIXED_BPP) * h;
 	convert_buffer = malloc(buffer_size);
 	if (!convert_buffer) {
 		LOG_error("Failed to allocate conversion buffer: %dx%d (%zu bytes)", w, h, buffer_size);

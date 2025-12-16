@@ -62,7 +62,7 @@ Recent_Entry** Recent_parse(char* recent_path, const char* sdcard_path, int* ent
 
 			// Construct full SD card path
 			char sd_path[256];
-			sprintf(sd_path, "%s%s", sdcard_path, path);
+			(void)sprintf(sd_path, "%s%s", sdcard_path, path);
 
 			// Only include ROMs that exist
 			if (exists(sd_path)) {
@@ -91,7 +91,7 @@ Recent_Entry** Recent_parse(char* recent_path, const char* sdcard_path, int* ent
 				(*entry_count)++;
 			}
 		}
-		fclose(file);
+		(void)fclose(file); // Recent file opened for reading
 	}
 
 	return entries;
@@ -109,15 +109,15 @@ int Recent_save(char* recent_path, Recent_Entry** entries, int count) {
 
 	for (int i = 0; i < count; i++) {
 		Recent_Entry* entry = entries[i];
-		fputs(entry->path, file);
+		(void)fputs(entry->path, file);
 		if (entry->alias) {
-			fputs("\t", file);
-			fputs(entry->alias, file);
+			(void)fputs("\t", file);
+			(void)fputs(entry->alias, file);
 		}
-		putc('\n', file);
+		(void)putc('\n', file);
 	}
 
-	fclose(file);
+	(void)fclose(file); // Recent file opened for writing
 	return 1;
 }
 
@@ -145,7 +145,7 @@ Recent* Recent_new(char* path, char* alias, const char* sdcard_path, Recent_HasE
 
 	// Need full path to determine emulator
 	char sd_path[256];
-	snprintf(sd_path, sizeof(sd_path), "%s%s", sdcard_path, path);
+	(void)snprintf(sd_path, sizeof(sd_path), "%s%s", sdcard_path, path);
 
 	char emu_name[256];
 	getEmuName(sd_path, emu_name);

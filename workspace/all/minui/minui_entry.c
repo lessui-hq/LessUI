@@ -131,11 +131,14 @@ int EntryArray_indexOf(Array* self, const char* path) {
  * Uses sort_key for comparison, which has leading articles stripped.
  * Natural sort orders numeric sequences by value, not lexicographically.
  * Example: "Game 2" < "Game 10" (unlike strcmp where "Game 10" < "Game 2")
+ *
+ * Uses strnatcasecmp_presorted since sort_key is already article-stripped,
+ * avoiding ~120k redundant skip_article() calls for large directories.
  */
 static int EntryArray_sortEntry(const void* a, const void* b) {
 	Entry* item1 = *(Entry**)a;
 	Entry* item2 = *(Entry**)b;
-	return strnatcasecmp(item1->sort_key, item2->sort_key);
+	return strnatcasecmp_presorted(item1->sort_key, item2->sort_key);
 }
 
 /**

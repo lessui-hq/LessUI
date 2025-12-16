@@ -1,0 +1,8 @@
+Sega Master System
+
+Core: picodrive
+
+Supported file types:
+  .sms
+
+No BIOS required.

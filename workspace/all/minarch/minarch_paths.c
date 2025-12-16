@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "defines.h"
+#include "utils.h"
+
 /**
  * Generates path for SRAM (battery save) file.
  *
@@ -19,7 +22,7 @@
  * @param game_name Game name (without extension)
  */
 void MinArchPaths_getSRAM(char* filename, const char* saves_dir, const char* game_name) {
-	sprintf(filename, "%s/%s.sav", saves_dir, game_name);
+	(void)sprintf(filename, "%s/%s.sav", saves_dir, game_name);
 }
 
 /**
@@ -32,7 +35,7 @@ void MinArchPaths_getSRAM(char* filename, const char* saves_dir, const char* gam
  * @param game_name Game name (without extension)
  */
 void MinArchPaths_getRTC(char* filename, const char* saves_dir, const char* game_name) {
-	sprintf(filename, "%s/%s.rtc", saves_dir, game_name);
+	(void)sprintf(filename, "%s/%s.rtc", saves_dir, game_name);
 }
 
 /**
@@ -47,7 +50,7 @@ void MinArchPaths_getRTC(char* filename, const char* saves_dir, const char* game
  */
 void MinArchPaths_getState(char* filename, const char* states_dir, const char* game_name,
                            int slot) {
-	sprintf(filename, "%s/%s.st%i", states_dir, game_name, slot);
+	(void)sprintf(filename, "%s/%s.st%i", states_dir, game_name, slot);
 }
 
 /**
@@ -67,15 +70,15 @@ void MinArchConfig_getPath(char* filename, const char* config_dir, const char* g
 
 	// Build device tag suffix if provided
 	if (device_tag && device_tag[0] != '\0') {
-		sprintf(device_suffix, "-%s", device_tag);
+		(void)sprintf(device_suffix, "-%s", device_tag);
 	}
 
 	// Generate path based on game-specific or global
 	// Treat empty string same as NULL (global config)
 	if (game_name && game_name[0] != '\0') {
-		sprintf(filename, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
+		(void)sprintf(filename, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
 	} else {
-		sprintf(filename, "%s/minarch%s.cfg", config_dir, device_suffix);
+		(void)sprintf(filename, "%s/minarch%s.cfg", config_dir, device_suffix);
 	}
 }
 
@@ -89,7 +92,7 @@ void MinArchConfig_getPath(char* filename, const char* config_dir, const char* g
  * @param tag_bios_dir Output buffer for tag-specific path
  */
 void MinArchPaths_getTagBios(const char* base_bios_path, const char* tag, char* tag_bios_dir) {
-	sprintf(tag_bios_dir, "%s/%s", base_bios_path, tag);
+	(void)sprintf(tag_bios_dir, "%s/%s", base_bios_path, tag);
 }
 
 /**
@@ -107,6 +110,6 @@ void MinArchPaths_chooseBios(const char* base_bios_path, const char* tag, char* 
 	if (tag_dir_has_files) {
 		MinArchPaths_getTagBios(base_bios_path, tag, bios_dir);
 	} else {
-		strcpy(bios_dir, base_bios_path);
+		safe_strcpy(bios_dir, base_bios_path, MAX_PATH);
 	}
 }

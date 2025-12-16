@@ -1,0 +1,11 @@
+TurboGrafx CD / PC Engine CD
+
+Core: mednafen_pce_fast
+
+Supported file types:
+  .cue, .ccd, .iso, .img, .bin, .chd
+
+BIOS (required):
+  syscard3.pce - Super CD-ROM2 System Card
+
+Place BIOS files in: /Bios/PCECD/

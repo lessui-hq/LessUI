@@ -1,0 +1,6 @@
+Game Boy Advance
+
+Core: gpsp
+
+BIOS (optional):
+  gba_bios.bin - improves compatibility

@@ -1,0 +1,6 @@
+Game Boy
+
+Core: gambatte
+
+BIOS (optional):
+  gb_bios.bin - enables boot animation

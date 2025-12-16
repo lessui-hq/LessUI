@@ -197,7 +197,7 @@ static struct Game game;
 static void setFatalError(const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
-	vsnprintf(fatal_error_detail, sizeof(fatal_error_detail), fmt, args);
+	(void)vsnprintf(fatal_error_detail, sizeof(fatal_error_detail), fmt, args);
 	va_end(args);
 }
 
@@ -218,15 +218,15 @@ static void Game_open(char* path) {
 	LOG_info("Game_open");
 	memset(&game, 0, sizeof(game));
 
-	strcpy((char*)game.path, path);
-	strcpy((char*)game.name, strrchr(path, '/') + 1);
+	safe_strcpy(game.path, path, sizeof(game.path));
+	safe_strcpy(game.name, strrchr(path, '/') + 1, sizeof(game.name));
 
 	// Handle archive files (.zip, .7z)
 	if (MinArchArchive_isArchive(game.path)) {
 		LOG_info("is archive file");
 		char exts[128];
 		char* extensions[MINARCH_MAX_EXTENSIONS];
-		strcpy(exts, core.extensions);
+		SAFE_STRCPY(exts, core.extensions);
 		MinArchGame_parseExtensions(exts, extensions, MINARCH_MAX_EXTENSIONS);
 
 		// Check if core supports this specific archive format natively.
@@ -276,28 +276,28 @@ static void Game_open(char* path) {
 			return;
 		}
 
-		fseek(file, 0, SEEK_END);
+		(void)fseek(file, 0, SEEK_END);
 		game.size = ftell(file);
 
-		fseek(file, 0, SEEK_SET);
+		(void)fseek(file, 0, SEEK_SET);
 		game.data = malloc(game.size);
 		if (game.data == NULL) {
 			setFatalError("Not enough memory to load ROM\nFile size: %ld bytes", (long)game.size);
 			LOG_error("Couldn't allocate memory for file: %s", path);
-			fclose(file);
+			(void)fclose(file); // Game file opened for reading
 			return;
 		}
 
-		fread(game.data, sizeof(uint8_t), game.size, file);
+		(void)fread(game.data, sizeof(uint8_t), game.size, file);
 
-		fclose(file);
+		(void)fclose(file); // Game file opened for reading
 	}
 
 	// m3u-based?
 	char m3u_path[MAX_PATH];
 	if (MinArchGame_detectM3uPath(game.path, m3u_path, sizeof(m3u_path))) {
-		strcpy(game.m3u_path, m3u_path);
-		strcpy((char*)game.name, strrchr(m3u_path, '/') + 1);
+		SAFE_STRCPY(game.m3u_path, m3u_path);
+		safe_strcpy(game.name, strrchr(m3u_path, '/') + 1, sizeof(game.name));
 	}
 
 	game.is_open = 1;
@@ -316,14 +316,14 @@ static void Game_close(void) {
 		free(game.data);
 	if (game.tmp_path[0]) {
 		// Remove extracted file and temp directory
-		remove(game.tmp_path);
+		(void)remove(game.tmp_path);
 		// Extract directory path and remove it
 		char dir_path[MAX_PATH];
-		strcpy(dir_path, game.tmp_path);
+		SAFE_STRCPY(dir_path, game.tmp_path);
 		char* last_slash = strrchr(dir_path, '/');
 		if (last_slash) {
 			*last_slash = '\0';
-			rmdir(dir_path);
+			(void)rmdir(dir_path);
 		}
 	}
 	game.is_open = 0;
@@ -370,7 +370,7 @@ void Game_changeDisc(char* path) {
 // (e.g., Pokémon, Zelda, RPGs). Stored as .sav files in /mnt/SDCARD/Saves/<platform>/
 
 static void SRAM_getPath(char* filename) {
-	sprintf(filename, "%s/%s.sav", core.saves_dir, game.name);
+	(void)sprintf(filename, "%s/%s.sav", core.saves_dir, game.name);
 }
 
 /**
@@ -424,7 +424,7 @@ void SRAM_write(void) {
 // This data is stored separately from SRAM as .rtc files.
 
 static void RTC_getPath(char* filename) {
-	sprintf(filename, "%s/%s.rtc", core.saves_dir, game.name);
+	(void)sprintf(filename, "%s/%s.rtc", core.saves_dir, game.name);
 }
 
 /**
@@ -478,7 +478,7 @@ void RTC_write(void) {
 static int state_slot = 0; // Currently selected slot (0-9)
 
 void State_getPath(char* filename) {
-	sprintf(filename, "%s/%s.st%i", core.states_dir, game.name, state_slot);
+	(void)sprintf(filename, "%s/%s.st%i", core.states_dir, game.name, state_slot);
 }
 
 /**
@@ -851,7 +851,6 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				unsigned audio_fill_before = SND_getBufferOccupancy();
 				LOG_info("Auto CPU: setting %d kHz (index %d/%d, audio=%u%%)\n", freq_khz,
 				         target_idx, auto_cpu_state.freq_count - 1, audio_fill_before);
-				(void)audio_fill_before; // Used in LOG_info which may be compiled out
 
 				int result = PLAT_setCPUFrequency(freq_khz);
 				if (result == 0) {
@@ -892,7 +891,6 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				}
 
 				LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
-				(void)level_name; // Used in LOG_info which may be compiled out
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);
@@ -1307,7 +1305,6 @@ static void updateAutoCPU(void) {
 					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%, audio=%u%%)\n",
 					         current_freq, auto_cpu_state.frequencies[new_idx], util,
 					         auto_cpu_config.target_util, audio_fill);
-					(void)audio_fill; // Used in LOG_info which may be compiled out
 				}
 			} else if (util < auto_cpu_config.util_low) {
 				// Can reduce power - step down
@@ -1361,8 +1358,6 @@ static void updateAutoCPU(void) {
 						LOG_info(
 						    "Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%, audio=%u%%)\n",
 						    current_freq, new_freq, util, predicted_util, audio_fill);
-						(void)predicted_util; // Used in LOG_info which may be compiled out
-						(void)audio_fill; // Used in LOG_info which may be compiled out
 					}
 				}
 			} else {
@@ -1379,7 +1374,6 @@ static void updateAutoCPU(void) {
 				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
 				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
 				          current_idx, max_idx);
-				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
@@ -1402,7 +1396,6 @@ static void updateAutoCPU(void) {
 				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
 				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
 				          current_level);
-				(void)snap; // Used in LOG_debug which may be compiled out
 			}
 
 			// Boost if sustained high utilization
@@ -1482,11 +1475,11 @@ enum {
 static void Config_getPath(char* filename, int override) {
 	char device_tag[64] = {0};
 	if (config.device_tag)
-		sprintf(device_tag, "-%s", config.device_tag);
+		(void)sprintf(device_tag, "-%s", config.device_tag);
 	if (override)
-		sprintf(filename, "%s/%s%s.cfg", core.config_dir, game.name, device_tag);
+		(void)sprintf(filename, "%s/%s%s.cfg", core.config_dir, game.name, device_tag);
 	else
-		sprintf(filename, "%s/minarch%s.cfg", core.config_dir, device_tag);
+		(void)sprintf(filename, "%s/minarch%s.cfg", core.config_dir, device_tag);
 	LOG_debug("Config_getPath %s", filename);
 }
 
@@ -1570,7 +1563,7 @@ static void Config_init(void) {
 			}
 			return;
 		}
-		strcpy(tmp2, button_name);
+		safe_strcpy(tmp2, button_name, strlen(button_name) + 1);
 		MinArchButtonMapping* button = &core_button_mapping[i++];
 		button->name = tmp2;
 		button->retro_id = retro_id;
@@ -1626,8 +1619,8 @@ static void Config_readControlsString(char* cfg) {
 	char* tmp;
 	for (int i = 0; config.controls[i].name; i++) {
 		MinArchButtonMapping* mapping = &config.controls[i];
-		sprintf(key, "bind %s", mapping->name);
-		sprintf(value, "NONE");
+		(void)sprintf(key, "bind %s", mapping->name);
+		(void)sprintf(value, "NONE");
 
 		if (!MinArchConfig_getValue(cfg, key, value, NULL))
 			continue;
@@ -1655,8 +1648,8 @@ static void Config_readControlsString(char* cfg) {
 
 	for (int i = 0; config.shortcuts[i].name; i++) {
 		MinArchButtonMapping* mapping = &config.shortcuts[i];
-		sprintf(key, "bind %s", mapping->name);
-		sprintf(value, "NONE");
+		(void)sprintf(key, "bind %s", mapping->name);
+		(void)sprintf(value, "NONE");
 
 		if (!MinArchConfig_getValue(cfg, key, value, NULL))
 			continue;
@@ -1698,7 +1691,7 @@ static void Config_load(void) {
 
 	char device_system_path[MAX_PATH] = {0};
 	if (config.device_tag)
-		sprintf(device_system_path, SYSTEM_PATH "/system-%s.cfg", config.device_tag);
+		(void)sprintf(device_system_path, SYSTEM_PATH "/system-%s.cfg", config.device_tag);
 
 	if (config.device_tag && exists(device_system_path)) {
 		LOG_info("Using device_system_path: %s", device_system_path);
@@ -1713,15 +1706,15 @@ static void Config_load(void) {
 	char default_path[MAX_PATH];
 	getEmuPath((char*)core.tag, default_path);
 	char* tmp = strrchr(default_path, '/');
-	strcpy(tmp, "/default.cfg");
+	safe_strcpy(tmp, "/default.cfg", MAX_PATH - (tmp - default_path));
 
 	char device_default_path[MAX_PATH] = {0};
 	if (config.device_tag) {
 		getEmuPath((char*)core.tag, device_default_path);
 		tmp = strrchr(device_default_path, '/');
 		char filename[64];
-		sprintf(filename, "/default-%s.cfg", config.device_tag);
-		strcpy(tmp, filename);
+		(void)sprintf(filename, "/default-%s.cfg", config.device_tag);
+		safe_strcpy(tmp, filename, MAX_PATH - (tmp - device_default_path));
 	}
 
 	if (config.device_tag && exists(device_default_path)) {
@@ -1790,49 +1783,49 @@ static void Config_write(int override) {
 
 	for (int i = 0; config.frontend.options[i].key; i++) {
 		MinArchOption* option = &config.frontend.options[i];
-		fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
+		(void)fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
 	}
 	for (int i = 0; config.core.options[i].key; i++) {
 		MinArchOption* option = &config.core.options[i];
-		fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
+		(void)fprintf(file, "%s = %s\n", option->key, option->values[option->value]);
 	}
 
 	if (has_custom_controllers)
-		fprintf(file, "%s = %i\n", "minarch_gamepad_type", gamepad_type);
+		(void)fprintf(file, "%s = %i\n", "minarch_gamepad_type", gamepad_type);
 
 	for (int i = 0; config.controls[i].name; i++) {
 		MinArchButtonMapping* mapping = &config.controls[i];
 		int j = mapping->local_id + 1;
 		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
-		fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
+		(void)fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
 	}
 	for (int i = 0; config.shortcuts[i].name; i++) {
 		MinArchButtonMapping* mapping = &config.shortcuts[i];
 		int j = mapping->local_id + 1;
 		if (mapping->modifier)
 			j += LOCAL_BUTTON_COUNT;
-		fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
+		(void)fprintf(file, "bind %s = %s\n", mapping->name, minarch_button_labels[j]);
 	}
 
-	fclose(file);
+	(void)fclose(file); // Config file opened for writing
 	sync();
 }
 static void Config_restore(void) {
 	char path[MAX_PATH];
 	if (config.loaded == CONFIG_GAME) {
 		if (config.device_tag)
-			sprintf(path, "%s/%s-%s.cfg", core.config_dir, game.name, config.device_tag);
+			(void)sprintf(path, "%s/%s-%s.cfg", core.config_dir, game.name, config.device_tag);
 		else
-			sprintf(path, "%s/%s.cfg", core.config_dir, game.name);
-		unlink(path);
+			(void)sprintf(path, "%s/%s.cfg", core.config_dir, game.name);
+		(void)unlink(path); // Removing game config file
 		LOG_info("Deleted game config: %s", path);
 	} else if (config.loaded == CONFIG_CONSOLE) {
 		if (config.device_tag)
-			sprintf(path, "%s/minarch-%s.cfg", core.config_dir, config.device_tag);
+			(void)sprintf(path, "%s/minarch-%s.cfg", core.config_dir, config.device_tag);
 		else
-			sprintf(path, "%s/minarch.cfg", core.config_dir);
-		unlink(path);
+			(void)sprintf(path, "%s/minarch.cfg", core.config_dir);
+		(void)unlink(path); // Removing console config file
 		LOG_info("Deleted console config: %s", path);
 	}
 	config.loaded = CONFIG_NONE;
@@ -1960,11 +1953,11 @@ static void MinArchOptionList_init(const struct retro_core_option_definition* de
 			len = strlen(def->key) + 1;
 
 			item->key = calloc(len, sizeof(char));
-			strcpy(item->key, def->key);
+			safe_strcpy(item->key, def->key, len);
 
 			len = strlen(def->desc) + 1;
 			item->name = calloc(len, sizeof(char));
-			strcpy(item->name, getOptionNameFromKey(def->key, def->desc));
+			safe_strcpy(item->name, getOptionNameFromKey(def->key, def->desc), len);
 
 			if (def->info) {
 				len = strlen(def->info) + 1;
@@ -1995,12 +1988,12 @@ static void MinArchOptionList_init(const struct retro_core_option_definition* de
 
 				len = strlen(value) + 1;
 				item->values[j] = calloc(len, sizeof(char));
-				strcpy(item->values[j], value);
+				safe_strcpy(item->values[j], value, len);
 
 				if (label) {
 					len = strlen(label) + 1;
 					item->labels[j] = calloc(len, sizeof(char));
-					strcpy(item->labels[j], label);
+					safe_strcpy(item->labels[j], label, len);
 				} else {
 					item->labels[j] = item->values[j];
 				}
@@ -2032,11 +2025,11 @@ static void MinArchOptionList_vars(const struct retro_variable* vars) {
 
 			len = strlen(var->key) + 1;
 			item->key = calloc(len, sizeof(char));
-			strcpy(item->key, var->key);
+			safe_strcpy(item->key, var->key, len);
 
 			len = strlen(var->value) + 1;
 			item->var = calloc(len, sizeof(char));
-			strcpy(item->var, var->value);
+			safe_strcpy(item->var, var->value, len);
 
 			char* tmp = strchr(item->var, ';');
 			if (tmp && *(tmp + 1) == ' ') {
@@ -2435,7 +2428,7 @@ static void retro_log_callback(enum retro_log_level level, const char* fmt, ...)
 	va_start(args, fmt);
 
 	char msg_buffer[2048];
-	vsnprintf(msg_buffer, sizeof(msg_buffer), fmt, args);
+	(void)vsnprintf(msg_buffer, sizeof(msg_buffer), fmt, args);
 	va_end(args);
 
 	// Map libretro levels to our levels and log
@@ -3135,10 +3128,10 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 
 	data += oy * stride + ox;
 	uint16_t* row = data - stride;
-	memset(row - 1, 0, (w + 2) * 2);
+	memset(row - 1, 0, (size_t)(w + 2) * 2);
 	for (int y = 0; y < CHAR_HEIGHT; y++) {
-		row = data + y * stride;
-		memset(row - 1, 0, (w + 2) * 2);
+		row = data + (ptrdiff_t)y * stride;
+		memset(row - 1, 0, (size_t)(w + 2) * 2);
 		for (int i = 0; i < len; i++) {
 			const char* c = bitmap_font[(unsigned char)text[i]];
 			for (int x = 0; x < CHAR_WIDTH; x++) {
@@ -3150,8 +3143,8 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 			row += LETTERSPACING;
 		}
 	}
-	row = data + CHAR_HEIGHT * stride;
-	memset(row - 1, 0, (w + 2) * 2);
+	row = data + (ptrdiff_t)CHAR_HEIGHT * stride;
+	memset(row - 1, 0, (size_t)(w + 2) * 2);
 }
 
 ///////////////////////////////////////
@@ -3308,7 +3301,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 	if (NEEDS_CONVERSION) {
 		// Core uses non-native format, we'll convert to RGB565 (2 bytes/pixel)
-		rgb565_pitch = width * FIXED_BPP;
+		rgb565_pitch = (size_t)width * FIXED_BPP;
 	} else {
 		// Core provided RGB565 directly, use as-is
 		rgb565_pitch = pitch;
@@ -3405,15 +3398,15 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 		// Top-left: FPS and system CPU %
 #ifdef SYNC_MODE_AUDIOCLOCK
-		sprintf(debug_text, "%.0f FPS %i%% AC", fps_double, (int)use_double);
+		(void)sprintf(debug_text, "%.0f FPS %i%% AC", fps_double, (int)use_double);
 #else
-		sprintf(debug_text, "%.0f FPS %i%%", fps_double, (int)use_double);
+		(void)sprintf(debug_text, "%.0f FPS %i%%", fps_double, (int)use_double);
 #endif
 		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
 		// Top-right: Source resolution and scale factor
-		sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
+		(void)sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
 		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
@@ -3441,20 +3434,20 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 			    current_idx < auto_cpu_state.freq_count) {
 				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
 				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-				sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
+				(void)sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
 			} else {
 				// Fallback mode: show level
-				sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+				(void)sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
 			}
 		} else {
 			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
-			sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
+			(void)sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
 		}
 		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
 		// Bottom-right: Output resolution
-		sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
+		(void)sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
 		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 	}
@@ -3539,7 +3532,7 @@ static size_t audio_sample_batch_callback(const int16_t* data, size_t frames) {
  * @param out_name Output buffer for core name (e.g., "fceumm")
  */
 void Core_getName(char* in_name, char* out_name) {
-	strcpy(out_name, basename(in_name));
+	safe_strcpy(out_name, basename(in_name), 128); // Core names are at most 128 bytes
 	char* tmp = strrchr(out_name, '_');
 	tmp[0] = '\0';
 }
@@ -3633,22 +3626,22 @@ void Core_open(const char* core_path, const char* tag_name) {
 	core.get_system_info(&info);
 
 	Core_getName((char*)core_path, (char*)core.name);
-	sprintf((char*)core.version, "%s (%s)", info.library_name, info.library_version);
-	strcpy((char*)core.tag, tag_name);
-	strcpy((char*)core.extensions, info.valid_extensions);
+	(void)sprintf((char*)core.version, "%s (%s)", info.library_name, info.library_version);
+	safe_strcpy((char*)core.tag, tag_name, sizeof(core.tag));
+	safe_strcpy((char*)core.extensions, info.valid_extensions, sizeof(core.extensions));
 
 	core.need_fullpath = info.need_fullpath;
 
 	LOG_info("core: %s version: %s tag: %s (valid_extensions: %s need_fullpath: %i)", core.name,
 	         core.version, core.tag, info.valid_extensions, info.need_fullpath);
 
-	sprintf((char*)core.config_dir, USERDATA_PATH "/%s-%s", core.tag, core.name);
-	sprintf((char*)core.states_dir, SHARED_USERDATA_PATH "/%s-%s", core.tag, core.name);
-	sprintf((char*)core.saves_dir, SDCARD_PATH "/Saves/%s", core.tag);
+	(void)sprintf((char*)core.config_dir, USERDATA_PATH "/%s-%s", core.tag, core.name);
+	(void)sprintf((char*)core.states_dir, SHARED_USERDATA_PATH "/%s-%s", core.tag, core.name);
+	(void)sprintf((char*)core.saves_dir, SDCARD_PATH "/Saves/%s", core.tag);
 	MinArch_selectBiosPath(core.tag, (char*)core.bios_dir);
 
 	char cmd[512];
-	sprintf(cmd, "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir, core.states_dir);
+	(void)sprintf(cmd, "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir, core.states_dir);
 	system(cmd);
 
 	set_environment_callback(environment_callback);
@@ -4870,7 +4863,7 @@ static unsigned getUsage(void) {
 
 finish:
 	if (file)
-		fclose(file);
+		(void)fclose(file); // File opened for reading
 
 	return ticks;
 }
@@ -5142,8 +5135,8 @@ int main(int argc, char* argv[]) {
 	char rom_path[MAX_PATH];
 	char tag_name[MAX_PATH];
 
-	strcpy(core_path, argv[1]);
-	strcpy(rom_path, argv[2]);
+	SAFE_STRCPY(core_path, argv[1]);
+	SAFE_STRCPY(rom_path, argv[2]);
 	getEmuName(rom_path, tag_name);
 
 	LOG_info("rom_path: %s", rom_path);

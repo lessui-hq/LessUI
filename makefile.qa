@@ -82,16 +82,20 @@ else
 endif
 
 # Compiler flags for clang-tidy (needs to understand how to compile the code)
-# Uses desktop platform which works for both macOS development and Linux CI
-TIDY_COMPILE_FLAGS = -DPLATFORM=\"desktop\" \
-                     -DSDCARD_PATH=\"../../desktop/FAKESD\" \
+# Uses tg5040 platform (SDL2-based, representative of modern platforms)
+# Enable logging macros so arguments are seen as used by the analyzer
+TIDY_COMPILE_FLAGS = -DPLATFORM=\"tg5040\" \
+                     -DSDCARD_PATH=\"/mnt/SDCARD\" \
                      -DUSE_SDL2 \
+                     -DENABLE_INFO_LOGS \
+                     -DENABLE_DEBUG_LOGS \
                      -DBUILD_DATE=\"$(shell date +%Y%m%d)\" \
                      -DBUILD_HASH=\"tidy\" \
                      -I workspace/all/common \
                      -I workspace/all/minui \
                      -I workspace/all/minarch \
-                     -I workspace/desktop/platform \
+                     -I workspace/tg5040/platform \
+                     -I workspace/tg5040/libmsettings \
                      -I workspace/all/minarch/libretro-common/include \
                      -iquote workspace/all/minarch/libretro-common/include \
                      -I tests/support \
@@ -190,7 +194,7 @@ TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common 
 TEST_UNITY = tests/support/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_archive_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_archive_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/emu_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -242,7 +246,7 @@ tests/audio_resampler_test: tests/unit/all/common/test_audio_resampler.c workspa
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build MinArch path generation tests (pure sprintf logic)
-tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
+tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building MinArch path generation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -262,9 +266,9 @@ tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c works
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build map.txt parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/minui/minui_map.c workspace/all/common/collections.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/minui/minui_map.c workspace/all/common/stringmap.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building map.txt parser tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=access -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build collection parser tests (uses file mocking with GCC --wrap, Docker-only)
 tests/collection_parser_test: tests/unit/all/common/test_collection_parser.c workspace/all/minui/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
@@ -312,12 +316,12 @@ tests/effect_system_test: tests/unit/all/common/test_effect_system.c $(TEST_UNIT
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build minarch utility tests (pure functions extracted from minarch.c)
-tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c $(TEST_UNITY)
+tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building minarch utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build minarch configuration tests (config path and option utilities)
-tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c $(TEST_UNITY)
+tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building minarch configuration tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -337,7 +341,7 @@ tests/minui_entry_test: tests/unit/all/common/test_minui_entry.c workspace/all/m
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build directory indexing tests (alias application, filtering, duplicate detection)
-tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/minui/directory_index.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/minui/directory_index.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/common/stringmap.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building directory indexing tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
@@ -352,7 +356,7 @@ tests/minarch_memory_test: tests/unit/all/common/test_minarch_memory.c workspace
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build save state system tests (with mock core callbacks, uses real temp files)
-tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c tests/support/libretro_mocks.c $(TEST_UNITY)
+tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c $(TEST_UNITY)
 	@echo "Building save state system tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
@@ -408,6 +412,9 @@ tests/minarch_env_test: tests/unit/all/common/test_minarch_env.c \
 # Build game file handling tests (ZIP parsing, M3U detection, extension matching)
 tests/minarch_game_test: tests/unit/all/common/test_minarch_game.c \
 	workspace/all/minarch/minarch_game.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building game file handling tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DMINARCH_GAME_TEST
@@ -469,6 +476,17 @@ tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
 	@echo "Building MinUI context tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
+# Build emulator cache tests (O(1) emu lookup caching)
+tests/emu_cache_test: tests/unit/all/minui/test_emu_cache.c \
+	workspace/all/minui/minui_emu_cache.c \
+	workspace/all/common/stringmap.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building emulator cache tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
 # Build render common tests (pure math functions, no dependencies)
 tests/render_common_test: tests/unit/all/common/test_render_common.c \
 	workspace/all/common/render_common.c \
@@ -486,6 +504,7 @@ tests/integration_workflows_test: tests/integration/test_workflows.c \
 	workspace/all/minui/minui_file_utils.c \
 	workspace/all/common/binary_file_utils.c \
 	workspace/all/common/collections.c \
+	workspace/all/common/stringmap.c \
 	workspace/all/minarch/minarch_paths.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
@@ -500,6 +519,7 @@ clean-tests:
 ###########################################################
 # Code Formatting
 CLANG_FORMAT = clang-format
+# Note: vendor/ is excluded - it contains third-party code
 FORMAT_PATHS = workspace/all/minui/*.c \
                workspace/all/minui/*.h \
                workspace/all/minarch/*.c \

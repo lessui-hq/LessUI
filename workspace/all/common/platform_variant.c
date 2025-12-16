@@ -56,8 +56,9 @@ const char* PLAT_getDeviceName(void) {
 	static char device_name[256];
 
 	if (platform_variant.device && platform_variant.device->manufacturer) {
-		snprintf(device_name, sizeof(device_name), "%s %s", platform_variant.device->manufacturer,
-		         platform_variant.device->display_name);
+		(void)snprintf(device_name, sizeof(device_name), "%s %s",
+		               platform_variant.device->manufacturer,
+		               platform_variant.device->display_name);
 		return device_name;
 	} else if (platform_variant.device) {
 		return platform_variant.device->display_name;

@@ -131,7 +131,7 @@ int log_open(const char* path) {
 	if (!g_log_file) {
 		pthread_mutex_unlock(&g_log_mutex);
 		// Log to stderr since file logging failed
-		fprintf(stderr, "[ERROR] log_open: Failed to open log file: %s\n", log_path);
+		(void)fprintf(stderr, "[ERROR] log_open: Failed to open log file: %s\n", log_path);
 		return -1;
 	}
 
@@ -152,8 +152,8 @@ void log_close(void) {
 		// Final sync before closing (acquire file lock for thread safety)
 		pthread_mutex_lock(&g_log_file->lock);
 		if (g_log_file->fp) {
-			fflush(g_log_file->fp);
-			fsync(fileno(g_log_file->fp));
+			(void)fflush(g_log_file->fp);
+			(void)fsync(fileno(g_log_file->fp));
 		}
 		pthread_mutex_unlock(&g_log_file->lock);
 
@@ -175,8 +175,8 @@ void log_sync(void) {
 	if (g_log_file) {
 		pthread_mutex_lock(&g_log_file->lock);
 		if (g_log_file->fp) {
-			fflush(g_log_file->fp);
-			fsync(fileno(g_log_file->fp));
+			(void)fflush(g_log_file->fp);
+			(void)fsync(fileno(g_log_file->fp));
 		}
 		pthread_mutex_unlock(&g_log_file->lock);
 	}
@@ -208,7 +208,7 @@ static void log_write_to_file(LogFile* lf, const char* prefix, const char* messa
 		return;
 
 	char full_message[LOG_BUFFER_SIZE + 256];
-	snprintf(full_message, sizeof(full_message), "%s%s", prefix, message);
+	(void)snprintf(full_message, sizeof(full_message), "%s%s", prefix, message);
 	size_t msg_len = strlen(full_message);
 
 	pthread_mutex_lock(&lf->lock);
@@ -221,13 +221,13 @@ static void log_write_to_file(LogFile* lf, const char* prefix, const char* messa
 
 	// Write message (with auto-newline)
 	if (rotate_ok && lf->fp) {
-		fprintf(lf->fp, "%s\n", full_message);
-		fflush(lf->fp);
+		(void)fprintf(lf->fp, "%s\n", full_message);
+		(void)fflush(lf->fp);
 		lf->current_size += msg_len + 1;
 
 		// Sync to disk if crash-safe mode enabled
 		if (do_sync) {
-			fsync(fileno(lf->fp));
+			(void)fsync(fileno(lf->fp));
 		}
 	}
 
@@ -250,7 +250,7 @@ void log_write(LogLevel level, const char* file, int line, const char* fmt, ...)
 	// Format message
 	va_list args;
 	va_start(args, fmt);
-	vsnprintf(message, sizeof(message), fmt, args);
+	(void)vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
 	// Write to global log file if available
@@ -264,8 +264,8 @@ void log_write(LogLevel level, const char* file, int line, const char* fmt, ...)
 
 	// Fallback: write to stdout/stderr
 	FILE* stream = (level <= LOG_LEVEL_WARN) ? stderr : stdout;
-	fprintf(stream, "%s%s\n", prefix, message);
-	fflush(stream);
+	(void)fprintf(stream, "%s%s\n", prefix, message);
+	(void)fflush(stream);
 }
 
 /**
@@ -284,7 +284,7 @@ void log_write_simple(LogLevel level, const char* fmt, ...) {
 	// Format message
 	va_list args;
 	va_start(args, fmt);
-	vsnprintf(message, sizeof(message), fmt, args);
+	(void)vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
 	// Write to global log file if available
@@ -298,8 +298,8 @@ void log_write_simple(LogLevel level, const char* fmt, ...) {
 
 	// Fallback: write to stdout/stderr
 	FILE* stream = (level <= LOG_LEVEL_WARN) ? stderr : stdout;
-	fprintf(stream, "%s%s\n", prefix, message);
-	fflush(stream);
+	(void)fprintf(stream, "%s%s\n", prefix, message);
+	(void)fflush(stream);
 }
 
 ///////////////////////////////
@@ -321,7 +321,7 @@ size_t log_get_file_size(FILE* fp) {
 		return 0;
 
 	long size = ftell(fp);
-	fseek(fp, current_pos, SEEK_SET);
+	(void)fseek(fp, current_pos, SEEK_SET);
 
 	return (size < 0) ? 0 : (size_t)size;
 }
@@ -337,7 +337,7 @@ int log_rotate_file(LogFile* lf) {
 
 	// Close current file
 	if (lf->fp) {
-		fclose(lf->fp);
+		(void)fclose(lf->fp); // Log file opened for appending
 		lf->fp = NULL;
 	}
 
@@ -362,14 +362,14 @@ int log_rotate_file(LogFile* lf) {
 			int new_len = snprintf(new_path, sizeof(new_path), "%s.%d", lf->path, i + 1);
 			if (old_len >= 0 && old_len < (int)sizeof(old_path) && new_len >= 0 &&
 			    new_len < (int)sizeof(new_path)) {
-				rename(old_path, new_path);
+				(void)rename(old_path, new_path);
 			}
 		}
 
 		// Rename current file to .1
 		int new_path_len = snprintf(new_path, sizeof(new_path), "%s.1", lf->path);
 		if (new_path_len >= 0 && new_path_len < (int)sizeof(new_path)) {
-			rename(lf->path, new_path);
+			(void)rename(lf->path, new_path);
 		}
 	}
 
@@ -446,11 +446,11 @@ void log_file_write(LogFile* lf, LogLevel level, const char* fmt, ...) {
 	// Format message
 	va_list args;
 	va_start(args, fmt);
-	vsnprintf(message, sizeof(message), fmt, args);
+	(void)vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
 	// Combine prefix + message
-	snprintf(full_message, sizeof(full_message), "%s%s", prefix, message);
+	(void)snprintf(full_message, sizeof(full_message), "%s%s", prefix, message);
 	size_t msg_len = strlen(full_message);
 
 	// Lock for thread safety
@@ -464,8 +464,8 @@ void log_file_write(LogFile* lf, LogLevel level, const char* fmt, ...) {
 
 	// Write message (with auto-newline)
 	if (rotate_ok && lf->fp) {
-		fprintf(lf->fp, "%s\n", full_message);
-		fflush(lf->fp);
+		(void)fprintf(lf->fp, "%s\n", full_message);
+		(void)fflush(lf->fp);
 		lf->current_size += msg_len + 1; // +1 for newline
 	}
 
@@ -482,7 +482,7 @@ void log_file_close(LogFile* lf) {
 	pthread_mutex_lock(&lf->lock);
 
 	if (lf->fp) {
-		fclose(lf->fp);
+		(void)fclose(lf->fp); // Log file opened for appending
 		lf->fp = NULL;
 	}
 

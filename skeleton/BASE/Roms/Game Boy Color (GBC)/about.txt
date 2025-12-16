@@ -1,0 +1,11 @@
+Game Boy Color
+
+Core: gambatte
+
+Supported file types:
+  .gbc, .gb
+
+BIOS (optional):
+  gbc_bios.bin - enables boot animation
+
+Place BIOS files in: /Bios/GBC/

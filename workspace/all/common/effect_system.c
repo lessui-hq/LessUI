@@ -101,6 +101,7 @@ const char* EFFECT_getPatternPath(char* buf, int bufsize, int type, int scale) {
 	}
 
 	// All patterns are scale-specific: line-2.png, grid-3.png, etc.
-	snprintf(buf, bufsize, RES_PATH "/%s-%d.png", pattern_name, EFFECT_getPatternScale(scale));
+	(void)snprintf(buf, bufsize, RES_PATH "/%s-%d.png", pattern_name,
+	               EFFECT_getPatternScale(scale));
 	return buf;
 }

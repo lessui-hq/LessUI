@@ -1,0 +1,8 @@
+Nintendo Virtual Boy
+
+Core: mednafen_vb
+
+Supported file types:
+  .vb, .vboy, .bin
+
+No BIOS required.

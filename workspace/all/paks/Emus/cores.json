@@ -1,133 +1,273 @@
 {
-  "stock_cores": {
-    "FC": {
-      "emu_exe": "fceumm"
-    },
+  "cores": {
     "GB": {
-      "emu_exe": "gambatte"
-    },
-    "GBA": {
-      "emu_exe": "gpsp"
+      "name": "Game Boy",
+      "core": "gambatte_libretro",
+      "resolution": "160x144",
+      "extensions": ["gb", "gbc", "dmg"],
+      "bios": [
+        {
+          "name": "gb_bios.bin",
+          "md5": "32fbbd84168d3482956eb3c5051637f5",
+          "required": false
+        }
+      ]
     },
     "GBC": {
-      "emu_exe": "gambatte"
+      "name": "Game Boy Color",
+      "core": "gambatte_libretro",
+      "resolution": "160x144",
+      "extensions": ["gbc", "gb"],
+      "bios": [
+        {
+          "name": "gbc_bios.bin",
+          "md5": "dbfce9db9deaa2567f6a84fde55f9680",
+          "required": false
+        }
+      ]
     },
-    "MD": {
-      "emu_exe": "picodrive"
+    "GBA": {
+      "name": "Game Boy Advance",
+      "core": "gpsp_libretro",
+      "resolution": "240x160",
+      "extensions": ["gba", "bin"],
+      "bios": [
+        {
+          "name": "gba_bios.bin",
+          "md5": "a860e8c0b6d573d191e4ec7db1b1e4f6",
+          "required": false
+        }
+      ]
     },
-    "PS": {
-      "emu_exe": "pcsx_rearmed"
+    "FC": {
+      "name": "Nintendo Entertainment System",
+      "core": "fceumm_libretro",
+      "resolution": "256x240",
+      "extensions": ["nes", "fds", "unif", "unf"],
+      "bios": [
+        {
+          "name": "disksys.rom",
+          "md5": "ca30b50f880eb660a320674ed365ef7a",
+          "required": false
+        }
+      ]
     },
     "SFC": {
-      "emu_exe": "snes9x2005_plus"
+      "name": "Super Nintendo",
+      "core": "snes9x2005_plus_libretro",
+      "resolution": "256x224",
+      "extensions": ["smc", "sfc", "fig", "swc", "gd3", "gd7", "dx2", "bsx"],
+      "bios": []
     },
-    "FBN": {
-      "emu_exe": "fbneo"
+    "MD": {
+      "name": "Sega Genesis",
+      "core": "picodrive_libretro",
+      "resolution": "320x224",
+      "extensions": ["bin", "gen", "smd", "md", "68k"],
+      "bios": []
     },
-    "CPS1": {
-      "emu_exe": "fbneo"
-    },
-    "CPS2": {
-      "emu_exe": "fbneo"
-    },
-    "CPS3": {
-      "emu_exe": "fbneo"
-    },
-    "MAME": {
-      "emu_exe": "mame2003_plus"
-    },
-    "VB": {
-      "emu_exe": "mednafen_vb"
-    },
-    "PCE": {
-      "emu_exe": "mednafen_pce_fast"
-    },
-    "PCECD": {
-      "emu_exe": "mednafen_pce_fast"
-    },
-    "P8": {
-      "emu_exe": "fake08"
-    },
-    "MGBA": {
-      "emu_exe": "mgba"
-    },
-    "PKM": {
-      "emu_exe": "pokemini"
-    },
-    "NGPC": {
-      "emu_exe": "race"
-    },
-    "NGP": {
-      "emu_exe": "race"
-    },
-    "SGB": {
-      "emu_exe": "gambatte"
-    },
-    "SMS": {
-      "emu_exe": "picodrive"
-    },
-    "SUPA": {
-      "emu_exe": "mednafen_supafaust"
+    "PS": {
+      "name": "Sony PlayStation",
+      "core": "pcsx_rearmed_libretro",
+      "resolution": "320x240",
+      "extensions": [
+        "bin",
+        "cue",
+        "img",
+        "iso",
+        "pbp",
+        "chd",
+        "m3u",
+        "mdf",
+        "ccd",
+        "exe"
+      ],
+      "bios": [
+        {
+          "name": "scph5501.bin",
+          "md5": "490f666e1afb15b7362b406ed1cea246",
+          "required": true
+        },
+        { "name": "scph5500.bin", "md5": null, "required": false },
+        { "name": "scph5502.bin", "md5": null, "required": false },
+        {
+          "name": "scph1001.bin",
+          "md5": "924e392ed05558ffdb115408c263dccf",
+          "required": false
+        },
+        {
+          "name": "scph7001.bin",
+          "md5": "1e68c231d0896b7eadcad1d7d8e76129",
+          "required": false
+        }
+      ]
     },
     "GG": {
-      "emu_exe": "picodrive"
+      "name": "Sega Game Gear",
+      "core": "picodrive_libretro",
+      "resolution": "160x144",
+      "extensions": ["gg"],
+      "bios": []
     },
-    "N64": {
-      "emu_exe": "mupen64plus_next"
+    "SMS": {
+      "name": "Sega Master System",
+      "core": "picodrive_libretro",
+      "resolution": "256x192",
+      "extensions": ["sms"],
+      "bios": []
     },
-    "NDS": {
-      "emu_exe": "melonds"
+    "PCE": {
+      "name": "TurboGrafx-16",
+      "core": "mednafen_pce_fast_libretro",
+      "resolution": "512x243",
+      "extensions": ["pce"],
+      "bios": []
     },
-    "PSP": {
-      "emu_exe": "ppsspp"
+    "PCECD": {
+      "name": "TurboGrafx CD",
+      "core": "mednafen_pce_fast_libretro",
+      "resolution": "512x243",
+      "extensions": ["cue", "ccd", "iso", "img", "bin", "chd"],
+      "bios": [
+        {
+          "name": "syscard3.pce",
+          "md5": "38179df8f4ac870017db21ebcbf53114",
+          "required": true
+        }
+      ]
     },
-    "DC": {
-      "emu_exe": "flycast"
+    "VB": {
+      "name": "Nintendo Virtual Boy",
+      "core": "mednafen_vb_libretro",
+      "resolution": "384x224",
+      "extensions": ["vb", "vboy", "bin"],
+      "bios": []
     },
-    "A2600": {
-      "emu_exe": "stella"
+    "NGP": {
+      "name": "Neo Geo Pocket",
+      "core": "race_libretro",
+      "resolution": "160x152",
+      "extensions": ["ngp"],
+      "bios": []
     },
-    "LYNX": {
-      "emu_exe": "mednafen_lynx"
+    "NGPC": {
+      "name": "Neo Geo Pocket Color",
+      "core": "race_libretro",
+      "resolution": "160x152",
+      "extensions": ["ngc", "ngp"],
+      "bios": []
     },
-    "A5200": {
-      "emu_exe": "atari800"
+    "PKM": {
+      "name": "Pokemon mini",
+      "core": "pokemini_libretro",
+      "resolution": "96x64",
+      "extensions": ["min"],
+      "bios": [
+        {
+          "name": "bios.min",
+          "md5": "1e4fb124a3a886865acb574f388c803d",
+          "required": false
+        }
+      ]
     },
-    "A7800": {
-      "emu_exe": "prosystem"
+    "PICO": {
+      "name": "Pico-8",
+      "core": "fake08_libretro",
+      "resolution": "128x128",
+      "extensions": ["p8", "p8.png", "png"],
+      "bios": []
     },
-    "SGX": {
-      "emu_exe": "mednafen_supergrafx"
+    "TIC": {
+      "name": "TIC-80",
+      "core": "tic80_libretro",
+      "resolution": "240x136",
+      "extensions": ["tic"],
+      "bios": []
     },
-    "VEC": {
-      "emu_exe": "vecx"
+    "SGB": {
+      "name": "Super Game Boy",
+      "core": "mgba_libretro",
+      "resolution": "256x224",
+      "extensions": ["gb", "gbc"],
+      "bios": [
+        {
+          "name": "sgb_bios.bin",
+          "md5": "d574d4f9c12f305074798f54c091a8b4",
+          "required": false
+        },
+        {
+          "name": "gb_bios.bin",
+          "md5": "32fbbd84168d3482956eb3c5051637f5",
+          "required": false
+        },
+        {
+          "name": "gbc_bios.bin",
+          "md5": "dbfce9db9deaa2567f6a84fde55f9680",
+          "required": false
+        }
+      ]
     },
-    "MSX": {
-      "emu_exe": "bluemsx"
+    "MGBA": {
+      "name": "Game Boy Advance (mGBA)",
+      "core": "mgba_libretro",
+      "resolution": "240x160",
+      "extensions": ["gba", "gb", "gbc"],
+      "bios": [
+        {
+          "name": "gba_bios.bin",
+          "md5": "a860e8c0b6d573d191e4ec7db1b1e4f6",
+          "required": false
+        }
+      ]
     },
-    "C64": {
-      "emu_exe": "vice_x64"
+    "SUPA": {
+      "name": "Super Nintendo (Supafaust)",
+      "core": "mednafen_supafaust_libretro",
+      "resolution": "256x224",
+      "extensions": ["smc", "sfc", "swc", "fig"],
+      "bios": []
     },
-    "ZXS": {
-      "emu_exe": "fuse"
+    "MAME": {
+      "name": "Arcade (MAME)",
+      "core": "mame2003_plus_libretro",
+      "resolution": "varies",
+      "extensions": ["zip", "chd"],
+      "bios": [{ "name": "neogeo.zip", "md5": null, "required": false }]
     },
-    "SCUMM": {
-      "emu_exe": "scummvm"
+    "FBN": {
+      "name": "Arcade (FBNeo)",
+      "core": "fbneo_libretro",
+      "resolution": "varies",
+      "extensions": ["zip", "7z"],
+      "bios": []
     },
-    "32X": {
-      "emu_exe": "picodrive"
+    "CPS1": {
+      "name": "Capcom Play System 1",
+      "core": "fbneo_libretro",
+      "resolution": "384x224",
+      "extensions": ["zip", "7z"],
+      "bios": []
     },
-    "SEGACD": {
-      "emu_exe": "picodrive"
+    "CPS2": {
+      "name": "Capcom Play System 2",
+      "core": "fbneo_libretro",
+      "resolution": "384x224",
+      "extensions": ["zip", "7z"],
+      "bios": []
     },
-    "SG1000": {
-      "emu_exe": "picodrive"
+    "CPS3": {
+      "name": "Capcom Play System 3",
+      "core": "fbneo_libretro",
+      "resolution": "384x224",
+      "extensions": ["zip", "7z"],
+      "bios": []
     },
-    "FDS": {
-      "emu_exe": "fceumm"
-    },
-    "COLECO": {
-      "emu_exe": "bluemsx"
+    "NG": {
+      "name": "Neo Geo",
+      "core": "fbneo_libretro",
+      "resolution": "320x224",
+      "extensions": ["zip", "7z"],
+      "bios": [{ "name": "neogeo.zip", "md5": null, "required": true }]
     }
   }
 }

@@ -1,0 +1,13 @@
+Super Game Boy
+
+Core: mgba
+
+Supported file types:
+  .gb, .gbc
+
+BIOS (optional):
+  sgb_bios.bin - enables SGB borders
+  gb_bios.bin - Game Boy boot animation
+  gbc_bios.bin - Game Boy Color boot animation
+
+Place BIOS files in: /Bios/SGB/

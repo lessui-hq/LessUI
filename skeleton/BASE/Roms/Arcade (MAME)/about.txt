@@ -1,0 +1,11 @@
+Arcade (MAME 2003-Plus)
+
+Core: mame2003_plus
+
+Supported file types:
+  .zip, .chd
+
+BIOS (optional):
+  neogeo.zip - required for Neo Geo games
+
+Place BIOS files in: /Bios/MAME/
