@@ -377,7 +377,7 @@ tests/player_input_test: tests/unit/all/player/test_player_input.c workspace/all
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build launcher state persistence tests (path decomposition, resume paths)
-tests/launcher_state_test: tests/unit/all/launcher/test_launcher_state.c workspace/all/launcher/launcher_state.c $(TEST_UNITY)
+tests/launcher_state_test: tests/unit/all/launcher/test_launcher_state.c workspace/all/launcher/launcher_state.c workspace/all/common/stb_ds_impl.c $(TEST_UNITY)
 	@echo "Building launcher state tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 

@@ -95,39 +95,39 @@ int LauncherDir_buildCollationPrefix(const char* path, char* out_prefix);
 int LauncherDir_matchesCollation(const char* path, const char* collation_prefix);
 
 /**
- * Result structure for directory scanning.
+ * Single entry in a directory scan result.
+ * Used with stb_ds dynamic arrays.
  */
 typedef struct {
-	char** paths; // Array of full paths (caller must free each + array)
-	int* is_dirs; // Array of is_directory flags
-	int count; // Number of entries
-	int capacity; // Allocated capacity
-} LauncherDirScanResult;
+	char* path; // Full path (owned, must be freed)
+	int is_dir; // 1 if directory, 0 if file
+} LauncherDirScanEntry;
 
 /**
- * Creates a new scan result structure.
- *
- * @param initial_capacity Initial capacity for entries
- * @return New result structure, or NULL on allocation failure
+ * LauncherDirScanResult is a stb_ds dynamic array of LauncherDirScanEntry.
+ * Usage: LauncherDirScanEntry* result = NULL;
+ *        LauncherDirScanResult_add(&result, path, is_dir);
+ *        arrlen(result)  // count
+ *        arrfree(result) // after freeing path strings
  */
-LauncherDirScanResult* LauncherDirScanResult_new(int initial_capacity);
+typedef LauncherDirScanEntry* LauncherDirScanResult;
 
 /**
- * Frees a scan result structure and all its contents.
+ * Frees a scan result and all its contents.
  *
- * @param result Result to free
+ * @param result Result to free (frees all path strings and array)
  */
-void LauncherDirScanResult_free(LauncherDirScanResult* result);
+void LauncherDirScanResult_free(LauncherDirScanResult result);
 
 /**
  * Adds an entry to scan results.
  *
- * @param result Result structure to add to
+ * @param result_ptr Pointer to result array (may be reallocated)
  * @param path Full path (copied)
  * @param is_dir 1 if directory, 0 if file
  * @return 1 on success, 0 on failure
  */
-int LauncherDirScanResult_add(LauncherDirScanResult* result, const char* path, int is_dir);
+int LauncherDirScanResult_add(LauncherDirScanResult* result_ptr, const char* path, int is_dir);
 
 /**
  * Scans a directory and returns non-hidden entries.
@@ -135,10 +135,15 @@ int LauncherDirScanResult_add(LauncherDirScanResult* result, const char* path, i
  * Does not recurse into subdirectories.
  * Filters out entries starting with '.' (hidden files).
  *
+ * Note: Both error conditions (NULL dir_path, directory doesn't exist) and
+ * empty directories return NULL. Use arrlen() to check entry count - it
+ * safely returns 0 for NULL arrays.
+ *
  * @param dir_path Directory to scan
- * @return Scan result (caller must free), or NULL on error
+ * @return Scan result (caller must free with LauncherDirScanResult_free),
+ *         or NULL if dir_path is NULL, directory doesn't exist, or is empty
  */
-LauncherDirScanResult* LauncherDir_scan(const char* dir_path);
+LauncherDirScanResult LauncherDir_scan(const char* dir_path);
 
 /**
  * Scans multiple directories with collation support.
@@ -146,12 +151,15 @@ LauncherDirScanResult* LauncherDir_scan(const char* dir_path);
  * Used for console directories that may be split across regions.
  * For example, "GB (USA)" and "GB (Japan)" are collated together.
  *
+ * Note: Returns NULL for both errors and when no matching directories/files
+ * are found. Use arrlen() to check entry count.
+ *
  * @param roms_path ROMS_PATH constant
  * @param collation_prefix Collation prefix from LauncherDir_buildCollationPrefix
- * @return Combined scan result (caller must free), or NULL on error
+ * @return Combined scan result (caller must free with LauncherDirScanResult_free),
+ *         or NULL on error or if no entries found
  */
-LauncherDirScanResult* LauncherDir_scanCollated(const char* roms_path,
-                                                const char* collation_prefix);
+LauncherDirScanResult LauncherDir_scanCollated(const char* roms_path, const char* collation_prefix);
 
 ///////////////////////////////
 // Directory structure

@@ -54,7 +54,7 @@ uint64_t getMicroseconds(void) {
  * @param str String to search in
  * @return 1 if str starts with pre, 0 otherwise
  */
-int prefixMatch(char* pre, char* str) {
+int prefixMatch(const char* pre, const char* str) {
 	return (strncasecmp(pre, str, strlen(pre)) == 0);
 }
 
@@ -67,7 +67,7 @@ int prefixMatch(char* pre, char* str) {
  * @param str String to search in
  * @return 1 if str ends with suf, 0 otherwise
  */
-int suffixMatch(char* suf, char* str) {
+int suffixMatch(const char* suf, const char* str) {
 	int len = strlen(suf);
 	int offset = strlen(str) - len;
 	return (offset >= 0 && strncasecmp(suf, str + offset, len) == 0);

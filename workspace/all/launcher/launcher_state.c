@@ -15,58 +15,29 @@
 // Path Stack Implementation
 ///////////////////////////////
 
-LauncherPathStack* LauncherPathStack_new(int capacity) {
-	LauncherPathStack* stack = malloc(sizeof(LauncherPathStack));
-	if (!stack)
-		return NULL;
-
-	stack->items = malloc(sizeof(LauncherPathComponent) * capacity);
-	if (!stack->items) {
-		free(stack);
-		return NULL;
-	}
-
-	stack->count = 0;
-	stack->capacity = capacity;
-	return stack;
-}
-
-void LauncherPathStack_free(LauncherPathStack* stack) {
-	if (!stack)
-		return;
-	free(stack->items);
-	free(stack);
-}
-
-bool LauncherPathStack_push(LauncherPathStack* stack, const char* path) {
-	if (!stack || !path)
+bool LauncherPathStack_push(LauncherPathStack* stack_ptr, const char* path) {
+	if (!stack_ptr || !path)
 		return false;
 
-	// Grow if needed
-	if (stack->count >= stack->capacity) {
-		int new_capacity = stack->capacity * 2;
-		LauncherPathComponent* new_items =
-		    realloc(stack->items, sizeof(LauncherPathComponent) * new_capacity);
-		if (!new_items)
-			return false;
-		stack->items = new_items;
-		stack->capacity = new_capacity;
-	}
+	LauncherPathComponent component;
+	strncpy(component.path, path, LAUNCHER_STATE_MAX_PATH - 1);
+	component.path[LAUNCHER_STATE_MAX_PATH - 1] = '\0';
 
-	strncpy(stack->items[stack->count].path, path, LAUNCHER_STATE_MAX_PATH - 1);
-	stack->items[stack->count].path[LAUNCHER_STATE_MAX_PATH - 1] = '\0';
-	stack->count++;
+	arrpush(*stack_ptr, component);
 	return true;
 }
 
-bool LauncherPathStack_pop(LauncherPathStack* stack, char* out_path) {
-	if (!stack || stack->count == 0)
+bool LauncherPathStack_pop(LauncherPathStack* stack_ptr, char* out_path) {
+	// Note: arrlen(NULL) safely returns 0, so this handles both NULL stack_ptr
+	// and empty stacks correctly
+	if (!stack_ptr || arrlen(*stack_ptr) == 0)
 		return false;
 
-	stack->count--;
 	if (out_path) {
-		(void)snprintf(out_path, LAUNCHER_STATE_MAX_PATH, "%s", stack->items[stack->count].path);
+		(void)snprintf(out_path, LAUNCHER_STATE_MAX_PATH, "%s",
+		               (*stack_ptr)[arrlen(*stack_ptr) - 1].path);
 	}
+	arrpop(*stack_ptr);
 	return true;
 }
 
@@ -74,13 +45,11 @@ bool LauncherPathStack_pop(LauncherPathStack* stack, char* out_path) {
 // Path Decomposition
 ///////////////////////////////
 
-LauncherPathStack* LauncherState_decomposePath(const char* full_path, const char* root_path) {
+LauncherPathStack LauncherState_decomposePath(const char* full_path, const char* root_path) {
 	if (!full_path || !root_path)
 		return NULL;
 
-	LauncherPathStack* stack = LauncherPathStack_new(16);
-	if (!stack)
-		return NULL;
+	LauncherPathStack stack = NULL;
 
 	char path[LAUNCHER_STATE_MAX_PATH];
 	strncpy(path, full_path, LAUNCHER_STATE_MAX_PATH - 1);
@@ -88,7 +57,7 @@ LauncherPathStack* LauncherState_decomposePath(const char* full_path, const char
 
 	// Walk up the path tree, pushing each level
 	while (strcmp(path, root_path) != 0 && strlen(path) > strlen(root_path)) {
-		LauncherPathStack_push(stack, path);
+		LauncherPathStack_push(&stack, path);
 
 		// Find last slash and truncate
 		char* slash = strrchr(path, '/');

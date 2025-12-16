@@ -28,53 +28,52 @@ void tearDown(void) {
 // Path Stack Tests
 ///////////////////////////////
 
-void test_PathStack_new_creates_stack(void) {
-	LauncherPathStack* stack = LauncherPathStack_new(10);
-	TEST_ASSERT_NOT_NULL(stack);
-	TEST_ASSERT_EQUAL(0, stack->count);
-	TEST_ASSERT_EQUAL(10, stack->capacity);
-	LauncherPathStack_free(stack);
+void test_PathStack_init_creates_empty_stack(void) {
+	LauncherPathStack stack = NULL;
+	TEST_ASSERT_EQUAL(0, arrlen(stack));
+	arrfree(stack);
 }
 
 void test_PathStack_push_adds_items(void) {
-	LauncherPathStack* stack = LauncherPathStack_new(10);
-	TEST_ASSERT_TRUE(LauncherPathStack_push(stack, "/path/one"));
-	TEST_ASSERT_TRUE(LauncherPathStack_push(stack, "/path/two"));
-	TEST_ASSERT_EQUAL(2, stack->count);
-	LauncherPathStack_free(stack);
+	LauncherPathStack stack = NULL;
+	TEST_ASSERT_TRUE(LauncherPathStack_push(&stack, "/path/one"));
+	TEST_ASSERT_TRUE(LauncherPathStack_push(&stack, "/path/two"));
+	TEST_ASSERT_EQUAL(2, arrlen(stack));
+	arrfree(stack);
 }
 
 void test_PathStack_pop_returns_lifo(void) {
-	LauncherPathStack* stack = LauncherPathStack_new(10);
-	LauncherPathStack_push(stack, "/path/one");
-	LauncherPathStack_push(stack, "/path/two");
-	LauncherPathStack_push(stack, "/path/three");
+	LauncherPathStack stack = NULL;
+	LauncherPathStack_push(&stack, "/path/one");
+	LauncherPathStack_push(&stack, "/path/two");
+	LauncherPathStack_push(&stack, "/path/three");
 
 	char path[LAUNCHER_STATE_MAX_PATH];
-	TEST_ASSERT_TRUE(LauncherPathStack_pop(stack, path));
+	TEST_ASSERT_TRUE(LauncherPathStack_pop(&stack, path));
 	TEST_ASSERT_EQUAL_STRING("/path/three", path);
 
-	TEST_ASSERT_TRUE(LauncherPathStack_pop(stack, path));
+	TEST_ASSERT_TRUE(LauncherPathStack_pop(&stack, path));
 	TEST_ASSERT_EQUAL_STRING("/path/two", path);
 
-	LauncherPathStack_free(stack);
+	arrfree(stack);
 }
 
 void test_PathStack_pop_empty_returns_false(void) {
-	LauncherPathStack* stack = LauncherPathStack_new(10);
+	LauncherPathStack stack = NULL;
 	char path[LAUNCHER_STATE_MAX_PATH];
-	TEST_ASSERT_FALSE(LauncherPathStack_pop(stack, path));
-	LauncherPathStack_free(stack);
+	TEST_ASSERT_FALSE(LauncherPathStack_pop(&stack, path));
+	arrfree(stack);
 }
 
-void test_PathStack_grows_when_full(void) {
-	LauncherPathStack* stack = LauncherPathStack_new(2);
-	TEST_ASSERT_TRUE(LauncherPathStack_push(stack, "/one"));
-	TEST_ASSERT_TRUE(LauncherPathStack_push(stack, "/two"));
-	TEST_ASSERT_TRUE(LauncherPathStack_push(stack, "/three")); // Should grow
-	TEST_ASSERT_EQUAL(3, stack->count);
-	TEST_ASSERT_TRUE(stack->capacity >= 3);
-	LauncherPathStack_free(stack);
+void test_PathStack_grows_automatically(void) {
+	LauncherPathStack stack = NULL;
+	// stb_ds grows automatically
+	TEST_ASSERT_TRUE(LauncherPathStack_push(&stack, "/one"));
+	TEST_ASSERT_TRUE(LauncherPathStack_push(&stack, "/two"));
+	TEST_ASSERT_TRUE(LauncherPathStack_push(&stack, "/three"));
+	TEST_ASSERT_EQUAL(3, arrlen(stack));
+	TEST_ASSERT_TRUE(arrcap(stack) >= 3);
+	arrfree(stack);
 }
 
 ///////////////////////////////
@@ -82,34 +81,34 @@ void test_PathStack_grows_when_full(void) {
 ///////////////////////////////
 
 void test_decomposePath_creates_stack(void) {
-	LauncherPathStack* stack =
+	LauncherPathStack stack =
 	    LauncherState_decomposePath("/mnt/SDCARD/Roms/GB/game.gb", "/mnt/SDCARD");
 
 	TEST_ASSERT_NOT_NULL(stack);
-	TEST_ASSERT_EQUAL(3, stack->count);
+	TEST_ASSERT_EQUAL(3, arrlen(stack));
 
 	char path[LAUNCHER_STATE_MAX_PATH];
 
 	// Pop in LIFO order (first pushed = last popped)
-	TEST_ASSERT_TRUE(LauncherPathStack_pop(stack, path));
+	TEST_ASSERT_TRUE(LauncherPathStack_pop(&stack, path));
 	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms", path);
 
-	TEST_ASSERT_TRUE(LauncherPathStack_pop(stack, path));
+	TEST_ASSERT_TRUE(LauncherPathStack_pop(&stack, path));
 	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/GB", path);
 
-	TEST_ASSERT_TRUE(LauncherPathStack_pop(stack, path));
+	TEST_ASSERT_TRUE(LauncherPathStack_pop(&stack, path));
 	TEST_ASSERT_EQUAL_STRING("/mnt/SDCARD/Roms/GB/game.gb", path);
 
-	LauncherPathStack_free(stack);
+	arrfree(stack);
 }
 
 void test_decomposePath_stops_at_root(void) {
-	LauncherPathStack* stack = LauncherState_decomposePath("/mnt/SDCARD/Roms", "/mnt/SDCARD");
+	LauncherPathStack stack = LauncherState_decomposePath("/mnt/SDCARD/Roms", "/mnt/SDCARD");
 
 	TEST_ASSERT_NOT_NULL(stack);
-	TEST_ASSERT_EQUAL(1, stack->count); // Only /mnt/SDCARD/Roms
+	TEST_ASSERT_EQUAL(1, arrlen(stack)); // Only /mnt/SDCARD/Roms
 
-	LauncherPathStack_free(stack);
+	arrfree(stack);
 }
 
 void test_decomposePath_null_returns_null(void) {
@@ -253,11 +252,11 @@ int main(void) {
 	UNITY_BEGIN();
 
 	// Path stack
-	RUN_TEST(test_PathStack_new_creates_stack);
+	RUN_TEST(test_PathStack_init_creates_empty_stack);
 	RUN_TEST(test_PathStack_push_adds_items);
 	RUN_TEST(test_PathStack_pop_returns_lifo);
 	RUN_TEST(test_PathStack_pop_empty_returns_false);
-	RUN_TEST(test_PathStack_grows_when_full);
+	RUN_TEST(test_PathStack_grows_automatically);
 
 	// Path decomposition
 	RUN_TEST(test_decomposePath_creates_stack);
