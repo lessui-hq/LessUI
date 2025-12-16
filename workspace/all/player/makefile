@@ -20,7 +20,7 @@ SDL ?= SDL
 ###########################################################
 
 TARGET = player
-INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../launcher/ -I../vendor/stb/ -I../../$(PLATFORM)/platform/
+INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../launcher/ -isystem ../vendor/stb/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/pad.c \
          ../common/gfx_text.c ../launcher/launcher_file_utils.c ../common/platform_variant.c \

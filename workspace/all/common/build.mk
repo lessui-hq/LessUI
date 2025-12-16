@@ -64,7 +64,7 @@ PLATFORM_DIR ?= $(PLATFORM_DEPTH)$(PLATFORM)/platform
 ###########################################################
 # Paths and sources
 
-INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -I$(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
+INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
 
 COMMON_SOURCE = \
 	$(COMMON_DIR)/utils.c \

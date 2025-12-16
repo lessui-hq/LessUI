@@ -37,7 +37,7 @@ bool LauncherPathStack_pop(LauncherPathStack* stack_ptr, char* out_path) {
 		(void)snprintf(out_path, LAUNCHER_STATE_MAX_PATH, "%s",
 		               (*stack_ptr)[arrlen(*stack_ptr) - 1].path);
 	}
-	arrpop(*stack_ptr);
+	(void)arrpop(*stack_ptr);
 	return true;
 }
 

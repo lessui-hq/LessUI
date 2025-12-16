@@ -20,7 +20,7 @@ SDL ?= SDL
 ###########################################################
 
 TARGET = launcher
-INCDIR = -I. -I../common/ -I../vendor/stb/ -I../../$(PLATFORM)/platform/
+INCDIR = -I. -I../common/ -isystem ../vendor/stb/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/pad.c \
          ../common/gfx_text.c ../common/platform_variant.c ../common/stb_ds_impl.c \
