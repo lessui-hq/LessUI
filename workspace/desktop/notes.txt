@@ -1,15 +1,15 @@
 macOS Development Platform
 =========================
 
-This is a development platform for testing LessUI minui (launcher) on macOS.
+This is a development platform for testing LessUI launcher (launcher) on macOS.
 It allows rapid UI development without deploying to physical hardware.
 
 QUICK START
 -----------
 From project root:
 
-  make dev-run        # Build and run minui (4:3 aspect ratio)
-  make dev-run-16x9   # Build and run minui (16:9 widescreen)
+  make dev-run        # Build and run launcher (4:3 aspect ratio)
+  make dev-run-16x9   # Build and run launcher (16:9 widescreen)
 
 SETUP
 -----

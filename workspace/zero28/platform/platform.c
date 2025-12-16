@@ -3,7 +3,7 @@
  *
  * REFACTORED VERSION - Uses shared render_sdl2 backend
  *
- * Provides hardware-specific implementation of the MinUI platform API for the
+ * Provides hardware-specific implementation of the Launcher platform API for the
  * Mini Zero 28 device. Key features:
  *
  * - SDL_Joystick API for input (instead of raw evdev)
@@ -219,7 +219,7 @@ void PLAT_enableBacklight(int enable) {
  * Powers off the device.
  *
  * Calls shutdown script directly for consistent behavior regardless of
- * which process triggers the shutdown (minui, minarch, shui, or paks).
+ * which process triggers the shutdown (launcher, player, shui, or paks).
  */
 void PLAT_powerOff(void) {
 	sleep(2);

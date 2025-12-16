@@ -1,5 +1,5 @@
 /**
- * utils.h - Core utility function declarations for MinUI
+ * utils.h - Core utility function declarations for Launcher
  *
  * Provides cross-platform utilities for string manipulation, file I/O,
  * timing, name processing, date/time, and math operations. All functions

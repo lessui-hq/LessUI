@@ -477,6 +477,6 @@ Cores should check for feature support via environment callbacks before using th
 
 ## References
 
-- [libretro.h](../workspace/all/minarch/libretro-common/include/libretro.h) - Full API header
+- [libretro.h](../workspace/all/player/libretro-common/include/libretro.h) - Full API header
 - [libretro documentation](https://docs.libretro.com/) - Official documentation
 - [RetroArch](https://github.com/libretro/RetroArch) - Reference frontend implementation

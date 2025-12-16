@@ -1,7 +1,7 @@
 /**
  * platform.c - macOS platform implementation
  *
- * Development platform for testing MinUI on macOS. Provides minimal
+ * Development platform for testing Launcher on macOS. Provides minimal
  * implementations of platform functions for development and debugging.
  * Most hardware-specific features (brightness, volume, power) are stubbed.
  *
@@ -449,7 +449,7 @@ void PLAT_enableBacklight(int enable) {
 }
 
 /**
- * Shuts down MinUI and exits.
+ * Shuts down Launcher and exits.
  *
  * Cleans up subsystems and exits process.
  */

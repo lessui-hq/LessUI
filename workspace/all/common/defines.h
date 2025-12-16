@@ -1,5 +1,5 @@
 /**
- * defines.h - Platform-specific constants and path definitions for MinUI
+ * defines.h - Platform-specific constants and path definitions for Launcher
  *
  * This file builds upon platform.h to create derived constants used throughout
  * the codebase. All paths are constructed from SDCARD_PATH and PLATFORM macros
@@ -84,11 +84,11 @@
 /**
  * Recently played games list (shared across platforms).
  */
-#define RECENT_PATH SHARED_USERDATA_PATH "/.minui/recent.txt"
+#define RECENT_PATH SHARED_USERDATA_PATH "/.launcher/recent.txt"
 
 /**
  * Simple mode enable flag file.
- * If this file exists, MinUI shows a simplified interface.
+ * If this file exists, Launcher shows a simplified interface.
  */
 #define SIMPLE_MODE_PATH SHARED_USERDATA_PATH "/enable-simple-mode"
 
@@ -96,7 +96,7 @@
  * Auto-resume save state tracking file.
  * Stores the last game played for automatic resume on startup.
  */
-#define AUTO_RESUME_PATH SHARED_USERDATA_PATH "/.minui/auto_resume.txt"
+#define AUTO_RESUME_PATH SHARED_USERDATA_PATH "/.launcher/auto_resume.txt"
 
 /**
  * Save state slot used for auto-resume feature.

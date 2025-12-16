@@ -39,7 +39,7 @@ AnotherNetwork:AnotherPassword
 
 ## Attribution
 
-Based on [minui-wifi-pak](https://github.com/josegonzalez/minui-wifi-pak) by Jose Gonzalez.
+Based on [launcher-wifi-pak](https://github.com/josegonzalez/launcher-wifi-pak) by Jose Gonzalez.
 
 Forked from commit: `ff5fae810d6a3a0f5c612ebcd78ac2a6c568d3d4`
 

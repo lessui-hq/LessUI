@@ -2,8 +2,8 @@
 # Native compilation for rapid development and testing
 #
 # This makefile provides native macOS builds for development:
-#   make dev        - Build minui for macOS
-#   make dev-run    - Build and run minui
+#   make dev        - Build launcher for macOS
+#   make dev-run    - Build and run launcher
 #   make dev-clean  - Clean macOS build artifacts
 #
 # Prerequisites:
@@ -17,8 +17,8 @@ help:
 	@echo "LessUI macOS Development Tools"
 	@echo ""
 	@echo "Quick commands:"
-	@echo "  make dev            - Build minui for macOS (4:3, 640×480)"
-	@echo "  make dev-run        - Build and run minui"
+	@echo "  make dev            - Build launcher for macOS (4:3, 640×480)"
+	@echo "  make dev-run        - Build and run launcher"
 	@echo "  make dev-clean      - Clean macOS build artifacts"
 	@echo ""
 	@echo "Aspect ratio variants:"
@@ -49,7 +49,7 @@ endif
 
 # Compiler and flags (native macOS)
 CC = gcc
-INCDIR = -I workspace/all/minui -I workspace/all/common -I workspace/desktop/platform $(SDL_INCLUDES)
+INCDIR = -I workspace/all/launcher -I workspace/all/common -I workspace/desktop/platform $(SDL_INCLUDES)
 # Dev builds always use full logging (INFO + DEBUG) and debug symbols
 # Keep -O3 for dev since ASan already catches memory issues; -O0 would make it too slow
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
@@ -64,8 +64,8 @@ CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-width
 CFLAGS += -Wno-deprecated-declarations -Wno-incompatible-pointer-types-discards-qualifiers
 LDFLAGS = -ldl -flto $(SDL_LIBS) -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address
 
-# Source files (synced with workspace/all/minui/makefile)
-MINUI_SOURCE = workspace/all/minui/minui.c \
+# Source files (synced with workspace/all/launcher/makefile)
+LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
                workspace/all/common/scaler.c \
                workspace/all/common/utils.c \
                workspace/all/common/nointro_parser.c \
@@ -75,19 +75,19 @@ MINUI_SOURCE = workspace/all/minui/minui.c \
                workspace/all/common/pad.c \
                workspace/all/common/gfx_text.c \
                workspace/all/common/platform_variant.c \
-               workspace/all/minui/minui_entry.c \
-               workspace/all/minui/minui_launcher.c \
-               workspace/all/minui/directory_index.c \
-               workspace/all/minui/minui_str_compare.c \
-               workspace/all/minui/minui_state.c \
-               workspace/all/minui/minui_m3u.c \
-               workspace/all/minui/minui_map.c \
-               workspace/all/minui/minui_file_utils.c \
-               workspace/all/minui/minui_directory.c \
-               workspace/all/minui/minui_context.c \
-               workspace/all/minui/minui_navigation.c \
-               workspace/all/minui/minui_thumbnail.c \
-               workspace/all/minui/recent_file.c \
+               workspace/all/launcher/launcher_entry.c \
+               workspace/all/launcher/launcher_launcher.c \
+               workspace/all/launcher/directory_index.c \
+               workspace/all/launcher/launcher_str_compare.c \
+               workspace/all/launcher/launcher_state.c \
+               workspace/all/launcher/launcher_m3u.c \
+               workspace/all/launcher/launcher_map.c \
+               workspace/all/launcher/launcher_file_utils.c \
+               workspace/all/launcher/launcher_directory.c \
+               workspace/all/launcher/launcher_context.c \
+               workspace/all/launcher/launcher_navigation.c \
+               workspace/all/launcher/launcher_thumbnail.c \
+               workspace/all/launcher/recent_file.c \
                workspace/all/common/effect_system.c \
                workspace/all/common/render_common.c \
                workspace/all/common/render_sdl2.c \
@@ -95,11 +95,11 @@ MINUI_SOURCE = workspace/all/minui/minui.c \
                workspace/desktop/platform/platform.c
 
 # Header files (dependencies)
-MINUI_HEADERS = $(wildcard workspace/all/common/*.h) $(wildcard workspace/all/minui/*.h) $(wildcard workspace/desktop/platform/*.h)
+LAUNCHER_HEADERS = $(wildcard workspace/all/common/*.h) $(wildcard workspace/all/launcher/*.h) $(wildcard workspace/desktop/platform/*.h)
 
 # Build output
-BUILD_DIR = workspace/all/minui/build/desktop
-MINUI_BIN = $(BUILD_DIR)/minui
+BUILD_DIR = workspace/all/launcher/build/desktop
+LAUNCHER_BIN = $(BUILD_DIR)/launcher
 
 # Check if SDL2 is installed and sync resources
 check-sdl:
@@ -119,21 +119,21 @@ check-sdl:
 	@mkdir -p "$(FAKESD_PATH)/.system/res"
 	@rsync -a --delete skeleton/SYSTEM/res/ "$(FAKESD_PATH)/.system/res/"
 
-# Build minui for macOS
-$(MINUI_BIN): $(MINUI_SOURCE) $(MINUI_HEADERS)
-	@echo "Building minui for macOS (native)..."
+# Build launcher for macOS
+$(LAUNCHER_BIN): $(LAUNCHER_SOURCE) $(LAUNCHER_HEADERS)
+	@echo "Building launcher for macOS (native)..."
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(MINUI_SOURCE) -o $(MINUI_BIN) $(INCDIR) $(CFLAGS) $(LDFLAGS)
-	@echo "✓ Build complete: $(MINUI_BIN)"
+	$(CC) $(LAUNCHER_SOURCE) -o $(LAUNCHER_BIN) $(INCDIR) $(CFLAGS) $(LDFLAGS)
+	@echo "✓ Build complete: $(LAUNCHER_BIN)"
 	@echo ""
 	@echo "Run with: make dev-run"
-	@echo "Or directly: $(MINUI_BIN)"
+	@echo "Or directly: $(LAUNCHER_BIN)"
 
-dev: check-sdl $(MINUI_BIN)
+dev: check-sdl $(LAUNCHER_BIN)
 
-# Build and run minui
+# Build and run launcher
 dev-run: dev
-	@echo "Launching minui..."
+	@echo "Launching launcher..."
 	@echo "FAKESD path: $(FAKESD_PATH)"
 	@echo ""
 	@echo "Keyboard controls:"
@@ -144,7 +144,7 @@ dev-run: dev
 	@echo "  Space       - Menu"
 	@echo "  Backspace   - Power (hold to quit)"
 	@echo ""
-	@cd workspace/all/minui && ./build/desktop/minui
+	@cd workspace/all/launcher && ./build/desktop/launcher
 
 # Clean build artifacts
 dev-clean:

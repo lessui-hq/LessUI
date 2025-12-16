@@ -8,7 +8,7 @@ set -x
 echo "$0" "$@"
 cd "$PAK_DIR" || exit 1
 
-# dufs is in common/bin/$PLATFORM_ARCH (already in PATH from MinUI.pak)
+# dufs is in common/bin/$PLATFORM_ARCH (already in PATH from LessUI.pak)
 
 main() {
     port=""

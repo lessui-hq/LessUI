@@ -55,7 +55,7 @@ if (pwr.can_poweroff && SDL_GetTicks() - sleep_ticks >= 120000) {
 
 ### 4. Launcher Script Fallback
 
-MinUI.pak/launch.sh has shutdown at the end as a safety net:
+LessUI.pak/launch.sh has shutdown at the end as a safety net:
 
 ```sh
 while [ -f "$EXEC_PATH" ]; do
@@ -79,7 +79,7 @@ void PLAT_powerOff(void) {
 ```
 
 This ensures shutdown works consistently regardless of which process triggers it
-(minui, minarch, shui daemon, or tool paks).
+(launcher, player, shui daemon, or tool paks).
 
 ### Physical Power Switch Platforms
 
@@ -126,9 +126,9 @@ Each platform has a `shutdown` script in `skeleton/SYSTEM/<platform>/bin/`:
 
 | Context                | Calls PWR_update()?       |
 | ---------------------- | ------------------------- |
-| minui main loop        | Yes                       |
-| minarch game loop      | Yes                       |
-| minarch in-game menu   | Yes                       |
+| launcher main loop     | Yes                       |
+| player game loop       | Yes                       |
+| player in-game menu    | Yes                       |
 | shui ui_list           | Yes                       |
 | shui ui_message        | Yes                       |
 | shui ui_keyboard       | Yes                       |
@@ -137,10 +137,10 @@ Each platform has a `shutdown` script in `skeleton/SYSTEM/<platform>/bin/`:
 
 ## Summary
 
-| Trigger               | Path                             | Works everywhere? |
-| --------------------- | -------------------------------- | ----------------- |
-| MENU+POWER            | keymon → system("shutdown")      | Yes               |
-| Power hold in minui   | PWR_powerOff() → PLAT_powerOff() | Yes               |
-| Power hold in minarch | PWR_powerOff() → PLAT_powerOff() | Yes               |
-| Power hold in shui    | PWR_powerOff() → PLAT_powerOff() | Yes               |
-| 2 min sleep timeout   | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| Trigger                | Path                             | Works everywhere? |
+| ---------------------- | -------------------------------- | ----------------- |
+| MENU+POWER             | keymon → system("shutdown")      | Yes               |
+| Power hold in launcher | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| Power hold in player   | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| Power hold in shui     | PWR_powerOff() → PLAT_powerOff() | Yes               |
+| 2 min sleep timeout    | PWR_powerOff() → PLAT_powerOff() | Yes               |

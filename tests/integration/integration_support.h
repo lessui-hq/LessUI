@@ -2,26 +2,26 @@
  * integration_support.h - Support utilities for integration tests
  *
  * Provides helper functions for creating realistic test directory structures
- * and test data files for MinUI integration testing.
+ * and test data files for Launcher integration testing.
  */
 
 #ifndef __INTEGRATION_SUPPORT_H__
 #define __INTEGRATION_SUPPORT_H__
 
 /**
- * Creates a temporary MinUI directory structure for testing.
+ * Creates a temporary Launcher directory structure for testing.
  *
  * Creates a directory tree with:
  * - /Roms/              (ROM directories)
- * - /.userdata/.minui/  (recent games, state)
+ * - /.userdata/.launcher/  (recent games, state)
  * - /Collections/       (custom ROM lists)
  *
- * @param template Template for mkdtemp (e.g., "/tmp/minui_test_XXXXXX")
+ * @param template Template for mkdtemp (e.g., "/tmp/launcher_test_XXXXXX")
  * @return Pointer to template (now contains actual path), or NULL on failure
  *
  * @note Caller must remove directory with rmdir_recursive() when done
  */
-char* create_test_minui_structure(char* template);
+char* create_test_launcher_structure(char* template);
 
 /**
  * Creates a test ROM file (empty placeholder).

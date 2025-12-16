@@ -970,7 +970,7 @@ static void set_core(int n)
 
 static void set_swap(int v)
 {
-	return; // disabled, no swap on MinUI
+	return; // disabled, no swap on Launcher
 	
     #define SWAP "/mnt/SDCARD/App/utils/swap"
 

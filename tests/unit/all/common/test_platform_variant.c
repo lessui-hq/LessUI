@@ -11,7 +11,7 @@
  * - HAS_FEATURE macro - Feature flag checking
  */
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/platform_variant.h"
 #include "platform.h" // For PLATFORM, FIXED_WIDTH, etc.
 #include <string.h>

@@ -16,7 +16,7 @@
  * - PAD_updateButton() - Button state updates for press/release events
  */
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/pad.h"
 #include <string.h>
 

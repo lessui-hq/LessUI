@@ -12,7 +12,7 @@ endif
 
 # Components that can run in parallel after libs
 # keymon is now built in workspace/all/utils/keymon (unified implementation)
-COMPONENTS = minui minarch paks utils syncsettings platform-late
+COMPONENTS = launcher player paks utils syncsettings platform-late
 
 .PHONY: all libs $(COMPONENTS)
 
@@ -25,10 +25,10 @@ libs:
 
 $(COMPONENTS): libs
 
-minui:
-	$(MAKE) -C ./all/minui/
-minarch:
-	$(MAKE) -C ./all/minarch/
+launcher:
+	$(MAKE) -C ./all/launcher/
+player:
+	$(MAKE) -C ./all/player/
 paks:
 	$(MAKE) -C ./all/paks/
 utils:
@@ -40,8 +40,8 @@ platform-late:
 
 clean:
 	cd ./$(PLATFORM)/libmsettings && $(MAKE) clean
-	cd ./all/minui/ && $(MAKE) clean
-	cd ./all/minarch/ && $(MAKE) clean
+	cd ./all/launcher/ && $(MAKE) clean
+	cd ./all/player/ && $(MAKE) clean
 	cd ./all/paks/ && $(MAKE) clean
 	cd ./all/utils/ && $(MAKE) clean
 	cd ./all/syncsettings/ && $(MAKE) clean

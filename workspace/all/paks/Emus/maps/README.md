@@ -22,7 +22,7 @@ maps/
 
 ## How It Works
 
-When a pak is generated, if a `maps/{CORE}/map.txt` file exists, it will be copied into the pak directory as `{CORE}.pak/map.txt`. At runtime, minui merges this pak-provided map with any user-created map in the ROM directory.
+When a pak is generated, if a `maps/{CORE}/map.txt` file exists, it will be copied into the pak directory as `{CORE}.pak/map.txt`. At runtime, launcher merges this pak-provided map with any user-created map in the ROM directory.
 
 ### Precedence
 
@@ -73,4 +73,4 @@ test.zip	.Test ROM
 debug.zip	.Debug Build
 ```
 
-These entries will still appear in the map but will be filtered out by minui's display logic.
+These entries will still appear in the map but will be filtered out by launcher's display logic.

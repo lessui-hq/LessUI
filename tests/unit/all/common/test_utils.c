@@ -3,7 +3,7 @@
 
 #include "../../../../workspace/all/common/utils.h"
 #include "../../../../workspace/all/common/defines.h"
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../support/platform.h"
 #include <stdint.h>
 #include <stdio.h>

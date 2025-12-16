@@ -168,7 +168,7 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── lib/            Additional libraries (extracted from extra-libs.tar)
 │   │   ├── dat/            Data files (extra-libs.tar)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets.png      UI sprite sheet (1x scale)
 │       └── InterTight-Bold.ttf
@@ -192,7 +192,7 @@ LessUI installs to the SD card with the following structure:
      - Extract `extra-libs.tar` to `.system/m17/lib/`
      - Copy updated boot script to `/sdcard/em_ui.sh`
    - Clear framebuffer
-4. Launch LessUI via taskset: `taskset 8 /sdcard/.system/m17/paks/MinUI.pak/launch.sh`
+4. Launch LessUI via taskset: `taskset 8 /sdcard/.system/m17/paks/LessUI.pak/launch.sh`
 5. Loop: relaunch if launcher exits normally
 6. Poweroff if launcher script is deleted (prevents stock OS from interfering)
 
@@ -265,7 +265,7 @@ The keymon daemon monitors **four input devices**:
 
 LessUI launcher runs pinned to CPU core 3:
 ```bash
-taskset 8 /sdcard/.system/m17/paks/MinUI.pak/launch.sh
+taskset 8 /sdcard/.system/m17/paks/LessUI.pak/launch.sh
 ```
 
 This may improve performance on this multi-core device by dedicating a core to the launcher.
@@ -382,7 +382,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Boot image notes: `./boot/notes.txt` (framebuffer and boot logo details)

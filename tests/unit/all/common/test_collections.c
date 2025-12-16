@@ -1,7 +1,7 @@
 /**
  * test_collections.c - Unit tests for Array data structure
  *
- * Tests the generic data structures extracted from minui.c.
+ * Tests the generic data structures extracted from launcher.c.
  * These are pure logic with no dependencies, making them ideal for unit testing.
  *
  * Test coverage:
@@ -17,7 +17,7 @@
 
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/collections.h"
 #include <string.h>
 

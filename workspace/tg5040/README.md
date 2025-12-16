@@ -222,7 +222,7 @@ LessUI installs to the SD card with the following structure:
 │   │   │   └── install.sh  Post-update script
 │   │   ├── dat/            Data files (runtrimui.sh)
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale - standard)
 │       ├── assets@3x.png   UI sprite sheet (3x scale - Brick)
@@ -257,7 +257,7 @@ LessUI installs to the SD card with the following structure:
    - Deletes archive
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
-6. Launches LessUI via `.system/tg5040/paks/MinUI.pak/launch.sh`
+6. Launches LessUI via `.system/tg5040/paks/LessUI.pak/launch.sh`
 
 ### Update Process
 
@@ -461,7 +461,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 

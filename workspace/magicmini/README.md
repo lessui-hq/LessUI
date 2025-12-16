@@ -145,7 +145,7 @@ LessUI installs to the **secondary SD card** (`/storage/TF2`) with this structur
 │   │   ├── bin/            Utilities (keymon, etc.)
 │   │   │   └── install.sh  Post-update installation script
 │   │   └── paks/           Applications and emulators
-│   │       └── MinUI.pak/  Main launcher
+│   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
@@ -165,7 +165,7 @@ SYSTEM.squashfs/
 │   ├── bin/
 │   │   └── autostart.sh    # Magic Mini's boot.sh gets installed here
 │   └── config/
-│       └── minui/
+│       └── launcher/
 │           ├── installing.bmp  # Copied from install/installing.bmp
 │           └── updating.bmp    # Copied from install/updating.bmp
 ```
@@ -182,7 +182,7 @@ The `autostart.sh` script runs on device boot and checks for LessUI updates on t
    - Extract archive to `/storage/TF2`
    - Delete archive
    - Run `.system/magicmini/bin/install.sh` to complete setup
-5. Launch LessUI via `.system/magicmini/paks/MinUI.pak/launch.sh`
+5. Launch LessUI via `.system/magicmini/paks/LessUI.pak/launch.sh`
 6. If launcher exits, shutdown device (prevents stock OS from interfering)
 
 #### Boot Image Display
@@ -190,7 +190,7 @@ The `autostart.sh` script runs on device boot and checks for LessUI updates on t
 The platform uses a unique BMP display method:
 
 ```bash
-dd if=/usr/config/minui/installing.bmp of=/dev/fb0 bs=71 skip=1
+dd if=/usr/config/launcher/installing.bmp of=/dev/fb0 bs=71 skip=1
 echo 0,0 > /sys/class/graphics/fb0/pan
 ```
 
@@ -279,7 +279,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Boot image notes: `./install/notes.txt` (BMP format details)

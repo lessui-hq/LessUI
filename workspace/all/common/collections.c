@@ -1,8 +1,8 @@
 /**
- * collections.c - Generic data structures for MinUI
+ * collections.c - Generic data structures for Launcher
  *
  * Provides Array (dynamic array) and Hash (key-value map) data structures.
- * Extracted from minui.c for better testability and reusability.
+ * Extracted from launcher.c for better testability and reusability.
  */
 
 #include "collections.h"

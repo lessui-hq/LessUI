@@ -4,7 +4,7 @@ A persistent UI daemon for shell scripts. Consolidates message dialogs, list sel
 
 ## Why shui?
 
-Previously, shell scripts used separate utilities (`minui-presenter`, `minui-list`, `minui-keyboard`) for UI. Each utility initialized and cleaned up SDL graphics independently, causing noticeable blank screens between calls.
+Previously, shell scripts used separate utilities (`launcher-presenter`, `launcher-list`, `launcher-keyboard`) for UI. Each utility initialized and cleaned up SDL graphics independently, causing noticeable blank screens between calls.
 
 shui solves this by running as a persistent daemon that maintains the graphics context. The first command auto-starts the daemon, and subsequent commands communicate with it via IPC. The launcher calls `shui stop` after each pak completes.
 
@@ -405,7 +405,7 @@ The binary is installed to `$SYSTEM_PATH/bin/shui`.
 
 ## Comparison with Previous Utilities
 
-| Feature | minui-presenter/list/keyboard | shui |
+| Feature | launcher-presenter/list/keyboard | shui |
 |---------|------------------------------|---------|
 | SDL init | Every call | Once per session |
 | Blank screens | Yes, between calls | No |

@@ -67,8 +67,8 @@
 
 ## Constraints
 
-- Must provide backwards compat with MinUI including codes in folders
-- Would be nice to match up with NextUI since it's also a MinUI fork but I'd rather do what's best than follow their lead so this is more of a nice to have.
+- Must provide backwards compat with Launcher including codes in folders
+- Would be nice to match up with NextUI since it's also a Launcher fork but I'd rather do what's best than follow their lead so this is more of a nice to have.
 - We should try to be emulator compatible with OnionOS. We don't have to use the same cores. I just want to support the same systems since they are tried and true.
 
 ## LessUI-Cores (Cores we currently build)
@@ -109,7 +109,7 @@
 34. vecx - libretro/libretro-vecx - vecx_libretro.so
 35. vice - libretro/vice-libretro - vice_x64_libretro.so
 
-## MinUI Cores
+## Launcher Cores
 
 Base Systems
 

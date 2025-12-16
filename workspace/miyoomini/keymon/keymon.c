@@ -315,7 +315,7 @@ static void initADC(void) {
  *
  * Reads current battery percentage and charging state, applies easing
  * to smooth out fluctuations (1% per call), and writes the result to
- * /tmp/battery for use by MinUI.
+ * /tmp/battery for use by Launcher.
  *
  * Easing is reset on first run or when transitioning from charging to
  * not charging (to quickly reflect fully charged state).
@@ -359,7 +359,7 @@ static void checkADC(void) {
 		if (eased_charge<0) eased_charge = 0;
 	}
 
-	// Write battery percentage to file for MinUI to read
+	// Write battery percentage to file for Launcher to read
 	putInt("/tmp/battery", eased_charge);
 }
 

@@ -38,7 +38,7 @@ For rapid UI development on macOS, build and run natively without Docker:
 # First-time setup: Install SDL2 libraries
 brew install sdl2 sdl2_image sdl2_ttf
 
-# Build and run minui
+# Build and run launcher
 make dev-run
 ```
 
@@ -60,15 +60,15 @@ cp ~/Downloads/game.gb workspace/desktop/FAKESD/Roms/GB/
 **Development commands:**
 
 ```bash
-make dev        # Build minui for macOS
-make dev-run    # Build and run minui
+make dev        # Build launcher for macOS
+make dev-run    # Build and run launcher
 make dev-clean  # Clean macOS build artifacts
 ```
 
 **Limitations:**
 
-- macOS platform is for **launcher (minui) development only**
-- Cannot test libretro cores (minarch) - use actual hardware
+- macOS platform is for **launcher development only**
+- Cannot test libretro cores (player) - use actual hardware
 - Hardware features stubbed (brightness, volume, power)
 
 ### Platform Shell (for development)
@@ -82,7 +82,7 @@ make PLATFORM=miyoomini shell
 Inside the container you can build components individually:
 
 ```bash
-cd /root/workspace/all/minui
+cd /root/workspace/all/launcher
 make
 ```
 
@@ -173,8 +173,8 @@ make lint-shell
 LessUI/
 ├── workspace/
 │   ├── all/              # Platform-independent code
-│   │   ├── minui/        # Launcher
-│   │   ├── minarch/      # Libretro frontend
+│   │   ├── launcher/        # Launcher
+│   │   ├── player/       # Libretro frontend
 │   │   └── common/       # Shared utilities and API
 │   │
 │   └── <platform>/       # Platform-specific code
@@ -353,7 +353,7 @@ Check `workspace/<platform>/install/boot.sh` for errors. Boot scripts are platfo
 Enable verbose logging by editing boot script to redirect output:
 
 ```bash
-./minui.elf > /tmp/minui.log 2>&1
+./launcher.elf > /tmp/launcher.log 2>&1
 ```
 
 Then check logs on device.

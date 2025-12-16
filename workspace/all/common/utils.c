@@ -1,5 +1,5 @@
 /**
- * utils.c - Core utility functions for MinUI
+ * utils.c - Core utility functions for Launcher
  *
  * Provides cross-platform utilities for string manipulation, file I/O,
  * timing, and name processing. This file is shared across all platforms

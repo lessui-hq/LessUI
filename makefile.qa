@@ -63,8 +63,8 @@ TIDY_FLAGS = --quiet
 # Source files to analyze
 # Note: clock.c is excluded because it uses GCC nested functions (non-standard)
 # All other files are linted on all platforms
-TIDY_SOURCES = workspace/all/minui/*.c \
-               workspace/all/minarch/*.c \
+TIDY_SOURCES = workspace/all/launcher/*.c \
+               workspace/all/player/*.c \
                workspace/all/common/*.c \
                workspace/all/minput/*.c \
                workspace/all/syncsettings/*.c
@@ -92,12 +92,12 @@ TIDY_COMPILE_FLAGS = -DPLATFORM=\"tg5040\" \
                      -DBUILD_DATE=\"$(shell date +%Y%m%d)\" \
                      -DBUILD_HASH=\"tidy\" \
                      -I workspace/all/common \
-                     -I workspace/all/minui \
-                     -I workspace/all/minarch \
+                     -I workspace/all/launcher \
+                     -I workspace/all/player \
                      -I workspace/tg5040/platform \
                      -I workspace/tg5040/libmsettings \
-                     -I workspace/all/minarch/libretro-common/include \
-                     -iquote workspace/all/minarch/libretro-common/include \
+                     -I workspace/all/player/libretro-common/include \
+                     -iquote workspace/all/player/libretro-common/include \
                      -I tests/support \
                      $(TIDY_SDL_INCLUDES) \
                      -std=gnu99
@@ -142,10 +142,10 @@ lint-full: check-clang-tidy
 SCAN_BUILD = scan-build
 
 ANALYZE_FLAGS = -DPLATFORM=\"desktop\" -DSDCARD_PATH=\"../../desktop/FAKESD\" -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS \
-                -I workspace/all/common -I workspace/all/minui -I workspace/all/minarch \
+                -I workspace/all/common -I workspace/all/launcher -I workspace/all/player \
                 -I workspace/desktop/platform \
-                -I workspace/all/minarch/libretro-common/include \
-                -iquote workspace/all/minarch/libretro-common/include \
+                -I workspace/all/player/libretro-common/include \
+                -iquote workspace/all/player/libretro-common/include \
                 $(SDL2_CFLAGS) -DUSE_SDL2 -std=gnu99
 
 check-scan-build:
@@ -160,16 +160,16 @@ analyze-native: check-scan-build
 	@echo "Running Clang Static Analyzer..."
 	@echo "================================="
 	@echo ""
-	@echo "Analyzing minarch.c..."
+	@echo "Analyzing player.c..."
 	@rm -rf /tmp/lessui-analysis
 	@$(SCAN_BUILD) -o /tmp/lessui-analysis --status-bugs \
-		gcc -c workspace/all/minarch/minarch.c $(ANALYZE_FLAGS) \
-		-o /tmp/minarch.o 2>&1 | grep -v "note:" || true
+		gcc -c workspace/all/player/player.c $(ANALYZE_FLAGS) \
+		-o /tmp/player.o 2>&1 | grep -v "note:" || true
 	@echo ""
-	@echo "Analyzing minui.c..."
+	@echo "Analyzing launcher.c..."
 	@$(SCAN_BUILD) -o /tmp/lessui-analysis --status-bugs \
-		gcc -c workspace/all/minui/minui.c $(ANALYZE_FLAGS) \
-		-o /tmp/minui.o 2>&1 | grep -v "note:" || true
+		gcc -c workspace/all/launcher/launcher.c $(ANALYZE_FLAGS) \
+		-o /tmp/launcher.o 2>&1 | grep -v "note:" || true
 	@echo ""
 	@echo "Analyzing common/*.c..."
 	@for file in workspace/all/common/*.c; do \
@@ -190,11 +190,11 @@ analyze-native: check-scan-build
 ###########################################################
 # Test Configuration
 TEST_CFLAGS = -std=c99 -Wall -Wextra -Wno-unused-parameter
-TEST_INCLUDES = -I tests/support -I tests/support/unity -I workspace/all/common -I workspace/all/minui -I workspace/all/minarch
-TEST_UNITY = tests/support/unity/unity.c
+TEST_INCLUDES = -I tests/support -I tests/vendor/unity -I workspace/all/common -I workspace/all/launcher -I workspace/all/player
+TEST_UNITY = tests/vendor/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/minarch_paths_test tests/minui_utils_test tests/m3u_parser_test tests/minui_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/minarch_utils_test tests/minarch_config_test tests/minarch_options_test tests/platform_variant_test tests/minui_entry_test tests/directory_index_test tests/minarch_archive_test tests/minarch_memory_test tests/minarch_state_test tests/minui_launcher_test tests/minarch_cpu_test tests/minarch_input_test tests/minui_state_test tests/minarch_menu_test tests/minarch_env_test tests/minarch_game_test tests/minarch_scaler_test tests/minarch_core_test tests/minui_directory_test tests/minui_navigation_test tests/minui_thumbnail_test tests/minui_context_test tests/emu_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/collections_test tests/gfx_text_test tests/audio_resampler_test tests/player_paths_test tests/launcher_utils_test tests/m3u_parser_test tests/launcher_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/player_utils_test tests/player_config_test tests/player_options_test tests/platform_variant_test tests/launcher_entry_test tests/directory_index_test tests/player_archive_test tests/player_memory_test tests/player_state_test tests/launcher_launcher_test tests/player_cpu_test tests/player_input_test tests/launcher_state_test tests/player_menu_test tests/player_env_test tests/player_game_test tests/player_scaler_test tests/player_core_test tests/launcher_directory_test tests/launcher_navigation_test tests/launcher_thumbnail_test tests/launcher_context_test tests/emu_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -238,60 +238,60 @@ tests/collections_test: tests/unit/all/common/test_collections.c workspace/all/c
 # Build GFX text utility tests (uses fff for TTF mocking)
 tests/gfx_text_test: tests/unit/all/common/test_gfx_text.c workspace/all/common/gfx_text.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/sdl_fakes.c $(TEST_UNITY)
 	@echo "Building GFX text utility tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I tests/support/fff $(TEST_CFLAGS) -DUNIT_TEST_BUILD
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I tests/vendor/fff $(TEST_CFLAGS) -DUNIT_TEST_BUILD
 
 # Build audio resampler tests (pure algorithm, no mocking needed)
 tests/audio_resampler_test: tests/unit/all/common/test_audio_resampler.c workspace/all/common/audio_resampler.c $(TEST_UNITY)
 	@echo "Building audio resampler tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build MinArch path generation tests (pure sprintf logic)
-tests/minarch_paths_test: tests/unit/all/common/test_minarch_paths.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
-	@echo "Building MinArch path generation tests..."
+# Build Player path generation tests (pure sprintf logic)
+tests/player_paths_test: tests/unit/all/player/test_player_paths.c workspace/all/player/player_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building Player path generation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build LessUI launcher utility tests (pure string logic)
-tests/minui_utils_test: tests/unit/all/common/test_minui_utils.c workspace/all/minui/minui_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/launcher_utils_test: tests/unit/all/launcher/test_launcher_utils.c workspace/all/launcher/launcher_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building LessUI launcher utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build M3U parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/m3u_parser_test: tests/unit/all/common/test_m3u_parser.c workspace/all/minui/minui_m3u.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/m3u_parser_test: tests/unit/all/launcher/test_m3u_parser.c workspace/all/launcher/launcher_m3u.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building M3U parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build LessUI file utility tests (uses file mocking with GCC --wrap, Docker-only)
-tests/minui_file_utils_test: tests/unit/all/common/test_minui_file_utils.c workspace/all/minui/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/launcher_file_utils_test: tests/unit/all/launcher/test_launcher_file_utils.c workspace/all/launcher/launcher_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building LessUI file utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build map.txt parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/map_parser_test: tests/unit/all/common/test_map_parser.c workspace/all/minui/minui_map.c workspace/all/common/stringmap.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/map_parser_test: tests/unit/all/launcher/test_map_parser.c workspace/all/launcher/launcher_map.c workspace/all/common/stringmap.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building map.txt parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=access -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build collection parser tests (uses file mocking with GCC --wrap, Docker-only)
-tests/collection_parser_test: tests/unit/all/common/test_collection_parser.c workspace/all/minui/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/collection_parser_test: tests/unit/all/launcher/test_collection_parser.c workspace/all/launcher/collection_parser.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building collection parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build recent.txt file tests (uses file mocking with GCC --wrap, Docker-only)
-tests/recent_parser_test: tests/unit/all/common/test_recent_parser.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
+tests/recent_parser_test: tests/unit/all/launcher/test_recent_parser.c workspace/all/launcher/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/fs_mocks.c $(TEST_UNITY)
 	@echo "Building recent.txt parser tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build recent.txt writer tests (uses real temp files, no --wrap needed)
-tests/recent_writer_test: tests/unit/all/common/test_recent_writer.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/recent_writer_test: tests/unit/all/launcher/test_recent_writer.c workspace/all/launcher/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building recent.txt writer tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build recent runtime tests (Recent struct and array operations)
-tests/recent_runtime_test: tests/unit/all/common/test_recent_runtime.c workspace/all/minui/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/recent_runtime_test: tests/unit/all/launcher/test_recent_runtime.c workspace/all/launcher/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building recent runtime tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build directory utility tests (uses real temp directories, no --wrap needed)
-tests/directory_utils_test: tests/unit/all/common/test_directory_utils.c workspace/all/minui/minui_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/directory_utils_test: tests/unit/all/launcher/test_directory_utils.c workspace/all/launcher/launcher_file_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building directory utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
@@ -306,7 +306,7 @@ tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/commo
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lm
 
 # Build string comparison tests (natural sort, pure algorithm)
-tests/str_compare_test: tests/unit/all/common/test_str_compare.c workspace/all/minui/minui_str_compare.c $(TEST_UNITY)
+tests/str_compare_test: tests/unit/all/launcher/test_str_compare.c workspace/all/launcher/launcher_str_compare.c $(TEST_UNITY)
 	@echo "Building string comparison tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
@@ -315,19 +315,19 @@ tests/effect_system_test: tests/unit/all/common/test_effect_system.c $(TEST_UNIT
 	@echo "Building effect system tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build minarch utility tests (pure functions extracted from minarch.c)
-tests/minarch_utils_test: tests/unit/all/common/test_minarch_utils.c workspace/all/minarch/minarch_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
-	@echo "Building minarch utility tests..."
+# Build player utility tests (pure functions extracted from player.c)
+tests/player_utils_test: tests/unit/all/player/test_player_utils.c workspace/all/player/player_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building player utility tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build minarch configuration tests (config path and option utilities)
-tests/minarch_config_test: tests/unit/all/common/test_minarch_config.c workspace/all/minarch/minarch_config.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
-	@echo "Building minarch configuration tests..."
+# Build player configuration tests (config path and option utilities)
+tests/player_config_test: tests/unit/all/player/test_player_config.c workspace/all/player/player_config.c workspace/all/player/player_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building player configuration tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build minarch option management tests (option list search and manipulation)
-tests/minarch_options_test: tests/unit/all/common/test_minarch_options.c workspace/all/minarch/minarch_options.c $(TEST_UNITY)
-	@echo "Building minarch option management tests..."
+# Build player option management tests (option list search and manipulation)
+tests/player_options_test: tests/unit/all/player/test_player_options.c workspace/all/player/player_options.c $(TEST_UNITY)
+	@echo "Building player option management tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build platform variant tests (platform detection and device info)
@@ -335,61 +335,61 @@ tests/platform_variant_test: tests/unit/all/common/test_platform_variant.c works
 	@echo "Building platform variant tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build MinUI entry type tests (Entry struct and array operations)
-tests/minui_entry_test: tests/unit/all/common/test_minui_entry.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
-	@echo "Building MinUI entry tests..."
+# Build Launcher entry type tests (Entry struct and array operations)
+tests/launcher_entry_test: tests/unit/all/launcher/test_launcher_entry.c workspace/all/launcher/launcher_entry.c workspace/all/common/collections.c workspace/all/launcher/launcher_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building Launcher entry tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build directory indexing tests (alias application, filtering, duplicate detection)
-tests/directory_index_test: tests/unit/all/common/test_directory_index.c workspace/all/minui/directory_index.c workspace/all/minui/minui_entry.c workspace/all/common/collections.c workspace/all/common/stringmap.c workspace/all/minui/minui_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/directory_index_test: tests/unit/all/launcher/test_directory_index.c workspace/all/launcher/directory_index.c workspace/all/launcher/launcher_entry.c workspace/all/common/collections.c workspace/all/common/stringmap.c workspace/all/launcher/launcher_str_compare.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building directory indexing tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build archive extraction tests (uses 7z binary via system())
-tests/minarch_archive_test: tests/unit/all/common/test_minarch_archive.c workspace/all/minarch/minarch_archive.c workspace/all/minarch/minarch_game.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/player_archive_test: tests/unit/all/player/test_player_archive.c workspace/all/player/player_archive.c workspace/all/player/player_game.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
 	@echo "Building archive extraction tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build memory persistence tests (SRAM/RTC with mock core callbacks, uses real temp files)
-tests/minarch_memory_test: tests/unit/all/common/test_minarch_memory.c workspace/all/minarch/minarch_memory.c tests/support/libretro_mocks.c $(TEST_UNITY)
+tests/player_memory_test: tests/unit/all/player/test_player_memory.c workspace/all/player/player_memory.c tests/support/libretro_mocks.c $(TEST_UNITY)
 	@echo "Building memory persistence tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build save state system tests (with mock core callbacks, uses real temp files)
-tests/minarch_state_test: tests/unit/all/common/test_minarch_state.c workspace/all/minarch/minarch_state.c workspace/all/minarch/minarch_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c $(TEST_UNITY)
+tests/player_state_test: tests/unit/all/player/test_player_state.c workspace/all/player/player_state.c workspace/all/player/player_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c $(TEST_UNITY)
 	@echo "Building save state system tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
 # Build launcher command construction tests (pure string/file operations)
-tests/minui_launcher_test: tests/unit/all/common/test_minui_launcher.c workspace/all/minui/minui_launcher.c $(TEST_UNITY)
+tests/launcher_launcher_test: tests/unit/all/launcher/test_launcher_launcher.c workspace/all/launcher/launcher_launcher.c $(TEST_UNITY)
 	@echo "Building launcher command tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build auto CPU scaling tests (pure algorithm, no external dependencies)
-tests/minarch_cpu_test: tests/unit/all/common/test_minarch_cpu.c workspace/all/minarch/minarch_cpu.c $(TEST_UNITY)
+tests/player_cpu_test: tests/unit/all/player/test_player_cpu.c workspace/all/player/player_cpu.c $(TEST_UNITY)
 	@echo "Building auto CPU scaling tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build frame pacing tests (pure algorithm, no external dependencies)
-tests/frame_pacer_test: tests/unit/all/common/test_frame_pacer.c workspace/all/minarch/frame_pacer.c $(TEST_UNITY)
+tests/frame_pacer_test: tests/unit/all/player/test_frame_pacer.c workspace/all/player/frame_pacer.c $(TEST_UNITY)
 	@echo "Building frame pacer tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lm
 
 # Build input handling tests (pure state queries and mapping lookups)
-tests/minarch_input_test: tests/unit/all/common/test_minarch_input.c workspace/all/minarch/minarch_input.c $(TEST_UNITY)
+tests/player_input_test: tests/unit/all/player/test_player_input.c workspace/all/player/player_input.c $(TEST_UNITY)
 	@echo "Building input handling tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build launcher state persistence tests (path decomposition, resume paths)
-tests/minui_state_test: tests/unit/all/common/test_minui_state.c workspace/all/minui/minui_state.c $(TEST_UNITY)
+tests/launcher_state_test: tests/unit/all/launcher/test_launcher_state.c workspace/all/launcher/launcher_state.c $(TEST_UNITY)
 	@echo "Building launcher state tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build menu context system tests (validates context pattern for testing)
 # Uses SDL shim headers and fff-based mocking infrastructure
 # Note: Uses menu_state_stub.c which provides testable menu functions without SDL dependencies
-tests/minarch_menu_test: tests/unit/all/common/test_minarch_menu.c \
-	workspace/all/minarch/minarch_context.c \
+tests/player_menu_test: tests/unit/all/player/test_player_menu.c \
+	workspace/all/player/player_context.c \
 	tests/support/menu_state_stub.c \
 	tests/support/sdl_fakes.c \
 	workspace/all/common/utils.c \
@@ -397,88 +397,88 @@ tests/minarch_menu_test: tests/unit/all/common/test_minarch_menu.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building menu context tests..."
-	@$(CC) -o $@ $^ -I tests/support/SDL $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include -I tests/support/fff $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+	@$(CC) -o $@ $^ -I tests/support/SDL $(TEST_INCLUDES) -I workspace/all/player/libretro-common/include -I tests/vendor/fff $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
-# Build env callback tests (tests environment callback handlers in minarch_env.c)
-tests/minarch_env_test: tests/unit/all/common/test_minarch_env.c \
-	workspace/all/minarch/minarch_env.c \
+# Build env callback tests (tests environment callback handlers in player_env.c)
+tests/player_env_test: tests/unit/all/player/test_player_env.c \
+	workspace/all/player/player_env.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building environment callback tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/player/libretro-common/include $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
 # Build game file handling tests (ZIP parsing, M3U detection, extension matching)
-tests/minarch_game_test: tests/unit/all/common/test_minarch_game.c \
-	workspace/all/minarch/minarch_game.c \
+tests/player_game_test: tests/unit/all/player/test_player_game.c \
+	workspace/all/player/player_game.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building game file handling tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DMINARCH_GAME_TEST
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -DPLAYER_GAME_TEST
 
 # Build video scaler calculation tests (pure geometry math)
-tests/minarch_scaler_test: tests/unit/all/common/test_minarch_scaler.c \
-	workspace/all/minarch/minarch_scaler.c \
+tests/player_scaler_test: tests/unit/all/player/test_player_scaler.c \
+	workspace/all/player/player_scaler.c \
 	$(TEST_UNITY)
 	@echo "Building video scaler tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build core AV info processing tests (aspect ratio calculation, game info building)
-tests/minarch_core_test: tests/unit/all/common/test_minarch_core.c \
-	workspace/all/minarch/minarch_core.c \
+tests/player_core_test: tests/unit/all/player/test_player_core.c \
+	workspace/all/player/player_core.c \
 	$(TEST_UNITY)
 	@echo "Building core AV info tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/minarch/libretro-common/include $(TEST_CFLAGS)
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) -I workspace/all/player/libretro-common/include $(TEST_CFLAGS)
 
-# Build MinUI directory building tests (uses real temp directories, no --wrap needed)
-tests/minui_directory_test: tests/unit/all/common/test_minui_directory.c \
-	workspace/all/minui/minui_directory.c \
-	workspace/all/minui/minui_file_utils.c \
-	workspace/all/minui/minui_entry.c \
-	workspace/all/minui/minui_str_compare.c \
+# Build Launcher directory building tests (uses real temp directories, no --wrap needed)
+tests/launcher_directory_test: tests/unit/all/launcher/test_launcher_directory.c \
+	workspace/all/launcher/launcher_directory.c \
+	workspace/all/launcher/launcher_file_utils.c \
+	workspace/all/launcher/launcher_entry.c \
+	workspace/all/launcher/launcher_str_compare.c \
 	workspace/all/common/collections.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
-	@echo "Building MinUI directory tests..."
+	@echo "Building Launcher directory tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
-# Build MinUI navigation tests (pure navigation logic, uses real temp dirs)
-tests/minui_navigation_test: tests/unit/all/common/test_minui_navigation.c \
-	workspace/all/minui/minui_navigation.c \
-	workspace/all/minui/minui_context.c \
-	workspace/all/minui/minui_launcher.c \
-	workspace/all/minui/minui_entry.c \
-	workspace/all/minui/minui_str_compare.c \
+# Build Launcher navigation tests (pure navigation logic, uses real temp dirs)
+tests/launcher_navigation_test: tests/unit/all/launcher/test_launcher_navigation.c \
+	workspace/all/launcher/launcher_navigation.c \
+	workspace/all/launcher/launcher_context.c \
+	workspace/all/launcher/launcher_launcher.c \
+	workspace/all/launcher/launcher_entry.c \
+	workspace/all/launcher/launcher_str_compare.c \
 	workspace/all/common/collections.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
-	@echo "Building MinUI navigation tests..."
+	@echo "Building Launcher navigation tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
-# Build MinUI thumbnail cache tests (pure cache logic and fade animation math)
-tests/minui_thumbnail_test: tests/unit/all/common/test_minui_thumbnail.c \
-	workspace/all/minui/minui_thumbnail.c \
+# Build Launcher thumbnail cache tests (pure cache logic and fade animation math)
+tests/launcher_thumbnail_test: tests/unit/all/launcher/test_launcher_thumbnail.c \
+	workspace/all/launcher/launcher_thumbnail.c \
 	$(TEST_UNITY)
-	@echo "Building MinUI thumbnail cache tests..."
+	@echo "Building Launcher thumbnail cache tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build MinUI context tests (context lifecycle and accessor functions)
-tests/minui_context_test: tests/unit/all/common/test_minui_context.c \
-	workspace/all/minui/minui_context.c \
+# Build Launcher context tests (context lifecycle and accessor functions)
+tests/launcher_context_test: tests/unit/all/launcher/test_launcher_context.c \
+	workspace/all/launcher/launcher_context.c \
 	$(TEST_UNITY)
-	@echo "Building MinUI context tests..."
+	@echo "Building Launcher context tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
 # Build emulator cache tests (O(1) emu lookup caching)
-tests/emu_cache_test: tests/unit/all/minui/test_emu_cache.c \
-	workspace/all/minui/minui_emu_cache.c \
+tests/emu_cache_test: tests/unit/all/launcher/test_emu_cache.c \
+	workspace/all/launcher/launcher_emu_cache.c \
 	workspace/all/common/stringmap.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
@@ -497,15 +497,15 @@ tests/render_common_test: tests/unit/all/common/test_render_common.c \
 # Build integration tests (tests multiple components working together with real file I/O)
 tests/integration_workflows_test: tests/integration/test_workflows.c \
 	tests/integration/integration_support.c \
-	workspace/all/minui/minui_m3u.c \
-	workspace/all/minui/minui_map.c \
-	workspace/all/minui/collection_parser.c \
-	workspace/all/minui/recent_file.c \
-	workspace/all/minui/minui_file_utils.c \
+	workspace/all/launcher/launcher_m3u.c \
+	workspace/all/launcher/launcher_map.c \
+	workspace/all/launcher/collection_parser.c \
+	workspace/all/launcher/recent_file.c \
+	workspace/all/launcher/launcher_file_utils.c \
 	workspace/all/common/binary_file_utils.c \
 	workspace/all/common/collections.c \
 	workspace/all/common/stringmap.c \
-	workspace/all/minarch/minarch_paths.c \
+	workspace/all/player/player_paths.c \
 	workspace/all/common/utils.c \
 	workspace/all/common/nointro_parser.c \
 	workspace/all/common/log.c \
@@ -520,10 +520,10 @@ clean-tests:
 # Code Formatting
 CLANG_FORMAT = clang-format
 # Note: vendor/ is excluded - it contains third-party code
-FORMAT_PATHS = workspace/all/minui/*.c \
-               workspace/all/minui/*.h \
-               workspace/all/minarch/*.c \
-               workspace/all/minarch/*.h \
+FORMAT_PATHS = workspace/all/launcher/*.c \
+               workspace/all/launcher/*.h \
+               workspace/all/player/*.c \
+               workspace/all/player/*.h \
                workspace/all/common/*.c \
                workspace/all/common/*.h \
                workspace/all/paks/Tools/*/src/*.c \
@@ -628,7 +628,7 @@ MAKEFILE_PATHS = $(shell find . \( -name "makefile" -o -name "Makefile" -o -name
               grep -v "./workspace/.*/other/" | \
               grep -v "./workspace/.*/toolchains/" | \
               grep -v "./workspace/.*/cores/" | \
-              grep -v "./workspace/all/minarch/libretro-common/" | \
+              grep -v "./workspace/all/player/libretro-common/" | \
               grep -v "./workspace/all/utils/parson/")
 
 check-mbake:

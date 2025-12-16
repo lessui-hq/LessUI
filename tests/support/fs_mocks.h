@@ -5,7 +5,7 @@
  * This allows testing file-heavy code without actual file system operations.
  *
  * Uses GCC --wrap to intercept:
- * - exists() - MinUI's file existence check
+ * - exists() - Launcher's file existence check
  * - fopen/fclose - File handle operations (read mode only)
  * - fgets - Line-by-line reading
  *

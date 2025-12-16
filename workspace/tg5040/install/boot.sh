@@ -63,7 +63,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	fi
 fi
 
-LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
+LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
 if [ -f "$LAUNCH_PATH" ]; then
 	exec "$LAUNCH_PATH"
 fi

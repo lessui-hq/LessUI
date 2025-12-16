@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Match minarch menu padding
+// Match player menu padding
 #define OPTION_PADDING 8
 
 // Keyboard layouts (4 rows, 10 columns max - iPhone style)

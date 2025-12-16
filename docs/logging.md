@@ -6,7 +6,7 @@ Comprehensive guide to the LessUI logging infrastructure, covering both C code a
 
 LessUI uses a **dual logging system**:
 
-1. **C Logging** (`log.h` / `log.c`) - For compiled binaries (minui, minarch, keymon)
+1. **C Logging** (`log.h` / `log.c`) - For compiled binaries (launcher, player, keymon)
 2. **Shell Logging** (`log.sh`) - For boot/install scripts
 
 Both systems provide:
@@ -159,7 +159,7 @@ Example for Miyoo Mini: `/mnt/SDCARD/.userdata/miyoomini/logs/`
 
 **Files:**
 
-- `minui.log` - Main launcher (rotated)
+- `launcher.log` - Main launcher (rotated)
 - `keymon.log` - Hardware button/battery daemon (rotated)
 - `batmon.log` - Battery charging monitor (optional)
 - `GB.log`, `GBA.log`, `GBC.log`, etc. - Per-emulator logs (19 cores)
@@ -178,11 +178,11 @@ Example for Miyoo Mini: `/mnt/SDCARD/.userdata/miyoomini/logs/`
 Application logs are created via **shell redirection** in launch scripts:
 
 ```bash
-# skeleton/SYSTEM/miyoomini/paks/MinUI.pak/launch.sh
-minui.elf &> $LOGS_PATH/minui.log
+# skeleton/SYSTEM/miyoomini/paks/LessUI.pak/launch.sh
+launcher.elf &> $LOGS_PATH/launcher.log
 
 # workspace/all/paks/Emus/launch.sh.template
-minarch.elf "$CORE" "$ROM" &> "$LOGS_PATH/$EMU_TAG.log"
+player.elf "$CORE" "$ROM" &> "$LOGS_PATH/$EMU_TAG.log"
 ```
 
 ---
@@ -266,7 +266,7 @@ Use for **key events and milestones**:
 **Examples:**
 
 ```c
-LOG_info("Starting MinUI on %s", PLATFORM);
+LOG_info("Starting Launcher on %s", PLATFORM);
 LOG_info("Loading ROM: %s", rom_path);
 LOG_info("Saved %d recent games", count);
 LOG_info("Config loaded from %s", config_path);
@@ -302,10 +302,10 @@ LOG_debug("Config option %s = %s", key, value);
 **Makefiles control which levels are compiled in:**
 
 ```makefile
-# minui/makefile - Main launcher (INFO + ERROR/WARN)
+# launcher/makefile - Main launcher (INFO + ERROR/WARN)
 CFLAGS += -DENABLE_INFO_LOGS
 
-# minarch/makefile - Libretro frontend (INFO + ERROR/WARN)
+# player/makefile - Libretro frontend (INFO + ERROR/WARN)
 CFLAGS += -DENABLE_INFO_LOGS
 
 # keymon/makefile - Hardware daemon (ERROR/WARN only)
@@ -541,7 +541,7 @@ LOG_info("Loaded user config: %s", config_path);
 **Main launcher log:**
 
 ```
-/mnt/SDCARD/.userdata/<platform>/logs/minui.log
+/mnt/SDCARD/.userdata/<platform>/logs/launcher.log
 ```
 
 **Emulator logs:**
@@ -577,7 +577,7 @@ Look for: [ERROR] lines showing core loading failures
 **Problem: ROM doesn't appear in list**
 
 ```
-Check: /mnt/SDCARD/.userdata/miyoomini/logs/minui.log
+Check: /mnt/SDCARD/.userdata/miyoomini/logs/launcher.log
 Look for: File system errors, permission issues
 ```
 
@@ -656,7 +656,7 @@ if (!buf) {
 
 ```c
 // Application startup
-LOG_info("Starting MinUI on %s", PLATFORM);
+LOG_info("Starting Launcher on %s", PLATFORM);
 
 // Major operations
 LOG_info("Loading ROM: %s", rom_name);
@@ -734,7 +734,7 @@ for (int i = 0; i < size; i++) {
 **Production builds (release ZIPs):**
 
 ```makefile
-# minui/minarch - ERROR + WARN + INFO
+# launcher/player - ERROR + WARN + INFO
 CFLAGS += -DENABLE_INFO_LOGS
 
 # keymon/daemons - ERROR + WARN only
@@ -752,11 +752,11 @@ CFLAGS += -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 
 ## Examples by Component
 
-### minui (Launcher)
+### launcher (Launcher)
 
 ```c
 // Startup
-LOG_info("Starting MinUI on %s", PLATFORM);
+LOG_info("Starting Launcher on %s", PLATFORM);
 
 // ROM selection
 LOG_info("Opening ROM: %s", rom_path);
@@ -772,7 +772,7 @@ if (recent_count == 0) {
 }
 ```
 
-### minarch (Libretro Frontend)
+### player (Libretro Frontend)
 
 ```c
 // Core loading

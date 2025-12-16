@@ -105,7 +105,7 @@ struct input_event {
  * Polls input devices and updates global pad state.
  *
  * Reads events from all input devices and translates hardware button codes
- * to MinUI button constants. Handles button repeat timing based on PAD_REPEAT_DELAY
+ * to Launcher button constants. Handles button repeat timing based on PAD_REPEAT_DELAY
  * and PAD_REPEAT_INTERVAL.
  */
 void PLAT_pollInput(void) {

@@ -2,10 +2,10 @@
  * test_binary_file_utils.c - Tests for binary file I/O operations
  *
  * Tests fread/fwrite operations using real temp files.
- * Demonstrates binary data handling patterns used in minarch.c (SRAM, RTC, save states).
+ * Demonstrates binary data handling patterns used in player.c (SRAM, RTC, save states).
  */
 
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/binary_file_utils.h"
 
 #include <string.h>

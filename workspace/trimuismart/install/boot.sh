@@ -38,7 +38,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	run_platform_install "$SYSTEM_PATH/$PLATFORM/bin/install.sh" "$LOG_FILE"
 fi
 
-LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
+LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
 while [ -f "$LAUNCH_PATH" ]; do
 	"$LAUNCH_PATH"
 done

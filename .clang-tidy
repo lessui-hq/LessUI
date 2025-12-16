@@ -46,7 +46,7 @@ WarningsAsErrors: '*'
 
 # Header filtering - analyze project headers, skip third-party (especially libretro-common)
 # Only show warnings from our own headers, not from third-party libraries
-HeaderFilterRegex: 'workspace/all/(common|minui|minarch|clock|minput|say|syncsettings)/[^/]*\.(h|c)$'
+HeaderFilterRegex: 'workspace/all/(common|launcher|player|clock|minput|say|syncsettings)/[^/]*\.(h|c)$'
 SystemHeaders: false
 
 # Check options (fine-tuning individual checks)

@@ -5,7 +5,7 @@ export PATH=/tmp/bin:$PATH
 export LD_LIBRARY_PATH=/tmp/lib:$LD_LIBRARY_PATH
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-PRESENTER="$SYSTEM_PATH/bin/minui-presenter"
+PRESENTER="$SYSTEM_PATH/bin/launcher-presenter"
 PRESENTER_PID=""
 
 hide() {

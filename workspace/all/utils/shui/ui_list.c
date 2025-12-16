@@ -7,7 +7,7 @@
 #include <string.h>
 #include <ctype.h>
 
-// Match minarch menu padding
+// Match player menu padding
 #define OPTION_PADDING 8
 
 // Helper to parse features object from JSON
@@ -374,7 +374,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 
 			int y = ui.edge_padding_px;
 
-			// Title (using font.medium like minarch)
+			// Title (using font.medium like player)
 			if (opts->title) {
 				SDL_Surface* title_text = TTF_RenderUTF8_Blended(font.medium, opts->title, COLOR_GRAY);
 				if (title_text) {
@@ -394,7 +394,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 				y += ui.pill_height_px;
 			}
 
-			// List items (matching minarch menu style)
+			// List items (matching player menu style)
 			int item_height = ui.option_size_px;
 			int row_width = screen->w - (ui.edge_padding_px * 2);
 
@@ -434,7 +434,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 					label_color = COLOR_BLACK;
 				}
 
-				// Render item name using font.medium (like minarch)
+				// Render item name using font.medium (like player)
 				if (item->name) {
 					SDL_Surface* text = TTF_RenderUTF8_Blended(font.medium, item->name, label_color);
 					if (text) {
@@ -445,7 +445,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 					}
 				}
 
-				// Render option value on the right side using font.small (like minarch)
+				// Render option value on the right side using font.small (like player)
 				if (item->has_options && item->option_count > 0) {
 					const char* opt_str = item->options[item->selected];
 					if (opt_str) {

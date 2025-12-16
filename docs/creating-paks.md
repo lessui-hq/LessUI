@@ -55,23 +55,23 @@ Here's an example "launch.sh":
     mkdir -p "$SAVES_PATH/$EMU_TAG"
     HOME="$USERDATA_PATH"
     cd "$HOME"
-    minarch.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" &> "$LOGS_PATH/$EMU_TAG.txt"
+    player.elf "$CORES_PATH/${EMU_EXE}_libretro.so" "$ROM" &> "$LOGS_PATH/$EMU_TAG.txt"
 
 This will open the requested rom using the "picodrive_libretro.so" core included with the base LessUI install. To use a different core just change the value of `EMU_EXE` to another core name (minus the "\_libretro.so"). If that core is bundled in your pak add the following after the `EMU_EXE` line:
 
     CORES_PATH=$(dirname "$0")
 
-There's no need to edit anything below the line of hash marks. The rest is boilerplate that will extract the pak's tag from its folder name, create corresponding bios and save folders, set the `HOME` envar to "/.userdata/[platform]/", launch the game, and log any output from minarch and the core to "/.userdata/[platform]/logs/[TAG].txt".
+There's no need to edit anything below the line of hash marks. The rest is boilerplate that will extract the pak's tag from its folder name, create corresponding bios and save folders, set the `HOME` envar to "/.userdata/[platform]/", launch the game, and log any output from player and the core to "/.userdata/[platform]/logs/[TAG].txt".
 
 That's it! Feel free to experiement with cores from the stock firmware, other compatible devices, or building your own.
 
-Some platforms may require `nice -20` before `minarch.elf` for proper CPU priority. Check existing paks for your target platform for examples.
+Some platforms may require `nice -20` before `player.elf` for proper CPU priority. Check existing paks for your target platform for examples.
 
 # Option defaults and button bindings
 
 Copy your new pak and some roms to your SD card and launch a game. Press the MENU button and select Options. Configure the Frontend, Emulator, and Controls. LessUI standard practice is to only bind controls present on the physical controller of the original system (eg. no turbo buttons or core-specific features like palette or disk switching). Let the player dig into that if they want to, the same goes for Shortcuts. Finally select Save Changes > Save for Console. Then quit and pop your SD card back into your computer.
 
-Inside the hidden ".userdata" folder at the root of your SD card, you'll find platform folders, and inside your platform folder a "[TAG]-[core]" folder. Copy the "minarch.cfg" file found within to your pak folder and rename it "default.cfg". Open "default.cfg" and delete any options you didn't customize. Any option name prefixed with a "-" will be set and hidden. This is useful for disabling features that may not be available (eg. overclocking) or perform poorly (eg. upscaling) on a specific platform. Near the bottom of the file you will find the button bindings. Here's an example from the "MGBA.pak":
+Inside the hidden ".userdata" folder at the root of your SD card, you'll find platform folders, and inside your platform folder a "[TAG]-[core]" folder. Copy the "player.cfg" file found within to your pak folder and rename it "default.cfg". Open "default.cfg" and delete any options you didn't customize. Any option name prefixed with a "-" will be set and hidden. This is useful for disabling features that may not be available (eg. overclocking) or perform poorly (eg. upscaling) on a specific platform. Near the bottom of the file you will find the button bindings. Here's an example from the "MGBA.pak":
 
     bind Up = UP
     bind Down = DOWN
@@ -118,7 +118,7 @@ But if a binary takes more than one second to initialize you might need to just 
 
 # Caveats
 
-LessUI currently only supports the RGB565 pixel format and does not implement the OpenGL libretro APIs. It may be possible to use the stock firmware's retroarch instead of LessUI's minarch to run certain cores but that is left as an exercise for the reader.
+LessUI currently only supports the RGB565 pixel format and does not implement the OpenGL libretro APIs. It may be possible to use the stock firmware's retroarch instead of LessUI's player to run certain cores but that is left as an exercise for the reader.
 
 ## Resources
 

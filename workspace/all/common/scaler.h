@@ -1,5 +1,5 @@
 /**
- * scaler.h - Integer pixel scaling API for MinUI
+ * scaler.h - Integer pixel scaling API for Launcher
  *
  * Provides NEON-optimized and portable C implementations of integer scaling
  * functions for RGB565 (16bpp) and RGBA8888 (32bpp) pixel formats.

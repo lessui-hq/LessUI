@@ -273,7 +273,7 @@ case "$PLATFORM" in
 		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
 			# Self-destruct before reboot
 			mv "$DIR" "$DIR.disabled"
-			rm -f /tmp/minui_exec
+			rm -f /tmp/launcher_exec
 			shui message "Boot logo flashed!" --confirm "Reboot"
 			reboot
 		else

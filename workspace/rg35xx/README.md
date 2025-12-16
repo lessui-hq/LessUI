@@ -106,7 +106,7 @@ rg35xx/
 │   └── readme.txt     Ramdisk modification instructions
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
-    └── DinguxCommander/ File manager (minui-rg35xx branch)
+    └── DinguxCommander/ File manager (launcher-rg35xx branch)
 ```
 
 ## Input System
@@ -160,7 +160,7 @@ make
 
 ### Dependencies
 The platform automatically clones required dependencies on first build:
-- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `minui-rg35xx`)
+- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `launcher-rg35xx`)
 
 ## Installation
 
@@ -174,7 +174,7 @@ LessUI installs to the SD card with the following structure:
 │   ├── rg35xx/             Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, overclock, install.sh)
 │   │   ├── paks/           Applications and emulators
-│   │   │   └── MinUI.pak/  Main launcher
+│   │   │   └── LessUI.pak/  Main launcher
 │   │   ├── dat/            Boot partition files (ramdisk.img, dmenu.bin)
 │   │   └── rootfs.ext2     Chroot filesystem image
 │   └── res/                Shared UI assets
@@ -350,7 +350,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Ramdisk notes: `./ramdisk/readme.txt` (modification instructions)

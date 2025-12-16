@@ -204,7 +204,7 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - [x] Store `last_rate_adjust` in SND_Context for stress calculation
 - [x] Track rolling average implemented in Phase 2 via window-based averaging
 
-### Phase 2: CPU Scaling Logic in minarch ✅
+### Phase 2: CPU Scaling Logic in player ✅
 
 - [x] Add `auto_cpu_level` state (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
 - [x] Implement window-based averaging (~500ms = 30 frames at 60fps)
@@ -230,7 +230,7 @@ Rate control handles small timing variations. CPU scaling handles sustained perf
 - [x] Add "Auto" option to CPU Speed menu (overclock_labels[3])
 - [x] Updated option count from 3 to 4
 - [x] Updated description to mention Auto mode
-- [x] Persists via existing config system (`minarch_cpu_speed`)
+- [x] Persists via existing config system (`player_cpu_speed`)
 - [x] **Debug HUD**: Shows CPU level and metrics in bottom-left corner
   - Manual mode: `L1 b:48%` (level + buffer fill)
   - Auto mode: `L1 u:52% b:48%` (level + utilization + buffer fill)
@@ -514,7 +514,7 @@ The discovered frequency steps and performance data come from a custom CPU bench
 - [docs/audio-rate-control.md](audio-rate-control.md) - Our rate control implementation
 - [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`
 - [workspace/all/common/api.h](../workspace/all/common/api.h) - `PLAT_getAvailableCPUFrequencies()`, `PLAT_setCPUFrequency()` API
-- [workspace/all/minarch/minarch.c](../workspace/all/minarch/minarch.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
+- [workspace/all/player/player.c](../workspace/all/player/player.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
 - [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status

@@ -13,10 +13,10 @@ FAKESD/
 │   ├── SNES/       # Super Nintendo (.sfc, .smc files)
 │   └── ...         # Add directories for other systems
 │
-├── .userdata/      # User-specific data (auto-created by minui)
+├── .userdata/      # User-specific data (auto-created by launcher)
 │   └── [saves, states, etc.]
 │
-└── .system/        # System files (auto-created by minui)
+└── .system/        # System files (auto-created by launcher)
     └── [platform-specific data]
 ```
 
@@ -32,7 +32,7 @@ FAKESD/
    cp ~/Downloads/game.gb Roms/GB/
    ```
 
-3. **Run minui**: Use the dev build to test:
+3. **Run launcher**: Use the dev build to test:
    ```bash
    make dev-run
    ```
@@ -57,5 +57,5 @@ See the main LessUI documentation for a complete list of supported systems.
 
 - This directory is ignored by git (except for structure)
 - ROM files are for development/testing only
-- .userdata/ will be populated when you run minui and play games
+- .userdata/ will be populated when you run launcher and play games
 - Save states and settings will persist between runs

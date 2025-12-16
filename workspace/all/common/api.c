@@ -1,5 +1,5 @@
 /**
- * api.c - Platform abstraction layer implementation for MinUI
+ * api.c - Platform abstraction layer implementation for Launcher
  *
  * Provides cross-platform API functions for graphics (GFX_*), sound (SND_*),
  * input (PAD_*), power management (PWR_*), and vibration (VIB_*). This file
@@ -2151,7 +2151,7 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	// The system naturally converges to a stable equilibrium point
 	float total_adjust = SND_calculateRateAdjust();
 
-	// Note: Debug logging moved to minarch's unified snapshot logging (SND_getSnapshot)
+	// Note: Debug logging moved to player's unified snapshot logging (SND_getSnapshot)
 
 	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
 	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);

@@ -1,10 +1,10 @@
 # LessUI
 
-> **Built on the shoulders of giants:** LessUI is a fork of [MinUI](https://github.com/shauninman/MinUI), the brilliant work of [Shaun Inman](https://github.com/shauninman). Shaun's vision of a distraction-free, beautifully simple retro gaming experience is what makes this project possible. This fork exists to explore new directions while honoring the elegance and philosophy of the original.
+> **Built on the shoulders of giants:** LessUI is a fork of [Launcher](https://github.com/shauninman/Launcher), the brilliant work of [Shaun Inman](https://github.com/shauninman). Shaun's vision of a distraction-free, beautifully simple retro gaming experience is what makes this project possible. This fork exists to explore new directions while honoring the elegance and philosophy of the original.
 
 LessUI is a focused, custom launcher and libretro frontend for [a variety of retro handhelds](#supported-devices).
 
-<img src="docs/images/screenshots/minui-main.png" width=320 /> <img src="docs/images/screenshots/minui-menu-gbc.png" width=320 />
+<img src="docs/images/screenshots/launcher-main.png" width=320 /> <img src="docs/images/screenshots/launcher-menu-gbc.png" width=320 />
 
 _See [all screenshots](docs/screenshots.md)_
 
@@ -31,7 +31,7 @@ _See [all screenshots](docs/screenshots.md)_
   used save state by pressing X in
   the launcher instead of A
 - Streamlined emulator frontend
-  (minarch + libretro cores)
+  (player + libretro cores)
 - Single SD card compatible with
   multiple devices from different
   manufacturers

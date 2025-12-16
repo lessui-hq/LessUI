@@ -46,7 +46,7 @@ if [ -f "$UPDATE_PATH" ]; then
 fi
 
 # or launch (and keep launched)
-LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/MinUI.pak/launch.sh"
+LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
 while [ -f "$LAUNCH_PATH" ]; do
 	"$LAUNCH_PATH"
 done

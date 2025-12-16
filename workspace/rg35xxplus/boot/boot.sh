@@ -139,9 +139,9 @@ if [ -f $UPDATE_PATH ]; then
 	fi
 fi
 
-if [ -f $SYSTEM_PATH/paks/MinUI.pak/launch.sh ]; then
+if [ -f $SYSTEM_PATH/paks/LessUI.pak/launch.sh ]; then
 	echo "launch LessUI" >>$TF1_PATH/boot.log
-	$SYSTEM_PATH/paks/MinUI.pak/launch.sh
+	$SYSTEM_PATH/paks/LessUI.pak/launch.sh
 else
 	echo "couldn't find launch.sh" >>$TF1_PATH/boot.log
 	if [ -h $TF2_PATH ] && [ "$(readlink -f "$TF2_PATH")" = "$(readlink -f "$TF1_PATH")" ]; then

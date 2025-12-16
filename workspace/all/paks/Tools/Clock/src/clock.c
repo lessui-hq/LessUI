@@ -1,7 +1,7 @@
 /**
  * clock.c - Date and time configuration application
  *
- * Interactive clock setting tool for MinUI. Allows users to adjust
+ * Interactive clock setting tool for Launcher. Allows users to adjust
  * system date and time with a visual interface showing year, month,
  * day, hour, minute, and second fields. Supports both 12-hour and
  * 24-hour time formats.
@@ -375,9 +375,9 @@ int main(int argc, char* argv[]) {
 	if (save_changes) {
 		PLAT_setDateTime(year_selected, month_selected, day_selected, hour_selected,
 		                 minute_selected, seconds_selected);
-		system("minui-presenter --message 'Clock updated successfully!' --timeout 2");
+		system("launcher-presenter --message 'Clock updated successfully!' --timeout 2");
 	} else {
-		system("minui-presenter --message 'Clock update cancelled' --timeout 2");
+		system("launcher-presenter --message 'Clock update cancelled' --timeout 2");
 	}
 
 	return EXIT_SUCCESS;
