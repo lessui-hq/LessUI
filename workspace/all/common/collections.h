@@ -4,7 +4,7 @@
  * Provides Array (dynamic array) data structure.
  * Extracted from launcher.c for better testability and reusability.
  *
- * For hash maps, use StringMap from stringmap.h (backed by khash).
+ * For hash maps, use stb_ds.h directly (see launcher_map.h for MapEntry type).
  */
 
 #ifndef __COLLECTIONS_H__

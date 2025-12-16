@@ -23,7 +23,7 @@ TARGET = launcher
 INCDIR = -I. -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/log.c ../common/collections.c ../common/pad.c \
-         ../common/gfx_text.c ../common/platform_variant.c ../common/stringmap.c \
+         ../common/gfx_text.c ../common/platform_variant.c ../common/stb_ds_impl.c \
          launcher_entry.c launcher_launcher.c directory_index.c launcher_str_compare.c \
          launcher_state.c launcher_m3u.c launcher_map.c launcher_file_utils.c launcher_directory.c \
          launcher_context.c launcher_navigation.c launcher_thumbnail.c recent_file.c \

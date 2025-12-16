@@ -22,7 +22,7 @@
  *
  * Data Structures:
  * - Array: Dynamic array for entries, directories, recents
- * - StringMap: O(1) hash map for name aliasing (backed by khash)
+ * - MapEntry: O(1) hash map for name aliasing (stb_ds)
  * - Directory: Represents a folder with entries and rendering state
  * - Entry: Represents a file/folder (ROM, PAK, or directory)
  * - Recent: Recently played game with path and optional alias
@@ -383,7 +383,7 @@ void Directory_index(Directory* self) {
 
 	// Load maps for name aliasing (pak-bundled + user overrides)
 	// For collections, just load collection map.txt directly
-	StringMap* map;
+	MapEntry* map;
 	if (is_collection) {
 		char map_path[256];
 		(void)sprintf(map_path, "%s/map.txt", COLLECTIONS_PATH);
@@ -402,8 +402,7 @@ void Directory_index(Directory* self) {
 		self->entries = indexed;
 	}
 
-	if (map)
-		StringMap_free(map);
+	Map_free(map);
 }
 
 // Forward declarations for directory entry getters
@@ -812,13 +811,13 @@ static Array* getRoot(void) {
 	char map_path[256];
 	(void)sprintf(map_path, "%s/map.txt", ROMS_PATH);
 	if (entries->count > 0) {
-		StringMap* map = Map_load(map_path);
+		MapEntry* map = Map_load(map_path);
 		if (map) {
 			int resort = 0;
 			for (int i = 0; i < entries->count; i++) {
 				Entry* entry = entries->items[i];
 				char* filename = strrchr(entry->path, '/') + 1;
-				char* alias = StringMap_get(map, filename);
+				char* alias = shget(map, filename);
 				if (alias) {
 					if (Entry_setName(entry, alias))
 						resort = 1;
@@ -826,7 +825,7 @@ static Array* getRoot(void) {
 			}
 			if (resort)
 				EntryArray_sort(entries);
-			StringMap_free(map);
+			Map_free(map);
 		}
 	}
 

@@ -12,7 +12,7 @@
 #define DIRECTORY_INDEX_H
 
 #include "launcher_entry.h"
-#include "stringmap.h"
+#include "launcher_map.h"
 
 /**
  * Gets the alphabetical index for a sort key.
@@ -45,10 +45,10 @@ void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path
  * updates the entry's name to the alias value.
  *
  * @param entries Array of Entry pointers (modified in place)
- * @param map StringMap mapping filenames to display names
+ * @param map MapEntry* hash map from launcher_map.h (use shget to query)
  * @return 1 if any aliases were applied (entries need resorting), 0 otherwise
  */
-int DirectoryIndex_applyAliases(Array* entries, StringMap* map);
+int DirectoryIndex_applyAliases(Array* entries, MapEntry* map);
 
 /**
  * Removes hidden entries from an array.
@@ -95,10 +95,10 @@ void DirectoryIndex_buildAlphaIndex(Array* entries, IntArray* alphas);
  *
  * @param entries Array of Entry pointers (may be replaced with new array)
  * @param alphas IntArray to populate with letter group positions
- * @param map Optional StringMap of filename->alias mappings (NULL to skip aliasing)
+ * @param map Optional MapEntry* hash map of filename->alias mappings (NULL to skip aliasing)
  * @param skip_alpha_index If true, skip building alphabetical index
  * @return Updated entries array (may be different from input if filtering occurred)
  */
-Array* DirectoryIndex_index(Array* entries, IntArray* alphas, StringMap* map, int skip_alpha_index);
+Array* DirectoryIndex_index(Array* entries, IntArray* alphas, MapEntry* map, int skip_alpha_index);
 
 #endif // DIRECTORY_INDEX_H

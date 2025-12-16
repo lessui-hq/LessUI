@@ -4,14 +4,14 @@ This directory contains third-party libraries used by LessUI. These files are no
 
 ## Libraries
 
-### khash (khash.h)
+### stb_ds (stb/stb_ds.h)
 
-- **Source**: https://github.com/attractivechaos/klib
-- **License**: MIT
-- **Version**: 0.2.8 (2013-05-02)
-- **Used by**: stringmap.c for O(1) string-to-string hash maps
+- **Source**: https://github.com/nothings/stb
+- **License**: MIT / Public Domain (Unlicense)
+- **Version**: 0.67
+- **Used by**: launcher_map.c, launcher_emu_cache.c for dynamic arrays and O(1) hash maps
 
-A generic hash table library implemented as C macros. Used for ROM alias maps where linear search would be too slow for large arcade game databases (50k+ entries).
+A single-header library providing type-safe dynamic arrays and hash tables. Used for ROM alias maps where linear search would be too slow for large arcade game databases (50k+ entries).
 
 ## Adding New Libraries
 

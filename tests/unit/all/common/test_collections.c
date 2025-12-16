@@ -12,7 +12,7 @@
  * - StringArray_indexOf - String search
  * - StringArray_free - String cleanup
  *
- * For hash map tests, see stringmap.h and its tests.
+ * For hash map tests, see launcher_map.h (uses stb_ds.h).
  */
 
 #define _POSIX_C_SOURCE 200809L  // Required for strdup()

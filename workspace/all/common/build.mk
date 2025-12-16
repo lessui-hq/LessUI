@@ -72,6 +72,7 @@ COMMON_SOURCE = \
 	$(COMMON_DIR)/api.c \
 	$(COMMON_DIR)/log.c \
 	$(COMMON_DIR)/collections.c \
+	$(COMMON_DIR)/stb_ds_impl.c \
 	$(COMMON_DIR)/pad.c \
 	$(COMMON_DIR)/gfx_text.c \
 	$(COMMON_DIR)/scaler.c \
