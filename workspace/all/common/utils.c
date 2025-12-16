@@ -255,7 +255,7 @@ int splitTextLines(char* str, char** lines, int max_lines) {
  * @param path Path to check
  * @return 1 if path exists, 0 otherwise
  */
-int exists(char* path) {
+int exists(const char* path) {
 	return access(path, F_OK) == 0;
 }
 

@@ -27,7 +27,7 @@ void Map_free(MapEntry* map) {
  * Loads a map.txt file into a stb_ds hash map.
  */
 MapEntry* Map_load(const char* map_path) {
-	if (!exists((char*)map_path))
+	if (!exists(map_path))
 		return NULL;
 
 	FILE* file = fopen(map_path, "r");
@@ -55,10 +55,16 @@ MapEntry* Map_load(const char* map_path) {
 			// Check if key already exists (update value)
 			ptrdiff_t idx = shgeti(map, key);
 			if (idx >= 0) {
-				free(map[idx].value);
-				map[idx].value = strdup(value);
+				char* value_copy = strdup(value);
+				if (value_copy) {
+					free(map[idx].value);
+					map[idx].value = value_copy;
+				}
 			} else {
-				shput(map, key, strdup(value));
+				char* value_copy = strdup(value);
+				if (value_copy) {
+					shput(map, key, value_copy);
+				}
 			}
 		}
 	}
@@ -136,10 +142,16 @@ MapEntry* Map_loadForDirectory(const char* dir_path) {
 				// Update or insert
 				ptrdiff_t idx = shgeti(merged, key);
 				if (idx >= 0) {
-					free(merged[idx].value);
-					merged[idx].value = strdup(value);
+					char* value_copy = strdup(value);
+					if (value_copy) {
+						free(merged[idx].value);
+						merged[idx].value = value_copy;
+					}
 				} else {
-					shput(merged, key, strdup(value));
+					char* value_copy = strdup(value);
+					if (value_copy) {
+						shput(merged, key, value_copy);
+					}
 				}
 			}
 		}
@@ -152,7 +164,7 @@ MapEntry* Map_loadForDirectory(const char* dir_path) {
 /**
  * Looks up the display alias for a ROM file from map.txt.
  */
-char* Map_getAlias(char* path, char* alias) {
+char* Map_getAlias(const char* path, char* alias) {
 	if (!path || !alias)
 		return alias;
 

@@ -58,6 +58,6 @@ MapEntry* Map_loadForDirectory(const char* dir_path);
  * @param alias Output buffer for alias (min 256 bytes)
  * @return Pointer to alias buffer (unchanged if no alias found)
  */
-char* Map_getAlias(char* path, char* alias);
+char* Map_getAlias(const char* path, char* alias);
 
 #endif // LAUNCHER_MAP_H

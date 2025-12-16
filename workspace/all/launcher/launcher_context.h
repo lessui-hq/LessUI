@@ -67,7 +67,7 @@ typedef Directory* (*LauncherDirectoryNewFunc)(char* path, int selected);
  * File operation callbacks (allows mocking in tests)
  * Note: Signatures match actual functions in utils.h
  */
-typedef int (*LauncherExistsFunc)(char* path);
+typedef int (*LauncherExistsFunc)(const char* path);
 typedef void (*LauncherPutFileFunc)(const char* path, const char* content);
 typedef void (*LauncherGetFileFunc)(const char* path, char* buffer, size_t size);
 typedef void (*LauncherPutIntFunc)(const char* path, int value);
