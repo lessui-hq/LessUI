@@ -76,6 +76,7 @@ struct Core {
 
 	// Callbacks from core
 	retro_audio_buffer_status_callback_t audio_buffer_status;
+	retro_core_options_update_display_callback_t update_visibility_callback;
 };
 
 ///////////////////////////////

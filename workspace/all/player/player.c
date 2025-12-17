@@ -641,6 +641,7 @@ static struct Config config =
                                                     .value = 1,
                                                     .count = 3, // will call getScreenScalingCount()
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_scaling_labels,
                                                     .labels = player_scaling_labels,
                                                 },
@@ -657,6 +658,7 @@ static struct Config config =
                                                     .value = 0,
                                                     .count = 6,
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_effect_labels,
                                                     .labels = player_effect_labels,
                                                 },
@@ -675,6 +677,7 @@ static struct Config config =
                                                     .value = 2,
                                                     .count = 3,
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_sharpness_labels,
                                                     .labels = player_sharpness_labels,
                                                 },
@@ -693,6 +696,7 @@ static struct Config config =
                                                     .value = 3, // Auto
                                                     .count = 4,
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_overclock_labels,
                                                     .labels = player_overclock_labels,
                                                 },
@@ -709,6 +713,7 @@ static struct Config config =
                                                     .value = 0,
                                                     .count = 2,
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_onoff_labels,
                                                     .labels = player_onoff_labels,
                                                 },
@@ -727,6 +732,7 @@ static struct Config config =
                                                     .value = 3, // 4x
                                                     .count = 8,
                                                     .lock = 0,
+                                                    .visible = 1,
                                                     .values = player_max_ff_labels,
                                                     .labels = player_max_ff_labels,
                                                 },
@@ -2009,6 +2015,7 @@ static void PlayerOptionList_init(const struct retro_core_option_definition* def
 
 			item->value = PlayerOption_getValueIndex(item, def->default_value);
 			item->default_value = item->value;
+			item->visible = 1; // All options visible by default per libretro spec
 
 			// LOG_info("\tINIT %s (%s) TO %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
 		}
@@ -2069,6 +2076,7 @@ static void PlayerOptionList_vars(const struct retro_variable* vars) {
 			// no native default_value support for retro vars
 			item->value = 0;
 			item->default_value = item->value;
+			item->visible = 1; // All options visible by default per libretro spec
 			// printf("SET %s to %s (%i)\n", item->key, default_value, item->value); fflush(stdout);
 		}
 	}
@@ -2153,11 +2161,14 @@ static void PlayerOptionList_setOptionValue(PlayerOptionList* list, const char* 
 	} else
 		LOG_warn("unknown option %s", key);
 }
-// static void PlayerOptionList_setOptionVisibility(PlayerOptionList* list, const char* key, int visible) {
-// 	PlayerOption* item = PlayerOptionList_getOption(list, key);
-// 	if (item) item->visible = visible;
-// 	else printf("unknown option %s \n", key); fflush(stdout);
-// }
+static void PlayerOptionList_setOptionVisibility(PlayerOptionList* list, const char* key,
+                                                 int visible) {
+	PlayerOption* item = PlayerOptionList_getOption(list, key);
+	if (item)
+		item->visible = visible;
+	else
+		LOG_warn("unknown option for visibility %s", key);
+}
 
 ///////////////////////////////////////
 // Input Handling
@@ -2466,6 +2477,93 @@ static void env_reinit_audio(double old_rate, double new_rate, double fps) {
 	SND_init(new_rate, fps);
 }
 
+///////////////////////////////
+// Performance Interface
+///////////////////////////////
+
+/**
+ * Returns detected CPU features as a bitmask.
+ * Uses compile-time detection via predefined macros set by the compiler
+ * based on -march/-mfpu flags. This is safer than runtime detection since
+ * it matches exactly what the compiler will emit.
+ *
+ * All supported platforms are ARM-based handhelds with NEON support.
+ */
+static uint64_t perf_get_cpu_features(void) {
+	uint64_t features = 0;
+
+	// ARM NEON (set by -mfpu=neon* or ARMv8+)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+	features |= RETRO_SIMD_NEON;
+#endif
+
+	// ARMv8 Advanced SIMD (NEON is mandatory on ARMv8)
+#if defined(__aarch64__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 8)
+	features |= RETRO_SIMD_ASIMD;
+	features |= RETRO_SIMD_NEON; // ARMv8 always has NEON
+#endif
+
+	// ARM VFP versions
+#if defined(__ARM_VFPV4__) || (defined(__ARM_FP) && (__ARM_FP & 0x08))
+	features |= RETRO_SIMD_VFPV4;
+	features |= RETRO_SIMD_VFPV3; // VFPv4 implies VFPv3
+#elif defined(__ARM_VFPV3__) || defined(__VFP_FP__) || (defined(__ARM_FP) && (__ARM_FP & 0x04))
+	features |= RETRO_SIMD_VFPV3;
+#endif
+
+	// CMOV available on ARMv7+
+#if defined(__aarch64__) || defined(__ARM_ARCH_7A__)
+	features |= RETRO_SIMD_CMOV;
+#endif
+
+	return features;
+}
+
+static retro_time_t perf_get_time_usec(void) {
+	return (retro_time_t)getMicroseconds();
+}
+
+static retro_perf_tick_t perf_get_counter(void) {
+	// Use microseconds as tick counter - sufficient for profiling
+	return (retro_perf_tick_t)getMicroseconds();
+}
+
+// Performance counter registration - simple stub, cores rarely use this
+static void perf_register(struct retro_perf_counter* counter) {
+	if (counter) {
+		counter->registered = true;
+	}
+}
+
+static void perf_start(struct retro_perf_counter* counter) {
+	if (counter && counter->registered) {
+		counter->call_cnt++;
+		counter->start = perf_get_counter();
+	}
+}
+
+static void perf_stop(struct retro_perf_counter* counter) {
+	if (counter && counter->registered && counter->start) {
+		counter->total += perf_get_counter() - counter->start;
+		counter->start = 0;
+	}
+}
+
+static void perf_log(void) {
+	// No-op: we don't maintain a global counter list
+	// Cores can inspect their own counters if needed
+}
+
+static struct retro_perf_callback perf_cb = {
+    .get_time_usec = perf_get_time_usec,
+    .get_cpu_features = perf_get_cpu_features,
+    .get_perf_counter = perf_get_counter,
+    .perf_register = perf_register,
+    .perf_start = perf_start,
+    .perf_stop = perf_stop,
+    .perf_log = perf_log,
+};
+
 static bool environment_callback(unsigned cmd, void* data) { // copied from picoarch initially
 	// LOG_info("environment_callback: %i", cmd);
 	EnvResult result;
@@ -2493,6 +2591,19 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 			LOG_info("%s", message->msg);
 		break;
 	}
+	case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: { /* 60 */
+		const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
+		if (msg && msg->msg) {
+			if (msg->target == RETRO_MESSAGE_TARGET_LOG) {
+				LOG_info("[Core] %s", msg->msg);
+			} else {
+				// OSD messages logged with metadata for potential future display
+				LOG_info("[Core OSD] %s (priority=%u, %ums)", msg->msg, msg->priority,
+				         msg->duration);
+			}
+		}
+		break;
+	}
 	case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: { /* 8 */
 		// puts("RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL");
 		// TODO: used by fceumm at least
@@ -2516,6 +2627,14 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: { /* 13 */
 		PlayerEnv_setDiskControlInterface(&disk_control_ext, data);
 		break;
+	}
+	case RETRO_ENVIRONMENT_SET_HW_RENDER: { /* 14 */
+		const struct retro_hw_render_callback* cb = (const struct retro_hw_render_callback*)data;
+		if (cb) {
+			LOG_info("Core requested HW render (type=%d, v%d.%d) - not supported, using software",
+			         cb->context_type, cb->version_major, cb->version_minor);
+		}
+		return false; // Tell core we don't support hardware rendering
 	}
 
 	// TODO: this is called whether using variables or options
@@ -2581,6 +2700,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 			log_cb->log = retro_log_callback;
 		break;
 	}
+	case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: { /* 28 */
+		struct retro_perf_callback* cb = (struct retro_perf_callback*)data;
+		if (cb)
+			*cb = perf_cb;
+		break;
+	}
 	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: { /* 31 */
 		const char** out = (const char**)data;
 		if (out)
@@ -2602,7 +2727,12 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		return result.success;
 	}
 	// RETRO_ENVIRONMENT_SET_MEMORY_MAPS (36 | RETRO_ENVIRONMENT_EXPERIMENTAL)
-	// RETRO_ENVIRONMENT_GET_LANGUAGE 39
+	case RETRO_ENVIRONMENT_GET_LANGUAGE: { /* 39 */
+		unsigned* out = (unsigned*)data;
+		if (out)
+			*out = RETRO_LANGUAGE_ENGLISH;
+		break;
+	}
 	case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: { /* (40 | RETRO_ENVIRONMENT_EXPERIMENTAL) */
 		// puts("RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER");
 		break;
@@ -2657,9 +2787,16 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: { /* 55 */
-		// puts("RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY");
-		// const struct retro_core_option_display *display = (const struct retro_core_option_display *)data;
-		// 	if (display) PlayerOptionList_setOptionVisibility(&config.core, display->key, display->visible);
+		const struct retro_core_option_display* display =
+		    (const struct retro_core_option_display*)data;
+		if (display && display->key)
+			PlayerOptionList_setOptionVisibility(&config.core, display->key, display->visible);
+		break;
+	}
+	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: { /* 56 */
+		unsigned* out = (unsigned*)data;
+		if (out)
+			*out = RETRO_HW_CONTEXT_NONE; // We prefer software rendering
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: { /* 57 */
@@ -2686,22 +2823,19 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	// RETRO_ENVIRONMENT_GET_GAME_INFO_EXT 66
-	// TODO: RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK 69
-	// used by fceumm
-	// TODO: used by gambatte for L/R palette switching (seems like it needs to return true even if data is NULL to indicate support)
+	case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: { /* 69 */
+		const struct retro_core_options_update_display_callback* cb =
+		    (const struct retro_core_options_update_display_callback*)data;
+		core.update_visibility_callback = cb ? cb->callback : NULL;
+		break;
+	}
+	// used by gambatte for L/R palette switching (returns true even if data is NULL to indicate support)
 	case RETRO_ENVIRONMENT_SET_VARIABLE: {
-		// puts("RETRO_ENVIRONMENT_SET_VARIABLE");
 		const struct retro_variable* var = (const struct retro_variable*)data;
 		if (var && var->key) {
-			// printf("\t%s = %s\n", var->key, var->value);
 			PlayerOptionList_setOptionValue(&config.core, var->key, var->value);
-			break;
 		}
-
-		int* out = (int*)data;
-		if (out)
-			*out = 1;
-
+		// Return true (via fall-through) to indicate support, even if data is NULL
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: { /* 71 | RETRO_ENVIRONMENT_EXPERIMENTAL */
@@ -3870,13 +4004,30 @@ static int MenuList_freeItems(MenuList* list, int i) {
  * @param no_options_msg Message to show if no options available (NULL to skip check)
  * @return MENU_CALLBACK_NOP
  */
+/**
+ * Invalidates the enabled options list so it will be rebuilt on next show.
+ * Call this when option visibility changes (e.g., from update_visibility_callback).
+ */
+static void OptionsMenu_invalidateList(PlayerOptionList* source, MenuList* menu) {
+	if (source->enabled_options) {
+		free(source->enabled_options);
+		source->enabled_options = NULL;
+	}
+	source->enabled_count = 0;
+	if (menu->items) {
+		free(menu->items);
+		menu->items = NULL;
+	}
+}
+
 static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
                                     const char* no_options_msg) {
 	// Build enabled_options list if not already built
 	if (!source->enabled_count) {
 		int enabled_count = 0;
 		for (int idx = 0; idx < source->count; idx++) {
-			if (!source->options[idx].lock)
+			// Check both lock (from config) and visible (from core)
+			if (!source->options[idx].lock && source->options[idx].visible)
 				enabled_count += 1;
 		}
 		source->enabled_count = enabled_count;
@@ -3884,7 +4035,7 @@ static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
 		int j = 0;
 		for (int idx = 0; idx < source->count; idx++) {
 			PlayerOption* item = &source->options[idx];
-			if (item->lock)
+			if (item->lock || !item->visible)
 				continue;
 			source->enabled_options[j] = item;
 			j += 1;
@@ -3946,6 +4097,9 @@ static int OptionFrontend_openMenu(MenuList* list, int i) {
 	return OptionsMenu_buildAndShow(&config.frontend, &OptionFrontend_menu, NULL);
 }
 
+// Forward declaration needed because OptionEmulator_optionChanged references OptionEmulator_menu
+static MenuList OptionEmulator_menu;
+
 static int OptionEmulator_optionChanged(MenuList* list, int i) {
 	MenuItem* item = &list->items[i];
 	// NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores) - option IS used in LOG_info below
@@ -3956,6 +4110,13 @@ static int OptionEmulator_optionChanged(MenuList* list, int i) {
 		         item->values[item->value], option->values[item->value]);
 	}
 	PlayerOptionList_setOptionRawValue(&config.core, item->key, item->value);
+	// Ask core to update option visibility - one option may affect others (per libretro spec)
+	if (core.update_visibility_callback) {
+		if (core.update_visibility_callback()) {
+			// Visibility changed - invalidate cached list so it rebuilds on next open
+			OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
+		}
+	}
 	return MENU_CALLBACK_NOP;
 }
 static int OptionEmulator_optionDetail(MenuList* list, int i) {
@@ -3977,6 +4138,13 @@ static MenuList OptionEmulator_menu = {
 static int OptionEmulator_openMenu(MenuList* list, int i) {
 	(void)list;
 	(void)i;
+	// Ask core to update option visibility (per libretro spec)
+	if (core.update_visibility_callback) {
+		if (core.update_visibility_callback()) {
+			// Visibility changed - invalidate cached list so it rebuilds
+			OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
+		}
+	}
 	return OptionsMenu_buildAndShow(&config.core, &OptionEmulator_menu,
 	                                "This core has no options.");
 }
