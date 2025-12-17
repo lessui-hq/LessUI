@@ -77,7 +77,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup dev-deploy dev-build-deploy
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy
 
 export MAKEFLAGS=--no-print-directory
 
@@ -98,20 +98,24 @@ help:
 	@echo "  make lint             Run static analysis (clang-tidy)"
 	@echo "  make format           Format code with clang-format"
 	@echo ""
-	@echo "Cross-Platform Build:"
-	@echo "  make shell PLATFORM=X Enter Docker build environment"
-	@echo "  make build PLATFORM=X Build binaries for platform"
-	@echo "  make system PLATFORM=X Copy binaries to build directory"
+	@echo "Cross-Platform Build (composable stages):"
+	@echo "  make setup            Prepare build directory and skeleton"
+	@echo "  make build PLATFORM=X Compile binaries for platform (Docker)"
+	@echo "  make system PLATFORM=X Copy binaries to build/SYSTEM/"
 	@echo "  make common PLATFORM=X Build + system combined"
-	@echo "  make all              Build all platforms and package"
+	@echo "  make special          Platform-specific boot setup"
+	@echo "  make stage            Reorganize build/SYSTEM → build/PAYLOAD"
+	@echo "  make compress         Create release archives (7z, zip)"
+	@echo "  make package          Stage + compress (full release)"
+	@echo "  make all              Full build: setup + platforms + package"
+	@echo "  make shell PLATFORM=X Enter Docker build environment"
 	@echo ""
 	@echo "Deployment:"
 	@echo "  make dev-deploy       Deploy to SD card (requires LESSUI_DEV volume)"
-	@echo "  make dev-build-deploy Build and deploy in one step"
+	@echo "  make dev-build-deploy Build and deploy (no compression)"
 	@echo ""
 	@echo "Housekeeping:"
 	@echo "  make clean            Remove all build artifacts"
-	@echo "  make setup            Prepare fresh build directory"
 	@echo "  make name             Print release name"
 	@echo ""
 	@echo "Available platforms: $(PLATFORMS)"
@@ -173,13 +177,19 @@ dev-deploy:
 	fi
 
 # Build and deploy in one shot for dev iteration (always debug build)
+# Uses 'stage' to prepare files without compression (faster than full 'all')
 # Usage: make dev-build-deploy                    - Build all platforms and deploy
 #        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
+# Note: Single-platform requires 'make setup' to have been run first
 dev-build-deploy:
 	@if [ -n "$(PLATFORM)" ]; then \
-		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		if [ ! -d ./build/SYSTEM ]; then \
+			echo "Error: build/SYSTEM not found. Run 'make setup' first."; \
+			exit 1; \
+		fi; \
+		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && $(MAKE) stage && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
 	else \
-		$(MAKE) all DEBUG=1 && ./scripts/dev-deploy.sh; \
+		$(MAKE) setup DEBUG=1 && $(MAKE) $(PLATFORMS) DEBUG=1 && $(MAKE) special && $(MAKE) stage && ./scripts/dev-deploy.sh; \
 	fi
 
 # Build all components for a specific platform (in Docker)
@@ -289,40 +299,65 @@ ifneq (,$(findstring my355, $(PLATFORMS)))
 endif
 
 # Backward compatibility for platforms that were merged
+# Only copies files if the source platform was actually built
 tidy:
 ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
-	@mkdir -p ./build/SYSTEM/rg40xxcube/bin/
-	@rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/
+	@if [ -f ./build/SYSTEM/rg35xxplus/bin/install.sh ]; then \
+		mkdir -p ./build/SYSTEM/rg40xxcube/bin/; \
+		rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/; \
+	fi
 endif
 ifneq (,$(findstring tg5040, $(PLATFORMS)))
-	@mkdir -p ./build/SYSTEM/tg3040/paks/LessUI.pak/
-	@rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/LessUI.pak/launch.sh
+	@if [ -f ./build/SYSTEM/tg5040/bin/install.sh ]; then \
+		mkdir -p ./build/SYSTEM/tg3040/paks/LessUI.pak/; \
+		rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/LessUI.pak/launch.sh; \
+	fi
 endif
 
-# Create final release ZIP files
-package: tidy
+# Stage: reorganize build/SYSTEM → build/PAYLOAD for deployment
+# This prepares the directory structure without creating archives
+# Can be run incrementally after single-platform builds
+stage: tidy
 	@echo "# ----------------------------------------------------"
-	@echo "# Packaging release..."
+	@echo "# Staging for deployment..."
 	@echo "# ----------------------------------------------------"
-	@rsync -a ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt
-	@rm -rf ./workspace/readmes
-	@cd ./build/SYSTEM && echo "$(RELEASE_NAME)\n$(BUILD_HASH)" > version.txt
-	@./commits.sh > ./build/SYSTEM/commits.txt
-	@cd ./build && find . -type f -name '.DS_Store' -delete
-	@mkdir -p ./build/PAYLOAD
-	@mv ./build/SYSTEM ./build/PAYLOAD/.system
+	@mkdir -p ./build/PAYLOAD/.system
+	@rsync -a ./build/SYSTEM/ ./build/PAYLOAD/.system/
+	@cd ./build/PAYLOAD/.system && printf '%s\n%s\n' "$(RELEASE_NAME)" "$(BUILD_HASH)" > version.txt
+	@./commits.sh > ./build/PAYLOAD/.system/commits.txt
 	@mkdir -p ./build/PAYLOAD/.system/common/cores/arm32 ./build/PAYLOAD/.system/common/cores/arm64
 	@jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
 		if [ -f "./build/.system/cores/arm32/$${core}.so" ]; then cp "./build/.system/cores/arm32/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm32/"; fi; \
-			if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm64/"; fi; \
-			done
+		if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm64/"; fi; \
+	done
 	@echo "Copied $$(ls ./build/PAYLOAD/.system/common/cores/arm32/*.so 2>/dev/null | wc -l | tr -d ' ') arm32 cores, $$(ls ./build/PAYLOAD/.system/common/cores/arm64/*.so 2>/dev/null | wc -l | tr -d ' ') arm64 cores"
-	@rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/
-	@cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update
+	@if [ -d ./build/BOOT/.tmp_update ]; then \
+		rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/; \
+	fi
+	@cd ./build && find . -type f -name '.DS_Store' -delete
+
+# Compress: create archives for release distribution
+# Requires stage to have been run first (typically via 'make all')
+compress:
+	@echo "# ----------------------------------------------------"
+	@echo "# Creating release archives..."
+	@echo "# ----------------------------------------------------"
+	@if [ -f ./workspace/readmes/BASE-out.txt ]; then \
+		rsync -a ./workspace/readmes/BASE-out.txt ./build/BASE/README.txt; \
+		rm -rf ./workspace/readmes; \
+	fi
+	@if [ -d ./build/PAYLOAD/.tmp_update ]; then \
+		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update; \
+	else \
+		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
+	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@mv ./build/Tools ./build/BASE/
+	@if [ -d ./build/Tools ]; then mv ./build/Tools ./build/BASE/; fi
 	@cd ./build/BASE && 7zz a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
+
+# Package: full release build (stage + compress)
+package: stage compress
 
 ###########################################################
 # Dynamic platform targets
