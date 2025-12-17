@@ -15,6 +15,7 @@ endif
 ###########################################################
 
 include ../../$(PLATFORM)/platform/makefile.env
+include ../common/cflags.mk
 SDL ?= SDL
 
 ###########################################################
@@ -46,9 +47,7 @@ CC = $(CROSS_COMPILE)gcc
 OPT_FLAGS ?= -O3
 CFLAGS = $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
-CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
-           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
-           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+CFLAGS += $(WARN_FLAGS)
 LDFLAGS = -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 
 PRODUCT = build/$(PLATFORM)/$(TARGET).elf
@@ -63,4 +62,6 @@ clean:
 	rm -f $(PRODUCT)
 
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
+	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
+
+.PHONY: all clean

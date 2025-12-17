@@ -23,7 +23,7 @@ setup:
 	mkdir -p "$$BUILD_CORES_DIR/arm32" "$$BUILD_CORES_DIR/arm64" "$(CORES_DIR)"; \
  \
 	if [ -f "$(CORES_DIR)/override/linux-arm32.zip" ]; then \
-		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm32.zip" 2>/dev/null || echo "unknown"); \
+		OVERRIDE_VERSION=$$(date -r "$(CORES_DIR)/override/linux-arm32.zip" +"%Y%m%d%H%M%S" 2>/dev/null || echo "unknown"); \
 		if [ -f "$(CORES_DIR)/extracted/override/.version-arm32" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-arm32)" = "$$OVERRIDE_VERSION" ]; then \
 			echo "Using cached override arm32 cores ($$OVERRIDE_VERSION)..."; \
 			rsync -a "$(CORES_DIR)/extracted/override/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
@@ -53,7 +53,7 @@ setup:
 	fi; \
  \
 	if [ -f "$(CORES_DIR)/override/linux-arm64.zip" ]; then \
-		OVERRIDE_VERSION=$$(stat -f "%Sm" -t "%Y%m%d%H%M%S" "$(CORES_DIR)/override/linux-arm64.zip" 2>/dev/null || echo "unknown"); \
+		OVERRIDE_VERSION=$$(date -r "$(CORES_DIR)/override/linux-arm64.zip" +"%Y%m%d%H%M%S" 2>/dev/null || echo "unknown"); \
 		if [ -f "$(CORES_DIR)/extracted/override/.version-arm64" ] && [ "$$(cat $(CORES_DIR)/extracted/override/.version-arm64)" = "$$OVERRIDE_VERSION" ]; then \
 			echo "Using cached override arm64 cores ($$OVERRIDE_VERSION)..."; \
 			rsync -a "$(CORES_DIR)/extracted/override/arm64/" "$$BUILD_CORES_DIR/arm64/"; \

@@ -21,34 +21,34 @@ PLATFORM_TARGETS = blank batmon lumon overclock show
 all: readmes $(PLATFORM_TARGETS)
 
 blank:
-	$(MAKE) -C blank
+	@$(MAKE) -C blank
 
 batmon:
-	$(MAKE) -C batmon
+	@$(MAKE) -C batmon
 
 lumon:
-	$(MAKE) -C lumon
+	@$(MAKE) -C lumon
 
 overclock:
-	$(MAKE) -C overclock
+	@$(MAKE) -C overclock
 
 .PHONY: show
 show:
-	$(MAKE) -C show
+	@$(MAKE) -C show
 
 early: $(REQUIRES_SDL) $(REQUIRES_COMMANDER)
-	cd other/sdl && ./make.sh
-	cd other/logotweak && $(MAKE)
-	cd other/latency_reduction && $(MAKE)
-	cd other/DinguxCommander && $(MAKE) -j
+	@cd other/sdl && MAKEFLAGS=--no-print-directory ./make.sh
+	@cd other/logotweak && $(MAKE) -s
+	@cd other/latency_reduction && $(MAKE) -s
+	@cd other/DinguxCommander && $(MAKE) -s
 
 clean:
-	cd blank && $(MAKE) clean
-	cd batmon && $(MAKE) clean
-	cd lumon && $(MAKE) clean
-	cd other/sdl && $(MAKE) distclean
-	cd other/latency_reduction && $(MAKE) clean
-	cd other/DinguxCommander && $(MAKE) clean
+	@cd blank && $(MAKE) -s clean
+	@cd batmon && $(MAKE) -s clean
+	@cd lumon && $(MAKE) -s clean
+	@cd other/sdl && $(MAKE) -s distclean
+	@cd other/latency_reduction && $(MAKE) -s clean
+	@cd other/DinguxCommander && $(MAKE) -s clean
 
 ###########################################################
 

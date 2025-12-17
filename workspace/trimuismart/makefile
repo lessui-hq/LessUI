@@ -17,14 +17,14 @@ all: readmes show
 
 .PHONY: show
 show:
-	$(MAKE) -C show
+	@$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER)
-	mkdir -p other
-	cd other/DinguxCommander && $(MAKE) -j
+	@mkdir -p other
+	@cd other/DinguxCommander && $(MAKE) -s
 
 clean:
-	cd other/DinguxCommander && $(MAKE) clean
+	@cd other/DinguxCommander && $(MAKE) -s clean
 
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch trimui-smart https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)

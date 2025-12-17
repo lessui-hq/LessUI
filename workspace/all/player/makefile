@@ -15,6 +15,7 @@ endif
 ###########################################################
 
 include ../../$(PLATFORM)/platform/makefile.env
+include ../common/cflags.mk
 SDL ?= SDL
 
 ###########################################################
@@ -49,9 +50,7 @@ CFLAGS = $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
 CFLAGS += -flto
 LDFLAGS = -ldl $(LIBS) -lmsettings -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
-           -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
-           -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+CFLAGS += $(WARN_FLAGS)
 # CFLAGS  += -fsanitize=address -fno-common
 # LDFLAGS += -lasan
 
@@ -63,7 +62,7 @@ CFLAGS += -DBUILD_DATE=\"${BUILD_DATE}\" -DBUILD_HASH=\"${BUILD_HASH}\"
 
 PRODUCT = build/$(PLATFORM)/$(TARGET).elf
 
-$(PRODUCT): $(SOURCE) $(HEADERS) | libretro-common $(PREFIX)/include/msettings.h
+$(PRODUCT): $(SOURCE) $(HEADERS) ../../hash.txt | libretro-common $(PREFIX)/include/msettings.h
 	mkdir -p build/$(PLATFORM)
 	$(CC) $(SOURCE) -o $(PRODUCT) $(CFLAGS) $(LDFLAGS)
 
@@ -73,7 +72,9 @@ clean:
 	rm -f $(PRODUCT)
 
 libretro-common:
-	git clone https://github.com/libretro/libretro-common
+	@[ -d libretro-common ] || git clone https://github.com/libretro/libretro-common
 
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
+	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
+
+.PHONY: all clean

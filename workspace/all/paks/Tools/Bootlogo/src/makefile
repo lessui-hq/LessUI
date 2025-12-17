@@ -36,10 +36,10 @@ clean:
 	@$(MAKE) -C miyoomini clean
 else
 all:
-	@echo "Bootlogo: No native build needed for $(PLATFORM) (shell script only)"
+	@true  # No native build needed for non-miyoomini platforms
 
 clean:
-	@echo "Bootlogo: No build artifacts to clean for $(PLATFORM)"
+	@true  # No build artifacts for non-miyoomini platforms
 endif
 
 # Hook interface

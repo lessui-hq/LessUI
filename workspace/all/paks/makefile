@@ -16,6 +16,9 @@
 #   - In pak root makefile (e.g., HTTP File Server/makefile)
 #   - In src/makefile (e.g., Clock/src/makefile)
 
+# Suppress "Entering/Leaving directory" messages
+MAKEFLAGS += --no-print-directory
+
 ###########################################################
 
 ifeq (,$(PLATFORM))

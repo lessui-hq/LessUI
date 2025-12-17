@@ -9,6 +9,9 @@
 #
 # Utils that don't implement a hook are skipped automatically.
 
+# Suppress "Entering/Leaving directory" messages
+MAKEFLAGS += --no-print-directory
+
 ###########################################################
 
 ifeq (,$(PLATFORM))

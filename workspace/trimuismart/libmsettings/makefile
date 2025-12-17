@@ -21,10 +21,10 @@ CFLAGS = -I$(INCLUDEDIR) $(OPT_FLAGS)
 LDFLAGS = -ldl -lrt -s
 
 build:
-	$(CC) -c -Werror -fpic "$(TARGET).c" -Wl,--no-as-needed $(CFLAGS)
-	$(CC) -shared -o "lib$(TARGET).so" "$(TARGET).o" $(LDFLAGS)
-	cp "$(TARGET).h" "$(PREFIX)/include"
-	cp "lib$(TARGET).so" "$(PREFIX)/lib"
+	@$(CC) -c -Werror -fpic "$(TARGET).c" -Wl,--no-as-needed $(CFLAGS)
+	@$(CC) -shared -o "lib$(TARGET).so" "$(TARGET).o" $(LDFLAGS)
+	@cp "$(TARGET).h" "$(PREFIX)/include"
+	@cp "lib$(TARGET).so" "$(PREFIX)/lib"
 clean:
 	rm -f *.o
 	rm -f "lib$(TARGET).so"

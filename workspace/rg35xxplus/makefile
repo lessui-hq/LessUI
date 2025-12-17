@@ -24,20 +24,20 @@ PLATFORM_TARGETS = boot init show
 all: readmes $(PLATFORM_TARGETS)
 
 boot:
-	cd boot && ./build.sh
+	@cd boot && ./build.sh
 
 init:
-	$(MAKE) -C init
+	@$(MAKE) -C init
 
 .PHONY: show
 show:
-	$(MAKE) -C show
+	@$(MAKE) -C show
 
 early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
-	mkdir -p other
-	cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) NO_PYTHON=1 dtc
-	cd $(REQUIRES_FBSET) && $(MAKE)
-	cd $(REQUIRES_SDL2) && CFLAGS="-O2 -march=armv8-a+crc -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
+	@mkdir -p other
+	@cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) -s NO_PYTHON=1 dtc
+	@cd $(REQUIRES_FBSET) && $(MAKE) -s
+	@cd $(REQUIRES_SDL2) && MAKEFLAGS=--no-print-directory CFLAGS="-O2 -march=armv8-a+crc -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
 		./configure CC=${CROSS_COMPILE}gcc --host=arm-buildroot-linux-gnueabihf \
 		  --enable-arm-neon \
 		  --disable-oss \
@@ -67,15 +67,15 @@ early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 		  --disable-hidapi-libusb \
 		  --disable-joystick-virtual \
 		  --enable-video-mali \
-		  --disable-libsamplerate && $(MAKE)
-	# copy libs from toolchain (later moved to build)
-	cp $(PREFIX)/lib/libSDL2_image-2.0.so.0.0.1 ../libSDL2_image-2.0.so.0
-	cp $(PREFIX)/lib/libSDL2_ttf-2.0.so.0.14.0 ../libSDL2_ttf-2.0.so.0
+		  --disable-libsamplerate >/dev/null && $(MAKE) -s
+	@# copy libs from toolchain (later moved to build)
+	@cp $(PREFIX)/lib/libSDL2_image-2.0.so.0.0.1 ../libSDL2_image-2.0.so.0
+	@cp $(PREFIX)/lib/libSDL2_ttf-2.0.so.0.14.0 ../libSDL2_ttf-2.0.so.0
 
 clean:
-	cd boot && rm -rf output
-	cd $(REQUIRES_FBSET) && $(MAKE) clean
-	rm -f ./boot/*.bmp
+	@cd boot && rm -rf output
+	@cd $(REQUIRES_FBSET) && $(MAKE) -s clean
+	@rm -f ./boot/*.bmp
 
 $(REQUIRES_SDL2):
 	git clone https://github.com/JohnnyonFlame/SDL-malifbdev-rot $(REQUIRES_SDL2)

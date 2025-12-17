@@ -18,15 +18,15 @@ all: readmes show
 
 .PHONY: show
 show:
-	$(MAKE) -C show
+	@$(MAKE) -C show
 
 early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
-	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
-	cd $(REQUIRES_SDLCOMPAT) && cmake --build build
+	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s
+	@cd $(REQUIRES_SDLCOMPAT) && cmake --build build >/dev/null
 
 clean:
-	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
-	cd $(REQUIRES_SDLCOMPAT) && rm -rf build
+	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s clean
+	@cd $(REQUIRES_SDLCOMPAT) && rm -rf build
 
 ###########################################################
 

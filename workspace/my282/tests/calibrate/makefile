@@ -39,4 +39,4 @@ clean:
 	rm -f $(PRODUCT)
 
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && make
+	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)

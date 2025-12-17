@@ -37,7 +37,7 @@ else
 setup:
 	@true
 build:
-	@echo "Skipping unified keymon for miyoomini (uses platform-specific implementation)"
+	@true
 install:
 	@true
 clean:

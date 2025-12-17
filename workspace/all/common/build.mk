@@ -61,6 +61,9 @@ BUILD_DIR ?= build
 COMMON_DIR ?= $(PLATFORM_DEPTH)all/common
 PLATFORM_DIR ?= $(PLATFORM_DEPTH)$(PLATFORM)/platform
 
+# Include shared warning flags
+include $(COMMON_DIR)/cflags.mk
+
 ###########################################################
 # Paths and sources
 
@@ -99,9 +102,7 @@ CC = $(CROSS_COMPILE)gcc
 OPT_FLAGS ?= -O3
 CFLAGS  = $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS)
-CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
-          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
-          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+CFLAGS += $(WARN_FLAGS)
 CFLAGS += $(EXTRA_CFLAGS)
 
 LDFLAGS  = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
@@ -141,6 +142,6 @@ clean:
 
 # Dependency: ensure libmsettings is built
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && make
+	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
 
 .PHONY: all setup build install clean

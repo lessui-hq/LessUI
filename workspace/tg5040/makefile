@@ -18,16 +18,16 @@ all: readmes show
 
 .PHONY: show
 show:
-	$(MAKE) -C show
+	@$(MAKE) -C show
 
 early: $(REQUIRES_EVTEST) $(REQUIRES_JSTEST) $(REQUIRES_COMMANDER)
-	mkdir -p other
-	cd $(REQUIRES_COMMANDER) && $(MAKE) -j
-	cd $(REQUIRES_EVTEST) && $(CROSS_COMPILE)gcc -o evtest evtest.c
-	cd $(REQUIRES_JSTEST) && $(CROSS_COMPILE)gcc -o jstest jstest.c
+	@mkdir -p other
+	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s
+	@cd $(REQUIRES_EVTEST) && $(CROSS_COMPILE)gcc -o evtest evtest.c
+	@cd $(REQUIRES_JSTEST) && $(CROSS_COMPILE)gcc -o jstest jstest.c
 
 clean:
-	cd $(REQUIRES_COMMANDER) && $(MAKE) clean
+	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s clean
 
 ###########################################################
 

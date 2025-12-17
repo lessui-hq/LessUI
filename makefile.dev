@@ -50,6 +50,9 @@ endif
 # Compiler and flags (native macOS)
 CC = gcc
 INCDIR = -I workspace/all/launcher -I workspace/all/common -I workspace/all/vendor/stb -I workspace/desktop/platform $(SDL_INCLUDES)
+# Include shared warning flags
+include workspace/all/common/cflags.mk
+
 # Dev builds always use full logging (INFO + DEBUG) and debug symbols
 # Keep -O3 for dev since ASan already catches memory issues; -O0 would make it too slow
 LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
@@ -57,9 +60,8 @@ OPT_FLAGS = -O3 -g
 CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
 CFLAGS += -DDEV_SCREEN_WIDTH=$(SCREEN_WIDTH) -DDEV_SCREEN_HEIGHT=$(SCREEN_HEIGHT)
 CFLAGS += -fsanitize=address -fno-common
-CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
-          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
-          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+CFLAGS += $(WARN_FLAGS)
+# macOS-specific warnings (clang)
 CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
 CFLAGS += -Wno-deprecated-declarations -Wno-incompatible-pointer-types-discards-qualifiers
 LDFLAGS = -ldl -flto $(SDL_LIBS) -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address
