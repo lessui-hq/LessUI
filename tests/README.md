@@ -130,10 +130,10 @@ Tests run in an Ubuntu 24.04 container. This eliminates macOS-specific build iss
 make test
 
 # Enter Docker container for debugging
-make -f makefile.qa docker-shell
+make -f Makefile.qa docker-shell
 
 # Rebuild Docker image
-make -f makefile.qa docker-build
+make -f Makefile.qa docker-build
 ```
 
 ### Native Testing (Advanced)
@@ -142,7 +142,7 @@ Run tests directly on your host system (not recommended on macOS due to architec
 
 ```bash
 # Run all tests natively
-make -f makefile.qa test-native
+make -f Makefile.qa test-native
 
 # Run individual test executables
 ./tests/utils_test         # Timing tests (2 tests)
@@ -166,7 +166,7 @@ make -f makefile.qa test-native
 
 ### Clean and Rebuild
 ```bash
-make -f makefile.qa clean-tests
+make -f Makefile.qa clean-tests
 make test
 ```
 
@@ -209,7 +209,7 @@ int main(void) {
 }
 ```
 
-### 3. Update makefile.qa
+### 3. Update Makefile.qa
 
 Add your test to the build:
 
@@ -1009,7 +1009,7 @@ Integration tests run automatically with `make test` (Docker-based):
 
 ```bash
 make test                          # Run all tests (unit + integration)
-make -f makefile.qa test-native    # Run natively (advanced)
+make -f Makefile.qa test-native    # Run natively (advanced)
 ```
 
 Integration tests are included in the standard test suite and run in Docker like all other tests.
@@ -1093,10 +1093,10 @@ CI systems should have Docker available. The test environment will automatically
 ### Debug in Docker Container
 ```bash
 # Enter the test container
-make -f makefile.qa docker-shell
+make -f Makefile.qa docker-shell
 
 # Inside container, build and run tests
-make -f makefile.qa clean-tests test-native
+make -f Makefile.qa clean-tests test-native
 
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \

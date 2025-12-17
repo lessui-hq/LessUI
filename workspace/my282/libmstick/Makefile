@@ -5,7 +5,7 @@ ifeq (,$(PREFIX))
 $(error missing PREFIX for this toolchain)
 endif
 
-include ../platform/makefile.env
+include ../platform/Makefile.env
 
 TARGET = mstick
 

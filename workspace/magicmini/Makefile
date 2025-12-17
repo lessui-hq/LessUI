@@ -26,4 +26,4 @@ clean:
 $(REQUIRES_351FILES):
 	git clone --depth 1 https://github.com/shauninman/351Files.git $(REQUIRES_351FILES)
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

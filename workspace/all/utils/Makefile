@@ -1,4 +1,4 @@
-# workspace/all/utils/makefile
+# workspace/all/utils/Makefile
 # Orchestrates all utility builds using a standard hook interface
 #
 # Each util can implement these hooks (all optional):
@@ -18,13 +18,13 @@ ifeq (,$(PLATFORM))
 PLATFORM = $(UNION_PLATFORM)
 endif
 
-# Discover all utils with makefiles (exclude third-party libraries)
-UTIL_DIRS := $(dir $(wildcard */makefile))
+# Discover all utils with Makefiles (exclude third-party libraries)
+UTIL_DIRS := $(dir $(wildcard */Makefile))
 UTIL_NAMES := $(filter-out parson,$(patsubst %/,%,$(UTIL_DIRS)))
 
 .PHONY: setup build install clean all
 
-# Default target when called from workspace/makefile (per-platform build)
+# Default target when called from workspace/Makefile (per-platform build)
 all: build
 
 # Setup hook - runs once before any platform builds

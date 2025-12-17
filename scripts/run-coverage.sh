@@ -52,7 +52,7 @@ done
 # Coverage compile flags
 COVERAGE_CFLAGS="--coverage -fprofile-arcs -ftest-coverage"
 
-# Test configuration (from makefile.qa)
+# Test configuration (from Makefile.qa)
 TEST_CFLAGS="-std=c99 -Wall -Wextra -Wno-unused-parameter $COVERAGE_CFLAGS"
 TEST_INCLUDES="-I tests/support -I tests/support/unity -I workspace/all/common -I workspace/all/launcher -I workspace/all/player"
 TEST_UNITY="tests/support/unity/unity.c"
@@ -71,7 +71,7 @@ rm -rf "$COVERAGE_DIR"
 find . -name "*.gcno" -delete 2>/dev/null || true
 find . -name "*.gcda" -delete 2>/dev/null || true
 find . -name "*.gcov" -delete 2>/dev/null || true
-make -f makefile.qa clean-tests >/dev/null 2>&1 || true
+make -f Makefile.qa clean-tests >/dev/null 2>&1 || true
 mkdir -p "$COVERAGE_DIR"
 
 ###########################################################
@@ -88,7 +88,7 @@ FAILED_SUITES=0
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE"' EXIT
 
-# Define test builds (simplified from makefile.qa, with coverage flags)
+# Define test builds (simplified from Makefile.qa, with coverage flags)
 # Each entry: "test_name:sources:extra_flags"
 declare -a TEST_BUILDS=(
 	"utils_test:tests/unit/all/common/test_utils.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c:"

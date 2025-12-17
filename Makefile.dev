@@ -157,9 +157,9 @@ dev-clean:
 
 # Convenience targets for specific aspect ratios
 dev-run-4x3:
-	@$(MAKE) -f makefile.dev dev-clean
-	@$(MAKE) -f makefile.dev dev-run ASPECT_RATIO=4x3
+	@$(MAKE) -f Makefile.dev dev-clean
+	@$(MAKE) -f Makefile.dev dev-run ASPECT_RATIO=4x3
 
 dev-run-16x9:
-	@$(MAKE) -f makefile.dev dev-clean
-	@$(MAKE) -f makefile.dev dev-run ASPECT_RATIO=16x9
+	@$(MAKE) -f Makefile.dev dev-clean
+	@$(MAKE) -f Makefile.dev dev-run ASPECT_RATIO=16x9

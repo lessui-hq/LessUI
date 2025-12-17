@@ -1,4 +1,4 @@
-#my282
+# zero28
 
 ###########################################################
 
@@ -15,8 +15,7 @@ endif
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
 all: readmes show
-	@cd overclock && $(MAKE)
-	@cd other/squashfs && $(MAKE)
+	@cd bl && $(MAKE)
 
 .PHONY: show
 show:
@@ -25,14 +24,12 @@ show:
 early: $(REQUIRES_COMMANDER)
 	@mkdir -p other
 	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s
-	@cd libmstick && $(MAKE) -s
 
 clean:
-	@cd overclock && $(MAKE) -s clean
-	@cd other/squashfs && $(MAKE) -s clean
+	@cd bl && $(MAKE) -s clean
 	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s clean
 
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 https://github.com/shauninman/DinguxCommander-sdl2.git $(REQUIRES_COMMANDER)
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

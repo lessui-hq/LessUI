@@ -17,8 +17,8 @@
 #   make build PLATFORM=<platform>  - Build binaries for specific platform
 #   make system PLATFORM=<platform> - Copy binaries to build directory
 #
-# See makefile.qa for quality assurance targets
-# See makefile.toolchain for Docker/cross-compilation setup
+# See Makefile.qa for quality assurance targets
+# See Makefile.toolchain for Docker/cross-compilation setup
 
 # prevent accidentally triggering a full build with invalid calls
 ifneq (,$(PLATFORM))
@@ -121,46 +121,46 @@ all: setup $(PLATFORMS) special package
 
 # Enter Docker build environment for a specific platform
 shell:
-	$(MAKE) -f makefile.toolchain PLATFORM=$(PLATFORM)
+	$(MAKE) -f Makefile.toolchain PLATFORM=$(PLATFORM)
 
 # Print release name (useful for CI/scripts)
 name:
 	@echo $(RELEASE_NAME)
 
-# QA convenience targets (forward to makefile.qa)
+# QA convenience targets (forward to Makefile.qa)
 test:
-	@$(MAKE) -f makefile.qa test
+	@$(MAKE) -f Makefile.qa test
 
 coverage:
-	@$(MAKE) -f makefile.qa coverage
+	@$(MAKE) -f Makefile.qa coverage
 
 lint:
-	@$(MAKE) -f makefile.qa lint
+	@$(MAKE) -f Makefile.qa lint
 
 analyze:
-	@$(MAKE) -f makefile.qa analyze
+	@$(MAKE) -f Makefile.qa analyze
 
 format:
-	@$(MAKE) -f makefile.qa format
+	@$(MAKE) -f Makefile.qa format
 
 format-check:
-	@$(MAKE) -f makefile.qa format-check
+	@$(MAKE) -f Makefile.qa format-check
 
-# macOS development targets (forward to makefile.dev)
+# macOS development targets (forward to Makefile.dev)
 dev:
-	@$(MAKE) -f makefile.dev dev
+	@$(MAKE) -f Makefile.dev dev
 
 dev-run:
-	@$(MAKE) -f makefile.dev dev-run
+	@$(MAKE) -f Makefile.dev dev-run
 
 dev-clean:
-	@$(MAKE) -f makefile.dev dev-clean
+	@$(MAKE) -f Makefile.dev dev-clean
 
 dev-run-4x3:
-	@$(MAKE) -f makefile.dev dev-run-4x3
+	@$(MAKE) -f Makefile.dev dev-run-4x3
 
 dev-run-16x9:
-	@$(MAKE) -f makefile.dev dev-run-16x9
+	@$(MAKE) -f Makefile.dev dev-run-16x9
 
 # Deploy to SD card for rapid dev iteration (skips zip/unzip)
 # Usage: make dev-deploy              - Deploy all platforms
@@ -187,7 +187,7 @@ build:
 	@echo "# ----------------------------------------------------"
 	@echo "# $(PLATFORM)"
 	@echo "# ----------------------------------------------------"
-	@$(MAKE) build -f makefile.toolchain PLATFORM=$(PLATFORM)
+	@$(MAKE) build -f Makefile.toolchain PLATFORM=$(PLATFORM)
 
 # Copy platform binaries to build directory
 system:
@@ -196,7 +196,7 @@ system:
 	@cp ./workspace/all/player/build/$(PLATFORM)/player.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	@cp ./workspace/all/syncsettings/build/$(PLATFORM)/syncsettings.elf ./build/SYSTEM/$(PLATFORM)/bin/
 	@$(MAKE) -C ./workspace/all/utils install PLATFORM=$(PLATFORM) DESTDIR=$(CURDIR)/build/SYSTEM/$(PLATFORM)/bin
-	@$(MAKE) -s -f ./workspace/$(PLATFORM)/platform/makefile.copy PLATFORM=$(PLATFORM)
+	@$(MAKE) -s -f ./workspace/$(PLATFORM)/platform/Makefile.copy PLATFORM=$(PLATFORM)
 	@./scripts/construct-tool-paks.sh $(PLATFORM) $(DEBUG)
 	@if [ "$(PLATFORM)" = "rg35xxplus" ]; then \
 		mkdir -p ./build/Tools/rg35xxplus/Apply\ Panel\ Fix.pak/bin; \

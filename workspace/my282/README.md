@@ -48,8 +48,8 @@ Platform implementation for the MY282 retro handheld device.
 my282/
 ├── platform/          Platform-specific hardware definitions
 │   ├── platform.h     Button mappings, display specs, input codes
-│   ├── makefile.env   Toolchain settings (Cortex-A53)
-│   └── makefile.copy  File copy rules for deployment
+│   ├── Makefile.env   Toolchain settings (Cortex-A53)
+│   └── Makefile.copy  File copy rules for deployment
 ├── keymon/            Hardware button monitoring daemon
 │   ├── keymon.c       Volume/brightness control daemon
 │   └── credits.txt    Attribution (based on TrimUI Smart implementation)

@@ -86,4 +86,4 @@ $(REQUIRES_DTC):
 $(REQUIRES_FBSET):
 	git clone https://github.com/shauninman/union-fbset $(REQUIRES_FBSET)
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

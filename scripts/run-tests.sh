@@ -59,10 +59,10 @@ trap 'rm -f "$TMPFILE"' EXIT
 
 # Build all tests first
 echo -e "${BOLD}Building tests...${RESET}"
-make -f makefile.qa clean-tests >/dev/null 2>&1 || true
+make -f Makefile.qa clean-tests >/dev/null 2>&1 || true
 
 # Get list of test executables from makefile
-TEST_EXECUTABLES=$(grep '^TEST_EXECUTABLES' makefile.qa | sed 's/TEST_EXECUTABLES = //' | tr ' ' '\n' | grep -v '^$')
+TEST_EXECUTABLES=$(grep '^TEST_EXECUTABLES' Makefile.qa | sed 's/TEST_EXECUTABLES = //' | tr ' ' '\n' | grep -v '^$')
 
 # Count total suites
 TOTAL_SUITES=$(echo "$TEST_EXECUTABLES" | wc -l | tr -d ' ')
@@ -79,7 +79,7 @@ for test_exe in $TEST_EXECUTABLES; do
 	suite_name=$(basename "$test_exe" | sed 's/_test$//')
 
 	# Build the test
-	if ! make -f makefile.qa "$test_exe" >"$TMPFILE" 2>&1; then
+	if ! make -f Makefile.qa "$test_exe" >"$TMPFILE" 2>&1; then
 		echo -e "  ${RED}[FAIL]${RESET} $suite_name ${DIM}(build failed)${RESET}"
 		SUITE_NAMES+=("$suite_name")
 		SUITE_TESTS+=(0)

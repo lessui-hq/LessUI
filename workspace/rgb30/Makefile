@@ -39,4 +39,4 @@ $(REQUIRES_SDLCOMPAT):
 $(REQUIRES_SDLCOMPAT)/build: $(REQUIRES_SDLCOMPAT)
 	cd $(REQUIRES_SDLCOMPAT) && cmake --toolchain ./toolchain.cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

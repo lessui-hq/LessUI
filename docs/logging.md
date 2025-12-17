@@ -311,10 +311,10 @@ CFLAGS += -DENABLE_INFO_LOGS
 # keymon/makefile - Hardware daemon (ERROR/WARN only)
 # No flags = minimal logging for performance
 
-# makefile.dev - Development builds (ALL levels)
+# Makefile.dev - Development builds (ALL levels)
 CFLAGS += -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 
-# makefile.qa - Test builds (ALL levels)
+# Makefile.qa - Test builds (ALL levels)
 CFLAGS += -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
 ```
 

@@ -1,5 +1,3 @@
-# my355
-
 ###########################################################
 
 ifeq (,$(PLATFORM))
@@ -7,30 +5,26 @@ PLATFORM = $(UNION_PLATFORM)
 endif
 
 ifeq (,$(PLATFORM))
-$(error please specify PLATFORM, eg. PLATFORM=trimui make)
+$(error please specify PLATFORM, eg. PLATFORM=rgb30 make)
 endif
 
 ###########################################################
 
 REQUIRES_EVTEST = other/evtest
-REQUIRES_MKBOOTIMG = other/mkbootimg
-REQUIRES_RSCEGO = other/rsce-go
+REQUIRES_JSTEST = other/jstest
 REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
-# keymon.elf is now built in workspace/all/utils
 all: readmes show
-	@cd other/squashfs && $(MAKE)
 
 .PHONY: show
 show:
 	@$(MAKE) -C show
 
-early: $(REQUIRES_EVTEST) $(REQUIRES_MKBOOTIMG) $(REQUIRES_RSCEGO) $(REQUIRES_COMMANDER)
+early: $(REQUIRES_EVTEST) $(REQUIRES_JSTEST) $(REQUIRES_COMMANDER)
 	@mkdir -p other
 	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s
 	@cd $(REQUIRES_EVTEST) && $(CROSS_COMPILE)gcc -o evtest evtest.c
-	@cd $(REQUIRES_MKBOOTIMG) && $(MAKE) -s
-	@cd $(REQUIRES_RSCEGO) && go build -o rsce_tool
+	@cd $(REQUIRES_JSTEST) && $(CROSS_COMPILE)gcc -o jstest jstest.c
 
 clean:
 	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s clean
@@ -41,10 +35,8 @@ $(REQUIRES_COMMANDER):
 	git clone --depth 1 https://github.com/shauninman/DinguxCommander-sdl2.git $(REQUIRES_COMMANDER)
 $(REQUIRES_EVTEST):
 	git clone --depth 1 https://github.com/freedesktop-unofficial-mirror/evtest.git $(REQUIRES_EVTEST)
-$(REQUIRES_MKBOOTIMG):
-	git clone --depth 1 https://github.com/osm0sis/mkbootimg $(REQUIRES_MKBOOTIMG)
-$(REQUIRES_RSCEGO):
-	git clone --depth 1 https://github.com/Evsio0n/rsce-go $(REQUIRES_RSCEGO)
-	cd $(REQUIRES_RSCEGO) && go mod tidy && go mod download
 
-include ../all/readmes/makefile
+$(REQUIRES_JSTEST):
+	git clone --depth 1 https://github.com/datrh/joyutils.git $(REQUIRES_JSTEST)
+
+include ../all/readmes/Makefile

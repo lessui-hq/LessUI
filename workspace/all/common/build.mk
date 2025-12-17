@@ -48,7 +48,7 @@ endif
 # Include platform-specific environment
 # Caller must set PLATFORM_DEPTH to number of ../ needed to reach workspace/
 PLATFORM_DEPTH ?= ../../../
-include $(PLATFORM_DEPTH)$(PLATFORM)/platform/makefile.env
+include $(PLATFORM_DEPTH)$(PLATFORM)/platform/Makefile.env
 
 endif  # not install
 endif  # not setup/clean

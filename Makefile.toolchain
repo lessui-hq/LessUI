@@ -7,8 +7,8 @@
 # Container images: ghcr.io/lessui-hq/union-<platform>-toolchain:latest
 #
 # Usage (typically called from main makefile):
-#   make -f makefile.toolchain PLATFORM=miyoomini       # Enter shell
-#   make -f makefile.toolchain PLATFORM=miyoomini build # Build all
+#   make -f Makefile.toolchain PLATFORM=miyoomini       # Enter shell
+#   make -f Makefile.toolchain PLATFORM=miyoomini build # Build all
 #
 # Adding a new platform:
 #   1. Fork the union-<platform>-toolchain repo to lessui-hq org
@@ -21,7 +21,7 @@
 .PHONY: all build clean pull
 
 ifeq (,$(PLATFORM))
-$(error PLATFORM not specified. Use: make -f makefile.toolchain PLATFORM=<platform>)
+$(error PLATFORM not specified. Use: make -f Makefile.toolchain PLATFORM=<platform>)
 endif
 
 # Workspace paths (host and Docker container)

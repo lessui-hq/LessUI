@@ -57,4 +57,4 @@ $(REQUIRES_SDL):
 $(REQUIRES_COMMANDER):
 	git clone --depth 1 --branch miniui-miyoomini https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

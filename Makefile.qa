@@ -12,7 +12,7 @@
 #   make format  - Auto-format code (modifies files)
 #
 # The main makefile forwards to this file for test/lint/format targets.
-# Run 'make -f makefile.qa help' for complete target list.
+# Run 'make -f Makefile.qa help' for complete target list.
 
 .PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
@@ -548,7 +548,7 @@ format-native: check-clang-format check-shfmt check-mbake check-prettier
 	@echo "✓ Shell scripts formatted"
 	@echo ""
 	@echo "Formatting makefiles with mbake..."
-	@find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) \
+	@find . \( -name "Makefile" -o -name "Makefile.*" \) \
 		-not -path "*/other/*" \
 		-not -path "*/toolchains/*" \
 		-not -path "*/cores/*" \
@@ -567,7 +567,7 @@ format-native: check-clang-format check-shfmt check-mbake check-prettier
 format-check: check-clang-format
 	@echo "Checking code formatting..."
 	@$(CLANG_FORMAT) --dry-run -Werror $(FORMAT_PATHS) 2>&1 || \
-		(echo "✗ Code is not formatted. Run 'make -f makefile.qa format' to fix." && exit 1)
+		(echo "✗ Code is not formatted. Run 'make -f Makefile.qa format' to fix." && exit 1)
 	@echo "✓ Code is properly formatted"
 
 ###########################################################
@@ -603,13 +603,13 @@ format-shell-check: check-shfmt
 		-not -path "*/desktop/FAKESD/*" \
 		-not -path "*/em_ui.sh" \
 		-exec shfmt -d -i 0 -bn -ci {} \; || \
-		(echo "✗ Shell scripts not formatted. Run 'make -f makefile.qa format-shell' to fix." && exit 1)
+		(echo "✗ Shell scripts not formatted. Run 'make -f Makefile.qa format-shell' to fix." && exit 1)
 	@shfmt -d -i 0 -bn -ci $(ROOT_SCRIPTS) || \
-		(echo "✗ Shell scripts not formatted. Run 'make -f makefile.qa format-shell' to fix." && exit 1)
+		(echo "✗ Shell scripts not formatted. Run 'make -f Makefile.qa format-shell' to fix." && exit 1)
 	@for script in $(BIN_SCRIPTS); do \
 		if [ -f "$$script" ]; then \
 			shfmt -d -i 0 -bn -ci "$$script" || \
-			(echo "✗ Shell scripts not formatted. Run 'make -f makefile.qa format-shell' to fix." && exit 1); \
+			(echo "✗ Shell scripts not formatted. Run 'make -f Makefile.qa format-shell' to fix." && exit 1); \
 		fi; \
 	done
 	@echo "✓ Shell scripts properly formatted"
@@ -619,7 +619,7 @@ format-shell-check: check-shfmt
 
 # Find all makefiles we maintain (exclude third-party)
 # Note: Don't use MAKEFILES as variable name - it's special in GNU make
-MAKEFILE_PATHS = $(shell find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) 2>/dev/null | \
+MAKEFILE_PATHS = $(shell find . \( -name "Makefile" -o -name "Makefile.*" \) 2>/dev/null | \
               grep -v "./workspace/.*/other/" | \
               grep -v "./workspace/.*/toolchains/" | \
               grep -v "./workspace/.*/cores/" | \
@@ -632,7 +632,7 @@ check-mbake:
 # Format makefiles in-place
 format-make: check-mbake
 	@echo "Formatting makefiles with mbake..."
-	@find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) \
+	@find . \( -name "Makefile" -o -name "Makefile.*" \) \
 		-not -path "*/other/*" \
 		-not -path "*/toolchains/*" \
 		-not -path "*/cores/*" \
@@ -645,7 +645,7 @@ format-make: check-mbake
 format-make-check: check-mbake
 	@echo "Checking makefile formatting..."
 	@FAILED=0; \
-	find . \( -name "makefile" -o -name "Makefile" -o -name "makefile.*" \) \
+	find . \( -name "Makefile" -o -name "Makefile.*" \) \
 		-not -path "*/other/*" \
 		-not -path "*/toolchains/*" \
 		-not -path "*/cores/*" \
@@ -653,7 +653,7 @@ format-make-check: check-mbake
 		-not -path "*/parson/*" \
 		-exec sh -c 'mbake format --check "$$1" 2>/dev/null || exit 1' _ {} \; || FAILED=1; \
 	if [ $$FAILED -eq 1 ]; then \
-		echo "✗ Makefiles not formatted. Run 'make -f makefile.qa format-make' to fix."; \
+		echo "✗ Makefiles not formatted. Run 'make -f Makefile.qa format-make' to fix."; \
 		exit 1; \
 	fi
 	@echo "✓ Makefiles properly formatted"
@@ -679,7 +679,7 @@ format-prettier: check-prettier
 format-prettier-check: check-prettier
 	@echo "Checking JSON, YAML, and Markdown formatting..."
 	@prettier --check $(PRETTIER_IGNORE) $(PRETTIER_PATTERNS) || \
-		(echo "✗ Files not formatted. Run 'make -f makefile.qa format-prettier' to fix." && exit 1)
+		(echo "✗ Files not formatted. Run 'make -f Makefile.qa format-prettier' to fix." && exit 1)
 	@echo "✓ JSON, YAML, and Markdown properly formatted"
 
 ###########################################################
@@ -767,19 +767,19 @@ docker-test-quiet: docker-build
 
 docker-lint: docker-build
 	@echo "Running linting in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f makefile.qa lint-native
+	$(DEV_RUN) make -f Makefile.qa lint-native
 
 docker-analyze: docker-build
 	@echo "Running static analysis in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f makefile.qa analyze-native
+	$(DEV_RUN) make -f Makefile.qa analyze-native
 
 docker-format: docker-build
 	@echo "Running formatter in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f makefile.qa format-native
+	$(DEV_RUN) make -f Makefile.qa format-native
 
 docker-format-check: docker-build
 	@echo "Checking formatting in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f makefile.qa format-check
+	$(DEV_RUN) make -f Makefile.qa format-check
 
 docker-shell: docker-build
 	@echo "Entering dev container shell (Ubuntu 24.04)..."
@@ -791,17 +791,17 @@ lint-native: check-clang-tidy check-clang-format check-shellcheck check-shfmt ch
 	echo "Running ALL linting checks..." && \
 	echo "=================================" && \
 	echo "" && \
-	$(MAKE) -f makefile.qa lint-code && \
+	$(MAKE) -f Makefile.qa lint-code && \
 	echo "" && \
-	$(MAKE) -f makefile.qa format-check && \
+	$(MAKE) -f Makefile.qa format-check && \
 	echo "" && \
-	$(MAKE) -f makefile.qa format-shell-check && \
+	$(MAKE) -f Makefile.qa format-shell-check && \
 	echo "" && \
-	$(MAKE) -f makefile.qa format-make-check && \
+	$(MAKE) -f Makefile.qa format-make-check && \
 	echo "" && \
-	$(MAKE) -f makefile.qa format-prettier-check && \
+	$(MAKE) -f Makefile.qa format-prettier-check && \
 	echo "" && \
-	$(MAKE) -f makefile.qa lint-shell && \
+	$(MAKE) -f Makefile.qa lint-shell && \
 	echo "" && \
 	echo "=================================" && \
 	echo "✓ All linting checks passed" && \

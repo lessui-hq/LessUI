@@ -1,3 +1,5 @@
+#rg35xx
+
 ###########################################################
 
 ifeq (,$(PLATFORM))
@@ -12,21 +14,20 @@ endif
 
 REQUIRES_COMMANDER = other/DinguxCommander
 
-# keymon.elf is now built in workspace/all/utils
-all: readmes show
-
-.PHONY: show
-show:
-	@$(MAKE) -C show
+all: readmes
+	@cd ./overclock && $(MAKE)
+	@cd ./boot && ./build.sh
 
 early: $(REQUIRES_COMMANDER)
-	@mkdir -p other
 	@cd other/DinguxCommander && $(MAKE) -s
 
 clean:
+	@cd ./overclock && $(MAKE) -s clean
+	@cd ./boot && rm -rf ./output
 	@cd other/DinguxCommander && $(MAKE) -s clean
+	@rm -f ./boot/*.bmp ./boot/boot_logo.png
 
 $(REQUIRES_COMMANDER):
-	git clone --depth 1 --branch trimui-smart https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
+	git clone --depth 1 --branch launcher-rg35xx https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
 
-include ../all/readmes/makefile
+include ../all/readmes/Makefile

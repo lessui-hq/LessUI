@@ -130,7 +130,7 @@ make
 The platform automatically clones required dependencies on first build:
 - **351Files**: `github.com/shauninman/351Files.git` (file manager)
 
-Note: Unlike most platforms, Magic Mini has no SDL dependency in its makefile.
+Note: Unlike most platforms, Magic Mini has no SDL dependency in its Makefile.
 
 ## Installation
 

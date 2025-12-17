@@ -26,7 +26,7 @@ endif
 
 # Include platform environment for ARCH flags
 PLATFORM_DEPTH = ../../../../../
-include $(PLATFORM_DEPTH)$(PLATFORM)/platform/makefile.env
+include $(PLATFORM_DEPTH)$(PLATFORM)/platform/Makefile.env
 
 endif  # not install
 endif  # not setup/clean
