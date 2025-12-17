@@ -483,6 +483,8 @@ See `.clang-format` for complete style definition.
 | Libretro frontend             | `workspace/all/player/player.c`                |
 | Utility functions             | `workspace/all/common/utils.c`                 |
 | Platform API                  | `workspace/all/common/api.c`                   |
+| UI layout calculations        | `workspace/all/common/ui_layout.c`             |
+| UI layout header              | `workspace/all/common/ui_layout.h`             |
 | Player internal types         | `workspace/all/player/player_internal.h`       |
 | Player context/state          | `workspace/all/player/player_context.c`        |
 | Player menu system            | `workspace/all/player/player_menu.c`           |
@@ -532,7 +534,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 1448 tests across 47 test suites** ✅
+**Total: 1470 tests across 46 test suites** ✅
 
 ### Extracted and Tested Modules
 
@@ -564,7 +566,7 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | map_parser.c                   | 47    | launcher.c/player.c | ROM display name aliasing                                         |
 | m3u_parser.c                   | 20    | launcher.c          | M3U playlist parsing                                              |
 | audio_resampler.c              | 20    | api.c               | Sample rate conversion                                            |
-| ui_layout.c                    | 1\*   | api.c               | UI layout calculations (DP system)                                |
+| ui_layout.c                    | 23    | api.c               | UI layout calculations (DP system)                                |
 | player_config.c                | 19    | player.c            | Config path generation, option mapping                            |
 | launcher_file_utils.c          | 18    | launcher.c          | File/dir checking utilities                                       |
 | recent_file.c                  | 31    | launcher.c          | Recent games I/O + Recent struct & array ops                      |
@@ -578,8 +580,6 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | binary_file_utils.c            | 12    | player.c            | Binary file read/write                                            |
 | collection_parser.c            | 11    | launcher.c          | Custom ROM list parsing                                           |
 | integration_workflows          | 22    | -                   | End-to-end workflow tests                                         |
-
-\* ui_layout.c tests are currently disabled - the module needs extraction from api.c for proper testing. See `tests/unit/all/common/test_ui_layout.c` for details.
 
 ### Testing Technologies
 

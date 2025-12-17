@@ -72,6 +72,7 @@ LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
                workspace/all/common/utils.c \
                workspace/all/common/nointro_parser.c \
                workspace/all/common/api.c \
+               workspace/all/common/ui_layout.c \
                workspace/all/common/log.c \
                workspace/all/common/stb_ds_impl.c \
                workspace/all/common/pad.c \
