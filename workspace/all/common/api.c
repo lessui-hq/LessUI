@@ -2217,13 +2217,13 @@ void SND_setMinLatency(unsigned latency_ms) {
 	}
 
 	// Calculate required samples for requested latency
-	int required_samples = (latency_ms * snd.sample_rate_out) / 1000;
+	size_t required_samples = (latency_ms * snd.sample_rate_out) / 1000;
 
 	// Default is the floor - any request at or below default resets to default
 	// (matches RetroArch behavior)
 	if (required_samples < SND_BUFFER_SAMPLES) {
 		if (latency_ms != 0) {
-			LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums (%d samples) below default, using default",
+			LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums (%zu samples) below default, using default",
 			          latency_ms, required_samples);
 		}
 		required_samples = SND_BUFFER_SAMPLES;
@@ -2231,20 +2231,20 @@ void SND_setMinLatency(unsigned latency_ms) {
 
 	// No change needed
 	if (required_samples == snd.frame_count) {
-		LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums - no change needed (already at %d samples)",
+		LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums - no change needed (already at %zu samples)",
 		          latency_ms, snd.frame_count);
 		return;
 	}
 
-	LOG_info("SET_MINIMUM_AUDIO_LATENCY: %ums - resizing buffer from %d to %d samples", latency_ms,
-	         snd.frame_count, required_samples);
+	LOG_info("SET_MINIMUM_AUDIO_LATENCY: %ums - resizing buffer from %zu to %zu samples",
+	         latency_ms, snd.frame_count, required_samples);
 
 	SDL_LockAudio();
 
-	int buffer_bytes = required_samples * sizeof(SND_Frame);
+	size_t buffer_bytes = required_samples * sizeof(SND_Frame);
 	void* new_buffer = realloc(snd.buffer, buffer_bytes);
 	if (!new_buffer) {
-		LOG_error("Failed to allocate audio buffer (%d bytes)", buffer_bytes);
+		LOG_error("Failed to allocate audio buffer (%zu bytes)", buffer_bytes);
 		SDL_UnlockAudio();
 		return;
 	}
