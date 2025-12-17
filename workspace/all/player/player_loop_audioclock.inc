@@ -24,8 +24,7 @@ static void run_main_loop(void) {
 
 	LOG_debug("Entering main loop (audioclock mode)");
 	sec_start = SDL_GetTicks();
-	static uint32_t last_ff_flip = 0;
-	last_ff_flip = 0; // Reset on each game session
+	uint32_t last_ff_flip = 0;
 	while (!quit) {
 		GFX_startFrame();
 		input_polled_this_frame = 0; // Reset at start of frame

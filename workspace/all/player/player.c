@@ -2511,8 +2511,8 @@ static uint64_t perf_get_cpu_features(void) {
 	features |= RETRO_SIMD_VFPV3;
 #endif
 
-	// CMOV available on ARMv7+
-#if defined(__aarch64__) || defined(__ARM_ARCH_7A__)
+	// CMOV available on ARMv7+ (including ARMv8)
+#if defined(__aarch64__) || (defined(__ARM_ARCH) && __ARM_ARCH >= 7)
 	features |= RETRO_SIMD_CMOV;
 #endif
 
@@ -5115,7 +5115,9 @@ static void limitFF(void) {
 	static int last_max_speed = -1;
 	if (last_max_speed != max_ff_speed) {
 		last_max_speed = max_ff_speed;
-		ff_frame_time = 1000000 / (core.fps * (max_ff_speed + 2));
+		if (core.fps > 0) {
+			ff_frame_time = 1000000 / (core.fps * (max_ff_speed + 2));
+		}
 	}
 
 	uint64_t now = getMicroseconds();

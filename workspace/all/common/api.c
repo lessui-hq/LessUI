@@ -2217,7 +2217,8 @@ void SND_setMinLatency(unsigned latency_ms) {
 	}
 
 	// Calculate required samples for requested latency
-	size_t required_samples = (latency_ms * snd.sample_rate_out) / 1000;
+	// Use 64-bit arithmetic to prevent overflow with high sample rates
+	size_t required_samples = (size_t)((uint64_t)latency_ms * snd.sample_rate_out / 1000);
 
 	// Default is the floor - any request at or below default resets to default
 	// (matches RetroArch behavior)
