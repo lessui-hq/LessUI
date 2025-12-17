@@ -62,7 +62,7 @@ Recent_Entry** Recent_parse(char* recent_path, const char* sdcard_path, int* ent
 
 			// Construct full SD card path
 			char sd_path[256];
-			(void)sprintf(sd_path, "%s%s", sdcard_path, path);
+			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", sdcard_path, path);
 
 			// Only include ROMs that exist
 			if (exists(sd_path)) {

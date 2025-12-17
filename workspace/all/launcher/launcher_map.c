@@ -95,7 +95,7 @@ MapEntry* Map_load(const char* map_path) {
  */
 static int getPakMapPathForEmu(const char* emu_name, char* pak_map_path) {
 	char relative_path[512];
-	(void)sprintf(relative_path, "paks/Emus/%s.pak/map.txt", emu_name);
+	(void)snprintf(relative_path, sizeof(relative_path), "paks/Emus/%s.pak/map.txt", emu_name);
 	return findSystemFile(relative_path, pak_map_path);
 }
 

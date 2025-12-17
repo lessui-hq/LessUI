@@ -249,10 +249,17 @@ static void Game_open(char* path) {
 					char ext_list[256] = {0};
 					size_t pos = 0;
 					for (int i = 0; extensions[i] && pos < sizeof(ext_list) - 10; i++) {
-						if (i > 0)
-							pos += snprintf(ext_list + pos, sizeof(ext_list) - pos, ", ");
-						pos +=
+						if (i > 0) {
+							int written = snprintf(ext_list + pos, sizeof(ext_list) - pos, ", ");
+							if (written < 0 || pos + (size_t)written >= sizeof(ext_list))
+								break;
+							pos += (size_t)written;
+						}
+						int written =
 						    snprintf(ext_list + pos, sizeof(ext_list) - pos, ".%s", extensions[i]);
+						if (written < 0 || pos + (size_t)written >= sizeof(ext_list))
+							break;
+						pos += (size_t)written;
 					}
 					setFatalError("No compatible files found in archive\nExpected: %s", ext_list);
 				} else {
@@ -370,7 +377,7 @@ void Game_changeDisc(char* path) {
 // (e.g., Pokémon, Zelda, RPGs). Stored as .sav files in /mnt/SDCARD/Saves/<platform>/
 
 static void SRAM_getPath(char* filename) {
-	(void)sprintf(filename, "%s/%s.sav", core.saves_dir, game.name);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.sav", core.saves_dir, game.name);
 }
 
 /**
@@ -424,7 +431,7 @@ void SRAM_write(void) {
 // This data is stored separately from SRAM as .rtc files.
 
 static void RTC_getPath(char* filename) {
-	(void)sprintf(filename, "%s/%s.rtc", core.saves_dir, game.name);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.rtc", core.saves_dir, game.name);
 }
 
 /**
@@ -478,7 +485,7 @@ void RTC_write(void) {
 static int state_slot = 0; // Currently selected slot (0-9)
 
 void State_getPath(char* filename) {
-	(void)sprintf(filename, "%s/%s.st%i", core.states_dir, game.name, state_slot);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.st%i", core.states_dir, game.name, state_slot);
 }
 
 /**
@@ -1473,11 +1480,11 @@ enum {
 static void Config_getPath(char* filename, int override) {
 	char device_tag[64] = {0};
 	if (config.device_tag)
-		(void)sprintf(device_tag, "-%s", config.device_tag);
+		(void)snprintf(device_tag, sizeof(device_tag), "-%s", config.device_tag);
 	if (override)
-		(void)sprintf(filename, "%s/%s%s.cfg", core.config_dir, game.name, device_tag);
+		(void)snprintf(filename, MAX_PATH, "%s/%s%s.cfg", core.config_dir, game.name, device_tag);
 	else
-		(void)sprintf(filename, "%s/player%s.cfg", core.config_dir, device_tag);
+		(void)snprintf(filename, MAX_PATH, "%s/player%s.cfg", core.config_dir, device_tag);
 	LOG_debug("Config_getPath %s", filename);
 }
 
@@ -1616,8 +1623,8 @@ static void Config_readControlsString(char* cfg) {
 	char* tmp;
 	for (int i = 0; config.controls[i].name; i++) {
 		PlayerButtonMapping* mapping = &config.controls[i];
-		(void)sprintf(key, "bind %s", mapping->name);
-		(void)sprintf(value, "NONE");
+		(void)snprintf(key, sizeof(key), "bind %s", mapping->name);
+		(void)snprintf(value, sizeof(value), "NONE");
 
 		if (!PlayerConfig_getValue(cfg, key, value, NULL))
 			continue;
@@ -1645,8 +1652,8 @@ static void Config_readControlsString(char* cfg) {
 
 	for (int i = 0; config.shortcuts[i].name; i++) {
 		PlayerButtonMapping* mapping = &config.shortcuts[i];
-		(void)sprintf(key, "bind %s", mapping->name);
-		(void)sprintf(value, "NONE");
+		(void)snprintf(key, sizeof(key), "bind %s", mapping->name);
+		(void)snprintf(value, sizeof(value), "NONE");
 
 		if (!PlayerConfig_getValue(cfg, key, value, NULL))
 			continue;
@@ -1688,7 +1695,8 @@ static void Config_load(void) {
 
 	char device_system_path[MAX_PATH] = {0};
 	if (config.device_tag)
-		(void)sprintf(device_system_path, SYSTEM_PATH "/system-%s.cfg", config.device_tag);
+		(void)snprintf(device_system_path, sizeof(device_system_path), SYSTEM_PATH "/system-%s.cfg",
+		               config.device_tag);
 
 	if (config.device_tag && exists(device_system_path)) {
 		LOG_info("Using device_system_path: %s", device_system_path);
@@ -1710,7 +1718,7 @@ static void Config_load(void) {
 		getEmuPath((char*)core.tag, device_default_path);
 		tmp = strrchr(device_default_path, '/');
 		char filename[64];
-		(void)sprintf(filename, "/default-%s.cfg", config.device_tag);
+		(void)snprintf(filename, sizeof(filename), "/default-%s.cfg", config.device_tag);
 		safe_strcpy(tmp, filename, MAX_PATH - (tmp - device_default_path));
 	}
 
@@ -1812,16 +1820,18 @@ static void Config_restore(void) {
 	char path[MAX_PATH];
 	if (config.loaded == CONFIG_GAME) {
 		if (config.device_tag)
-			(void)sprintf(path, "%s/%s-%s.cfg", core.config_dir, game.name, config.device_tag);
+			(void)snprintf(path, sizeof(path), "%s/%s-%s.cfg", core.config_dir, game.name,
+			               config.device_tag);
 		else
-			(void)sprintf(path, "%s/%s.cfg", core.config_dir, game.name);
+			(void)snprintf(path, sizeof(path), "%s/%s.cfg", core.config_dir, game.name);
 		(void)unlink(path); // Removing game config file
 		LOG_info("Deleted game config: %s", path);
 	} else if (config.loaded == CONFIG_CONSOLE) {
 		if (config.device_tag)
-			(void)sprintf(path, "%s/player-%s.cfg", core.config_dir, config.device_tag);
+			(void)snprintf(path, sizeof(path), "%s/player-%s.cfg", core.config_dir,
+			               config.device_tag);
 		else
-			(void)sprintf(path, "%s/player.cfg", core.config_dir);
+			(void)snprintf(path, sizeof(path), "%s/player.cfg", core.config_dir);
 		(void)unlink(path); // Removing console config file
 		LOG_info("Deleted console config: %s", path);
 	}
@@ -3394,15 +3404,18 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 		// Top-left: FPS and system CPU %
 #ifdef SYNC_MODE_AUDIOCLOCK
-		(void)sprintf(debug_text, "%.0f FPS %i%% AC", fps_double, (int)use_double);
+		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double,
+		               (int)use_double);
 #else
-		(void)sprintf(debug_text, "%.0f FPS %i%%", fps_double, (int)use_double);
+		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double,
+		               (int)use_double);
 #endif
 		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
 		// Top-right: Source resolution and scale factor
-		(void)sprintf(debug_text, "%ix%i %ix", renderer.src_w, renderer.src_h, scale);
+		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", renderer.src_w, renderer.src_h,
+		               scale);
 		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
@@ -3430,20 +3443,22 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 			    current_idx < auto_cpu_state.freq_count) {
 				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
 				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-				(void)sprintf(debug_text, "%i u:%u%% b:%u%%", freq_mhz, util, fill_display);
+				(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
+				               fill_display);
 			} else {
 				// Fallback mode: show level
-				(void)sprintf(debug_text, "L%i u:%u%% b:%u%%", level, util, fill_display);
+				(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
+				               fill_display);
 			}
 		} else {
 			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
-			(void)sprintf(debug_text, "L%i b:%u%%", overclock, fill_display);
+			(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
 		}
 		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 
 		// Bottom-right: Output resolution
-		(void)sprintf(debug_text, "%ix%i", renderer.dst_w, renderer.dst_h);
+		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", renderer.dst_w, renderer.dst_h);
 		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
 		               debug_height);
 	}

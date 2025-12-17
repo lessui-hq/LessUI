@@ -364,7 +364,7 @@ SDL_Surface* GFX_init(int mode) {
 
 	// Load asset sprite sheet at selected tier
 	char asset_path[MAX_PATH];
-	(void)sprintf(asset_path, RES_PATH "/assets@%ix.png", asset_scale);
+	(void)snprintf(asset_path, sizeof(asset_path), RES_PATH "/assets@%ix.png", asset_scale);
 	LOG_debug("GFX_init: Loading assets from: %s", asset_path);
 	if (!exists(asset_path))
 		LOG_error("GFX_init: Missing assets at %s, about to segfault!", asset_path);
@@ -3234,7 +3234,8 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
  */
 int PLAT_setDateTime(int y, int m, int d, int h, int i, int s) {
 	char cmd[512];
-	(void)sprintf(cmd, "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i, s);
+	(void)snprintf(cmd, sizeof(cmd), "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i,
+	               s);
 	system(cmd);
 	return 0; // why does this return an int?
 }

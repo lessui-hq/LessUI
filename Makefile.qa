@@ -115,6 +115,35 @@ check-shellcheck:
 # Run all linting checks (uses Docker for consistency with CI)
 lint: docker-lint
 
+# Check for unsafe string functions (sprintf, strcat, strcpy, gets)
+# These should use safer alternatives: snprintf, strncat, strncpy, fgets
+lint-unsafe-functions:
+	@echo "Checking for unsafe string functions..."
+	@UNSAFE_FILES=$$(grep -rnE '\b(sprintf|strcat|strcpy|gets)\(' \
+		workspace/all/common \
+		workspace/all/launcher \
+		workspace/all/player \
+		workspace/all/utils \
+		--include='*.c' 2>/dev/null | \
+		grep -vE 'snprintf|strncat|strncpy|fgets' | \
+		grep -v 'libretro-common' | \
+		grep -v 'parson' | \
+		grep -v 'vendor' | \
+		grep -v '// sprintf' || true); \
+	if [ -n "$$UNSAFE_FILES" ]; then \
+		echo "✗ Found unsafe string functions:"; \
+		echo "$$UNSAFE_FILES" | sed 's/^/  /'; \
+		echo ""; \
+		echo "Use safer alternatives:"; \
+		echo "  sprintf  → snprintf"; \
+		echo "  strcat   → strncat or snprintf"; \
+		echo "  strcpy   → strncpy or SAFE_STRCPY"; \
+		echo "  gets     → fgets"; \
+		exit 1; \
+	else \
+		echo "✓ No unsafe string functions found"; \
+	fi
+
 # Run clang-tidy on common code (platform-independent, highest priority)
 # Filters out compiler noise ("X warnings generated") to show only actual issues
 lint-code: check-clang-tidy
@@ -802,6 +831,8 @@ lint-native: check-clang-tidy check-clang-format check-shellcheck check-shfmt ch
 	@echo "=================================" && \
 	echo "Running ALL linting checks..." && \
 	echo "=================================" && \
+	echo "" && \
+	$(MAKE) -f Makefile.qa lint-unsafe-functions && \
 	echo "" && \
 	$(MAKE) -f Makefile.qa lint-code && \
 	echo "" && \

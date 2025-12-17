@@ -29,12 +29,13 @@ int Launcher_hasEmu(char* emu_name, const char* paks_path, const char* sdcard_pa
 	char pak_path[256];
 
 	// Try shared location first
-	(void)sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", paks_path, emu_name);
+	(void)snprintf(pak_path, sizeof(pak_path), "%s/Emus/%s.pak/launch.sh", paks_path, emu_name);
 	if (exists(pak_path))
 		return 1;
 
 	// Try platform-specific location
-	(void)sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", sdcard_path, platform, emu_name);
+	(void)snprintf(pak_path, sizeof(pak_path), "%s/Emus/%s/%s.pak/launch.sh", sdcard_path, platform,
+	               emu_name);
 	return exists(pak_path);
 }
 
@@ -53,7 +54,7 @@ int Launcher_hasCue(char* dir_path, char* cue_path) {
 		return 0;
 
 	tmp += 1; // Move past the slash to get folder name
-	(void)sprintf(cue_path, "%s/%s.cue", dir_path, tmp);
+	(void)snprintf(cue_path, MAX_PATH, "%s/%s.cue", dir_path, tmp);
 	return exists(cue_path);
 }
 
