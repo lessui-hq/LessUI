@@ -73,27 +73,49 @@ if [[ ! -d "$PAYLOAD_DIR/.system" ]]; then
 fi
 
 echo "Deploying to $SD_CARD..."
+echo ""
 
 # Rsync options for FAT32/exFAT filesystems
 # Note: ._* files are created by macOS rsync on FAT - we just ignore them
-RSYNC_OPTS=(-rtv --no-p --no-o --no-g --modify-window=1 --force
+RSYNC_OPTS=(-rt --no-p --no-o --no-g --modify-window=1 --force
             --exclude=.DS_Store --exclude="._*")
+
+# Track sync statistics
+TOTAL_FILES=0
+TOTAL_DIRS=0
 
 # Sync helper: $1=src $2=dst $3=name $4=--delete (optional)
 sync_dir() {
     [[ -d "$1" ]] || return 0
-    echo "  [$3] ${4:+mirror}${4:-merge}..."
-    rsync "${RSYNC_OPTS[@]}" ${4:+"$4"} "$1/" "$2/"
+    local mode="${4:+mirror}${4:-merge}"
+    local output files dirs
+    # Run rsync with itemize to count changes
+    output=$(rsync "${RSYNC_OPTS[@]}" --itemize-changes ${4:+"$4"} "$1/" "$2/" 2>&1)
+    files=$(echo "$output" | grep -c '^<f' || true)
+    dirs=$(echo "$output" | grep -c '^cd' || true)
+    TOTAL_FILES=$((TOTAL_FILES + files))
+    TOTAL_DIRS=$((TOTAL_DIRS + dirs))
+    if [[ $files -gt 0 || $dirs -gt 0 ]]; then
+        printf "  %-30s %s (%d files)\n" "$3" "$mode" "$files"
+    else
+        printf "  %-30s %s (up to date)\n" "$3" "$mode"
+    fi
 }
 
 sync_file() {
     [[ -f "$1" ]] || return 0
-    echo "  [$3] copying..."
-    rsync "${RSYNC_OPTS[@]}" "$1" "$2"
+    local output
+    output=$(rsync "${RSYNC_OPTS[@]}" --itemize-changes "$1" "$2" 2>&1)
+    if [[ -n "$output" ]]; then
+        TOTAL_FILES=$((TOTAL_FILES + 1))
+        printf "  %-30s copied\n" "$3"
+    else
+        printf "  %-30s up to date\n" "$3"
+    fi
 }
 
 # --- System directories (mirror) ---
-echo "=== System directories (mirror) ==="
+echo "System:"
 
 if [[ -n "$PLATFORM_FILTER" ]]; then
     # Validate platform exists
@@ -130,7 +152,7 @@ fi
 # --- Platform autoboot directories (mirror) ---
 # These are top-level dirs in BASE that aren't special (Tools, Bios, Roms, etc.)
 echo ""
-echo "=== Platform autoboot directories (mirror) ==="
+echo "Autoboot:"
 SKIP_DIRS="Tools|Bios|Roms|Saves"
 for dir in "$BASE_DIR"/*/; do
     [[ -d "$dir" ]] || continue
@@ -146,22 +168,30 @@ done
 
 # --- User directories (merge - preserves user content) ---
 echo ""
-echo "=== User directories (merge) ==="
+echo "User data:"
 sync_dir "$BASE_DIR/Bios" "$SD_CARD/Bios" "Bios"
 sync_dir "$BASE_DIR/Roms" "$SD_CARD/Roms" "Roms"
 sync_dir "$BASE_DIR/Saves" "$SD_CARD/Saves" "Saves"
 
 # --- Other files ---
 echo ""
-echo "=== Other files ==="
+echo "Other:"
 sync_file "$BASE_DIR/README.txt" "$SD_CARD/" "README.txt"
 sync_file "$BASE_DIR/em_ui.sh" "$SD_CARD/" "em_ui.sh"
 
-# Eject
+# Summary and eject
 echo ""
-if [[ "$DO_EJECT" == true ]]; then
-    echo "Ejecting SD card..."
-    diskutil eject "$SD_CARD" && echo "Done!" || echo "Warning: Eject failed"
+if [[ $TOTAL_FILES -gt 0 ]]; then
+    echo "Synced $TOTAL_FILES file(s) to $SD_CARD"
 else
-    echo "Done! (not ejected)"
+    echo "Everything up to date"
+fi
+
+if [[ "$DO_EJECT" == true ]]; then
+    printf "Ejecting... "
+    if diskutil eject "$SD_CARD" >/dev/null 2>&1; then
+        echo "done"
+    else
+        echo "failed"
+    fi
 fi

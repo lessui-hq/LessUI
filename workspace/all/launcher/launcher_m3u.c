@@ -51,7 +51,7 @@ int M3U_getFirstDisc(char* m3u_path, char* disc_path) {
 				continue; // skip empty lines
 
 			// Construct full disc path (M3U paths are relative to M3U location)
-			(void)sprintf(disc_path, "%s%s", base_path, line);
+			(void)snprintf(disc_path, MAX_PATH, "%s%s", base_path, line);
 
 			// Verify disc exists
 			if (exists(disc_path))

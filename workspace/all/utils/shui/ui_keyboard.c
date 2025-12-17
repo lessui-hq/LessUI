@@ -176,14 +176,16 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 					set_layout(&layout_idx, LAYOUT_SYM, cursor_row, &cursor_col);
 					redraw = 1;
 				} else if (strcmp(key, "SPACE") == 0) {
-					if (strlen(text) < sizeof(text) - 2) {
-						strcat(text, " ");
+					size_t len = strlen(text);
+					if (len < sizeof(text) - 2) {
+						(void)snprintf(text + len, sizeof(text) - len, " ");
 						redraw = 1;
 					}
 				} else {
 					// Regular key
-					if (strlen(text) < sizeof(text) - 2) {
-						strcat(text, key);
+					size_t len = strlen(text);
+					if (len < sizeof(text) - 2) {
+						(void)snprintf(text + len, sizeof(text) - len, "%s", key);
 						redraw = 1;
 					}
 				}
@@ -266,7 +268,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 
 			// Current text with cursor
 			char display_text[1024];
-			snprintf(display_text, sizeof(display_text), "%s_", text);
+			(void)snprintf(display_text, sizeof(display_text), "%s_", text);
 			SDL_Surface* text_surf = TTF_RenderUTF8_Blended(font.medium, display_text, COLOR_WHITE);
 			if (text_surf) {
 				int text_x = input_x + DP(OPTION_PADDING);

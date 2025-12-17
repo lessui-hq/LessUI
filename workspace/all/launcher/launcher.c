@@ -380,7 +380,7 @@ void Directory_index(Directory* self) {
 	MapEntry* map;
 	if (is_collection) {
 		char map_path[256];
-		(void)sprintf(map_path, "%s/map.txt", COLLECTIONS_PATH);
+		(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", COLLECTIONS_PATH);
 		map = Map_load(map_path);
 	} else {
 		// Load merged pak + user maps for ROM directories
@@ -771,7 +771,7 @@ static Entry** getRoot(void) {
 		struct dirent* dp;
 		char* tmp;
 		char full_path[256];
-		(void)sprintf(full_path, "%s/", ROMS_PATH);
+		(void)snprintf(full_path, sizeof(full_path), "%s/", ROMS_PATH);
 		tmp = full_path + strlen(full_path);
 		Entry** emus = NULL;
 		while ((dp = readdir(dh)) != NULL) {
@@ -802,7 +802,7 @@ static Entry** getRoot(void) {
 
 	// Apply aliases from Roms/map.txt (we don't support hidden remaps here)
 	char map_path[256];
-	(void)sprintf(map_path, "%s/map.txt", ROMS_PATH);
+	(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", ROMS_PATH);
 	if (arrlen(entries) > 0) {
 		MapEntry* map = Map_load(map_path);
 		if (map) {
@@ -832,7 +832,7 @@ static Entry** getRoot(void) {
 				struct dirent* dp;
 				char* tmp;
 				char full_path[256];
-				(void)sprintf(full_path, "%s/", COLLECTIONS_PATH);
+				(void)snprintf(full_path, sizeof(full_path), "%s/", COLLECTIONS_PATH);
 				tmp = full_path + strlen(full_path);
 				Entry** collections = NULL;
 				while ((dp = readdir(dh)) != NULL) {
@@ -886,7 +886,7 @@ static Entry** getRecents(void) {
 			continue;
 
 		char sd_path[256];
-		(void)sprintf(sd_path, "%s%s", SDCARD_PATH, recent->path);
+		(void)snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, recent->path);
 		int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM;
 		Entry* entry = Entry_new(sd_path, type);
 		if (!entry)
@@ -973,7 +973,7 @@ static void addEntries(Entry*** entries, char* path) {
 		struct dirent* dp;
 		char* tmp;
 		char full_path[256];
-		(void)sprintf(full_path, "%s/", path);
+		(void)snprintf(full_path, sizeof(full_path), "%s/", path);
 		tmp = full_path + strlen(full_path);
 		while ((dp = readdir(dh)) != NULL) {
 			if (hide(dp->d_name))
@@ -1177,7 +1177,7 @@ static void openPak_ctx(LauncherContext* ctx, char* path) {
 	}
 
 	char cmd[256];
-	(void)sprintf(cmd, "'%s/launch.sh'", Launcher_escapeSingleQuotes(path));
+	(void)snprintf(cmd, sizeof(cmd), "'%s/launch.sh'", Launcher_escapeSingleQuotes(path));
 	if (ctx->callbacks && ctx->callbacks->queue_next) {
 		ctx->callbacks->queue_next(cmd);
 	}

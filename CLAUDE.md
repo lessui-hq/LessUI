@@ -31,7 +31,7 @@ workspace/
 └── <platform>/            # Platform-specific implementations
     ├── platform/
     │   ├── platform.h     # Hardware definitions (buttons, screen size)
-    │   └── makefile.*     # Platform build configuration
+    │   └── Makefile.*     # Platform build configuration
     └── keymon/            # Keypress monitoring daemon
 ```
 
@@ -101,7 +101,7 @@ make PLATFORM=miyoomini build
 ### Build Process Flow
 
 1. `Makefile` (host) - Orchestrates multi-platform builds
-2. `makefile.toolchain` - Launches Docker containers
+2. `Makefile.toolchain` - Launches Docker containers
 3. Inside container: Platform makefiles build components
 4. `Makefile` target `system` - Copies binaries to `build/` directory
 5. `Makefile` target `package` - Creates release ZIP files
@@ -219,7 +219,7 @@ See `docs/cross-platform-paks.md` for comprehensive tool pak documentation.
 
 ## Development Commands
 
-### macOS Native Development (makefile.dev)
+### macOS Native Development (Makefile.dev)
 
 For rapid UI development on macOS, use native builds instead of Docker cross-compilation:
 
@@ -276,7 +276,7 @@ cp ~/Downloads/game.gb workspace/desktop/FAKESD/Roms/GB/
 - Build output: `workspace/all/launcher/build/macos/launcher` binary
 - See `workspace/desktop/FAKESD/README.md` for SD card structure
 
-### Quality Assurance (makefile.qa)
+### Quality Assurance (Makefile.qa)
 
 ```bash
 # Quick commands (recommended)
@@ -285,12 +285,12 @@ make lint                          # Run static analysis
 make format                        # Format code
 
 # Additional QA targets
-make -f makefile.qa docker-shell   # Enter container for debugging
-make -f makefile.qa test-native    # Run natively (not recommended on macOS)
-make -f makefile.qa lint-full      # Lint entire workspace (verbose)
-make -f makefile.qa lint-shell     # Lint shell scripts
-make -f makefile.qa format-check   # Check formatting only
-make -f makefile.qa clean-tests    # Clean test artifacts
+make -f Makefile.qa docker-shell   # Enter container for debugging
+make -f Makefile.qa test-native    # Run natively (not recommended on macOS)
+make -f Makefile.qa lint-full      # Lint entire workspace (verbose)
+make -f Makefile.qa lint-shell     # Lint shell scripts
+make -f Makefile.qa format-check   # Check formatting only
+make -f Makefile.qa clean-tests    # Clean test artifacts
 ```
 
 **Note:** Tests run in Docker by default, using an Ubuntu 24.04 container. This eliminates macOS-specific build issues and ensures consistency across all development environments.
@@ -451,7 +451,7 @@ All paths use forward slashes (`/`), even for Windows cross-compilation. Platfor
 - **Braces on same line** - `if (x) {` not `if (x)\n{`
 - **Left-aligned pointers** - `char* name` not `char *name`
 - **100 character line limit**
-- Run `make -f makefile.qa format` before committing
+- Run `make -f Makefile.qa format` before committing
 
 See `.clang-format` for complete style definition.
 
@@ -483,6 +483,8 @@ See `.clang-format` for complete style definition.
 | Libretro frontend             | `workspace/all/player/player.c`                |
 | Utility functions             | `workspace/all/common/utils.c`                 |
 | Platform API                  | `workspace/all/common/api.c`                   |
+| UI layout calculations        | `workspace/all/common/ui_layout.c`             |
+| UI layout header              | `workspace/all/common/ui_layout.h`             |
 | Player internal types         | `workspace/all/player/player_internal.h`       |
 | Player context/state          | `workspace/all/player/player_context.c`        |
 | Player menu system            | `workspace/all/player/player_menu.c`           |
@@ -521,7 +523,7 @@ See `.clang-format` for complete style definition.
 | Test suite                    | `tests/unit/all/{common,launcher,player}/`     |
 | Refactoring guide             | `docs/player-refactoring.md`                   |
 | Build orchestration           | `Makefile` (host-side)                         |
-| QA tools                      | `makefile.qa`                                  |
+| QA tools                      | `Makefile.qa`                                  |
 
 ## Documentation
 
@@ -532,7 +534,7 @@ See `.clang-format` for complete style definition.
 
 ## Current Test Coverage
 
-**Total: 1470 tests across 47 test suites** ✅
+**Total: 1470 tests across 46 test suites** ✅
 
 ### Extracted and Tested Modules
 
@@ -561,10 +563,10 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | launcher_state.c               | 27    | launcher.c          | Path decomposition, collation, resume                             |
 | launcher_entry.c               | 25    | launcher.c          | Entry type, array operations, IntArray                            |
 | player_input.c                 | 24    | player.c            | Input state queries, button mapping                               |
-| map_parser.c                   | 22    | launcher.c/player.c | ROM display name aliasing                                         |
+| map_parser.c                   | 47    | launcher.c/player.c | ROM display name aliasing                                         |
 | m3u_parser.c                   | 20    | launcher.c          | M3U playlist parsing                                              |
 | audio_resampler.c              | 20    | api.c               | Sample rate conversion                                            |
-| ui_layout.c                    | 20    | api.c               | UI layout calculations (DP system)                                |
+| ui_layout.c                    | 23    | api.c               | UI layout calculations (DP system)                                |
 | player_config.c                | 19    | player.c            | Config path generation, option mapping                            |
 | launcher_file_utils.c          | 18    | launcher.c          | File/dir checking utilities                                       |
 | recent_file.c                  | 31    | launcher.c          | Recent games I/O + Recent struct & array ops                      |

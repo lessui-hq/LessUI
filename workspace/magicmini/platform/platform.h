@@ -24,6 +24,28 @@
 #define PLATFORM "magicmini"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// Uses default SND_RATE_CONTROL_D (0.012f) for standard timing
+
+///////////////////////////////
+// Video Buffer Scaling
+///////////////////////////////
+
+// Uses default BUFFER_SCALE_FACTOR (1.0f) - GPU hardware scaler handles all scaling
+
+///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Reduce UI size to fit more content on small 2.8" screen
+#define SCALE_MODIFIER 0.92f
+
+// Minimal edge padding - bezel provides visual margin
+#define EDGE_PADDING 5
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 
@@ -144,8 +166,6 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL 2.8f // Physical screen diagonal in inches
-#define SCALE_MODIFIER 0.92f // Reduce UI size to fit more content on small screen
-#define EDGE_PADDING 0 // No edge padding needed - bezel provides visual margin
 #define FIXED_WIDTH 640 // Screen width in pixels
 #define FIXED_HEIGHT 480 // Screen height in pixels (VGA)
 

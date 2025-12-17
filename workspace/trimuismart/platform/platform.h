@@ -40,6 +40,16 @@
 #define BUFFER_SCALE_FACTOR 3.2f
 
 ///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Reduce UI size to fit more content on tiny 2.4" QVGA screen
+#define SCALE_MODIFIER 0.84f
+
+// Add padding to prevent clipping at screen edges
+#define EDGE_PADDING 5
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 
@@ -160,8 +170,6 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL 2.4f // Physical screen diagonal in inches
-#define SCALE_MODIFIER 0.84f // Reduce UI size to fit more content on small screen
-#define EDGE_PADDING 5 // Add padding to prevent clipping at screen edges
 #define FIXED_WIDTH 320 // Screen width in pixels
 #define FIXED_HEIGHT 240 // Screen height in pixels (QVGA)
 

@@ -63,8 +63,8 @@ trimuismart/
 │   ├── sunxi_display2.h  Allwinner DE2 ioctl definitions
 │   ├── ion.h          ION memory allocator interface
 │   ├── ion_sunxi.h    Allwinner-specific ION extensions
-│   ├── makefile.env   Environment variables for build
-│   └── makefile.copy  File installation rules
+│   ├── Makefile.env   Environment variables for build
+│   └── Makefile.copy  File installation rules
 ├── keymon/            Hardware button monitoring daemon
 │   └── keymon.c       Volume/brightness control via button combos
 ├── libmsettings/      Settings library (volume, brightness, jack detection)
@@ -337,7 +337,7 @@ The Trimui Smart supports 12 libretro cores:
 | pokemini | Pokemon Mini | Pokemon Mini handheld |
 | race | Neo Geo Pocket | Neo Geo Pocket / Pocket Color |
 
-**Note**: fake-08 (PICO-8) is commented out in the cores makefile.
+**Note**: fake-08 (PICO-8) is commented out in the cores Makefile.
 
 ## Known Issues / Quirks
 

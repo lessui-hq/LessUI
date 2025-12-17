@@ -41,7 +41,6 @@ bl_disable
 
 **/tmp
 
-workspace/hash.txt
 workspace/readmes
 
 # Test artifacts

@@ -9,6 +9,7 @@
 #   ./scripts/run-tests.sh           # Run all tests
 #   ./scripts/run-tests.sh -v        # Verbose (show all output)
 #   ./scripts/run-tests.sh -q        # Quiet (summary only)
+#   ./scripts/run-tests.sh --asan    # Run with AddressSanitizer + UBSan
 #
 
 set -e
@@ -35,13 +36,33 @@ fi
 # Parse arguments
 VERBOSE=0
 QUIET=0
+ASAN=0
+
+# Handle long options first
+for arg in "$@"; do
+	case $arg in
+		--asan) ASAN=1; shift ;;
+	esac
+done
+
 while getopts "vq" opt; do
 	case $opt in
 		v) VERBOSE=1 ;;
 		q) QUIET=1 ;;
-		*) echo "Usage: $0 [-v] [-q]"; exit 1 ;;
+		*) echo "Usage: $0 [-v] [-q] [--asan]"; exit 1 ;;
 	esac
 done
+
+# Sanitizer configuration
+if [ $ASAN -eq 1 ]; then
+	export ASAN_OPTIONS="detect_leaks=1:halt_on_error=0:print_stats=1"
+	export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0"
+	ASAN_CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -DASAN_BUILD"
+	echo -e "${YELLOW}${BOLD}AddressSanitizer + UBSan enabled${RESET}"
+	echo -e "${DIM}ASan: buffer overflow, use-after-free, memory leaks${RESET}"
+	echo -e "${DIM}UBSan: integer overflow, null deref, misaligned access${RESET}"
+	echo ""
+fi
 
 # Track results
 declare -a SUITE_NAMES
@@ -59,10 +80,15 @@ trap 'rm -f "$TMPFILE"' EXIT
 
 # Build all tests first
 echo -e "${BOLD}Building tests...${RESET}"
-make -f makefile.qa clean-tests >/dev/null 2>&1 || true
+make -f Makefile.qa clean-tests >/dev/null 2>&1 || true
+
+# Set TEST_CFLAGS override for ASan builds
+if [ $ASAN -eq 1 ]; then
+	export TEST_CFLAGS="-std=c99 -Wall -Wextra -Wno-unused-parameter $ASAN_CFLAGS"
+fi
 
 # Get list of test executables from makefile
-TEST_EXECUTABLES=$(grep '^TEST_EXECUTABLES' makefile.qa | sed 's/TEST_EXECUTABLES = //' | tr ' ' '\n' | grep -v '^$')
+TEST_EXECUTABLES=$(grep '^TEST_EXECUTABLES' Makefile.qa | sed 's/TEST_EXECUTABLES = //' | tr ' ' '\n' | grep -v '^$')
 
 # Count total suites
 TOTAL_SUITES=$(echo "$TEST_EXECUTABLES" | wc -l | tr -d ' ')
@@ -78,8 +104,12 @@ for test_exe in $TEST_EXECUTABLES; do
 	# Extract suite name from path (e.g., tests/utils_test -> utils)
 	suite_name=$(basename "$test_exe" | sed 's/_test$//')
 
-	# Build the test
-	if ! make -f makefile.qa "$test_exe" >"$TMPFILE" 2>&1; then
+	# Build the test (pass TEST_CFLAGS for ASan builds)
+	BUILD_CMD="make -f Makefile.qa $test_exe"
+	if [ $ASAN -eq 1 ]; then
+		BUILD_CMD="make -f Makefile.qa $test_exe TEST_CFLAGS=\"$TEST_CFLAGS\""
+	fi
+	if ! eval "$BUILD_CMD" >"$TMPFILE" 2>&1; then
 		echo -e "  ${RED}[FAIL]${RESET} $suite_name ${DIM}(build failed)${RESET}"
 		SUITE_NAMES+=("$suite_name")
 		SUITE_TESTS+=(0)
@@ -143,7 +173,11 @@ done
 # Print summary
 echo ""
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════${RESET}"
-echo -e "${BOLD}                        TEST SUMMARY${RESET}"
+if [ $ASAN -eq 1 ]; then
+	echo -e "${BOLD}              TEST SUMMARY (with Sanitizers)${RESET}"
+else
+	echo -e "${BOLD}                        TEST SUMMARY${RESET}"
+fi
 echo -e "${BOLD}═══════════════════════════════════════════════════════════════${RESET}"
 echo ""
 
@@ -153,6 +187,9 @@ PASSED_TESTS=$((TOTAL_TESTS - TOTAL_FAILURES))
 
 printf "  %-20s %s\n" "Test Suites:" "$PASSED_SUITES/$TOTAL_SUITES passed"
 printf "  %-20s %s\n" "Tests:" "$PASSED_TESTS/$TOTAL_TESTS passed"
+if [ $ASAN -eq 1 ]; then
+	printf "  %-20s %s\n" "Sanitizers:" "ASan + UBSan enabled"
+fi
 echo ""
 
 # Show failed suites if any

@@ -48,7 +48,7 @@ endif
 # Include platform-specific environment
 # Caller must set PLATFORM_DEPTH to number of ../ needed to reach workspace/
 PLATFORM_DEPTH ?= ../../../
-include $(PLATFORM_DEPTH)$(PLATFORM)/platform/makefile.env
+include $(PLATFORM_DEPTH)$(PLATFORM)/platform/Makefile.env
 
 endif  # not install
 endif  # not setup/clean
@@ -61,6 +61,9 @@ BUILD_DIR ?= build
 COMMON_DIR ?= $(PLATFORM_DEPTH)all/common
 PLATFORM_DIR ?= $(PLATFORM_DEPTH)$(PLATFORM)/platform
 
+# Include shared warning flags
+include $(COMMON_DIR)/cflags.mk
+
 ###########################################################
 # Paths and sources
 
@@ -70,6 +73,7 @@ COMMON_SOURCE = \
 	$(COMMON_DIR)/utils.c \
 	$(COMMON_DIR)/nointro_parser.c \
 	$(COMMON_DIR)/api.c \
+	$(COMMON_DIR)/ui_layout.c \
 	$(COMMON_DIR)/log.c \
 	$(COMMON_DIR)/stb_ds_impl.c \
 	$(COMMON_DIR)/pad.c \
@@ -99,9 +103,7 @@ CC = $(CROSS_COMPILE)gcc
 OPT_FLAGS ?= -O3
 CFLAGS  = $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS)
-CFLAGS += -Wall -Wextra -Wsign-compare -Wshadow -Wnull-dereference -Wundef \
-          -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter \
-          -Wno-cast-align -Wno-missing-field-initializers -Wno-format -Werror
+CFLAGS += $(WARN_FLAGS)
 CFLAGS += $(EXTRA_CFLAGS)
 
 LDFLAGS  = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
@@ -141,6 +143,6 @@ clean:
 
 # Dependency: ensure libmsettings is built
 $(PREFIX)/include/msettings.h:
-	cd /root/workspace/$(PLATFORM)/libmsettings && make
+	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
 
 .PHONY: all setup build install clean

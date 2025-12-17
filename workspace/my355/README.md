@@ -72,7 +72,7 @@ my355/
 ├── platform/          Platform-specific hardware definitions
 │   ├── platform.h     Button mappings, display specs, HDMI config
 │   ├── platform.c     Platform implementation (lid, HDMI, rumble, scaling)
-│   └── makefile.*     Build configuration files
+│   └── Makefile.*     Build configuration files
 ├── keymon/            Hardware button monitoring daemon
 │   └── keymon.c       Volume/brightness control, headphone/HDMI detection
 ├── libmsettings/      Settings library (shared memory based)

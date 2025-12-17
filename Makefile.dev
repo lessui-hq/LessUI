@@ -1,0 +1,166 @@
+# LessUI macOS Development Build
+# Native compilation for rapid development and testing
+#
+# This makefile provides native macOS builds for development:
+#   make dev        - Build launcher for macOS
+#   make dev-run    - Build and run launcher
+#   make dev-clean  - Clean macOS build artifacts
+#
+# Prerequisites:
+#   brew install sdl2 sdl2_image sdl2_ttf
+#
+# The main makefile forwards to this file for dev/dev-run targets.
+
+.PHONY: help dev dev-run dev-run-4x3 dev-run-16x9 dev-clean check-sdl
+
+help:
+	@echo "LessUI macOS Development Tools"
+	@echo ""
+	@echo "Quick commands:"
+	@echo "  make dev            - Build launcher for macOS (4:3, 640×480)"
+	@echo "  make dev-run        - Build and run launcher"
+	@echo "  make dev-clean      - Clean macOS build artifacts"
+	@echo ""
+	@echo "Aspect ratio variants:"
+	@echo "  make dev-run-4x3    - Run in 4:3 aspect ratio (640×480) - default"
+	@echo "  make dev-run-16x9   - Run in 16:9 aspect ratio (854×480)"
+	@echo "  ASPECT_RATIO=16x9 make dev-run   - Custom aspect ratio"
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  brew install sdl2 sdl2_image sdl2_ttf"
+
+# macOS native build configuration
+PLATFORM = desktop
+SDL_INCLUDES = -I/opt/homebrew/include
+SDL_LIBS = -L/opt/homebrew/lib
+FAKESD_PATH = $(shell pwd -P)/workspace/desktop/FAKESD
+
+# Aspect ratio configuration (4x3 or 16x9)
+# Can be overridden: ASPECT_RATIO=16x9 make dev-run
+ASPECT_RATIO ?= 4x3
+
+ifneq (,$(filter $(ASPECT_RATIO),16x9 16: 9))
+    SCREEN_WIDTH = 854
+    SCREEN_HEIGHT = 480
+else
+    SCREEN_WIDTH = 640
+    SCREEN_HEIGHT = 480
+endif
+
+# Compiler and flags (native macOS)
+CC = gcc
+INCDIR = -I workspace/all/launcher -I workspace/all/common -I workspace/all/vendor/stb -I workspace/desktop/platform $(SDL_INCLUDES)
+# Include shared warning flags
+include workspace/all/common/cflags.mk
+
+# Dev builds always use full logging (INFO + DEBUG) and debug symbols
+# Keep -O3 for dev since ASan already catches memory issues; -O0 would make it too slow
+LOG_FLAGS = -DENABLE_INFO_LOGS -DENABLE_DEBUG_LOGS
+OPT_FLAGS = -O3 -g
+CFLAGS = -fomit-frame-pointer -DPLATFORM=\"$(PLATFORM)\" -DUSE_SDL2 $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
+CFLAGS += -DDEV_SCREEN_WIDTH=$(SCREEN_WIDTH) -DDEV_SCREEN_HEIGHT=$(SCREEN_HEIGHT)
+CFLAGS += -fsanitize=address -fno-common
+CFLAGS += $(WARN_FLAGS)
+# macOS-specific warnings (clang)
+CFLAGS += -Wno-tautological-constant-out-of-range-compare -Wno-asm-operand-widths
+CFLAGS += -Wno-deprecated-declarations -Wno-incompatible-pointer-types-discards-qualifiers
+LDFLAGS = -ldl -flto $(SDL_LIBS) -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread -lm -lz -fsanitize=address
+
+# Source files (synced with workspace/all/launcher/makefile)
+LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
+               workspace/all/common/scaler.c \
+               workspace/all/common/utils.c \
+               workspace/all/common/nointro_parser.c \
+               workspace/all/common/api.c \
+               workspace/all/common/ui_layout.c \
+               workspace/all/common/log.c \
+               workspace/all/common/stb_ds_impl.c \
+               workspace/all/common/pad.c \
+               workspace/all/common/gfx_text.c \
+               workspace/all/common/platform_variant.c \
+               workspace/all/launcher/launcher_entry.c \
+               workspace/all/launcher/launcher_launcher.c \
+               workspace/all/launcher/directory_index.c \
+               workspace/all/launcher/launcher_str_compare.c \
+               workspace/all/launcher/launcher_state.c \
+               workspace/all/launcher/launcher_m3u.c \
+               workspace/all/launcher/launcher_map.c \
+               workspace/all/launcher/launcher_file_utils.c \
+               workspace/all/launcher/launcher_directory.c \
+               workspace/all/launcher/launcher_context.c \
+               workspace/all/launcher/launcher_navigation.c \
+               workspace/all/launcher/launcher_thumbnail.c \
+               workspace/all/launcher/recent_file.c \
+               workspace/all/launcher/launcher_emu_cache.c \
+               workspace/all/common/effect_system.c \
+               workspace/all/common/render_common.c \
+               workspace/all/common/render_sdl2.c \
+               workspace/all/common/effect_utils.c \
+               workspace/desktop/platform/platform.c
+
+# Header files (dependencies)
+LAUNCHER_HEADERS = $(wildcard workspace/all/common/*.h) $(wildcard workspace/all/launcher/*.h) $(wildcard workspace/desktop/platform/*.h)
+
+# Build output
+BUILD_DIR = workspace/all/launcher/build/desktop
+LAUNCHER_BIN = $(BUILD_DIR)/launcher
+
+# Check if SDL2 is installed and sync resources
+check-sdl:
+	@if [ ! -d /opt/homebrew/include/SDL2 ] && [ ! -d /usr/local/include/SDL2 ]; then \
+		echo "Error: SDL2 not found. Please install:"; \
+		echo "  brew install sdl2 sdl2_image sdl2_ttf"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(FAKESD_PATH)" ]; then \
+		echo "Warning: FAKESD directory not found at $(FAKESD_PATH)"; \
+		echo "Creating directory structure..."; \
+		mkdir -p "$(FAKESD_PATH)/Roms"; \
+		mkdir -p "$(FAKESD_PATH)/.userdata"; \
+		mkdir -p "$(FAKESD_PATH)/.system"; \
+		echo "FAKESD structure created. Add ROMs to $(FAKESD_PATH)/Roms/"; \
+	fi
+	@mkdir -p "$(FAKESD_PATH)/.system/res"
+	@rsync -a --delete skeleton/SYSTEM/res/ "$(FAKESD_PATH)/.system/res/"
+
+# Build launcher for macOS
+$(LAUNCHER_BIN): $(LAUNCHER_SOURCE) $(LAUNCHER_HEADERS)
+	@echo "Building launcher for macOS (native)..."
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(LAUNCHER_SOURCE) -o $(LAUNCHER_BIN) $(INCDIR) $(CFLAGS) $(LDFLAGS)
+	@echo "✓ Build complete: $(LAUNCHER_BIN)"
+	@echo ""
+	@echo "Run with: make dev-run"
+	@echo "Or directly: $(LAUNCHER_BIN)"
+
+dev: check-sdl $(LAUNCHER_BIN)
+
+# Build and run launcher
+dev-run: dev
+	@echo "Launching launcher..."
+	@echo "FAKESD path: $(FAKESD_PATH)"
+	@echo ""
+	@echo "Keyboard controls:"
+	@echo "  Arrow keys  - D-pad navigation"
+	@echo "  Q/W/A/S     - Y/X/B/A buttons"
+	@echo "  Enter       - Start"
+	@echo "  4           - Select"
+	@echo "  Space       - Menu"
+	@echo "  Backspace   - Power (hold to quit)"
+	@echo ""
+	@cd workspace/all/launcher && ./build/desktop/launcher
+
+# Clean build artifacts
+dev-clean:
+	@echo "Cleaning macOS build artifacts..."
+	@rm -rf $(BUILD_DIR)
+	@echo "✓ Clean complete"
+
+# Convenience targets for specific aspect ratios
+dev-run-4x3:
+	@$(MAKE) -f Makefile.dev dev-clean
+	@$(MAKE) -f Makefile.dev dev-run ASPECT_RATIO=4x3
+
+dev-run-16x9:
+	@$(MAKE) -f Makefile.dev dev-clean
+	@$(MAKE) -f Makefile.dev dev-run ASPECT_RATIO=16x9

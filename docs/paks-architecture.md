@@ -388,7 +388,7 @@ make setup
       └── Tool paks are NOT generated here
 
 make build PLATFORM=miyoomini
-  └── workspace/makefile calls workspace/all/paks/makefile
+  └── workspace/Makefile calls workspace/all/paks/makefile
       └── For each pak with src/makefile:
           └── Cross-compile in Docker
               └── Output: workspace/all/paks/<pak>/build/<platform>/<binary>.elf
@@ -436,7 +436,7 @@ For future pak migrations:
 3. **Move files**: Source code, resources, binaries to unified location
 4. **Create pak.json**: Define name, platforms, build configuration
 5. **Create launch.sh**: Single cross-platform launcher (use `case "$PLATFORM"` for branching)
-6. **Update makefiles**: Remove old build/copy rules from workspace/makefile and makefile.copy files
+6. **Update makefiles**: Remove old build/copy rules from workspace/Makefile and Makefile.copy files
 7. **Test**: `make clean && make setup && make build PLATFORM=<platform> && make system PLATFORM=<platform>`
 
 ## Relationship to Emulator Paks

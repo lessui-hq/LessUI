@@ -349,7 +349,7 @@ int main(int argc, char* argv[]) {
 	// Sequential device paths (default)
 	for (int i = 0; i < KEYMON_INPUT_COUNT; i++) {
 		char path[32];
-		sprintf(path, "/dev/input/event%d", i);
+		snprintf(path, sizeof(path), "/dev/input/event%d", i);
 		inputs[i] = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	}
 #endif

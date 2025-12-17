@@ -36,4 +36,4 @@ Example:
 MORE INFO
 ---------
 See docs/DEVELOPMENT.md for full documentation.
-See makefile.dev for build configuration.
+See Makefile.dev for build configuration.
