@@ -2196,6 +2196,71 @@ void SND_quit(void) { // plat_sound_finish
 	}
 }
 
+/**
+ * Sets minimum audio latency in milliseconds.
+ *
+ * Called by cores via RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY to request
+ * a larger audio buffer for latency-sensitive operations. The buffer is
+ * resized only if the requested latency exceeds the current buffer size.
+ * Per libretro spec, this is a hint - we honor requests up to 512ms.
+ *
+ * @param latency_ms Minimum latency in milliseconds (0 = reset to default)
+ */
+void SND_setMinLatency(unsigned latency_ms) {
+	if (!snd.initialized)
+		return;
+
+	// Clamp to 512ms max per libretro spec
+	if (latency_ms > 512) {
+		LOG_warn("SET_MINIMUM_AUDIO_LATENCY: %ums exceeds max, clamping to 512ms", latency_ms);
+		latency_ms = 512;
+	}
+
+	// Calculate required samples for requested latency
+	// Use 64-bit arithmetic to prevent overflow with high sample rates
+	size_t required_samples = (size_t)((uint64_t)latency_ms * snd.sample_rate_out / 1000);
+
+	// Default is the floor - any request at or below default resets to default
+	// (matches RetroArch behavior)
+	if (required_samples < SND_BUFFER_SAMPLES) {
+		if (latency_ms != 0) {
+			LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums (%zu samples) below default, using default",
+			          latency_ms, required_samples);
+		}
+		required_samples = SND_BUFFER_SAMPLES;
+	}
+
+	// No change needed
+	if (required_samples == snd.frame_count) {
+		LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums - no change needed (already at %zu samples)",
+		          latency_ms, snd.frame_count);
+		return;
+	}
+
+	LOG_info("SET_MINIMUM_AUDIO_LATENCY: %ums - resizing buffer from %zu to %zu samples",
+	         latency_ms, snd.frame_count, required_samples);
+
+	SDL_LockAudio();
+
+	size_t buffer_bytes = required_samples * sizeof(SND_Frame);
+	void* new_buffer = realloc(snd.buffer, buffer_bytes);
+	if (!new_buffer) {
+		LOG_error("Failed to allocate audio buffer (%zu bytes)", buffer_bytes);
+		SDL_UnlockAudio();
+		return;
+	}
+	snd.buffer = new_buffer;
+
+	// Clear and reset buffer state
+	memset(snd.buffer, 0, buffer_bytes);
+	snd.frame_count = required_samples;
+	snd.frame_in = 0;
+	snd.frame_out = 0;
+	snd.frame_filled = snd.frame_count - 1;
+
+	SDL_UnlockAudio();
+}
+
 ///////////////////////////////
 // Input - Lid detection (clamshell devices)
 ///////////////////////////////

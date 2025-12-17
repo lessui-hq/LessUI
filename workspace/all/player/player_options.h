@@ -24,6 +24,7 @@ typedef struct PlayerOption {
 	int value; // Current value index
 	int count; // Number of possible values
 	int lock; // Option is locked (from config file)
+	int visible; // Option is visible (set dynamically by core)
 	char** values; // Value strings (internal)
 	char** labels; // Label strings (for display)
 } PlayerOption;

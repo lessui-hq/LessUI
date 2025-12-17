@@ -24,6 +24,7 @@ static void run_main_loop(void) {
 
 	LOG_debug("Entering main loop (audioclock mode)");
 	sec_start = SDL_GetTicks();
+	uint32_t last_ff_flip = 0;
 	while (!quit) {
 		GFX_startFrame();
 		input_polled_this_frame = 0; // Reset at start of frame
@@ -32,21 +33,41 @@ static void run_main_loop(void) {
 		// When audio buffer is full, the core will block (up to 10ms) waiting for
 		// the audio callback to consume samples. This naturally rate-limits emulation
 		// to match the audio hardware clock.
+		//
+		// During fast-forward: audio is skipped (no blocking), limitFF() controls speed.
 
 		// Call frame time callback if registered (per libretro spec)
 		if (video_state.frame_time_cb) {
 			retro_usec_t frame_now = getMicroseconds();
 			retro_usec_t delta;
 			if (fast_forward) {
-				delta = video_state.frame_time_ref;
-			} else if (video_state.frame_time_last == 0) {
+				// Use reference time during FF, don't update frame_time_last
+				// to avoid timing discontinuity when FF ends
 				delta = video_state.frame_time_ref;
 			} else {
-				delta = frame_now - video_state.frame_time_last;
+				if (video_state.frame_time_last == 0) {
+					delta = video_state.frame_time_ref;
+				} else {
+					delta = frame_now - video_state.frame_time_last;
+				}
+				video_state.frame_time_last = frame_now;
 			}
-			video_state.frame_time_last = frame_now;
 			video_state.frame_time_cb(delta);
 		}
+
+		// Report audio buffer status to core for frameskip decisions
+		// During FF, report audio inactive (no output during FF)
+		if (core.audio_buffer_status) {
+			if (fast_forward) {
+				core.audio_buffer_status(false, 0, false);
+			} else {
+				unsigned occupancy = SND_getBufferOccupancy();
+				core.audio_buffer_status(true, occupancy, occupancy < 25);
+			}
+		}
+
+		// Note: SND_newFrame() is not called here because audioclock mode uses
+		// blocking audio writes for timing, not the PI rate controller.
 
 		// Measure frame execution time for auto CPU scaling
 		uint64_t frame_start = getMicroseconds();
@@ -61,9 +82,20 @@ static void run_main_loop(void) {
 			auto_cpu_state.frame_time_index++;
 		}
 
-		// Present frame (may or may not wait for vsync depending on platform)
-		GFX_flip(screen);
-		frame_ready_for_flip = 0;
+		// Present frame
+		// During FF: throttle vsync to avoid blocking (limitFF controls speed instead)
+		// Normal: flip every frame (may or may not wait for vsync depending on platform)
+		if (fast_forward) {
+			uint32_t now = SDL_GetTicks();
+			if (now - last_ff_flip >= 30) { // Visual update every 30ms
+				GFX_flip(screen);
+				frame_ready_for_flip = 0;
+				last_ff_flip = now;
+			}
+		} else {
+			GFX_flip(screen);
+			frame_ready_for_flip = 0;
+		}
 
 		limitFF();
 		trackFPS();

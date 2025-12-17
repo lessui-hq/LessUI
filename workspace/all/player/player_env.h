@@ -51,6 +51,7 @@ typedef struct PlayerVideoState {
 typedef struct PlayerThrottleInfo {
 	int fast_forward; // Currently fast-forwarding
 	int max_ff_speed; // FF speed multiplier (0=2x, 1=3x, 2=4x, 3=5x)
+	double core_fps; // Core framerate (for calculating FF target rate)
 } PlayerThrottleInfo;
 
 /**
