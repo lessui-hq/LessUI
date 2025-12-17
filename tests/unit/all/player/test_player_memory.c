@@ -12,6 +12,7 @@
 
 #include "unity.h"
 #include "player_memory.h"
+#include "test_temp.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +20,7 @@
 #include <unistd.h>
 
 // Test temp file path
-static char test_path[256];
+static const char* test_path;
 
 // Mock memory buffers
 static uint8_t mock_sram_buffer[8192];
@@ -64,11 +65,8 @@ static void* mock_get_memory_data_null(unsigned type) {
 ///////////////////////////////
 
 void setUp(void) {
-	// Create temp file path
-	strcpy(test_path, "/tmp/test_memory_XXXXXX");
-	int fd = mkstemp(test_path);
-	if (fd >= 0)
-		close(fd);
+	// Create temp file (path remains valid until test_temp_cleanup)
+	test_path = test_temp_file(".sav");
 
 	// Reset mock state
 	memset(mock_sram_buffer, 0, sizeof(mock_sram_buffer));
@@ -78,7 +76,7 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-	unlink(test_path);
+	test_temp_cleanup();
 }
 
 ///////////////////////////////

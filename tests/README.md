@@ -7,7 +7,8 @@ This directory contains the test suite for LessUI, organized to mirror the sourc
 ## Quick Start
 
 ```bash
-make test   # Run all 1470 tests in Docker (recommended)
+make test        # Run all 1470 tests in Docker (recommended)
+make test-asan   # Run with AddressSanitizer + UBSan (catches memory bugs)
 ```
 
 Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across development environments and catches platform-specific issues.
@@ -72,7 +73,9 @@ tests/
 │   ├── sdl_stubs.h                 # Minimal SDL type definitions
 │   ├── sdl_fakes.h/c               # SDL function mocks (fff-based)
 │   ├── platform_mocks.h/c          # Platform function mocks
-│   └── fs_mocks.h/c                # File system mocks (--wrap-based)
+│   ├── fs_mocks.h/c                # File system mocks (--wrap-based)
+│   ├── test_helpers.h/c            # Setup/teardown utilities
+│   └── test_temp.h/c               # Temp file/directory management
 └── README.md                       # This file
 ```
 
@@ -550,6 +553,194 @@ void test_saveRecents(void) {
     unlink(temp_path);
 }
 ```
+
+## Test Helpers (Setup/Teardown)
+
+The test suite provides centralized helper functions to prevent test pollution and ensure proper cleanup.
+
+### Infrastructure Overview
+
+```
+tests/support/
+├── test_helpers.h         # Central reset utilities
+├── test_helpers.c         # Reset function implementations
+├── test_temp.h            # Temp file/directory management
+└── test_temp.c            # Temp file implementations
+```
+
+### Why Use Test Helpers?
+
+Test pollution occurs when state from one test leaks into another, causing:
+- Intermittent failures ("works on my machine")
+- Order-dependent test results
+- Difficult-to-debug failures
+
+The helper functions ensure tests are isolated by resetting all mock state and cleaning up resources.
+
+### Basic Usage
+
+```c
+#include "unity.h"
+#include "test_helpers.h"
+
+void setUp(void) {
+    test_reset_all();  // Reset SDL fakes, FS mocks, fff history
+}
+
+void tearDown(void) {
+    test_cleanup_all();  // Clean up temp files
+}
+
+void test_example(void) {
+    // Your test code here
+}
+```
+
+### Selective Reset Functions
+
+If you only need specific resets:
+
+```c
+void setUp(void) {
+    test_reset_sdl_fakes();   // Only reset SDL mocks
+    test_reset_fs_mocks();    // Only reset file system mocks
+    test_reset_fff_history(); // Only reset fff call history
+}
+```
+
+### Available Functions
+
+| Function | Purpose |
+|----------|---------|
+| `test_reset_all()` | Reset all mock state (SDL fakes, FS mocks, fff history) |
+| `test_cleanup_all()` | Clean up all temp files/directories |
+| `test_reset_sdl_fakes()` | Reset SDL function mocks |
+| `test_reset_fs_mocks()` | Reset file system mocks |
+| `test_reset_fff_history()` | Reset fff call sequence history |
+
+## Temp File Management
+
+The `test_temp.h` module provides safe, auto-cleaned temp file creation.
+
+### Benefits
+
+- **No fixed paths** - Unique paths prevent collisions in parallel test runs
+- **Automatic cleanup** - Files cleaned even when tests fail
+- **Cross-platform** - Works on Linux and macOS
+
+### Creating Temp Files
+
+```c
+#include "test_temp.h"
+
+void tearDown(void) {
+    test_temp_cleanup();  // Required: clean up temp files
+}
+
+void test_file_operations(void) {
+    // Create empty temp file
+    const char* path = test_temp_file(".txt");
+
+    // Create temp file with content
+    const char* config = test_temp_file_with_content(".cfg", "option=value\n");
+
+    // Create temp file with binary data
+    uint8_t sram[8192] = {0};
+    const char* save = test_temp_file_with_binary(".sav", sram, sizeof(sram));
+
+    // Files are automatically cleaned in tearDown()
+}
+```
+
+### Creating Temp Directories
+
+```c
+void test_directory_operations(void) {
+    // Create temp directory
+    const char* dir = test_temp_dir();
+
+    // Create nested subdirectory
+    const char* roms_dir = test_temp_subdir(dir, "Roms/GB");
+    // roms_dir is now "/tmp/test_dir_XXXXXX/Roms/GB"
+
+    // Create file inside temp directory
+    const char* rom = test_temp_create_file(dir, "Roms/GB/game.gb", "ROM DATA");
+
+    // All cleaned automatically in tearDown()
+}
+```
+
+### Available Functions
+
+| Function | Purpose |
+|----------|---------|
+| `test_temp_file(suffix)` | Create empty temp file with optional suffix |
+| `test_temp_file_with_content(suffix, content)` | Create temp file with text content |
+| `test_temp_file_with_binary(suffix, data, size)` | Create temp file with binary data |
+| `test_temp_dir()` | Create empty temp directory |
+| `test_temp_subdir(base, subpath)` | Create nested directory under temp dir |
+| `test_temp_create_file(dir, filename, content)` | Create file inside temp directory |
+| `test_temp_cleanup()` | Remove all tracked temp resources |
+| `test_temp_count()` | Get count of tracked resources (for debugging) |
+
+## Memory Sanitizer Testing
+
+The test suite supports AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) to catch memory bugs.
+
+### What Sanitizers Detect
+
+**AddressSanitizer (ASan):**
+- Buffer overflows (heap, stack, global)
+- Use-after-free
+- Use-after-return
+- Memory leaks
+- Double-free
+
+**UndefinedBehaviorSanitizer (UBSan):**
+- Integer overflow
+- Null pointer dereference
+- Misaligned memory access
+- Invalid shift operations
+
+### Running Tests with Sanitizers
+
+```bash
+# Run all tests with ASan + UBSan (Docker, recommended)
+make test-asan
+
+# Or explicitly via Docker
+make docker-test-asan
+
+# Native (Linux hosts with GCC only)
+make -f Makefile.qa test-asan-native
+```
+
+### Example Output
+
+When ASan detects an issue, you'll see detailed output:
+
+```
+=================================================================
+==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x...
+READ of size 1 at 0x... thread T0
+    #0 0x... in my_function /path/to/file.c:42
+    #1 0x... in test_my_function /path/to/test.c:15
+    ...
+```
+
+### When to Use Sanitizers
+
+- **During development** - Catch bugs early
+- **Before releases** - Comprehensive memory checking
+- **Investigating crashes** - Get detailed stack traces
+- **CI integration** - Add `make test-asan` to your workflow
+
+### Notes
+
+- Sanitizers add ~2x slowdown but catch critical bugs
+- Requires GCC (runs in Docker for consistency)
+- Leak detection is enabled by default
+- Tests continue on errors (doesn't halt at first issue)
 
 ## Test Guidelines
 

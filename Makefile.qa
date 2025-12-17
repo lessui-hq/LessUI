@@ -14,13 +14,14 @@
 # The main makefile forwards to this file for test/lint/format targets.
 # Run 'make -f Makefile.qa help' for complete target list.
 
-.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-test docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
+.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native test-asan test-asan-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-test docker-test-asan docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
 help:
 	@echo "LessUI Quality Assurance Tools"
 	@echo ""
 	@echo "Main targets (use these):"
 	@echo "  make test          - Run unit tests (Docker, recommended)"
+	@echo "  make test-asan     - Run tests with AddressSanitizer + UBSan (Docker)"
 	@echo "  make coverage      - Run tests with coverage analysis (Docker)"
 	@echo "  make lint          - Run ALL linting checks (clang-tidy, format-check, shellcheck)"
 	@echo "  make format        - Format all code (C, shell, makefiles)"
@@ -41,11 +42,12 @@ help:
 	@echo "  make format-prettier-check - Check JSON, YAML, Markdown formatting"
 	@echo ""
 	@echo "Docker targets:"
-	@echo "  make docker-test     - Run tests in Docker container (Ubuntu 24.04)"
-	@echo "  make docker-coverage - Run coverage analysis in Docker container"
-	@echo "  make docker-analyze  - Run static analysis in Docker container"
-	@echo "  make docker-build    - Build Docker image"
-	@echo "  make docker-shell    - Enter Docker container for debugging"
+	@echo "  make docker-test      - Run tests in Docker container (Ubuntu 24.04)"
+	@echo "  make docker-test-asan - Run tests with sanitizers in Docker"
+	@echo "  make docker-coverage  - Run coverage analysis in Docker container"
+	@echo "  make docker-analyze   - Run static analysis in Docker container"
+	@echo "  make docker-build     - Build Docker image"
+	@echo "  make docker-shell     - Enter Docker container for debugging"
 	@echo ""
 	@echo "Other:"
 	@echo "  make clean-qa      - Clean QA artifacts"
@@ -286,9 +288,9 @@ tests/recent_parser_test: tests/unit/all/launcher/test_recent_parser.c workspace
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fclose -Wl,--wrap=fgets
 
 # Build recent.txt writer tests (uses real temp files, no --wrap needed)
-tests/recent_writer_test: tests/unit/all/launcher/test_recent_writer.c workspace/all/launcher/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
+tests/recent_writer_test: tests/unit/all/launcher/test_recent_writer.c workspace/all/launcher/recent_file.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/test_temp.c $(TEST_UNITY)
 	@echo "Building recent.txt writer tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_GNU_SOURCE
 
 # Build recent runtime tests (Recent struct and array operations)
 tests/recent_runtime_test: tests/unit/all/launcher/test_recent_runtime.c workspace/all/launcher/recent_file.c workspace/all/common/stb_ds_impl.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c $(TEST_UNITY)
@@ -301,9 +303,9 @@ tests/directory_utils_test: tests/unit/all/launcher/test_directory_utils.c works
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
 # Build binary file I/O tests (uses real temp files, no --wrap needed)
-tests/binary_file_utils_test: tests/unit/all/common/test_binary_file_utils.c workspace/all/common/binary_file_utils.c workspace/all/common/log.c $(TEST_UNITY)
+tests/binary_file_utils_test: tests/unit/all/common/test_binary_file_utils.c workspace/all/common/binary_file_utils.c workspace/all/common/log.c tests/support/test_temp.c $(TEST_UNITY)
 	@echo "Building binary file I/O tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_GNU_SOURCE
 
 # Build UI layout / DP system tests (pure math, no mocking needed)
 tests/ui_layout_test: tests/unit/all/common/test_ui_layout.c workspace/all/common/log.c $(TEST_UNITY)
@@ -356,9 +358,9 @@ tests/player_archive_test: tests/unit/all/player/test_player_archive.c workspace
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_POSIX_C_SOURCE=200809L
 
 # Build memory persistence tests (SRAM/RTC with mock core callbacks, uses real temp files)
-tests/player_memory_test: tests/unit/all/player/test_player_memory.c workspace/all/player/player_memory.c tests/support/libretro_mocks.c $(TEST_UNITY)
+tests/player_memory_test: tests/unit/all/player/test_player_memory.c workspace/all/player/player_memory.c tests/support/libretro_mocks.c tests/support/test_temp.c $(TEST_UNITY)
 	@echo "Building memory persistence tests..."
-	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_GNU_SOURCE
 
 # Build save state system tests (with mock core callbacks, uses real temp files)
 tests/player_state_test: tests/unit/all/player/test_player_state.c workspace/all/player/player_state.c workspace/all/player/player_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c $(TEST_UNITY)
@@ -841,3 +843,42 @@ clean-coverage:
 	find . -name "*.gcda" -delete 2>/dev/null || true
 	find . -name "*.gcov" -delete 2>/dev/null || true
 	@echo "✓ Coverage data cleaned"
+
+###########################################################
+# Sanitizer Testing (AddressSanitizer, UndefinedBehaviorSanitizer)
+#
+# ASan catches: buffer overflows, use-after-free, memory leaks
+# UBSan catches: integer overflow, null pointer deref, misaligned access
+#
+# These run in Docker to ensure GCC sanitizer support
+###########################################################
+
+# Sanitizer flags for GCC
+TEST_CFLAGS_ASAN = -std=c99 -Wall -Wextra -Wno-unused-parameter \
+                   -fsanitize=address,undefined \
+                   -fno-omit-frame-pointer -g \
+                   -DASAN_BUILD
+
+# Environment variables for ASan runtime
+ASAN_OPTIONS_ENV = ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:print_stats=1
+
+# Default: use Docker for sanitizer testing
+test-asan: docker-test-asan
+
+# Docker ASan target
+docker-test-asan: docker-build
+	@echo "============================================="
+	@echo "Running tests with AddressSanitizer + UBSan"
+	@echo "============================================="
+	@echo ""
+	@echo "ASan detects: buffer overflow, use-after-free, memory leaks"
+	@echo "UBSan detects: integer overflow, null deref, misaligned access"
+	@echo ""
+	$(DEV_RUN) ./scripts/run-tests.sh --asan
+
+# Native ASan target (for Linux hosts with GCC)
+test-asan-native:
+	@echo "Building and running tests with sanitizers..."
+	@echo ""
+	$(MAKE) -f Makefile.qa clean-tests
+	$(MAKE) -f Makefile.qa test-native TEST_CFLAGS="$(TEST_CFLAGS_ASAN)"

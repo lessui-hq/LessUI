@@ -7,26 +7,22 @@
 
 #include "unity.h"
 #include "recent_file.h"
+#include "test_temp.h"
 
+#include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
 
 void setUp(void) {
-	// Nothing to set up
+	// Nothing to set up - temp files created as needed
 }
 
 void tearDown(void) {
-	// Nothing to clean up
+	test_temp_cleanup(); // Clean up any temp files created during test
 }
 
 void test_Recent_save_single_entry_no_alias(void) {
-	// Create temp file
-	char temp_path[] = "/tmp/recent_save_test_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(NULL);
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Create entry
 	Recent_Entry entry1 = {.path = "/Roms/GB/mario.gb", .alias = NULL};
@@ -44,16 +40,11 @@ void test_Recent_save_single_entry_no_alias(void) {
 	fclose(f);
 
 	TEST_ASSERT_EQUAL_STRING("/Roms/GB/mario.gb\n", line);
-
-	// Cleanup
-	unlink(temp_path);
 }
 
 void test_Recent_save_single_entry_with_alias(void) {
-	char temp_path[] = "/tmp/recent_save_test_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(NULL);
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	Recent_Entry entry1 = {.path = "/Roms/GB/mario.gb", .alias = "Super Mario"};
 	Recent_Entry* entries[] = {&entry1};
@@ -68,15 +59,11 @@ void test_Recent_save_single_entry_with_alias(void) {
 	fclose(f);
 
 	TEST_ASSERT_EQUAL_STRING("/Roms/GB/mario.gb\tSuper Mario\n", line);
-
-	unlink(temp_path);
 }
 
 void test_Recent_save_multiple_entries_mixed(void) {
-	char temp_path[] = "/tmp/recent_save_test_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(NULL);
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	Recent_Entry entry1 = {.path = "/Roms/GB/mario.gb", .alias = "Super Mario"};
 	Recent_Entry entry2 = {.path = "/Roms/NES/zelda.nes", .alias = NULL};
@@ -97,15 +84,11 @@ void test_Recent_save_multiple_entries_mixed(void) {
 	TEST_ASSERT_EQUAL_STRING("/Roms/GB/mario.gb\tSuper Mario\n", line1);
 	TEST_ASSERT_EQUAL_STRING("/Roms/NES/zelda.nes\n", line2);
 	TEST_ASSERT_EQUAL_STRING("/Roms/SNES/metroid.smc\tMetroid\n", line3);
-
-	unlink(temp_path);
 }
 
 void test_Recent_save_empty_array(void) {
-	char temp_path[] = "/tmp/recent_save_test_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(NULL);
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Save empty array
 	int result = Recent_save(temp_path, NULL, 0);
@@ -119,8 +102,6 @@ void test_Recent_save_empty_array(void) {
 	fclose(f);
 
 	TEST_ASSERT_NULL(res); // Empty file
-
-	unlink(temp_path);
 }
 
 void test_Recent_save_file_open_failure(void) {

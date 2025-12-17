@@ -7,18 +7,18 @@
 
 #include "unity.h"
 #include "../../../../workspace/all/common/binary_file_utils.h"
+#include "test_temp.h"
 
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 void setUp(void) {
-	// Nothing to set up
+	// Nothing to set up - temp files created as needed
 }
 
 void tearDown(void) {
-	// Nothing to clean up
+	test_temp_cleanup(); // Clean up any temp files created during test
 }
 
 ///////////////////////////////
@@ -26,10 +26,8 @@ void tearDown(void) {
 ///////////////////////////////
 
 void test_BinaryFile_write_read_small_buffer(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Write small binary buffer
 	uint8_t write_data[] = {0x01, 0x02, 0x03, 0x04, 0x05};
@@ -43,15 +41,11 @@ void test_BinaryFile_write_read_small_buffer(void) {
 
 	// Verify data matches
 	TEST_ASSERT_EQUAL_MEMORY(write_data, read_data, 5);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_write_read_large_buffer(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Write 1KB buffer
 	uint8_t write_data[1024];
@@ -69,15 +63,11 @@ void test_BinaryFile_write_read_large_buffer(void) {
 
 	// Verify
 	TEST_ASSERT_EQUAL_MEMORY(write_data, read_data, 1024);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_write_read_sram_like_data(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(".sav");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Simulate SRAM data (32KB like Game Boy saves)
 	const size_t sram_size = 32 * 1024;
@@ -106,14 +96,11 @@ void test_BinaryFile_write_read_sram_like_data(void) {
 
 	free(sram);
 	free(sram_read);
-	unlink(temp_path);
 }
 
 void test_BinaryFile_write_read_rtc_like_data(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	TEST_ASSERT_TRUE(fd >= 0);
-	close(fd);
+	const char* temp_path = test_temp_file(".rtc");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Simulate RTC data (small, like Game Boy RTC - few bytes)
 	uint8_t rtc_data[] = {
@@ -129,8 +116,6 @@ void test_BinaryFile_write_read_rtc_like_data(void) {
 	TEST_ASSERT_EQUAL_UINT(sizeof(rtc_data), read_bytes);
 
 	TEST_ASSERT_EQUAL_MEMORY(rtc_data, rtc_read, sizeof(rtc_data));
-
-	unlink(temp_path);
 }
 
 ///////////////////////////////
@@ -150,49 +135,37 @@ void test_BinaryFile_write_invalid_path(void) {
 }
 
 void test_BinaryFile_read_null_buffer(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	size_t read_bytes = BinaryFile_read(temp_path, NULL, 100);
 	TEST_ASSERT_EQUAL_UINT(0, read_bytes);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_write_null_buffer(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	size_t written = BinaryFile_write(temp_path, NULL, 100);
 	TEST_ASSERT_EQUAL_UINT(0, written);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_read_zero_size(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	uint8_t buffer[100];
 	size_t read_bytes = BinaryFile_read(temp_path, buffer, 0);
 	TEST_ASSERT_EQUAL_UINT(0, read_bytes);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_write_zero_size(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	uint8_t data[] = {0x01};
 	size_t written = BinaryFile_write(temp_path, data, 0);
 	TEST_ASSERT_EQUAL_UINT(0, written);
-
-	unlink(temp_path);
 }
 
 ///////////////////////////////
@@ -200,9 +173,8 @@ void test_BinaryFile_write_zero_size(void) {
 ///////////////////////////////
 
 void test_BinaryFile_write_overwrites_existing(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Write initial data
 	uint8_t data1[] = {0x01, 0x02, 0x03, 0x04, 0x05};
@@ -219,14 +191,11 @@ void test_BinaryFile_write_overwrites_existing(void) {
 	TEST_ASSERT_EQUAL_UINT(2, read_bytes);
 	TEST_ASSERT_EQUAL_UINT8(0xFF, read_data[0]);
 	TEST_ASSERT_EQUAL_UINT8(0xEE, read_data[1]);
-
-	unlink(temp_path);
 }
 
 void test_BinaryFile_read_partial(void) {
-	char temp_path[] = "/tmp/bintest_XXXXXX";
-	int fd = mkstemp(temp_path);
-	close(fd);
+	const char* temp_path = test_temp_file(".bin");
+	TEST_ASSERT_NOT_NULL(temp_path);
 
 	// Write 10 bytes
 	uint8_t write_data[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -237,8 +206,6 @@ void test_BinaryFile_read_partial(void) {
 	size_t read_bytes = BinaryFile_read(temp_path, read_data, 5);
 	TEST_ASSERT_EQUAL_UINT(5, read_bytes);
 	TEST_ASSERT_EQUAL_MEMORY(write_data, read_data, 5);
-
-	unlink(temp_path);
 }
 
 ///////////////////////////////

@@ -135,6 +135,9 @@ name:
 test:
 	@$(MAKE) -f Makefile.qa test
 
+test-asan:
+	@$(MAKE) -f Makefile.qa test-asan
+
 coverage:
 	@$(MAKE) -f Makefile.qa coverage
 
