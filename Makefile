@@ -36,6 +36,7 @@ endif
 # Release versioning
 
 BUILD_HASH := $(shell git rev-parse --short HEAD)
+export BUILD_HASH
 RELEASE_TIME := $(shell TZ=GMT date +%Y%m%d)
 RELEASE_BETA =
 RELEASE_BASE = LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
@@ -229,7 +230,6 @@ common: build system
 clean:
 	@rm -rf ./build
 	@rm -rf ./workspace/readmes
-	@rm -f workspace/hash.txt
 	@rm -rf workspace/all/build
 	@rm -rf workspace/all/launcher/build
 	@rm -rf workspace/all/player/build
@@ -249,7 +249,6 @@ setup: name
 	@rsync -a ./skeleton/ ./build/
 	@cd ./build && find . -type f -name '.keep' -delete
 	@cd ./build && find . -type f -name '*.meta' -delete
-	@echo $(BUILD_HASH) > ./workspace/hash.txt
 	@mkdir -p ./workspace/readmes
 	@rsync -a ./skeleton/BASE/README.md ./workspace/readmes/BASE-in.txt
 	@mkdir -p ./workspace/rg35xx/boot

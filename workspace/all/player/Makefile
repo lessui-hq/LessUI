@@ -55,14 +55,14 @@ CFLAGS += $(WARN_FLAGS)
 # LDFLAGS += -lasan
 
 BUILD_DATE != date +%Y.%m.%d
-BUILD_HASH != cat ../../hash.txt
+BUILD_HASH ?= unknown
 CFLAGS += -DBUILD_DATE=\"${BUILD_DATE}\" -DBUILD_HASH=\"${BUILD_HASH}\"
 
 # CFLAGS += -DBUILD_DATE=\"20230326\" -DBUILD_HASH=\"d34db33f\"
 
 PRODUCT = build/$(PLATFORM)/$(TARGET).elf
 
-$(PRODUCT): $(SOURCE) $(HEADERS) ../../hash.txt | libretro-common $(PREFIX)/include/msettings.h
+$(PRODUCT): $(SOURCE) $(HEADERS) | libretro-common $(PREFIX)/include/msettings.h
 	mkdir -p build/$(PLATFORM)
 	$(CC) $(SOURCE) -o $(PRODUCT) $(CFLAGS) $(LDFLAGS)
 
