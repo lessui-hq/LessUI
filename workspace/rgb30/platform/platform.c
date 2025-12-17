@@ -198,7 +198,6 @@ void PLAT_pollInput(void) {
 				if (value > 1)
 					continue;
 				pressed = value;
-				LOG_info("key event: %i (%i)\n", code, pressed);
 				if (code == RAW_UP) {
 					btn = BTN_DPAD_UP;
 				} else if (code == RAW_DOWN) {
@@ -245,7 +244,6 @@ void PLAT_pollInput(void) {
 					btn = BTN_POWER;
 				}
 			} else if (type == EV_ABS) {
-				LOG_info("abs event: %i (%i==%i)\n", code, value, (value * 32767) / 1800);
 				if (code == RAW_LSX) {
 					pad.laxis.x = (value * 32767) / 1800;
 					PAD_setAnalog(BTN_ID_ANALOG_LEFT, BTN_ID_ANALOG_RIGHT, pad.laxis.x,

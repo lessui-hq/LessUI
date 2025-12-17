@@ -2039,7 +2039,6 @@ int main(int argc, char* argv[]) {
 					                     : NULL;
 					if (cached_surface) {
 						// Cache HIT - mark as displayed
-						LOG_debug("thumb: idx=%d CACHE HIT", current_selected);
 						LauncherThumbnail_cacheSetDisplayed(&thumb_cache, current_selected);
 						if (SDLX_SupportsSurfaceAlphaMod()) {
 							LauncherThumbnail_fadeStart(&thumb_fade, now);
@@ -2050,8 +2049,6 @@ int main(int argc, char* argv[]) {
 
 						// Queue preload for next item (if not already cached)
 						if (has_hint && LauncherThumbnail_cacheFind(&thumb_cache, hint_index) < 0) {
-							LOG_debug("thumb: idx=%d HIT, preloading %d", current_selected,
-							          hint_index);
 							LauncherThumbnail_loaderRequest(hint_path, thumb_max_width,
 							                                thumb_max_height, hint_index, 1, NULL,
 							                                -1);
@@ -2298,7 +2295,6 @@ int main(int argc, char* argv[]) {
 									                    ui.text_offset_px,
 									                0, 0});
 								}
-								LOG_debug("text cache: HIT row=%d slot=%d", j, cache_slot);
 							} else {
 								// Cache miss: render and store
 								// For entries with unique names, render unique text first
@@ -2341,10 +2337,6 @@ int main(int argc, char* argv[]) {
 									store_slot = text_cache_next_evict;
 									text_cache_next_evict =
 									    (text_cache_next_evict + 1) % TEXT_CACHE_SIZE;
-									LOG_debug("text cache: MISS row=%d EVICT slot=%d", j,
-									          store_slot);
-								} else {
-									LOG_debug("text cache: MISS row=%d NEW slot=%d", j, store_slot);
 								}
 								if (text_cache[store_slot].surface)
 									SDL_FreeSurface(text_cache[store_slot].surface);

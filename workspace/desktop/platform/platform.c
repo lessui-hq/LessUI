@@ -253,7 +253,7 @@ static void resizeVideo(int w, int h, int p) {
 	if (w == vid.width && h == vid.height && p == vid.pitch)
 		return;
 
-	LOG_info("resizeVideo(%i,%i,%i)\n", w, h, p);
+	LOG_debug("resizeVideo(%i,%i,%i)\n", w, h, p);
 
 	SDL_FreeSurface(vid.buffer);
 	SDL_DestroyTexture(vid.texture);
@@ -346,12 +346,10 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 		resizeVideo(device_width, device_height, FIXED_PITCH); // !!!???
 		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
 		if (rotate) {
-			LOG_info("rotated\n");
 			SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
 			                 &(SDL_Rect){device_height, 0, device_width, device_height},
 			                 rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
 		} else {
-			LOG_info("not rotated\n");
 			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
 		}
 

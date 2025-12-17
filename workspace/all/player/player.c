@@ -223,7 +223,7 @@ static void Game_open(char* path) {
 
 	// Handle archive files (.zip, .7z)
 	if (PlayerArchive_isArchive(game.path)) {
-		LOG_info("is archive file");
+		LOG_debug("is archive file");
 		char exts[128];
 		char* extensions[PLAYER_MAX_EXTENSIONS];
 		SAFE_STRCPY(exts, core.extensions);
@@ -859,9 +859,8 @@ static void* auto_cpu_scaling_thread(void* arg) {
 			if (target_idx != current_idx && target_idx >= 0 &&
 			    target_idx < auto_cpu_state.freq_count) {
 				int freq_khz = auto_cpu_state.frequencies[target_idx];
-				unsigned audio_fill_before = SND_getBufferOccupancy();
-				LOG_info("Auto CPU: setting %d kHz (index %d/%d, audio=%u%%)\n", freq_khz,
-				         target_idx, auto_cpu_state.freq_count - 1, audio_fill_before);
+				LOG_debug("Auto CPU: setting %d kHz (index %d/%d)\n", freq_khz, target_idx,
+				          auto_cpu_state.freq_count - 1);
 
 				int result = PLAT_setCPUFrequency(freq_khz);
 				if (result == 0) {
@@ -901,7 +900,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 					break;
 				}
 
-				LOG_info("Auto CPU: applying %s (level %d)\n", level_name, target);
+				LOG_debug("Auto CPU: applying %s (level %d)\n", level_name, target);
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);
@@ -1312,10 +1311,8 @@ static void updateAutoCPU(void) {
 
 					auto_cpu_setTargetIndex(new_idx);
 					auto_cpu_state.high_util_windows = 0;
-					unsigned audio_fill = SND_getBufferOccupancy();
-					LOG_info("Auto CPU: BOOST %d→%d kHz (util=%u%%, target ~%d%%, audio=%u%%)\n",
-					         current_freq, auto_cpu_state.frequencies[new_idx], util,
-					         auto_cpu_config.target_util, audio_fill);
+					LOG_debug("Auto CPU: BOOST %d→%d kHz (util=%u%%)\n", current_freq,
+					          auto_cpu_state.frequencies[new_idx], util);
 				}
 			} else if (util < auto_cpu_config.util_low) {
 				// Can reduce power - step down
@@ -1361,14 +1358,10 @@ static void updateAutoCPU(void) {
 						auto_cpu_state.low_util_windows = 0;
 					} else {
 						int new_freq = auto_cpu_state.frequencies[new_idx];
-						int predicted_util = util * current_freq / new_freq;
-
 						auto_cpu_setTargetIndex(new_idx);
 						auto_cpu_state.low_util_windows = 0;
-						unsigned audio_fill = SND_getBufferOccupancy();
-						LOG_info(
-						    "Auto CPU: REDUCE %d→%d kHz (util=%u%%, predicted ~%d%%, audio=%u%%)\n",
-						    current_freq, new_freq, util, predicted_util, audio_fill);
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%%)\n", current_freq,
+						          new_freq, util);
 					}
 				}
 			} else {
@@ -1415,7 +1408,7 @@ static void updateAutoCPU(void) {
 				int new_level = current_level + 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.high_util_windows = 0;
-				LOG_info("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
+				LOG_debug("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
 			}
 
 			// Reduce if sustained low utilization
@@ -1424,7 +1417,7 @@ static void updateAutoCPU(void) {
 				int new_level = current_level - 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.low_util_windows = 0;
-				LOG_info("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
 			}
 		}
 
@@ -1687,7 +1680,7 @@ static void Config_load(void) {
 	LOG_info("Config_load");
 
 	config.device_tag = getenv("DEVICE");
-	LOG_info("config.device_tag %s", config.device_tag);
+	LOG_debug("config.device_tag %s", config.device_tag);
 
 	// update for crop overscan support
 	PlayerOption* scaling_option = &config.frontend.options[FE_OPT_SCALING];
@@ -1705,7 +1698,7 @@ static void Config_load(void) {
 		               config.device_tag);
 
 	if (config.device_tag && exists(device_system_path)) {
-		LOG_info("Using device_system_path: %s", device_system_path);
+		LOG_debug("Using device_system_path: %s", device_system_path);
 		config.system_cfg = allocFile(device_system_path);
 	} else if (exists(system_path))
 		config.system_cfg = allocFile(system_path);
@@ -1729,7 +1722,7 @@ static void Config_load(void) {
 	}
 
 	if (config.device_tag && exists(device_default_path)) {
-		LOG_info("Using device_default_path: %s", device_default_path);
+		LOG_debug("Using device_default_path: %s", device_default_path);
 		config.default_cfg = allocFile(device_default_path);
 	} else if (exists(default_path))
 		config.default_cfg = allocFile(default_path);

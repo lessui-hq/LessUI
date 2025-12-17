@@ -529,7 +529,7 @@ void PLAT_setEffect(int effect) {
 
 void PLAT_vsync(int remaining) {
 	if (ioctl(vid.fd_fb, OWLFB_WAITFORVSYNC, &_))
-		LOG_info("OWLFB_WAITFORVSYNC failed %s\n", strerror(errno));
+		LOG_errno_warn("OWLFB_WAITFORVSYNC failed");
 }
 
 /**

@@ -211,7 +211,7 @@ void PlayerVideoConvert_convert(const void* data, unsigned width, unsigned heigh
 		break;
 
 	case PLAYER_PIXEL_FORMAT_RGB565:
-		LOG_warn("PlayerVideoConvert_convert called for RGB565 (no conversion needed)");
+		// RGB565 is native format, no conversion needed
 		break;
 
 	default:

@@ -15,7 +15,7 @@
  */
 size_t BinaryFile_read(const char* filepath, void* buffer, size_t size) {
 	if (!filepath || !buffer || size == 0) {
-		LOG_warn("Invalid parameters for BinaryFile_read");
+		LOG_error("Invalid parameters for BinaryFile_read");
 		return 0;
 	}
 
@@ -40,7 +40,7 @@ size_t BinaryFile_read(const char* filepath, void* buffer, size_t size) {
  */
 size_t BinaryFile_write(const char* filepath, const void* buffer, size_t size) {
 	if (!filepath || !buffer || size == 0) {
-		LOG_warn("Invalid parameters for BinaryFile_write");
+		LOG_error("Invalid parameters for BinaryFile_write");
 		return 0;
 	}
 

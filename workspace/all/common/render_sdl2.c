@@ -101,8 +101,8 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	// Get color for grid effect tinting (GameBoy DMG palettes)
 	int color = (fx->type == EFFECT_GRID) ? fx->color : 0;
 
-	LOG_info("Effect: creating type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n", fx->type,
-	         fx->scale, opacity, color, pattern);
+	LOG_debug("Effect: creating type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n", fx->type,
+	          fx->scale, opacity, color, pattern);
 
 	// Load and tile pattern (with optional color tinting for grid)
 	SDL_Texture* tiled =
@@ -120,7 +120,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		// Mark as live
 		EFFECT_markLive(fx);
 
-		LOG_info("Effect: created %dx%d texture, opacity=%d\n", target_w, target_h, opacity);
+		LOG_debug("Effect: created %dx%d texture, opacity=%d\n", target_w, target_h, opacity);
 	}
 }
 

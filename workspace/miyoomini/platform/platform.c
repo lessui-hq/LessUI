@@ -351,7 +351,6 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 		if (!nowait)
 			MI_GFX_WaitAllDone(FALSE, Fence);
 	} else {
-		LOG_info("Fallback to SDL_BlitSurface (no pixelsPa)\n");
 		SDL_BlitSurface(src, srcrect, dst, dstrect);
 	}
 }
@@ -565,7 +564,7 @@ static void updateEffectOverlay(void) {
 	const char* pattern =
 	    EFFECT_getPatternPath(pattern_path, sizeof(pattern_path), effect_state.type, scale);
 	if (!pattern) {
-		LOG_info("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
+		LOG_debug("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
 		return;
 	}
 
@@ -575,14 +574,14 @@ static void updateEffectOverlay(void) {
 	// Get color for grid effect tinting (GameBoy DMG palettes)
 	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
 
-	LOG_info("Effect: creating overlay type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n",
-	         effect_state.type, scale, opacity, color, pattern);
+	LOG_debug("Effect: creating overlay type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n",
+	          effect_state.type, scale, opacity, color, pattern);
 
 	// Pattern is pre-sized for this scale, tile at 1:1 (no scaling)
 	SDL_Surface* temp =
 	    EFFECT_createTiledSurfaceWithColor(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT, color);
 	if (!temp) {
-		LOG_info("Effect: EFFECT_createTiledSurfaceWithColor failed!\n");
+		LOG_error("Effect: EFFECT_createTiledSurfaceWithColor failed");
 		return;
 	}
 
@@ -591,8 +590,8 @@ static void updateEffectOverlay(void) {
 		MI_SYS_MMA_Alloc(NULL, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.padd);
 		MI_SYS_Mmap(vid.effect_buffer.padd, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.vadd,
 		            true);
-		LOG_info("Effect: allocated ION buffer padd=0x%llX vadd=%p\n",
-		         (unsigned long long)vid.effect_buffer.padd, vid.effect_buffer.vadd);
+		LOG_debug("Effect: allocated ION buffer padd=0x%llX vadd=%p\n",
+		          (unsigned long long)vid.effect_buffer.padd, vid.effect_buffer.vadd);
 	}
 
 	// Free existing overlay surface (but keep ION buffer)
@@ -607,7 +606,7 @@ static void updateEffectOverlay(void) {
 	    SDL_CreateRGBSurfaceFrom(vid.effect_buffer.vadd, FIXED_WIDTH, FIXED_HEIGHT, 32,
 	                             FIXED_WIDTH * 4, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
 	if (!vid.effect) {
-		LOG_info("Effect: SDL_CreateRGBSurfaceFrom failed!\n");
+		LOG_error("Effect: SDL_CreateRGBSurfaceFrom failed");
 		SDL_FreeSurface(temp);
 		return;
 	}
@@ -620,16 +619,12 @@ static void updateEffectOverlay(void) {
 	// Enable alpha blending with opacity from effect_system
 	SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 
-	LOG_info("Effect: overlay created %dx%d in ION memory, pixelsPa=0x%llX\n", vid.effect->w,
-	         vid.effect->h, (unsigned long long)vid.effect->pixelsPa);
+	LOG_debug("Effect: overlay created %dx%d in ION memory\n", vid.effect->w, vid.effect->h);
 
 	EFFECT_markLive(&effect_state);
 }
 
 void PLAT_setEffect(int effect) {
-	if (effect != effect_state.next_type) {
-		LOG_info("PLAT_setEffect: %d -> %d\n", effect_state.next_type, effect);
-	}
 	EFFECT_setType(&effect_state, effect);
 }
 
@@ -880,7 +875,7 @@ void PLAT_setCPUSpeed(int speed) {
 		break;
 	}
 
-	LOG_info("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
+	LOG_debug("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
 	char cmd[32];
 	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq);
 	int ret = system(cmd);

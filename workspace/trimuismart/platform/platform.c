@@ -456,12 +456,12 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 		vid.rotated_offset = (renderer->dst_x * vid.rotated_pitch) + (renderer->dst_y * FIXED_BPP);
 		vid.source_offset = (renderer->src_x * vid.special->pitch) + (renderer->src_y * FIXED_BPP);
 
-		LOG_info("PLAT_blitRenderer >> src:%p dst:%p blit:%p src:%ix%i (%i) dst:%i,%i %ix%i (%i) "
-		         "vid: %ix%i (%i) (%i)\n",
-		         vid.renderer->src, vid.renderer->dst, vid.renderer->blit, vid.renderer->src_w,
-		         vid.renderer->src_h, vid.renderer->src_p, vid.renderer->dst_x, vid.renderer->dst_y,
-		         vid.renderer->dst_w, vid.renderer->dst_h, vid.renderer->dst_p, vid.width,
-		         vid.height, vid.pitch, vid.rotated_pitch);
+		LOG_debug("PLAT_blitRenderer >> src:%p dst:%p blit:%p src:%ix%i (%i) dst:%i,%i %ix%i (%i) "
+		          "vid: %ix%i (%i) (%i)\n",
+		          vid.renderer->src, vid.renderer->dst, vid.renderer->blit, vid.renderer->src_w,
+		          vid.renderer->src_h, vid.renderer->src_p, vid.renderer->dst_x,
+		          vid.renderer->dst_y, vid.renderer->dst_w, vid.renderer->dst_h,
+		          vid.renderer->dst_p, vid.width, vid.height, vid.pitch, vid.rotated_pitch);
 	}
 
 	rotate_16bpp(renderer->src, vid.special->pixels, renderer->src_w, renderer->src_h,
