@@ -12,6 +12,48 @@
 #include <string.h>
 
 /**
+ * Parses a single map.txt line and updates the map.
+ * Format: key<TAB>value
+ *
+ * @param map Pointer to MapEntry* hash map (will be modified)
+ * @param line Line to parse (will be modified by strchr)
+ * @return 1 if line was parsed and added, 0 if skipped
+ */
+static int Map_parseLine(MapEntry** map, char* line) {
+	normalizeNewline(line);
+	trimTrailingNewlines(line);
+	if (strlen(line) == 0)
+		return 0; // skip empty lines
+
+	// Parse tab-delimited format: filename<TAB>alias
+	char* tmp = strchr(line, '\t');
+	if (!tmp)
+		return 0; // skip malformed lines
+
+	tmp[0] = '\0';
+	char* key = line;
+	char* value = tmp + 1;
+
+	// Check if key already exists (update value)
+	ptrdiff_t idx = shgeti(*map, key);
+	if (idx >= 0) {
+		char* value_copy = strdup(value);
+		if (value_copy) {
+			free((*map)[idx].value);
+			(*map)[idx].value = value_copy;
+			return 1;
+		}
+	} else {
+		char* value_copy = strdup(value);
+		if (value_copy) {
+			shput(*map, key, value_copy);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/**
  * Frees a MapEntry hash map (values and map itself).
  */
 void Map_free(MapEntry* map) {
@@ -41,32 +83,7 @@ MapEntry* Map_load(const char* map_path) {
 
 	char line[256];
 	while (fgets(line, 256, file) != NULL) {
-		normalizeNewline(line);
-		trimTrailingNewlines(line);
-		if (strlen(line) == 0)
-			continue; // skip empty lines
-
-		// Parse tab-delimited format: filename<TAB>alias
-		char* tmp = strchr(line, '\t');
-		if (tmp) {
-			tmp[0] = '\0';
-			char* key = line;
-			char* value = tmp + 1;
-			// Check if key already exists (update value)
-			ptrdiff_t idx = shgeti(map, key);
-			if (idx >= 0) {
-				char* value_copy = strdup(value);
-				if (value_copy) {
-					free(map[idx].value);
-					map[idx].value = value_copy;
-				}
-			} else {
-				char* value_copy = strdup(value);
-				if (value_copy) {
-					shput(map, key, value_copy);
-				}
-			}
-		}
+		Map_parseLine(&map, line);
 	}
 	(void)fclose(file);
 
@@ -130,30 +147,7 @@ MapEntry* Map_loadForDirectory(const char* dir_path) {
 	if (file) {
 		char line[256];
 		while (fgets(line, 256, file) != NULL) {
-			normalizeNewline(line);
-			trimTrailingNewlines(line);
-			if (strlen(line) == 0)
-				continue;
-			char* tmp = strchr(line, '\t');
-			if (tmp) {
-				tmp[0] = '\0';
-				char* key = line;
-				char* value = tmp + 1;
-				// Update or insert
-				ptrdiff_t idx = shgeti(merged, key);
-				if (idx >= 0) {
-					char* value_copy = strdup(value);
-					if (value_copy) {
-						free(merged[idx].value);
-						merged[idx].value = value_copy;
-					}
-				} else {
-					char* value_copy = strdup(value);
-					if (value_copy) {
-						shput(merged, key, value_copy);
-					}
-				}
-			}
+			Map_parseLine(&merged, line);
 		}
 		(void)fclose(file);
 	}

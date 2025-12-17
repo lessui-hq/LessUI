@@ -320,6 +320,259 @@ void test_getAlias_duplicate_uses_last_value(void) {
 }
 
 ///////////////////////////////
+// Map_load() Direct Tests
+///////////////////////////////
+
+void test_Map_load_returns_null_for_nonexistent_file(void) {
+	MapEntry* map = Map_load("/nonexistent/map.txt");
+	TEST_ASSERT_NULL(map);
+}
+
+void test_Map_load_returns_empty_map_for_empty_file(void) {
+	mock_fs_add_file("/Roms/map.txt", "");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(0, shlen(map));
+
+	Map_free(map);
+}
+
+void test_Map_load_parses_single_entry(void) {
+	mock_fs_add_file("/Roms/map.txt", "game.gb\tGame Name\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(1, shlen(map));
+
+	char* value = shget(map, "game.gb");
+	TEST_ASSERT_EQUAL_STRING("Game Name", value);
+
+	Map_free(map);
+}
+
+void test_Map_load_parses_multiple_entries(void) {
+	mock_fs_add_file("/Roms/map.txt",
+	                 "game1.gb\tFirst Game\n"
+	                 "game2.gb\tSecond Game\n"
+	                 "game3.gb\tThird Game\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(3, shlen(map));
+
+	TEST_ASSERT_EQUAL_STRING("First Game", shget(map, "game1.gb"));
+	TEST_ASSERT_EQUAL_STRING("Second Game", shget(map, "game2.gb"));
+	TEST_ASSERT_EQUAL_STRING("Third Game", shget(map, "game3.gb"));
+
+	Map_free(map);
+}
+
+void test_Map_load_skips_malformed_lines(void) {
+	mock_fs_add_file("/Roms/map.txt",
+	                 "no tab here\n"
+	                 "game.gb\tValid Entry\n"
+	                 "also no tab\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(1, shlen(map));
+	TEST_ASSERT_EQUAL_STRING("Valid Entry", shget(map, "game.gb"));
+
+	Map_free(map);
+}
+
+void test_Map_load_handles_duplicate_keys(void) {
+	mock_fs_add_file("/Roms/map.txt",
+	                 "game.gb\tFirst Value\n"
+	                 "game.gb\tSecond Value\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(1, shlen(map));
+	// Last value wins
+	TEST_ASSERT_EQUAL_STRING("Second Value", shget(map, "game.gb"));
+
+	Map_free(map);
+}
+
+void test_Map_load_handles_windows_newlines(void) {
+	mock_fs_add_file("/Roms/map.txt", "game.gb\tGame Name\r\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL_STRING("Game Name", shget(map, "game.gb"));
+
+	Map_free(map);
+}
+
+void test_Map_load_skips_empty_lines(void) {
+	mock_fs_add_file("/Roms/map.txt",
+	                 "\n"
+	                 "game.gb\tGame Name\n"
+	                 "\n");
+
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(1, shlen(map));
+
+	Map_free(map);
+}
+
+///////////////////////////////
+// Map_free() Direct Tests
+///////////////////////////////
+
+void test_Map_free_handles_null(void) {
+	// Should not crash
+	Map_free(NULL);
+	TEST_PASS();
+}
+
+void test_Map_free_handles_empty_map(void) {
+	mock_fs_add_file("/Roms/map.txt", "");
+	MapEntry* map = Map_load("/Roms/map.txt");
+	TEST_ASSERT_NOT_NULL(map);
+
+	// Should not crash
+	Map_free(map);
+	TEST_PASS();
+}
+
+///////////////////////////////
+// Map_loadForDirectory() Tests
+///////////////////////////////
+
+void test_loadForDirectory_returns_null_when_no_maps(void) {
+	// No maps exist
+	MapEntry* map = Map_loadForDirectory("/Roms/GB");
+	TEST_ASSERT_NULL(map);
+}
+
+void test_loadForDirectory_loads_user_map_only(void) {
+	mock_fs_add_file("/Roms/GB/map.txt",
+	                 "mario.gb\tSuper Mario\n"
+	                 "zelda.gb\tZelda\n");
+
+	MapEntry* map = Map_loadForDirectory("/Roms/GB");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(2, shlen(map));
+	TEST_ASSERT_EQUAL_STRING("Super Mario", shget(map, "mario.gb"));
+	TEST_ASSERT_EQUAL_STRING("Zelda", shget(map, "zelda.gb"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_loads_pak_map_only(void) {
+	// Pak map exists in .system/common/
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/GB.pak/map.txt",
+	                 "mario.gb\tSuper Mario (Pak)\n");
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/GB");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL_STRING("Super Mario (Pak)", shget(map, "mario.gb"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_merges_pak_and_user_maps(void) {
+	// Pak map has game1 and game2
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/NES.pak/map.txt",
+	                 "game1.nes\tGame One (Pak)\n"
+	                 "game2.nes\tGame Two (Pak)\n");
+
+	// User map overrides game2 and adds game3
+	mock_fs_add_file("/tmp/test/Roms/NES/map.txt",
+	                 "game2.nes\tGame Two (User)\n"
+	                 "game3.nes\tGame Three (User)\n");
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/NES");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(3, shlen(map));
+
+	// game1 from pak (not overridden)
+	TEST_ASSERT_EQUAL_STRING("Game One (Pak)", shget(map, "game1.nes"));
+	// game2 from user (overridden)
+	TEST_ASSERT_EQUAL_STRING("Game Two (User)", shget(map, "game2.nes"));
+	// game3 from user (new)
+	TEST_ASSERT_EQUAL_STRING("Game Three (User)", shget(map, "game3.nes"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_user_completely_overrides_pak_entry(void) {
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/SNES.pak/map.txt",
+	                 "game.sfc\tOriginal Name\n");
+
+	mock_fs_add_file("/tmp/test/Roms/SNES/map.txt",
+	                 "game.sfc\tCustom Name\n");
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/SNES");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL_STRING("Custom Name", shget(map, "game.sfc"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_handles_empty_user_map(void) {
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/GBA.pak/map.txt",
+	                 "game.gba\tPak Game\n");
+
+	mock_fs_add_file("/tmp/test/Roms/GBA/map.txt", "");
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/GBA");
+	TEST_ASSERT_NOT_NULL(map);
+	// Should still have pak entries
+	TEST_ASSERT_EQUAL_STRING("Pak Game", shget(map, "game.gba"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_handles_empty_pak_map(void) {
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/PCE.pak/map.txt", "");
+
+	mock_fs_add_file("/tmp/test/Roms/PCE/map.txt",
+	                 "game.pce\tUser Game\n");
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/PCE");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL_STRING("User Game", shget(map, "game.pce"));
+
+	Map_free(map);
+}
+
+void test_loadForDirectory_arcade_realistic_scenario(void) {
+	// Large pak map (simulating arcade naming database)
+	mock_fs_add_file("/tmp/test/.system/common/paks/Emus/FBNEO.pak/map.txt",
+	                 "mslug.zip\tMetal Slug\n"
+	                 "mslug2.zip\tMetal Slug 2\n"
+	                 "mslug3.zip\tMetal Slug 3\n"
+	                 "kof98.zip\tThe King of Fighters '98\n"
+	                 "kof99.zip\tThe King of Fighters '99\n"
+	                 "sf2.zip\tStreet Fighter II\n"
+	                 "sf2ce.zip\tStreet Fighter II' Champion Edition\n");
+
+	// User customizes a few names
+	mock_fs_add_file("/tmp/test/Roms/FBNEO/map.txt",
+	                 "mslug.zip\tMetal Slug (Best Game!)\n"
+	                 "sf2.zip\t.Street Fighter II\n"); // Hidden
+
+	MapEntry* map = Map_loadForDirectory("/tmp/test/Roms/FBNEO");
+	TEST_ASSERT_NOT_NULL(map);
+	TEST_ASSERT_EQUAL(7, shlen(map));
+
+	// User overrides
+	TEST_ASSERT_EQUAL_STRING("Metal Slug (Best Game!)", shget(map, "mslug.zip"));
+	TEST_ASSERT_EQUAL_STRING(".Street Fighter II", shget(map, "sf2.zip"));
+
+	// Pak defaults preserved
+	TEST_ASSERT_EQUAL_STRING("Metal Slug 2", shget(map, "mslug2.zip"));
+	TEST_ASSERT_EQUAL_STRING("The King of Fighters '98", shget(map, "kof98.zip"));
+
+	Map_free(map);
+}
+
+///////////////////////////////
 // Merged Map Tests (Pak + User)
 ///////////////////////////////
 
@@ -485,6 +738,30 @@ int main(void) {
 	// Edge cases
 	RUN_TEST(test_getAlias_path_without_directory);
 	RUN_TEST(test_getAlias_duplicate_uses_last_value);
+
+	// Map_load() direct tests
+	RUN_TEST(test_Map_load_returns_null_for_nonexistent_file);
+	RUN_TEST(test_Map_load_returns_empty_map_for_empty_file);
+	RUN_TEST(test_Map_load_parses_single_entry);
+	RUN_TEST(test_Map_load_parses_multiple_entries);
+	RUN_TEST(test_Map_load_skips_malformed_lines);
+	RUN_TEST(test_Map_load_handles_duplicate_keys);
+	RUN_TEST(test_Map_load_handles_windows_newlines);
+	RUN_TEST(test_Map_load_skips_empty_lines);
+
+	// Map_free() direct tests
+	RUN_TEST(test_Map_free_handles_null);
+	RUN_TEST(test_Map_free_handles_empty_map);
+
+	// Map_loadForDirectory() tests
+	RUN_TEST(test_loadForDirectory_returns_null_when_no_maps);
+	RUN_TEST(test_loadForDirectory_loads_user_map_only);
+	RUN_TEST(test_loadForDirectory_loads_pak_map_only);
+	RUN_TEST(test_loadForDirectory_merges_pak_and_user_maps);
+	RUN_TEST(test_loadForDirectory_user_completely_overrides_pak_entry);
+	RUN_TEST(test_loadForDirectory_handles_empty_user_map);
+	RUN_TEST(test_loadForDirectory_handles_empty_pak_map);
+	RUN_TEST(test_loadForDirectory_arcade_realistic_scenario);
 
 	// Merged maps (pak + user) with .system/common/ shared resources
 	RUN_TEST(test_getAlias_shared_common_map);
