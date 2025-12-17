@@ -24,6 +24,24 @@
 #define PLATFORM "rg35xxplus"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// Uses default SND_RATE_CONTROL_D (0.012f) for standard timing
+
+///////////////////////////////
+// Video Buffer Scaling
+///////////////////////////////
+
+// Uses default BUFFER_SCALE_FACTOR (1.0f) - GPU hardware scaler handles all scaling
+
+///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Uses default SCALE_MODIFIER (1.0f) and EDGE_PADDING (10) for standard layout
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 

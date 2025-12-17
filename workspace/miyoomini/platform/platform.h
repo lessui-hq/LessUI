@@ -39,6 +39,14 @@
 #define BUFFER_SCALE_FACTOR 2.4f
 
 ///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Runtime-configurable SCALE_MODIFIER and EDGE_PADDING based on variant detection
+// - Standard model: 0.92f scale with 5px padding (smaller screen needs compact UI)
+// - Plus models: 1.0f scale with 10px padding (standard layout)
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 

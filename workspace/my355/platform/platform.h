@@ -186,12 +186,10 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 
 ///////////////////////////////
-
-#endif
-
-///////////////////////////////
 // Keymon Configuration
 ///////////////////////////////
+
+#define KEYMON_INPUT_COUNT 2 // Number of input devices to monitor
 
 #define KEYMON_BUTTON_MENU 1
 #define KEYMON_BUTTON_MENU_ALT -1
@@ -205,3 +203,7 @@ extern int on_hdmi; // Set to 1 when HDMI output is active
 #define KEYMON_HAS_JACK 1
 #define KEYMON_JACK_STATE_PATH "/sys/class/gpio/gpio150/value"
 #define KEYMON_JACK_INVERTED 1
+
+///////////////////////////////
+
+#endif

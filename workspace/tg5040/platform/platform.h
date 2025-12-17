@@ -25,6 +25,25 @@
 #define PLATFORM "tg5040"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// Uses default SND_RATE_CONTROL_D (0.012f) for standard timing
+
+///////////////////////////////
+// Video Buffer Scaling
+///////////////////////////////
+
+// Uses default BUFFER_SCALE_FACTOR (1.0f) - GPU hardware scaler handles all scaling
+
+///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Reduced edge padding - bezel provides visual margin
+#define EDGE_PADDING 5
+
+///////////////////////////////
 // Dependencies
 ///////////////////////////////
 
@@ -164,7 +183,6 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
-#define EDGE_PADDING 5 // Reduced edge padding - bezel provides visual margin
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
 

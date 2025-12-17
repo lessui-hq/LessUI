@@ -27,6 +27,12 @@
 #define PLATFORM "rg35xx"
 
 ///////////////////////////////
+// Audio Configuration
+///////////////////////////////
+
+// Uses default SND_RATE_CONTROL_D (0.012f) for standard timing
+
+///////////////////////////////
 // Video Buffer Scaling
 ///////////////////////////////
 
@@ -34,6 +40,12 @@
 // Worst case: NDS (256x384) @ 3x = 768x1152 (factor 2.40).
 // Run scripts/calculate-buffer-scale.py to recalculate.
 #define BUFFER_SCALE_FACTOR 2.4f
+
+///////////////////////////////
+// UI Scaling
+///////////////////////////////
+
+// Uses default SCALE_MODIFIER (1.0f) and EDGE_PADDING (10) for standard layout
 
 ///////////////////////////////
 // Dependencies
