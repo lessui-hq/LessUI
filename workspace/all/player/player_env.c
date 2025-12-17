@@ -257,11 +257,12 @@ EnvResult PlayerEnv_getThrottleState(const PlayerThrottleInfo* throttle, void* d
 
 	if (throttle->fast_forward) {
 		state->mode = RETRO_THROTTLE_FAST_FORWARD;
-		// max_ff_speed+1: 0→1x, 1→2x, 2→3x, 3→4x (matches original)
-		state->rate = (float)(throttle->max_ff_speed + 1);
+		// Rate is target retro_run() calls per second
+		// core_fps * (max_ff_speed+2): 60fps * 2 = 120fps at max_ff_speed=0 (2x)
+		state->rate = (float)(throttle->core_fps * (throttle->max_ff_speed + 2));
 	} else {
 		state->mode = RETRO_THROTTLE_VSYNC;
-		state->rate = 1.0f;
+		state->rate = (float)throttle->core_fps;
 	}
 
 	return EnvResult_ok();

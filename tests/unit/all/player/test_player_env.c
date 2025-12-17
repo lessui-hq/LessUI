@@ -333,30 +333,31 @@ void test_getAudioVideoEnable_sets_flags(void) {
 ///////////////////////////////
 
 void test_getThrottleState_normal_speed(void) {
-	PlayerThrottleInfo throttle = {.fast_forward = 0, .max_ff_speed = 3};
+	PlayerThrottleInfo throttle = {.fast_forward = 0, .max_ff_speed = 3, .core_fps = 60.0};
 	struct retro_throttle_state state = {0};
 
 	EnvResult result = PlayerEnv_getThrottleState(&throttle, &state);
 	TEST_ASSERT_TRUE(result.handled);
 	TEST_ASSERT_TRUE(result.success);
 	TEST_ASSERT_EQUAL(RETRO_THROTTLE_VSYNC, state.mode);
-	TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, state.rate);
+	// Rate is core FPS (60fps)
+	TEST_ASSERT_FLOAT_WITHIN(0.01f, 60.0f, state.rate);
 }
 
 void test_getThrottleState_fast_forward(void) {
-	PlayerThrottleInfo throttle = {.fast_forward = 1, .max_ff_speed = 3};
+	PlayerThrottleInfo throttle = {.fast_forward = 1, .max_ff_speed = 3, .core_fps = 60.0};
 	struct retro_throttle_state state = {0};
 
 	EnvResult result = PlayerEnv_getThrottleState(&throttle, &state);
 	TEST_ASSERT_TRUE(result.handled);
 	TEST_ASSERT_TRUE(result.success);
 	TEST_ASSERT_EQUAL(RETRO_THROTTLE_FAST_FORWARD, state.mode);
-	// max_ff_speed + 1 = 4
-	TEST_ASSERT_FLOAT_WITHIN(0.01f, 4.0f, state.rate);
+	// Rate is core_fps * (max_ff_speed + 2) = 60 * 5 = 300fps (5x speed)
+	TEST_ASSERT_FLOAT_WITHIN(0.01f, 300.0f, state.rate);
 }
 
 void test_getThrottleState_null_data(void) {
-	PlayerThrottleInfo throttle = {.fast_forward = 0, .max_ff_speed = 3};
+	PlayerThrottleInfo throttle = {.fast_forward = 0, .max_ff_speed = 3, .core_fps = 60.0};
 	EnvResult result = PlayerEnv_getThrottleState(&throttle, NULL);
 	TEST_ASSERT_TRUE(result.handled);
 	TEST_ASSERT_FALSE(result.success);

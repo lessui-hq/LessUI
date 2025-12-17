@@ -856,6 +856,18 @@ void SND_newFrame(void);
 void SND_quit(void);
 
 /**
+ * Sets minimum audio latency in milliseconds.
+ *
+ * Called by cores via RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY to request
+ * a larger audio buffer for latency-sensitive operations (e.g., audio-based
+ * frameskip). The buffer is resized only if the requested latency exceeds
+ * the current buffer size. Pass 0 to reset to default latency.
+ *
+ * @param latency_ms Minimum latency in milliseconds (0 = reset to default)
+ */
+void SND_setMinLatency(unsigned latency_ms);
+
+/**
  * Audio diagnostic snapshot - captures all relevant state atomically.
  * Used for debugging rate control and buffer fill issues.
  */

@@ -2809,13 +2809,23 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		PlayerEnv_setDiskControlExtInterface(&disk_control_ext, data);
 		break;
 	}
-	// TODO: RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION 59
+	case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: { /* 59 */
+		unsigned* version = (unsigned*)data;
+		if (version) {
+			*version = 1; // We support SET_MESSAGE_EXT (version 1)
+		}
+		break;
+	}
 	case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: { /* 62 */
 		PlayerEnv_setAudioBufferStatusCallback(&core.audio_buffer_status, data);
 		return true;
 	}
-	// TODO: RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY 63 (buffer size adjustment)
-
+	case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: { /* 63 */
+		const unsigned* latency_ms = (const unsigned*)data;
+		// Per spec: NULL or zero means reset to default
+		SND_setMinLatency(latency_ms ? *latency_ms : 0);
+		return true;
+	}
 	// TODO: RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE 64
 	case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: { /* 65 */
 		// const struct retro_system_content_info_override* info = (const struct retro_system_content_info_override* )data;
@@ -2839,7 +2849,8 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: { /* 71 | RETRO_ENVIRONMENT_EXPERIMENTAL */
-		PlayerThrottleInfo throttle = {.fast_forward = fast_forward, .max_ff_speed = max_ff_speed};
+		PlayerThrottleInfo throttle = {
+		    .fast_forward = fast_forward, .max_ff_speed = max_ff_speed, .core_fps = core.fps};
 		result = PlayerEnv_getThrottleState(&throttle, data);
 		return result.success;
 	}
@@ -5104,7 +5115,7 @@ static void limitFF(void) {
 	static int last_max_speed = -1;
 	if (last_max_speed != max_ff_speed) {
 		last_max_speed = max_ff_speed;
-		ff_frame_time = 1000000 / (core.fps * (max_ff_speed + 1));
+		ff_frame_time = 1000000 / (core.fps * (max_ff_speed + 2));
 	}
 
 	uint64_t now = getMicroseconds();
