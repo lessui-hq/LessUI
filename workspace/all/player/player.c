@@ -3622,7 +3622,8 @@ void Core_open(const char* core_path, const char* tag_name) {
 	core.get_system_info(&info);
 
 	Core_getName((char*)core_path, (char*)core.name);
-	(void)sprintf((char*)core.version, "%s (%s)", info.library_name, info.library_version);
+	(void)snprintf((char*)core.version, sizeof(core.version), "%s (%s)", info.library_name,
+	               info.library_version);
 	safe_strcpy((char*)core.tag, tag_name, sizeof(core.tag));
 	safe_strcpy((char*)core.extensions, info.valid_extensions, sizeof(core.extensions));
 
@@ -3631,13 +3632,17 @@ void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("core: %s version: %s tag: %s (valid_extensions: %s need_fullpath: %i)", core.name,
 	         core.version, core.tag, info.valid_extensions, info.need_fullpath);
 
-	(void)sprintf((char*)core.config_dir, USERDATA_PATH "/%s-%s", core.tag, core.name);
-	(void)sprintf((char*)core.states_dir, SHARED_USERDATA_PATH "/%s-%s", core.tag, core.name);
-	(void)sprintf((char*)core.saves_dir, SDCARD_PATH "/Saves/%s", core.tag);
+	(void)snprintf((char*)core.config_dir, sizeof(core.config_dir), USERDATA_PATH "/%s-%s",
+	               core.tag, core.name);
+	(void)snprintf((char*)core.states_dir, sizeof(core.states_dir), SHARED_USERDATA_PATH "/%s-%s",
+	               core.tag, core.name);
+	(void)snprintf((char*)core.saves_dir, sizeof(core.saves_dir), SDCARD_PATH "/Saves/%s",
+	               core.tag);
 	Player_selectBiosPath(core.tag, (char*)core.bios_dir);
 
 	char cmd[512];
-	(void)sprintf(cmd, "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir, core.states_dir);
+	(void)snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir,
+	               core.states_dir);
 	system(cmd);
 
 	set_environment_callback(environment_callback);

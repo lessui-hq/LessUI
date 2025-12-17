@@ -328,8 +328,8 @@ stage: tidy
 	@mkdir -p ./build/PAYLOAD/.system/common/cores/arm32 ./build/PAYLOAD/.system/common/cores/arm64
 	@jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
 		if [ -f "./build/.system/cores/arm32/$${core}.so" ]; then cp "./build/.system/cores/arm32/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm32/"; fi; \
-		if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm64/"; fi; \
-	done
+			if [ -f "./build/.system/cores/arm64/$${core}.so" ]; then cp "./build/.system/cores/arm64/$${core}.so" "./build/PAYLOAD/.system/common/cores/arm64/"; fi; \
+			done
 	@echo "Copied $$(ls ./build/PAYLOAD/.system/common/cores/arm32/*.so 2>/dev/null | wc -l | tr -d ' ') arm32 cores, $$(ls ./build/PAYLOAD/.system/common/cores/arm64/*.so 2>/dev/null | wc -l | tr -d ' ') arm64 cores"
 	@if [ -d ./build/BOOT/.tmp_update ]; then \
 		rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/; \

@@ -42,7 +42,8 @@ PlayerStateResult PlayerState_read(const char* filepath, const PlayerStateCore* 
 
 	// Read state data from file
 	// Allow reading less than expected (some cores report wrong size initially)
-	if (state_size < fread(state_buffer, 1, state_size, state_file)) {
+	size_t bytes_read = fread(state_buffer, 1, state_size, state_file);
+	if (bytes_read == 0 && ferror(state_file)) {
 		result = PLAYER_STATE_FILE_ERROR;
 		goto cleanup;
 	}

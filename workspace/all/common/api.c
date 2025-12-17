@@ -466,21 +466,28 @@ static void GFX_scaleBilinear(SDL_Surface* src, SDL_Surface* dst) {
  * Scales an image to fit within maximum dimensions while preserving aspect ratio.
  *
  * If the source image is larger than max_w or max_h, scales it down proportionally
- * based on the longer side. If the image already fits, returns a reference to the
- * original surface (caller must not free).
+ * based on the longer side.
  *
  * @param src Source surface to scale
  * @param max_w Maximum width in pixels
  * @param max_h Maximum height in pixels
- * @return New scaled surface (caller must SDL_FreeSurface), or src if no scaling needed
+ * @return Scaled surface, or src unchanged if already fits or on allocation failure
+ *
+ * @warning OWNERSHIP SEMANTICS: This function has conditional ownership transfer.
+ *          - If return value != src: caller owns returned surface, must SDL_FreeSurface()
+ *          - If return value == src: caller does NOT own, must NOT free
+ *          Typical usage pattern:
+ *            SDL_Surface* result = GFX_scaleToFit(src, w, h);
+ *            // ... use result ...
+ *            if (result != src) SDL_FreeSurface(result);
  */
 SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h) {
 	if (!src)
 		return NULL;
 
-	// Check if scaling is needed
+	// Check if scaling is needed - return original if it already fits
 	if (src->w <= max_w && src->h <= max_h)
-		return src; // No scaling needed, return original
+		return src;
 
 	// Calculate scale factor based on longest side
 	float scale_w = (float)max_w / src->w;

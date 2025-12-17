@@ -40,6 +40,7 @@ typedef struct Entry {
  * Stores up to 27 indices (one for # and one for each letter A-Z).
  * Each value is the index of the first entry starting with that letter.
  */
+// 26 letters (A-Z) + 1 for non-alphabetic entries (#) = 27
 #define INT_ARRAY_MAX 27
 typedef struct IntArray {
 	int count;

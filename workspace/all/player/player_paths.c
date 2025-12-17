@@ -22,7 +22,7 @@
  * @param game_name Game name (without extension)
  */
 void PlayerPaths_getSRAM(char* filename, const char* saves_dir, const char* game_name) {
-	(void)sprintf(filename, "%s/%s.sav", saves_dir, game_name);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.sav", saves_dir, game_name);
 }
 
 /**
@@ -35,7 +35,7 @@ void PlayerPaths_getSRAM(char* filename, const char* saves_dir, const char* game
  * @param game_name Game name (without extension)
  */
 void PlayerPaths_getRTC(char* filename, const char* saves_dir, const char* game_name) {
-	(void)sprintf(filename, "%s/%s.rtc", saves_dir, game_name);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.rtc", saves_dir, game_name);
 }
 
 /**
@@ -49,7 +49,7 @@ void PlayerPaths_getRTC(char* filename, const char* saves_dir, const char* game_
  * @param slot Save state slot number (0-9)
  */
 void PlayerPaths_getState(char* filename, const char* states_dir, const char* game_name, int slot) {
-	(void)sprintf(filename, "%s/%s.st%i", states_dir, game_name, slot);
+	(void)snprintf(filename, MAX_PATH, "%s/%s.st%i", states_dir, game_name, slot);
 }
 
 /**
@@ -69,15 +69,15 @@ void PlayerConfig_getPath(char* filename, const char* config_dir, const char* ga
 
 	// Build device tag suffix if provided
 	if (device_tag && device_tag[0] != '\0') {
-		(void)sprintf(device_suffix, "-%s", device_tag);
+		(void)snprintf(device_suffix, sizeof(device_suffix), "-%s", device_tag);
 	}
 
 	// Generate path based on game-specific or global
 	// Treat empty string same as NULL (global config)
 	if (game_name && game_name[0] != '\0') {
-		(void)sprintf(filename, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
+		(void)snprintf(filename, MAX_PATH, "%s/%s%s.cfg", config_dir, game_name, device_suffix);
 	} else {
-		(void)sprintf(filename, "%s/player%s.cfg", config_dir, device_suffix);
+		(void)snprintf(filename, MAX_PATH, "%s/player%s.cfg", config_dir, device_suffix);
 	}
 }
 
@@ -91,7 +91,7 @@ void PlayerConfig_getPath(char* filename, const char* config_dir, const char* ga
  * @param tag_bios_dir Output buffer for tag-specific path
  */
 void PlayerPaths_getTagBios(const char* base_bios_path, const char* tag, char* tag_bios_dir) {
-	(void)sprintf(tag_bios_dir, "%s/%s", base_bios_path, tag);
+	(void)snprintf(tag_bios_dir, MAX_PATH, "%s/%s", base_bios_path, tag);
 }
 
 /**

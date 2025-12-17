@@ -268,14 +268,16 @@ int findSystemFile(const char* relative_path, char* output_path) {
 	char candidate[512];
 
 	// Check platform-specific location first
-	(void)sprintf(candidate, "%s/.system/%s/%s", SDCARD_PATH, PLATFORM, relative_path);
+	(void)snprintf(candidate, sizeof(candidate), "%s/.system/%s/%s", SDCARD_PATH, PLATFORM,
+	               relative_path);
 	if (exists(candidate)) {
 		safe_strcpy(output_path, candidate, MAX_PATH);
 		return 1;
 	}
 
 	// Fall back to shared common location
-	(void)sprintf(candidate, "%s/.system/common/%s", SDCARD_PATH, relative_path);
+	(void)snprintf(candidate, sizeof(candidate), "%s/.system/common/%s", SDCARD_PATH,
+	               relative_path);
 	if (exists(candidate)) {
 		safe_strcpy(output_path, candidate, MAX_PATH);
 		return 1;
@@ -381,25 +383,40 @@ char* allocFile(const char* path) {
 		return NULL;
 	}
 
-	(void)fseek(file, 0L, SEEK_END);
+	if (fseek(file, 0L, SEEK_END) != 0) {
+		LOG_errno("Failed to seek to end of %s", path);
+		(void)fclose(file);
+		return NULL;
+	}
 	long file_size = ftell(file);
 	if (file_size < 0) {
 		LOG_errno("Failed to get file size for %s", path);
-		(void)fclose(file); // File operation done
+		(void)fclose(file);
 		return NULL;
 	}
 	size_t size = (size_t)file_size;
 	contents = calloc(size + 1, sizeof(char));
 	if (!contents) {
 		LOG_error("Failed to allocate %zu bytes for file %s", size + 1, path);
-		(void)fclose(file); // File operation done
+		(void)fclose(file);
 		return NULL;
 	}
 
-	(void)fseek(file, 0L, SEEK_SET);
-	(void)fread(contents, sizeof(char), size, file);
-	contents[size] = '\0';
-	(void)fclose(file); // File operation done
+	if (fseek(file, 0L, SEEK_SET) != 0) {
+		LOG_errno("Failed to rewind file %s", path);
+		free(contents);
+		(void)fclose(file);
+		return NULL;
+	}
+	size_t bytes_read = fread(contents, sizeof(char), size, file);
+	if (bytes_read == 0 && ferror(file)) {
+		LOG_errno("Failed to read file %s", path);
+		free(contents);
+		(void)fclose(file);
+		return NULL;
+	}
+	contents[bytes_read] = '\0'; // Null-terminate at actual read position
+	(void)fclose(file);
 
 	return contents;
 }
@@ -434,8 +451,8 @@ int getInt(const char* path) {
  * @param value Integer to write
  */
 void putInt(const char* path, int value) {
-	char buffer[8];
-	(void)sprintf(buffer, "%d", value);
+	char buffer[12]; // -2147483648 + null = 12 chars max
+	(void)snprintf(buffer, sizeof(buffer), "%d", value);
 	putFile(path, buffer);
 }
 
@@ -564,7 +581,9 @@ void getEmuName(const char* in_name, char* out_name) {
 		// Safe for overlapping buffers
 		memmove(out_name, tmp, strlen(tmp) + 1);
 		tmp = strchr(out_name, ')');
-		tmp[0] = '\0';
+		if (tmp) {
+			tmp[0] = '\0';
+		}
 	}
 }
 
@@ -581,15 +600,20 @@ void getEmuName(const char* in_name, char* out_name) {
  * @note pak_path is always modified, even if file doesn't exist
  */
 void getEmuPath(char* emu_name, char* pak_path) {
-	(void)sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM, emu_name);
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM,
+	               emu_name);
 	if (exists(pak_path))
 		return;
-	(void)sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
 }
 
 ///////////////////////////////
 // Date/time utilities
 ///////////////////////////////
+
+// Date validation bounds (Unix epoch to reasonable future limit)
+#define VALID_YEAR_MIN 1970
+#define VALID_YEAR_MAX 2100
 
 /**
  * Checks if a year is a leap year.
@@ -659,11 +683,11 @@ void validateDateTime(int32_t* year, int32_t* month, int32_t* day, int32_t* hour
 	else if (*month < 1)
 		*month += 12;
 
-	// Year clamping (Unix epoch to arbitrary future limit)
-	if (*year > 2100)
-		*year = 2100;
-	else if (*year < 1970)
-		*year = 1970;
+	// Year clamping
+	if (*year > VALID_YEAR_MAX)
+		*year = VALID_YEAR_MAX;
+	else if (*year < VALID_YEAR_MIN)
+		*year = VALID_YEAR_MIN;
 
 	// Day validation (depends on month and leap year)
 	int max_days = getDaysInMonth(*month, *year);

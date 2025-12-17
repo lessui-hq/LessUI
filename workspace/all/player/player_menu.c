@@ -18,6 +18,7 @@
 
 #include "api.h"
 #include "defines.h"
+#include "log.h"
 #include "player_context.h"
 #include "player_internal.h"
 #include "player_mappings.h"
@@ -111,10 +112,11 @@ static void Menu_init_ctx(PlayerContext* ctx) {
 
 	char emu_name[256];
 	getEmuName(g->path, emu_name);
-	(void)sprintf(m->launcher_dir, SHARED_USERDATA_PATH "/.launcher/%s", emu_name);
+	(void)snprintf(m->launcher_dir, sizeof(m->launcher_dir), SHARED_USERDATA_PATH "/.launcher/%s",
+	               emu_name);
 	mkdir(m->launcher_dir, 0755);
 
-	(void)sprintf(m->slot_path, "%s/%s.txt", m->launcher_dir, g->name);
+	(void)snprintf(m->slot_path, sizeof(m->slot_path), "%s/%s.txt", m->launcher_dir, g->name);
 
 	if (*ctx->simple_mode)
 		m->items[ITEM_OPTS] = "Reset";
@@ -141,7 +143,12 @@ static void Menu_init_ctx(PlayerContext* ctx) {
 				safe_strcpy(tmp, line, sizeof(disc_path) - (tmp - disc_path));
 
 				if (exists(disc_path)) {
-					m->disc_paths[m->total_discs] = strdup(disc_path);
+					char* dup = strdup(disc_path);
+					if (!dup) {
+						LOG_error("Failed to allocate disc path");
+						break;
+					}
+					m->disc_paths[m->total_discs] = dup;
 					if (exactMatch(disc_path, g->path)) {
 						m->disc = m->total_discs;
 					}
@@ -155,6 +162,14 @@ static void Menu_init_ctx(PlayerContext* ctx) {
 
 static void Menu_quit_ctx(PlayerContext* ctx) {
 	PlayerMenuState* m = ctx->menu;
+
+	// Free allocated disc paths
+	for (int i = 0; i < m->total_discs; i++) {
+		free(m->disc_paths[i]);
+		m->disc_paths[i] = NULL;
+	}
+	m->total_discs = 0;
+
 	SDL_FreeSurface(m->overlay);
 }
 
@@ -205,8 +220,10 @@ static void Menu_updateState_ctx(PlayerContext* ctx) {
 
 	*ctx->state_slot = last_slot;
 
-	(void)sprintf(m->bmp_path, "%s/%s.%d.bmp", m->launcher_dir, g->name, m->slot);
-	(void)sprintf(m->txt_path, "%s/%s.%d.txt", m->launcher_dir, g->name, m->slot);
+	(void)snprintf(m->bmp_path, sizeof(m->bmp_path), "%s/%s.%d.bmp", m->launcher_dir, g->name,
+	               m->slot);
+	(void)snprintf(m->txt_path, sizeof(m->txt_path), "%s/%s.%d.txt", m->launcher_dir, g->name,
+	               m->slot);
 
 	m->save_exists = exists(save_path);
 	m->preview_exists = m->save_exists && exists(m->bmp_path);
@@ -254,7 +271,8 @@ static void Menu_loadState_ctx(PlayerContext* ctx) {
 			if (slot_disc_name[0] == '/')
 				SAFE_STRCPY(slot_disc_path, slot_disc_name);
 			else
-				(void)sprintf(slot_disc_path, "%s%s", m->base_path, slot_disc_name);
+				(void)snprintf(slot_disc_path, sizeof(slot_disc_path), "%s%s", m->base_path,
+				               slot_disc_name);
 
 			char* disc_path = m->disc_paths[m->disc];
 			if (!exactMatch(slot_disc_path, disc_path)) {
@@ -391,7 +409,7 @@ static void Menu_scale_ctx(PlayerContext* ctx, SDL_Surface* src, SDL_Surface* ds
 // Alias lookup
 ///////////////////////////////
 
-static void getAlias(char* path, char* alias) {
+static void getAlias(const char* path, char* alias) {
 	char* tmp;
 	char map_path[256];
 	SAFE_STRCPY(map_path, path);
@@ -492,7 +510,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 	char disc_name[16];
 	if (m->total_discs) {
 		rom_disc = m->disc;
-		(void)sprintf(disc_name, "Disc %i", m->disc + 1);
+		(void)snprintf(disc_name, sizeof(disc_name), "Disc %i", m->disc + 1);
 	}
 
 	int selected = 0;
@@ -526,7 +544,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 				if (m->disc < 0)
 					m->disc += m->total_discs;
 				dirty = 1;
-				(void)sprintf(disc_name, "Disc %i", m->disc + 1);
+				(void)snprintf(disc_name, sizeof(disc_name), "Disc %i", m->disc + 1);
 			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
 				m->slot -= 1;
 				if (m->slot < 0)
@@ -539,7 +557,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 				if (m->disc == m->total_discs)
 					m->disc -= m->total_discs;
 				dirty = 1;
-				(void)sprintf(disc_name, "Disc %i", m->disc + 1);
+				(void)snprintf(disc_name, sizeof(disc_name), "Disc %i", m->disc + 1);
 			} else if (selected == ITEM_SAVE || selected == ITEM_LOAD) {
 				m->slot += 1;
 				if (m->slot >= MENU_SLOT_COUNT)
