@@ -114,17 +114,26 @@ check-shellcheck:
 lint: docker-lint
 
 # Run clang-tidy on common code (platform-independent, highest priority)
+# Filters out compiler noise ("X warnings generated") to show only actual issues
 lint-code: check-clang-tidy
 	@echo "Running clang-tidy on workspace/all/ (common code)..."
-	@echo "Checking for: bugs, performance issues, readability, security vulnerabilities"
+	@echo "Checking for: bugs, performance, portability, security (see .clang-tidy)"
 	@echo ""
-	@for file in $(TIDY_SOURCES); do \
+	@FILE_COUNT=0; \
+	TMPFILE=$$(mktemp); \
+	for file in $(TIDY_SOURCES); do \
 		if [ -f "$$file" ]; then \
-			$(CLANG_TIDY) $(TIDY_FLAGS) "$$file" -- $(TIDY_COMPILE_FLAGS) || exit 1; \
+			FILE_COUNT=$$((FILE_COUNT + 1)); \
+			if ! $(CLANG_TIDY) $(TIDY_FLAGS) "$$file" -- $(TIDY_COMPILE_FLAGS) > "$$TMPFILE" 2>&1; then \
+				grep -Ev "(warnings? generated|Use -header-filter|Suppressed .* warnings)" "$$TMPFILE" || true; \
+				rm -f "$$TMPFILE"; \
+				exit 1; \
+			fi; \
 		fi; \
-	done
-	@echo ""
-	@echo "✓ Static analysis complete"
+	done; \
+	rm -f "$$TMPFILE"; \
+	echo ""; \
+	echo "✓ Static analysis complete ($$FILE_COUNT files checked, 0 issues)"
 
 # Run clang-tidy on entire workspace (includes platform-specific code)
 lint-full: check-clang-tidy
