@@ -366,14 +366,15 @@ This pattern appears in `getEmuName()` and was the source of a critical bug.
 
 Use `log.h` macros with appropriate levels:
 
-| Level | Use For | Frequency |
-|-------|---------|-----------|
-| `LOG_error` | Critical failures, data loss risk, invalid state | Rare |
-| `LOG_warn` | Non-critical issues, fallbacks, recoverable errors | Occasional |
-| `LOG_info` | Key milestones: startup, config loaded, device detected | < 10 per user action |
-| `LOG_debug` | Detailed tracing, variable values, frame metrics | Any frequency OK |
+| Level       | Use For                                                 | Frequency            |
+| ----------- | ------------------------------------------------------- | -------------------- |
+| `LOG_error` | Critical failures, data loss risk, invalid state        | Rare                 |
+| `LOG_warn`  | Non-critical issues, fallbacks, recoverable errors      | Occasional           |
+| `LOG_info`  | Key milestones: startup, config loaded, device detected | < 10 per user action |
+| `LOG_debug` | Detailed tracing, variable values, frame metrics        | Any frequency OK     |
 
 **Guidelines:**
+
 - If it fires more than once per user action, use `LOG_debug`
 - For errno failures, use `LOG_errno` (auto-appends `strerror(errno)`)
 - Don't include `\n` in messages (added automatically)
