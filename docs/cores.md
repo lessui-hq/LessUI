@@ -33,7 +33,7 @@ The main LessUI Makefile downloads cores during the build:
 
 ```makefile
 # Pre-built cores from LessUI-Cores repository (versioned releases)
-PLAYER_CORES_VERSION ?= 20251214-2
+PLAYER_CORES_VERSION ?= 20251218-0
 CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(PLAYER_CORES_VERSION)
 
 cores-download:
