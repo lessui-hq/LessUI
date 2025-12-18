@@ -235,7 +235,7 @@ TEST_INCLUDES = -I tests/support -I tests/vendor/unity -I workspace/all/common -
 TEST_UNITY = tests/vendor/unity/unity.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/gfx_text_test tests/audio_resampler_test tests/player_paths_test tests/launcher_utils_test tests/m3u_parser_test tests/launcher_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/player_utils_test tests/player_config_test tests/player_options_test tests/platform_variant_test tests/launcher_entry_test tests/directory_index_test tests/player_archive_test tests/player_memory_test tests/player_state_test tests/launcher_launcher_test tests/player_cpu_test tests/player_input_test tests/launcher_state_test tests/player_menu_test tests/player_env_test tests/player_game_test tests/player_scaler_test tests/player_core_test tests/launcher_directory_test tests/launcher_navigation_test tests/launcher_thumbnail_test tests/launcher_context_test tests/emu_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/gfx_text_test tests/audio_resampler_test tests/player_paths_test tests/launcher_utils_test tests/m3u_parser_test tests/launcher_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/player_utils_test tests/player_config_test tests/player_options_test tests/platform_variant_test tests/launcher_entry_test tests/directory_index_test tests/player_archive_test tests/player_memory_test tests/player_state_test tests/launcher_launcher_test tests/player_cpu_test tests/player_input_test tests/launcher_state_test tests/player_menu_test tests/player_env_test tests/player_game_test tests/player_scaler_test tests/player_core_test tests/launcher_directory_test tests/launcher_navigation_test tests/launcher_thumbnail_test tests/launcher_context_test tests/emu_cache_test tests/res_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -522,6 +522,17 @@ tests/emu_cache_test: tests/unit/all/launcher/test_emu_cache.c \
 	workspace/all/common/log.c \
 	$(TEST_UNITY)
 	@echo "Building emulator cache tests..."
+	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
+
+# Build .res thumbnail cache tests (O(1) thumbnail lookup caching)
+tests/res_cache_test: tests/unit/all/launcher/test_res_cache.c \
+	workspace/all/launcher/launcher_res_cache.c \
+	workspace/all/common/stb_ds_impl.c \
+	workspace/all/common/utils.c \
+	workspace/all/common/nointro_parser.c \
+	workspace/all/common/log.c \
+	$(TEST_UNITY)
+	@echo "Building .res thumbnail cache tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -D_DEFAULT_SOURCE
 
 # Build render common tests (pure math functions, no dependencies)

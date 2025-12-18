@@ -52,6 +52,7 @@
 #include "launcher_m3u.h"
 #include "launcher_map.h"
 #include "launcher_navigation.h"
+#include "launcher_res_cache.h"
 #include "launcher_state.h"
 #include "launcher_str_compare.h"
 #include "launcher_thumbnail.h"
@@ -134,15 +135,13 @@ static void* thumb_loader_thread(void* arg) {
 		pthread_mutex_unlock(&thumb_mutex);
 
 		// Load and scale (slow operations, done without lock)
-		// Check file exists first (preload hints may not have been verified)
+		// Path already validated by ResCache before being queued
 		SDL_Surface* loaded = NULL;
-		if (exists(path)) {
-			SDL_Surface* orig = IMG_Load(path);
-			if (orig) {
-				loaded = GFX_scaleToFit(orig, max_w, max_h);
-				if (loaded != orig)
-					SDL_FreeSurface(orig);
-			}
+		SDL_Surface* orig = IMG_Load(path);
+		if (orig) {
+			loaded = GFX_scaleToFit(orig, max_w, max_h);
+			if (loaded != orig)
+				SDL_FreeSurface(orig);
 		}
 
 		// Post result
@@ -1578,6 +1577,7 @@ static void Menu_quit(void) {
 	RecentArray_free(recents);
 	DirectoryArray_free(stack);
 	EmuCache_free();
+	ResCache_free();
 }
 
 ///////////////////////////////
@@ -1715,6 +1715,9 @@ int main(int argc, char* argv[]) {
 	LOG_debug("EmuCache_init");
 	int emu_count = EmuCache_init(PAKS_PATH, SDCARD_PATH, PLATFORM);
 	LOG_info("Cached %d emulators", emu_count);
+
+	LOG_debug("ResCache_init");
+	ResCache_init();
 
 	LOG_debug("Menu_init");
 	Menu_init();
@@ -2011,10 +2014,9 @@ int main(int argc, char* argv[]) {
 				last_rendered_entry = current_entry;
 				last_selected_index = current_selected;
 			} else {
-				// Build and check thumbnail path
+				// Build and check thumbnail path (uses cached .res directory scan)
 				char thumb_path[MAX_PATH];
-				if (Launcher_buildThumbPath(current_entry->path, thumb_path))
-					thumb_exists = exists(thumb_path);
+				thumb_exists = ResCache_getThumbPath(current_entry->path, thumb_path);
 
 				if (!thumb_exists) {
 					// No thumbnail file for this entry
@@ -2028,7 +2030,7 @@ int main(int argc, char* argv[]) {
 					int has_hint = 0;
 					if (hint_index >= 0 && hint_index < total) {
 						Entry* hint_entry = top->entries[hint_index];
-						has_hint = Launcher_buildThumbPath(hint_entry->path, hint_path);
+						has_hint = ResCache_getThumbPath(hint_entry->path, hint_path);
 					}
 
 					// Check cache
