@@ -312,14 +312,54 @@ void test_path_ending_with_slash(void) {
 	TEST_ASSERT_EQUAL_INT(0, ResCache_hasThumbnail("/Roms/GB/"));
 }
 
-void test_root_level_path_rejected(void) {
-	// Paths at filesystem root (like "/game.gb") are rejected
-	// All real entry paths are under SDCARD_PATH (e.g., /mnt/SDCARD/...)
-	// so dir_len == 0 is impossible in practice
-	TEST_ASSERT_EQUAL_INT(0, ResCache_hasThumbnail("/game.gb"));
+void test_root_level_path_supported(void) {
+	// Root-level paths (like "/game.gb") are accepted and parsed correctly.
+	// While not used in practice (all paths are under SDCARD_PATH),
+	// we support it defensively.
 
-	// Should not have cached anything (path was rejected, not scanned)
-	TEST_ASSERT_EQUAL_INT(0, ResCache_dirCount());
+	// The path "/game.gb" should be accepted (not rejected).
+	// It will return 0 because /.res doesn't exist, but it should
+	// attempt the lookup rather than rejecting the path format.
+
+	// First verify it doesn't crash and returns 0 (no thumbnail, not path error)
+	int result = ResCache_hasThumbnail("/game.gb");
+	TEST_ASSERT_EQUAL_INT(0, result);
+
+	// The directory "/" should have been scanned and cached (as empty/no thumbnails)
+	TEST_ASSERT_EQUAL_INT(1, ResCache_dirCount());
+
+	// Now test with a path we can actually create thumbnails for
+	// Create /.res directory in our test environment
+	char res_dir[512];
+	char mkdir_cmd[1024];
+	snprintf(res_dir, sizeof(res_dir), "%s/.res", test_dir);
+	snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", res_dir);
+	int ret = system(mkdir_cmd);
+	(void)ret;
+
+	// Create thumbnail
+	char thumb_file[512];
+	snprintf(thumb_file, sizeof(thumb_file), "%s/game.gb.png", res_dir);
+	FILE* f = fopen(thumb_file, "w");
+	if (f) {
+		fprintf(f, "FAKE_PNG");
+		fclose(f);
+	}
+
+	// Build path using test_dir
+	char entry_path[512];
+	snprintf(entry_path, sizeof(entry_path), "%s/game.gb", test_dir);
+
+	TEST_ASSERT_EQUAL_INT(1, ResCache_hasThumbnail(entry_path));
+	TEST_ASSERT_EQUAL_INT(2, ResCache_dirCount()); // "/" and test_dir
+
+	// Verify correct thumb path is built
+	char result_path[512];
+	TEST_ASSERT_EQUAL_INT(1, ResCache_getThumbPath(entry_path, result_path));
+
+	char expected[512];
+	snprintf(expected, sizeof(expected), "%s/.res/game.gb.png", test_dir);
+	TEST_ASSERT_EQUAL_STRING(expected, result_path);
 }
 
 void test_hidden_thumbnails_ignored(void) {
@@ -403,6 +443,64 @@ void test_reinit(void) {
 	TEST_ASSERT_EQUAL_INT(1, ResCache_dirCount());
 }
 
+void test_path_too_long_rejected(void) {
+	// Build a path that would overflow when constructing thumbnail path
+	// Full thumb path = dir + "/.res/" + filename + ".png" = dir + filename + 11
+	// If dir + filename + 11 > MAX_PATH (512), it should be rejected
+
+	// Create a path with combined length that would overflow
+	char long_path[600];
+	memset(long_path, 'a', sizeof(long_path) - 1);
+	long_path[0] = '/';
+	long_path[300] = '/'; // Split into dir (300) and filename (299)
+	long_path[599] = '\0';
+
+	// dir_len=300, filename_len=298, total path overhead=11
+	// 300 + 298 + 11 = 609 > 512, should be rejected
+	TEST_ASSERT_EQUAL_INT(0, ResCache_hasThumbnail(long_path));
+	TEST_ASSERT_EQUAL_INT(0, ResCache_dirCount()); // Path rejected, nothing cached
+
+	char thumb_path[512];
+	TEST_ASSERT_EQUAL_INT(0, ResCache_getThumbPath(long_path, thumb_path));
+}
+
+void test_path_at_max_boundary_accepted(void) {
+	// Test boundary: dir_len + filename_len + 11 = 512 (should pass)
+	// Condition is: total > MAX_PATH fails, so total = 512 should pass
+	// Need: dir_len + filename_len = 501
+
+	// Build path: /aaa...aaa/aaa...aaa where dir_len=250, filename_len=251
+	// Total: 250 + 251 + 11 = 512, should pass (not > 512)
+	char boundary_path[503];
+	memset(boundary_path, 'a', 502);
+	boundary_path[0] = '/';
+	boundary_path[250] = '/';
+	boundary_path[502] = '\0';
+
+	// dir_len=250, filename_len=251, 250+251+11=512 <= 512
+	// Will return 0 because directory doesn't exist, but should be cached
+	TEST_ASSERT_EQUAL_INT(0, ResCache_hasThumbnail(boundary_path));
+	TEST_ASSERT_EQUAL_INT(1, ResCache_dirCount()); // Path accepted, dir cached
+}
+
+void test_path_over_max_boundary_rejected(void) {
+	// Test boundary: dir_len + filename_len + 11 = 513 (should fail)
+	// Condition is: total > MAX_PATH fails
+	// Need: dir_len + filename_len = 502
+
+	// Build path: /aaa...aaa/aaa...aaa where dir_len=251, filename_len=251
+	// Total: 251 + 251 + 11 = 513 > 512, should fail
+	char boundary_path[504];
+	memset(boundary_path, 'a', 503);
+	boundary_path[0] = '/';
+	boundary_path[251] = '/';
+	boundary_path[503] = '\0';
+
+	// dir_len=251, filename_len=251, 251+251+11=513 > 512, should be rejected
+	TEST_ASSERT_EQUAL_INT(0, ResCache_hasThumbnail(boundary_path));
+	TEST_ASSERT_EQUAL_INT(0, ResCache_dirCount()); // Path rejected, nothing cached
+}
+
 ///////////////////////////////
 // Test runner
 ///////////////////////////////
@@ -432,12 +530,15 @@ int main(void) {
 	RUN_TEST(test_empty_path);
 	RUN_TEST(test_path_without_slash);
 	RUN_TEST(test_path_ending_with_slash);
-	RUN_TEST(test_root_level_path_rejected);
+	RUN_TEST(test_root_level_path_supported);
 	RUN_TEST(test_hidden_thumbnails_ignored);
 	RUN_TEST(test_non_png_files_ignored);
 	RUN_TEST(test_invalidate_directory);
 	RUN_TEST(test_free_safe_multiple_calls);
 	RUN_TEST(test_reinit);
+	RUN_TEST(test_path_too_long_rejected);
+	RUN_TEST(test_path_at_max_boundary_accepted);
+	RUN_TEST(test_path_over_max_boundary_rejected);
 
 	return UNITY_END();
 }

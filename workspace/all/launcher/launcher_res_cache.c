@@ -105,8 +105,12 @@ static ResFileEntry* getOrScanResDir(const char* dir_path) {
 	return file_set;
 }
 
+// Overhead for building full thumbnail path: "/.res/" (6) + ".png" (4) + null (1)
+#define RES_PATH_OVERHEAD 11
+
 /**
  * Extracts the parent directory and filename from an entry path.
+ * Validates that the resulting thumbnail path will fit in MAX_PATH.
  * Returns 0 on failure.
  */
 static int extractPathParts(const char* entry_path, char* dir_path, const char** filename) {
@@ -120,16 +124,33 @@ static int extractPathParts(const char* entry_path, char* dir_path, const char**
 	}
 
 	int dir_len = (int)(last_slash - entry_path);
-	if (dir_len <= 0 || dir_len >= MAX_PATH) {
+	if (dir_len < 0) {
+		return 0;
+	}
+
+	// Calculate filename length
+	const char* fname = last_slash + 1;
+	size_t filename_len = strlen(fname);
+
+	// Handle root-level paths (e.g., "/game.gb" -> dir="/", filename="game.gb")
+	size_t effective_dir_len = (dir_len == 0) ? 1 : (size_t)dir_len;
+
+	// Ensure full thumbnail path will fit: dir_path + "/.res/" + filename + ".png"
+	if (effective_dir_len + filename_len + RES_PATH_OVERHEAD > MAX_PATH) {
 		return 0;
 	}
 
 	// Copy directory path
-	memcpy(dir_path, entry_path, (size_t)dir_len);
-	dir_path[dir_len] = '\0';
+	if (dir_len == 0) {
+		dir_path[0] = '/';
+		dir_path[1] = '\0';
+	} else {
+		memcpy(dir_path, entry_path, (size_t)dir_len);
+		dir_path[dir_len] = '\0';
+	}
 
 	// Set filename pointer (past the slash)
-	*filename = last_slash + 1;
+	*filename = fname;
 
 	return 1;
 }
