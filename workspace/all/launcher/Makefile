@@ -28,7 +28,7 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          launcher_entry.c launcher_launcher.c directory_index.c launcher_str_compare.c \
          launcher_state.c launcher_m3u.c launcher_map.c launcher_file_utils.c launcher_directory.c \
          launcher_context.c launcher_navigation.c launcher_thumbnail.c recent_file.c \
-         launcher_emu_cache.c \
+         launcher_emu_cache.c launcher_res_cache.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
