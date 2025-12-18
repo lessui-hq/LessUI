@@ -901,6 +901,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				}
 
 				LOG_debug("Auto CPU: applying %s (level %d)\n", level_name, target);
+				(void)level_name; // Used only in debug builds
 				PWR_setCPUSpeed(cpu_speed);
 
 				pthread_mutex_lock(&auto_cpu_mutex);

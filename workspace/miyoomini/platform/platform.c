@@ -876,6 +876,7 @@ void PLAT_setCPUSpeed(int speed) {
 	}
 
 	LOG_debug("PLAT_setCPUSpeed: %s (%d kHz)\n", level_name, freq);
+	(void)level_name; // Used only in debug builds
 	char cmd[32];
 	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq);
 	int ret = system(cmd);
