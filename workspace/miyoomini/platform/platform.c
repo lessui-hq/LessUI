@@ -411,7 +411,10 @@ static struct VID_Context {
 	int direct;
 	int cleared;
 
-	// Game rendering flag (set by PLAT_blitRenderer, cleared by PLAT_flip)
+	// Game mode tracking (like SDL2's ctx->blit)
+	// - renderer: set by PLAT_blitRenderer, cleared by PLAT_clearBlit - indicates game mode
+	// - in_game: set by PLAT_blitRenderer, cleared by PLAT_flip - indicates new frame this vsync
+	GFX_Renderer* renderer;
 	int in_game;
 } vid;
 
@@ -658,7 +661,8 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 }
 
 void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.in_game = 1;
+	vid.renderer = renderer; // Track game mode (persists until PLAT_clearBlit)
+	vid.in_game = 1; // Track new frame this vsync (cleared each flip)
 
 	// Clear to black when effects enabled to ensure clean black borders
 	if (effect_state.next_type != EFFECT_NONE) {
@@ -671,14 +675,37 @@ void PLAT_blitRenderer(GFX_Renderer* renderer) {
 }
 
 void PLAT_clearBlit(void) {
-	// No-op: miyoomini clears vid.in_game after every flip (line 691)
+	vid.renderer = NULL; // Exit game mode, return to UI rendering
 }
 
 void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	if (!vid.direct)
-		GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
+	// Frame pacing support: distinguish between game mode and UI mode.
+	// - Game mode (vid.renderer set): core produces frames, may repeat for frame pacing
+	// - UI mode (vid.renderer NULL): menu draws every frame
+	//
+	// In game mode with frame pacing, some vsyncs don't produce new frames.
+	// On repeated frames, vid.video already contains the previous frame's content,
+	// so we skip the blit and page flip to re-present it correctly.
+	//
+	// NOTE: miyoomini uses a "skip blit" approach - vid.video retains its content
+	// between SDL_Flip calls, so we simply don't update it on repeated frames.
+	// This differs from trimuismart/rg35xx which use a "display_page" approach
+	// to select which hardware page to display, because those platforms write
+	// directly to the display engine's memory rather than through SDL.
+	if (!vid.direct) {
+		if (vid.renderer) {
+			// Game mode: only blit when core produced a new frame
+			if (vid.in_game) {
+				GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
+			}
+			// On repeated frames, vid.video already has correct content
+		} else {
+			// UI mode: always blit (menu draws to vid.screen every frame)
+			GFX_BlitSurfaceExec(vid.screen, NULL, vid.video, NULL, 0, 0, 0);
+		}
+	}
 
-	// Apply effect overlay when in game mode (not menus)
+	// Apply effect overlay when in game mode with a new frame
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
 		if (vid.effect) {
@@ -688,9 +715,10 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 
 	SDL_Flip(vid.video);
 
-	vid.in_game = 0;
-
-	if (!vid.direct) {
+	// Only flip page when we actually drew a new frame (frame pacing support).
+	// When frame pacing repeats a frame (no core.run()), we keep the same page
+	// so the next blit goes to the same buffer that vid.video was copied from.
+	if (!vid.direct && vid.in_game) {
 		vid.page ^= 1;
 		vid.screen->pixels = vid.buffer.vadd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
 		vid.screen->pixelsPa = vid.buffer.padd + ALIGN4K(vid.page * VIDEO_BUFFER_SIZE);
@@ -700,6 +728,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 		PLAT_clearVideo(vid.screen);
 		vid.cleared = 0;
 	}
+
+	vid.in_game = 0; // Clear per-frame flag (vid.renderer persists for game mode)
 }
 
 ///////////////////////////////
