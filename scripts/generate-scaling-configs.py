@@ -21,7 +21,7 @@ from pathlib import Path
 # =============================================================================
 
 # Minimum fill percentage to recommend Native scaling
-FILL_THRESHOLD_LARGE_SCREEN = 95  # Screens >= 3"
+FILL_THRESHOLD_LARGE_SCREEN = 90  # Screens >= 3"
 FILL_THRESHOLD_SMALL_SCREEN = 100  # Screens < 3" (must be perfect fit)
 
 # Screen size threshold (inches)
@@ -59,19 +59,33 @@ SQUARE_SCREENS = {"cube", "rgb30"}
 # CORE DATA
 # =============================================================================
 
+# From workspace/all/paks/Emus/cores.json
+# Skip MAME/FBN which have "varies" resolution
+# Skip PS - always uses aspect scaling (many games use non-native resolutions)
 CORES = {
-    "GB":   (160, 144),
-    "GBC":  (160, 144),
-    "GBA":  (240, 160),
-    "FC":   (256, 224),
-    "SFC":  (256, 224),
-    "MD":   (320, 224),
-    "PS":   (320, 240),
-    "PCE":  (256, 224),
-    "GG":   (160, 144),
-    "MS":   (256, 192),
-    "NGP":  (160, 152),
-    "WSC":  (224, 144),
+    "GB":    (160, 144),
+    "GBC":   (160, 144),
+    "GBA":   (240, 160),
+    "FC":    (256, 240),
+    "SFC":   (256, 224),
+    "MD":    (320, 224),
+    "GG":    (160, 144),
+    "SMS":   (256, 192),
+    "PCE":   (512, 243),
+    "PCECD": (512, 243),
+    "VB":    (384, 224),
+    "NGP":   (160, 152),
+    "NGPC":  (160, 152),
+    "PKM":   (96, 64),
+    "PICO":  (128, 128),
+    "TIC":   (240, 136),
+    "SGB":   (256, 224),
+    "MGBA":  (240, 160),
+    "SUPA":  (256, 224),
+    "CPS1":  (384, 224),
+    "CPS2":  (384, 224),
+    "CPS3":  (384, 224),
+    "NG":    (320, 224),
 }
 
 # =============================================================================
