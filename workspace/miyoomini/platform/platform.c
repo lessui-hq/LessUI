@@ -71,6 +71,9 @@ static const DeviceInfo miyoomini_devices[] = {
     // Miyoo Mini Flip (MY285 - same as standard but clamshell form factor)
     {.device_id = "miyoominiflip", .display_name = "Mini Flip", .manufacturer = "Miyoo"},
 
+    // Standard Miyoo Mini (560p variant)
+    {.device_id = "miyoomini560p", .display_name = "Mini (560p)", .manufacturer = "Miyoo"},
+
     // Sentinel
     {NULL, NULL, NULL}};
 
@@ -99,6 +102,11 @@ static const VariantConfig miyoomini_variants[] = {
      .screen_height = 560,
      .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
+    {.variant = VARIANT_MINI_STANDARD_560P,
+     .screen_width = 752,
+     .screen_height = 560,
+     .screen_diagonal_default = 2.8f,
+     .hw_features = HW_FEATURE_NEON},
     {.variant = VARIANT_NONE} // Sentinel
 };
 
@@ -111,7 +119,8 @@ typedef struct {
 } DeviceVariantMap;
 
 static const DeviceVariantMap miyoomini_device_map[] = {
-    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini
+    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini (480p)
+    {0, 1, VARIANT_MINI_STANDARD_560P, &miyoomini_devices[4]}, // Standard Mini (560p)
     {1, 0, VARIANT_MINI_PLUS, &miyoomini_devices[1]}, // Plus (480p)
     {1, 1, VARIANT_MINI_PLUS_560P, &miyoomini_devices[2]}, // Plus (560p)
     {-1, -1, VARIANT_NONE, NULL} // Sentinel
@@ -567,8 +576,8 @@ static void updateEffectOverlay(void) {
 	SDL_Surface* temp = EFFECT_createGeneratedSurfaceWithColor(
 	    effect_state.type, scale, FIXED_WIDTH, FIXED_HEIGHT, effect_state.color);
 	int opacity = EFFECT_getOpacity(scale);
-	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", effect_state.type,
-	          scale, effect_state.color, opacity);
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d screen=%dx%d\n",
+	          effect_state.type, scale, effect_state.color, opacity, FIXED_WIDTH, FIXED_HEIGHT);
 
 	if (!temp) {
 		LOG_error("Effect: failed to create effect surface");
@@ -630,6 +639,10 @@ void PLAT_vsync(int remaining) {
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	// Track scale for effect overlay generation
 	EFFECT_setScale(&effect_state, renderer->visual_scale);
+
+	LOG_debug("Scaler: src=%dx%d dst=%dx%d+%d+%d buffer_scale=%d visual_scale=%d aspect=%.2f\n",
+	          renderer->src_w, renderer->src_h, renderer->dst_w, renderer->dst_h, renderer->dst_x,
+	          renderer->dst_y, renderer->scale, renderer->visual_scale, renderer->aspect);
 
 	switch (renderer->scale) {
 	case 6:
@@ -703,6 +716,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.video->w, vid.video->h);
 			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
 			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+
+			LOG_debug("Effect blit: video=%dx%d dest_rect=%d,%d %dx%d effect=%dx%d\n", vid.video->w,
+			          vid.video->h, dst_rect.x, dst_rect.y, dst_rect.w, dst_rect.h, vid.effect->w,
+			          vid.effect->h);
+
 			GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);
 		}
 	}
