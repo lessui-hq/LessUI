@@ -1,11 +1,15 @@
 /**
- * effect_surface.c - CPU-based pattern scaling and tiling
+ * effect_surface.c - CPU-based effect pattern generation and tiling for SDL1 platforms
+ *
+ * All effects (LINE, GRID, CRT, SLOT) are procedurally generated via effect_generate.c.
  */
 
 #include "effect_surface.h"
 
 #include <stdlib.h>
 
+#include "api.h"
+#include "effect_generate.h"
 #include "log.h"
 #include "render_common.h"
 
@@ -78,18 +82,18 @@ SDL_Surface* EFFECT_createTiledSurface(const char* pattern_path, int scale, int 
 SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int scale, int target_w,
                                                 int target_h, int color) {
 	if (!pattern_path || scale < 1 || target_w < 1 || target_h < 1) {
-		LOG_info("EFFECT_createTiledSurfaceWithColor: invalid params\n");
+		LOG_info("EFFECT_createTiledSurfaceWithColor: invalid params");
 		return NULL;
 	}
 
 	// Load base pattern
 	SDL_Surface* loaded = IMG_Load(pattern_path);
 	if (!loaded) {
-		LOG_info("EFFECT_createTiledSurface: IMG_Load failed for %s: %s\n", pattern_path,
+		LOG_info("EFFECT_createTiledSurface: IMG_Load failed for %s: %s", pattern_path,
 		         IMG_GetError());
 		return NULL;
 	}
-	LOG_info("EFFECT_createTiledSurface: loaded %s (%dx%d bpp=%d Amask=0x%08X pitch=%d)\n",
+	LOG_info("EFFECT_createTiledSurface: loaded %s (%dx%d bpp=%d Amask=0x%08X pitch=%d)",
 	         pattern_path, loaded->w, loaded->h, loaded->format->BitsPerPixel,
 	         loaded->format->Amask, loaded->pitch);
 
@@ -102,7 +106,7 @@ SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int sc
 			SDLX_SetAlpha(loaded, 0, 255); // Disable alpha for copy
 			SDL_BlitSurface(loaded, NULL, converted, NULL);
 			base = converted;
-			LOG_info("EFFECT_createTiledSurface: converted to 32-bit ARGB\n");
+			LOG_info("EFFECT_createTiledSurface: converted to 32-bit ARGB");
 		} else {
 			base = loaded;
 			loaded = NULL;
@@ -118,7 +122,7 @@ SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int sc
 	SDL_FreeSurface(base);
 
 	if (!scaled) {
-		LOG_info("EFFECT_createTiledSurface: scaleSurface failed\n");
+		LOG_info("EFFECT_createTiledSurface: scaleSurface failed");
 		return NULL;
 	}
 
@@ -126,7 +130,7 @@ SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int sc
 	SDL_Surface* tiled = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0x00FF0000, 0x0000FF00,
 	                                          0x000000FF, 0xFF000000);
 	if (!tiled) {
-		LOG_info("EFFECT_createTiledSurface: SDL_CreateRGBSurface failed\n");
+		LOG_info("EFFECT_createTiledSurface: SDL_CreateRGBSurface failed");
 		SDL_FreeSurface(scaled);
 		return NULL;
 	}
@@ -153,7 +157,61 @@ SDL_Surface* EFFECT_createTiledSurfaceWithColor(const char* pattern_path, int sc
 		tintSurface(tiled, color);
 	}
 
-	LOG_info("EFFECT_createTiledSurfaceWithColor: created %dx%d tiled surface (color=0x%04x)\n",
+	LOG_info("EFFECT_createTiledSurfaceWithColor: created %dx%d tiled surface (color=0x%04x)",
 	         target_w, target_h, color);
 	return tiled;
+}
+
+SDL_Surface* EFFECT_createGeneratedSurfaceWithColor(int type, int scale, int target_w, int target_h,
+                                                    int color) {
+	if (scale < 1 || target_w < 1 || target_h < 1) {
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: invalid params");
+		return NULL;
+	}
+
+	// Create ARGB32 surface
+	SDL_Surface* surface = SDL_CreateRGBSurface(0, target_w, target_h, 32, 0x00FF0000, 0x0000FF00,
+	                                            0x000000FF, 0xFF000000);
+	if (!surface) {
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: SDL_CreateRGBSurface failed");
+		return NULL;
+	}
+
+	// Generate pattern directly into surface
+	uint32_t* pixels = (uint32_t*)surface->pixels;
+	int pitch = surface->pitch;
+
+	switch (type) {
+	case EFFECT_LINE:
+		EFFECT_generateLine(pixels, target_w, target_h, pitch, scale);
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: generated LINE %dx%d scale=%d", target_w,
+		         target_h, scale);
+		break;
+	case EFFECT_GRID:
+		EFFECT_generateGridWithColor(pixels, target_w, target_h, pitch, scale, color);
+		LOG_info(
+		    "EFFECT_createGeneratedSurfaceWithColor: generated GRID %dx%d scale=%d color=0x%04x\n",
+		    target_w, target_h, scale, color);
+		break;
+	case EFFECT_CRT:
+		EFFECT_generateCRT(pixels, target_w, target_h, pitch, scale);
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: generated CRT %dx%d scale=%d", target_w,
+		         target_h, scale);
+		break;
+	case EFFECT_SLOT:
+		EFFECT_generateSlot(pixels, target_w, target_h, pitch, scale);
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: generated SLOT %dx%d scale=%d", target_w,
+		         target_h, scale);
+		break;
+	default:
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: unknown type %d", type);
+		SDL_FreeSurface(surface);
+		return NULL;
+	}
+
+	return surface;
+}
+
+SDL_Surface* EFFECT_createGeneratedSurface(int type, int scale, int target_w, int target_h) {
+	return EFFECT_createGeneratedSurfaceWithColor(type, scale, target_w, target_h, 0);
 }

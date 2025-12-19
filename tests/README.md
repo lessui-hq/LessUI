@@ -1067,7 +1067,7 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 
 **Note:** Extracted from `player.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
 
-### workspace/all/common/effect_system.c - ✅ 43 tests
+### workspace/all/common/effect_system.c - ✅ 39 tests
 **File:** `tests/unit/all/common/test_effect_system.c`
 
 - EFFECT_init() - State initialization
@@ -1076,13 +1076,25 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 - EFFECT_needsUpdate() - Change detection
 - EFFECT_markLive() - Mark as rendered
 - EFFECT_getOpacity() - Opacity calculation (formula: 30 + scale * 20)
-- EFFECT_getPatternScale() - Scale clamping (2-8)
-- EFFECT_getPatternPath() - Pattern file path generation
 - Full workflow integration tests
 
 **Coverage:** Complete coverage of visual effect state management system.
 
 **Note:** Extracted from platform-specific files. Pure state management with no SDL dependencies.
+
+### workspace/all/common/effect_generate.c - ✅ 24 tests
+**File:** `tests/unit/all/common/test_effect_generate.c`
+
+- EFFECT_generateLine() - Scanline pattern with symmetric dark edges
+- EFFECT_generateCRT() - CRT aperture grille with RGB phosphor tints
+- EFFECT_generateGrid() - LCD pixel grid with graduated alpha
+- EFFECT_generateGridWithColor() - Grid with RGB565 color conversion
+- EFFECT_generateSlot() - Staggered slot mask with alternating borders
+- Edge cases: 1x1 buffers, scale=1, large scales
+
+**Coverage:** Complete coverage of procedural effect pattern generation.
+
+**Note:** Pure pixel buffer manipulation with no SDL dependencies.
 
 ### workspace/all/common/player_utils.c - ✅ 41 tests
 **File:** `tests/unit/all/common/test_player_utils.c`

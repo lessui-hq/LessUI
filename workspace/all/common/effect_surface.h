@@ -1,14 +1,44 @@
 /**
- * effect_surface.h - CPU-based effect pattern scaling and tiling
+ * effect_surface.h - CPU-based effect pattern generation and tiling
  *
- * For platforms that don't use SDL renderers (miyoomini, trimuismart, rg35xx).
- * Simple nearest-neighbor scaling and tiling using SDL_Surface only.
+ * For SDL1 platforms (miyoomini, trimuismart, rg35xx).
+ * All effects (LINE, GRID, CRT, SLOT) are procedurally generated.
  */
 
 #ifndef __EFFECT_SURFACE_H__
 #define __EFFECT_SURFACE_H__
 
 #include "sdl.h"
+
+/**
+ * Creates an effect surface using procedural generation.
+ *
+ * For LINE, GRID, CRT, and SLOT effects. Generates the pattern directly into
+ * the surface pixels without loading any files.
+ *
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param scale    Content-to-screen scale factor
+ * @param target_w Target surface width
+ * @param target_h Target surface height
+ * @return SDL_Surface with generated pattern (caller must SDL_FreeSurface), or NULL on error
+ */
+SDL_Surface* EFFECT_createGeneratedSurface(int type, int scale, int target_w, int target_h);
+
+/**
+ * Creates an effect surface using procedural generation with color tinting.
+ *
+ * Same as EFFECT_createGeneratedSurface but with color support for GRID effect.
+ * Used for Game Boy DMG palette matching.
+ *
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param scale    Content-to-screen scale factor
+ * @param target_w Target surface width
+ * @param target_h Target surface height
+ * @param color    RGB565 color for GRID lines (0 = black, only affects GRID)
+ * @return SDL_Surface with generated pattern (caller must SDL_FreeSurface), or NULL on error
+ */
+SDL_Surface* EFFECT_createGeneratedSurfaceWithColor(int type, int scale, int target_w, int target_h,
+                                                    int color);
 
 /**
  * Loads a base pattern PNG, scales it, and tiles it into an SDL_Surface.

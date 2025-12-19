@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "defines.h"
+#include "effect_system.h"
 #include "effect_utils.h"
 #include "render_common.h"
 #include "utils.h"
@@ -81,46 +82,34 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		return;
 	}
 
-	// Get pattern path and opacity
-	char pattern_path[256];
-	const char* pattern = NULL;
-	int opacity = 255;
-
-	// All platforms use scale-specific patterns (line-2.png, grid-3.png, etc.)
-	pattern = EFFECT_getPatternPath(pattern_path, sizeof(pattern_path), fx->type, fx->scale);
-	opacity = EFFECT_getOpacity(fx->scale);
-
-	if (!pattern) {
-		return;
-	}
-
 	// Target dimensions
 	int target_w = ctx->device_width;
 	int target_h = ctx->device_height;
 
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (fx->type == EFFECT_GRID) ? fx->color : 0;
+	// All effects use procedural generation (with color support for GRID)
+	int opacity = EFFECT_getGeneratedOpacity(fx->type);
 
-	LOG_debug("Effect: creating type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n", fx->type,
-	          fx->scale, opacity, color, pattern);
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
+	          fx->color, opacity);
 
-	// Load and tile pattern (with optional color tinting for grid)
-	SDL_Texture* tiled =
-	    EFFECT_loadAndTileWithColor(ctx->renderer, pattern, 1, target_w, target_h, color);
-	if (tiled) {
-		SDL_SetTextureBlendMode(tiled, SDL_BLENDMODE_BLEND);
-		SDL_SetTextureAlphaMod(tiled, opacity);
+	SDL_Texture* new_texture = EFFECT_createGeneratedTextureWithColor(
+	    ctx->renderer, fx->type, fx->scale, target_w, target_h, fx->color);
+	if (new_texture) {
+		SDL_SetTextureBlendMode(new_texture, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(new_texture, opacity);
+	}
 
+	if (new_texture) {
 		// Destroy old effect texture
 		if (ctx->effect) {
 			SDL_DestroyTexture(ctx->effect);
 		}
-		ctx->effect = tiled;
+		ctx->effect = new_texture;
 
 		// Mark as live
 		EFFECT_markLive(fx);
 
-		LOG_debug("Effect: created %dx%d texture, opacity=%d\n", target_w, target_h, opacity);
+		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
 	}
 }
 

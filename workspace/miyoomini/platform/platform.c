@@ -532,7 +532,7 @@ void PLAT_setSharpness(int sharpness) {
 
 /**
  * Creates or updates the effect overlay surface.
- * Now uses EFFECT_getPatternPath() and EFFECT_getOpacity() from effect_system.
+ * Uses procedural generation from effect_generate.h.
  */
 static void updateEffectOverlay(void) {
 	// Apply pending effect settings
@@ -562,29 +562,15 @@ static void updateEffectOverlay(void) {
 
 	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	// Use shared EFFECT_getPatternPath() instead of local getEffectPattern()
-	char pattern_path[256];
-	const char* pattern =
-	    EFFECT_getPatternPath(pattern_path, sizeof(pattern_path), effect_state.type, scale);
-	if (!pattern) {
-		LOG_debug("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
-		return;
-	}
+	// All effects use procedural generation (with color support for GRID)
+	SDL_Surface* temp = EFFECT_createGeneratedSurfaceWithColor(
+	    effect_state.type, scale, FIXED_WIDTH, FIXED_HEIGHT, effect_state.color);
+	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", effect_state.type,
+	          scale, effect_state.color, opacity);
 
-	// Use shared EFFECT_getOpacity()
-	int opacity = EFFECT_getOpacity(scale);
-
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
-
-	LOG_debug("Effect: creating overlay type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n",
-	          effect_state.type, scale, opacity, color, pattern);
-
-	// Pattern is pre-sized for this scale, tile at 1:1 (no scaling)
-	SDL_Surface* temp =
-	    EFFECT_createTiledSurfaceWithColor(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT, color);
 	if (!temp) {
-		LOG_error("Effect: EFFECT_createTiledSurfaceWithColor failed");
+		LOG_error("Effect: failed to create effect surface");
 		return;
 	}
 

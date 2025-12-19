@@ -477,10 +477,16 @@ void PLAT_setSharpness(int sharpness) {
 
 /**
  * Checks if effect type uses overlay (vs scaler-based rendering).
- * LINE and GRID use scaler functions, all other effects use overlays.
+ *
+ * Platform-specific optimization for rg35xx:
+ * - LINE/GRID: Use fast scaler-based rendering (simpler patterns)
+ * - CRT/SLOT: Use overlay blending (complex patterns with per-pixel alpha)
+ *
+ * Note: All effects are still procedurally generated - this just determines
+ * the rendering path, not whether PNGs are loaded.
  */
 static int effectUsesOverlay(int type) {
-	return type != EFFECT_NONE && type != EFFECT_LINE && type != EFFECT_GRID;
+	return type == EFFECT_CRT || type == EFFECT_SLOT;
 }
 
 /**
@@ -490,7 +496,7 @@ static int effectUsesOverlay(int type) {
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
 
-	// Only overlay effects (grille, slot, dot, dmg, gbc, lcd) use this path
+	// Only overlay effects (CRT, SLOT) use this path
 	// LINE/GRID use scaler functions instead
 	if (!effectUsesOverlay(effect_state.type)) {
 		if (vid.effect) {
@@ -504,20 +510,17 @@ static void updateEffectOverlay(void) {
 	if (!EFFECT_needsUpdate(&effect_state))
 		return;
 
-	// Use shared EFFECT_getPatternPath()
-	char pattern_path[256];
-	const char* pattern = EFFECT_getPatternPath(pattern_path, sizeof(pattern_path),
-	                                            effect_state.type, effect_state.scale);
-
 	if (vid.effect)
 		SDL_FreeSurface(vid.effect);
 
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
+	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	vid.effect = EFFECT_createTiledSurfaceWithColor(pattern, 1, vid.width, vid.height, color);
+	// CRT and SLOT use procedural generation (with color support for GRID)
+	vid.effect = EFFECT_createGeneratedSurfaceWithColor(effect_state.type, scale, vid.width,
+	                                                    vid.height, effect_state.color);
+	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+
 	if (vid.effect) {
-		int opacity = EFFECT_getOpacity(effect_state.scale);
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 		EFFECT_markLive(&effect_state);
 	}

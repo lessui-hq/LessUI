@@ -312,15 +312,15 @@ enum {
 /**
  * CRT/LCD visual effects.
  *
- * All effects use shadow-only overlays (black pixels with alpha).
- * Patterns based on MAME HLSL shaders by cgwg, Themaister, et al.
+ * LINE/GRID use shadow-only overlays (black pixels with alpha).
+ * CRT uses full aperture grille with RGB phosphor tints + scanlines.
  */
 enum {
 	EFFECT_NONE, // No effect
-	EFFECT_LINE, // Horizontal scanlines
-	EFFECT_GRID, // Pixel grid (2x2)
-	EFFECT_GRILLE, // Aperture grille (vertical stripes, 50% shadow)
-	EFFECT_SLOT, // Slot mask (staggered vertical slots)
+	EFFECT_LINE, // Horizontal scanlines (shadow only)
+	EFFECT_GRID, // LCD pixel grid (1px border per content pixel)
+	EFFECT_CRT, // Full CRT: aperture grille RGB phosphors + scanlines
+	EFFECT_SLOT, // Slot mask (staggered brick pattern)
 	EFFECT_COUNT,
 };
 

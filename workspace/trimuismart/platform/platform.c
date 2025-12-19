@@ -372,8 +372,8 @@ void PLAT_setSharpness(int sharpness) {}
 
 /**
  * Updates the effect overlay surface.
- * Uses shared effect_system for pattern paths and opacity.
- * Supports all pattern-based effects (line, grid, grille, slot, dot, dmg, gbc, lcd).
+ * Uses shared effect_system for effect generation.
+ * Supports all effects (LINE, GRID, CRT, SLOT).
  */
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
@@ -391,20 +391,17 @@ static void updateEffectOverlay(void) {
 	if (!EFFECT_needsUpdate(&effect_state))
 		return;
 
-	// Use shared EFFECT_getPatternPath()
-	char pattern_path[256];
-	const char* pattern = EFFECT_getPatternPath(pattern_path, sizeof(pattern_path),
-	                                            effect_state.type, effect_state.scale);
-
 	if (vid.effect)
 		SDL_FreeSurface(vid.effect);
 
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
+	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	vid.effect = EFFECT_createTiledSurfaceWithColor(pattern, 1, vid.width, vid.height, color);
+	// All effects use procedural generation (with color support for GRID)
+	vid.effect = EFFECT_createGeneratedSurfaceWithColor(effect_state.type, scale, vid.width,
+	                                                    vid.height, effect_state.color);
+	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+
 	if (vid.effect) {
-		int opacity = EFFECT_getOpacity(effect_state.scale);
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 		EFFECT_markLive(&effect_state);
 	}

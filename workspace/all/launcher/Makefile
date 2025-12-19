@@ -32,7 +32,7 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
-SOURCE += ../common/effect_system.c ../common/render_common.c
+SOURCE += ../common/effect_system.c ../common/effect_generate.c ../common/render_common.c
 
 # Add effect support - SDL2 platforms use render_sdl2 + effect_utils, SDL1 platforms use effect_surface
 ifeq ($(SDL),SDL2)
