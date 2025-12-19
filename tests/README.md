@@ -1067,7 +1067,7 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 
 **Note:** Extracted from `player.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
 
-### workspace/all/common/effect_system.c - ✅ 39 tests
+### workspace/all/common/effect_system.c - ✅ 30 tests
 **File:** `tests/unit/all/common/test_effect_system.c`
 
 - EFFECT_init() - State initialization
@@ -1075,7 +1075,8 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 - EFFECT_applyPending() - Apply pending changes
 - EFFECT_needsUpdate() - Change detection
 - EFFECT_markLive() - Mark as rendered
-- EFFECT_getOpacity() - Opacity calculation (formula: 30 + scale * 20)
+- EFFECT_getOpacity() - Global opacity (constant 128)
+- EFFECT_usesGeneration() - Procedural generation check
 - Full workflow integration tests
 
 **Coverage:** Complete coverage of visual effect state management system.
@@ -1085,16 +1086,16 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 ### workspace/all/common/effect_generate.c - ✅ 24 tests
 **File:** `tests/unit/all/common/test_effect_generate.c`
 
-- EFFECT_generateLine() - Scanline pattern with symmetric dark edges
-- EFFECT_generateGrille() - Aperture grille with RGB phosphor tints
-- EFFECT_generateGrid() - LCD pixel grid with graduated alpha
-- EFFECT_generateGridWithColor() - Grid with RGB565 color conversion
-- EFFECT_generateSlot() - Staggered slot mask with alternating borders
-- Edge cases: 1x1 buffers, scale=1, large scales
+- EFFECT_generateLine() - Horizontal scanline pattern generation
+- EFFECT_generateGrille() - Aperture grille pattern with RGB phosphor tints
+- EFFECT_generateGrid() - LCD pixel grid pattern
+- EFFECT_generateGridWithColor() - Grid with color tinting (for Game Boy DMG)
+- EFFECT_generateSlot() - Staggered slot mask pattern
+- Edge cases: null buffers, invalid dimensions, scale 1, large scale
 
 **Coverage:** Complete coverage of procedural effect pattern generation.
 
-**Note:** Pure pixel buffer manipulation with no SDL dependencies.
+**Note:** Pure C pattern generation with no SDL dependencies. All patterns write directly to ARGB8888 buffers.
 
 ### workspace/all/common/player_utils.c - ✅ 41 tests
 **File:** `tests/unit/all/common/test_player_utils.c`

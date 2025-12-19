@@ -160,8 +160,8 @@ void test_generateGrille_symmetric_scanlines(void) {
 	uint8_t alpha_y1 = get_alpha(buf[1 * 3]); // Phosphor row
 	uint8_t alpha_y2 = get_alpha(buf[2 * 3]); // Scanline row
 
-	TEST_ASSERT_EQUAL_UINT8(255, alpha_y0);      // Scanline is opaque (scaled from 90)
-	TEST_ASSERT_EQUAL_UINT8(255, alpha_y2);      // Scanline is opaque (scaled from 90)
+	TEST_ASSERT_EQUAL_UINT8(255, alpha_y0);      // Scanline is opaque
+	TEST_ASSERT_EQUAL_UINT8(255, alpha_y2);      // Scanline is opaque
 	TEST_ASSERT_EQUAL_UINT8(alpha_y0, alpha_y2); // Symmetric edges
 	TEST_ASSERT_EQUAL_UINT8(14, alpha_y1);       // Cyan phosphor has alpha 14
 
@@ -194,7 +194,7 @@ void test_generateGrid_scale2_edges_have_alpha(void) {
 	uint32_t* buf = create_buffer(4, 4, &pitch);
 	EFFECT_generateGrid(buf, 4, 4, pitch, 2);
 
-	// Scale 2: left column and top row should have alpha 181 (was 64, scaled up)
+	// Scale 2: left column and bottom row have lighter borders (alpha 181)
 	uint8_t alpha_left = get_alpha(buf[0 * 4 + 0]); // (0,0)
 	uint8_t alpha_top = get_alpha(buf[0 * 4 + 1]);  // (0,1)
 
@@ -209,14 +209,14 @@ void test_generateGrid_scale3_has_graduated_alpha(void) {
 	uint32_t* buf = create_buffer(6, 6, &pitch);
 	EFFECT_generateGrid(buf, 6, 6, pitch, 3);
 
-	// Scale 3+: graduated alpha (all 255 after scaling, was 102/153)
+	// Scale 3+: opaque borders (alpha 255)
 	// Check bottom-left corner of first content pixel (y=2, x=0)
 	uint8_t alpha_corner = get_alpha(buf[2 * 6 + 0]); // bottom-left corner
 	uint8_t alpha_edge = get_alpha(buf[2 * 6 + 1]);   // bottom edge
 	uint8_t alpha_interior = get_alpha(buf[1 * 6 + 1]); // interior
 
-	TEST_ASSERT_EQUAL_UINT8(255, alpha_corner); // Was 153, now 255 (capped)
-	TEST_ASSERT_EQUAL_UINT8(255, alpha_edge);   // Was 102, now 255 (capped)
+	TEST_ASSERT_EQUAL_UINT8(255, alpha_corner); // Corner is opaque
+	TEST_ASSERT_EQUAL_UINT8(255, alpha_edge);   // Edge is opaque
 	TEST_ASSERT_EQUAL_UINT8(0, alpha_interior);
 
 	free(buf);
@@ -337,7 +337,7 @@ void test_generateSlot_glow_row_at_scale3(void) {
 	EFFECT_generateSlot(buf, 6, 6, pitch, 3);
 
 	// Row 1 (pos_in_pixel = 1) should have glow for non-border pixels at scale 3+
-	// At scale 3, interior position (1,1) should have glow (alpha=170, was 60)
+	// At scale 3, interior position (1,1) should have glow (alpha=170)
 	uint8_t alpha_glow = get_alpha(buf[1 * 6 + 1]);
 	TEST_ASSERT_EQUAL_UINT8(170, alpha_glow);
 
@@ -362,12 +362,12 @@ void test_generateSlot_graduated_alpha_matches_grid(void) {
 	uint32_t* buf = create_buffer(6, 6, &pitch);
 	EFFECT_generateSlot(buf, 6, 6, pitch, 3);
 
-	// Borders should have alpha 255 (scaled up from 102/153)
+	// Borders should have alpha 255 (opaque)
 	// Check horizontal border at interior position
 	uint8_t alpha_edge = get_alpha(buf[0 * 6 + 1]); // horizontal border, not corner
 	TEST_ASSERT_EQUAL_UINT8(255, alpha_edge);
 
-	// Corner should also be 255 (scaled up from 153)
+	// Corner should also be 255 (opaque)
 	uint8_t alpha_corner = get_alpha(buf[0 * 6 + 0]); // corner
 	TEST_ASSERT_EQUAL_UINT8(255, alpha_corner);
 

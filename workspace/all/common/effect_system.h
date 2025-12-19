@@ -131,24 +131,14 @@ void EFFECT_markLive(EffectState* state);
 int EFFECT_usesGeneration(int type);
 
 /**
- * Gets the appropriate opacity for a legacy (PNG-based) effect.
+ * Gets the global opacity for effect overlays.
  *
- * Legacy effect patterns use opaque black (alpha=255 in PNG). Visibility is
- * controlled via global opacity using a simple linear formula:
+ * Returns constant opacity (128) for all scales. Per-pixel alpha values in
+ * the generated patterns control pattern structure; this global opacity
+ * controls overall visibility.
  *
- *   opacity = 30 + (scale * 20)
- *
- * This gives:
- *   Scale 2: 70    (coarse patterns, subtle)
- *   Scale 3: 90
- *   Scale 4: 110
- *   Scale 5: 130
- *   Scale 6: 150
- *   Scale 7: 170
- *   Scale 8: 190   (fine patterns, more visible)
- *
- * @param scale Current scale factor
- * @return Opacity value 0-255
+ * @param scale Current scale factor (unused, kept for API compatibility)
+ * @return Opacity value (always 128)
  */
 int EFFECT_getOpacity(int scale);
 

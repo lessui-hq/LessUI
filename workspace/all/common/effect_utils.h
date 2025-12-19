@@ -1,10 +1,8 @@
 /**
- * effect_utils.h - Runtime effect pattern scaling and tiling for SDL platforms
+ * effect_utils.h - Runtime effect pattern generation for SDL2 platforms
  *
- * Provides simple helpers to load tiny base pattern PNGs, scale them using
- * SDL's built-in scaling, and tile them across rendering areas.
- *
- * This enables retro CRT/LCD effects without large pre-scaled PNG assets.
+ * Provides helpers to generate and tile effect patterns using SDL2 textures.
+ * All patterns are procedurally generated at the target scale.
  */
 
 #ifndef __EFFECT_UTILS_H__

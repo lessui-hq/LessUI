@@ -1,5 +1,5 @@
 /**
- * effect_generate.c - Procedural generation of CRT/LCD effect patterns
+ * effect_generate.c - Procedural generation of retro display effect patterns
  *
  * All patterns write directly to ARGB8888 pixel buffers. The overlay is always
  * pixel-perfect to the screen - no scaling of the overlay itself. Band sizes
@@ -14,20 +14,20 @@
  * Aperture grille pattern - 3x3 tile
  *
  * Simulates Sony Trinitron-style displays with RGB phosphor tints.
- * Alpha values scaled up (×2.833) to compensate for global alpha.
- * At scale 3 (global alpha=90), effective values match original design.
+ * Per-pixel alpha values provide pattern structure; global alpha (128) controls
+ * overall visibility. Pattern is scaled to match content pixel size.
  *
  * Rows:
- *   0: Dark scanline (edge) - alpha 255 (was 90)
- *   1: Bright phosphor center - alpha 14-28 (was 5-10)
- *   2: Dark scanline (edge) - alpha 255 (was 90)
+ *   0: Dark scanline (edge) - alpha 255
+ *   1: Bright phosphor center - alpha 14-28
+ *   2: Dark scanline (edge) - alpha 255
  *
  * Columns: Cyan, Blue, Red phosphor tints
  */
 static const uint8_t GRILLE_TILE[3][3][4] = {
     // Row 0: dark scanline (top edge)
     {{0, 1, 1, 255}, {1, 0, 3, 255}, {2, 0, 0, 255}},
-    // Row 1: phosphor with RGB tints (scaled alpha: 5→14, 6→17, 10→28)
+    // Row 1: phosphor with RGB tints (alpha: 14, 17, 28)
     {{0, 252, 245, 14}, {0, 0, 243, 17}, {236, 1, 0, 28}},
     // Row 2: dark scanline (bottom edge)
     {{0, 1, 1, 255}, {1, 0, 3, 255}, {2, 0, 0, 255}}};
@@ -35,10 +35,10 @@ static const uint8_t GRILLE_TILE[3][3][4] = {
 /**
  * Simple scanline pattern - 1x3 tile (no horizontal variation)
  *
- * Symmetric scanlines. Alpha values scaled up (×2.833) to compensate
- * for global alpha. At scale 3 (global alpha=90), matches original.
+ * Symmetric scanlines with per-pixel alpha. Global alpha (128) controls
+ * overall visibility. Pattern is scaled to match content pixel size.
  *
- * Pattern: {255, 6, 255} (was {90, 2, 90})
+ * Pattern: {255, 6, 255} - dark edges, transparent center
  */
 static const uint8_t LINE_ALPHA[3] = {255, 6, 255};
 
@@ -104,9 +104,8 @@ void EFFECT_generateGridWithColor(uint32_t* pixels, int width, int height, int p
 		b = (b5 << 3) | (b5 >> 2);
 	}
 
-	// Grid pattern: graduated alpha for soft edges, scaled up (×2.833) for global alpha.
-	// Alpha values: 64→181, 102→289 (capped to 255), 153→434 (capped to 255)
-	// Global alpha (scale-dependent) controls overall effect intensity.
+	// Grid pattern: graduated alpha for soft edges. Per-pixel alpha provides
+	// pattern structure; global alpha (128) controls overall visibility.
 
 	for (int y = 0; y < height; y++) {
 		int cell_y = y % scale;
@@ -119,15 +118,15 @@ void EFFECT_generateGridWithColor(uint32_t* pixels, int width, int height, int p
 
 			uint8_t alpha;
 			if (scale == 2) {
-				// Scale 2: borders have alpha 181 (was 64)
+				// Scale 2: lighter borders
 				int is_interior = (cell_x == scale - 1) && (cell_y == scale - 1);
 				alpha = is_interior ? 0 : 181;
 			} else {
 				// Scale 3+: graduated alpha for softer edges
 				if (is_left && is_bottom) {
-					alpha = 255; // Corner (was 153, now capped at 255)
+					alpha = 255; // Corner
 				} else if (is_left || is_bottom) {
-					alpha = 255; // Edge (was 102→289, capped at 255)
+					alpha = 255; // Edge
 				} else {
 					alpha = 0; // Interior (transparent)
 				}
@@ -149,15 +148,14 @@ void EFFECT_generateSlot(uint32_t* pixels, int width, int height, int pitch, int
 
 	int pitch_pixels = pitch / 4;
 
-	// Slot mask pattern: graduated alpha scaled up (×2.833) for global alpha.
-	// Alpha values: 64→181, 102→289 (capped), 153→434 (capped), 60→170
+	// Slot mask pattern: staggered brick layout with per-pixel alpha.
 	// - Horizontal border at top of each content pixel
 	// - Vertical border alternates sides for stagger effect
 	// - Phosphor glow below borders (scale 3+)
 
-	uint8_t edge_alpha = (scale == 2) ? 181 : 255; // Was 64/102, scaled up
-	uint8_t corner_alpha = (scale == 2) ? 181 : 255; // Was 64/153, scaled up
-	uint8_t glow_alpha = 170; // Was 60, scaled up
+	uint8_t edge_alpha = (scale == 2) ? 181 : 255;
+	uint8_t corner_alpha = (scale == 2) ? 181 : 255;
+	uint8_t glow_alpha = 170;
 
 	for (int y = 0; y < height; y++) {
 		int content_row = y / scale; // Which content pixel row

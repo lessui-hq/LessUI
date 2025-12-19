@@ -13,7 +13,7 @@
 /**
  * Creates an effect surface using procedural generation.
  *
- * For LINE, GRID, CRT, and SLOT effects. Generates the pattern directly into
+ * For LINE, GRID, GRILLE, and SLOT effects. Generates the pattern directly into
  * the surface pixels without loading any files.
  *
  * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)

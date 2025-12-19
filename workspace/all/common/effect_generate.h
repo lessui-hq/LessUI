@@ -1,17 +1,17 @@
 /**
- * effect_generate.h - Procedural generation of CRT/LCD effect patterns
+ * effect_generate.h - Procedural generation of retro display effect patterns
  *
  * Generates effect overlays directly into pixel buffers without loading PNGs.
  * All patterns are screen-native (1:1 pixel mapping) with band sizes based on
  * the content-to-screen scale factor.
  *
- * Pattern types (all use opaque black with global alpha control):
+ * Pattern types (LINE, GRID, GRILLE, SLOT):
  * - LINE: Simple horizontal scanlines (opaque black borders, transparent center)
  * - GRID: LCD pixel borders (opaque black borders, transparent interior)
  * - GRILLE: Aperture grille with RGB phosphor tints + opaque black scanlines
  * - SLOT: Staggered brick/slot mask pattern (opaque black borders, transparent openings)
  *
- * Global alpha (scale-dependent) controls effect intensity: 30 + (scale * 20)
+ * Per-pixel alpha provides pattern structure; global alpha (128) controls visibility.
  */
 
 #ifndef __EFFECT_GENERATE_H__
@@ -23,13 +23,12 @@
  * Generates aperture grille pattern with RGB phosphor tints.
  *
  * Simulates Trinitron-style displays with 3x3 repeating tile.
- * Alpha values scaled up (×2.833) to compensate for global alpha.
+ * Per-pixel alpha provides pattern structure; global alpha (128) controls visibility.
  *
  * Pattern:
- * - Rows 0,2: Dark scanlines (alpha=255, was 90)
- * - Row 1: RGB phosphor tints (alpha=14-28, was 5-10)
+ * - Rows 0,2: Dark scanlines (alpha=255)
+ * - Row 1: RGB phosphor tints (alpha=14-28)
  * - Columns: Cyan, Blue, Red phosphor variation
- * - Global alpha controls overall darkness (scale-dependent)
  *
  * @param pixels  ARGB8888 pixel buffer to write into
  * @param width   Buffer width in pixels
@@ -44,8 +43,7 @@ void EFFECT_generateGrille(uint32_t* pixels, int width, int height, int pitch, i
  *
  * Black-only pattern (no phosphor tints) - symmetric scanlines:
  * - Rows 0,2: Opaque black scanlines at pixel edges (alpha 255)
- * - Row 1: Transparent center (alpha 0, shows content)
- * - Global alpha controls overall darkness (scale-dependent)
+ * - Row 1: Transparent center (alpha 6, mostly shows content)
  *
  * @param pixels  ARGB8888 pixel buffer to write into
  * @param width   Buffer width in pixels
@@ -59,9 +57,7 @@ void EFFECT_generateLine(uint32_t* pixels, int width, int height, int pitch, int
  * Generates LCD pixel grid pattern.
  *
  * Each content pixel gets graduated alpha borders on left and bottom edges.
- * Alpha values scaled up (×2.833) to compensate for global alpha:
- * - Scale 2: 181 (was 64)
- * - Scale 3+: 255 for edges/corners (was 102/153, capped at 255)
+ * Scale 2 uses alpha 181; scale 3+ uses alpha 255 for edges/corners.
  *
  * @param pixels  ARGB8888 pixel buffer to write into
  * @param width   Buffer width in pixels
@@ -92,7 +88,7 @@ void EFFECT_generateGridWithColor(uint32_t* pixels, int width, int height, int p
  *
  * Like GRID but with alternating rows offset by half a cell width,
  * creating a brick/honeycomb pattern. Uses opaque black borders with
- * transparent slot openings. Global alpha controls overall darkness.
+ * transparent slot openings.
  *
  * @param pixels  ARGB8888 pixel buffer to write into
  * @param width   Buffer width in pixels

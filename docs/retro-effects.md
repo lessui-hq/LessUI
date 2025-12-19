@@ -162,7 +162,7 @@ Early implementations used colored overlays (red/green tints) to simulate phosph
 
 ### Per-Pixel Alpha
 
-All effects use per-pixel alpha values baked into the generated pattern. This allows fine control over intensity across different parts of the pattern (e.g., darker scanline gaps, lighter phosphor regions in CRT effect).
+All effects use per-pixel alpha values baked into the generated pattern. This allows fine control over intensity across different parts of the pattern (e.g., darker scanline gaps, lighter phosphor regions in GRILLE effect).
 
 ### Pixel Grid Alignment
 
