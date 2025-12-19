@@ -103,6 +103,7 @@ typedef struct MenuList {
 	MenuItem* items; // NULL-terminated array of menu items
 	MenuList_callback_t on_confirm; // Default confirm handler for all items
 	MenuList_callback_t on_change; // Default change handler for all items
+	int dirty; // Items array was rebuilt, menu must reload count/selection
 } MenuList;
 
 ///////////////////////////////////////

@@ -4012,23 +4012,34 @@ static int MenuList_freeItems(MenuList* list, int i) {
  * @return MENU_CALLBACK_NOP
  */
 /**
- * Invalidates the enabled options list so it will be rebuilt on next show.
+ * Marks the enabled options list as needing rebuild on next show.
  * Call this when option visibility changes (e.g., from update_visibility_callback).
+ *
+ * Note: We don't free items immediately because this may be called while
+ * the menu is still active. The actual free and rebuild happens in
+ * OptionsMenu_buildAndShow on next open.
  */
 static void OptionsMenu_invalidateList(PlayerOptionList* source, MenuList* menu) {
-	if (source->enabled_options) {
-		free(source->enabled_options);
-		source->enabled_options = NULL;
-	}
-	source->enabled_count = 0;
-	if (menu->items) {
-		free(menu->items);
-		menu->items = NULL;
-	}
+	(void)menu; // menu->items freed in OptionsMenu_buildAndShow when source->dirty processed
+	source->dirty = 1;
 }
 
 static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
                                     const char* no_options_msg) {
+	// Check if visibility changed - need full rebuild
+	if (source->dirty) {
+		if (source->enabled_options) {
+			free(source->enabled_options);
+			source->enabled_options = NULL;
+		}
+		if (menu->items) {
+			free(menu->items);
+			menu->items = NULL;
+		}
+		source->enabled_count = 0;
+		source->dirty = 0;
+	}
+
 	// Build enabled_options list if not already built
 	if (!source->enabled_count) {
 		int enabled_count = 0;
@@ -4117,12 +4128,13 @@ static int OptionEmulator_optionChanged(MenuList* list, int i) {
 		         item->values[item->value], option->values[item->value]);
 	}
 	PlayerOptionList_setOptionRawValue(&config.core, item->key, item->value);
-	// Ask core to update option visibility - one option may affect others (per libretro spec)
-	if (core.update_visibility_callback) {
-		if (core.update_visibility_callback()) {
-			// Visibility changed - invalidate cached list so it rebuilds on next open
-			OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
-		}
+
+	// Ask core if visibility changed (per libretro spec)
+	if (core.update_visibility_callback && core.update_visibility_callback()) {
+		// Visibility changed - rebuild items and tell menu to refresh
+		OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
+		OptionsMenu_buildAndShow(&config.core, &OptionEmulator_menu, NULL);
+		OptionEmulator_menu.dirty = 1; // Menu will reload items/count next frame
 	}
 	return MENU_CALLBACK_NOP;
 }
@@ -4580,7 +4592,53 @@ static void calculateProportionalWidths(const char* label_text, const char* valu
 	}
 }
 
+/**
+ * Helper to reload menu items after visibility changes.
+ * Updates items pointer, count, and nav state while preserving selection by key.
+ */
+static inline void Menu_refreshItems(MenuList* list, MenuItem** items, int* count,
+                                     PlayerMenuNavState* nav, const char** current_key,
+                                     int max_visible_options) {
+	if (!list->dirty)
+		return;
+
+	*items = list->items;
+	for (*count = 0; (*items)[*count].name; (*count)++)
+		;
+
+	// Find the same option we were on by key, or default to first
+	int new_selected = 0;
+	if (*current_key) {
+		for (int i = 0; i < *count; i++) {
+			if ((*items)[i].key && !strcmp((*items)[i].key, *current_key)) {
+				new_selected = i;
+				break;
+			}
+		}
+	}
+
+	nav->count = *count;
+	nav->selected = new_selected;
+	nav->end = (*count < max_visible_options) ? *count : max_visible_options;
+	nav->visible_rows = nav->end;
+	if (nav->selected >= nav->end) {
+		nav->start = nav->selected - max_visible_options + 1;
+		nav->end = nav->selected + 1;
+	} else {
+		nav->start = 0;
+	}
+
+	if ((*items)[nav->selected].name != NULL)
+		*current_key = (*items)[nav->selected].key;
+	else
+		*current_key = NULL;
+
+	list->dirty = 0;
+	nav->dirty = 1;
+}
+
 int Menu_options(MenuList* list) {
+	const char* current_key = NULL; // Track selected option for refresh
 	MenuItem* items = list->items;
 	int type = list->type;
 
@@ -4595,9 +4653,11 @@ int Menu_options(MenuList* list) {
 	for (count = 0; items[count].name; count++)
 		;
 
-	// Initialize navigation state using extracted function
+	// Initialize navigation state
 	PlayerMenuNavState nav;
 	PlayerMenuNav_init(&nav, count, max_visible_options);
+	if (items[nav.selected].key)
+		current_key = items[nav.selected].key;
 
 	OptionSaveChanges_updateDesc();
 
@@ -4618,17 +4678,25 @@ int Menu_options(MenuList* list) {
 
 		// Navigation input (up/down)
 		if (PAD_justRepeated(BTN_UP)) {
-			if (PlayerMenuNav_navigate(&nav, -1))
+			if (PlayerMenuNav_navigate(&nav, -1)) {
+				if (items[nav.selected].key)
+					current_key = items[nav.selected].key;
 				nav.dirty = 1;
+			}
 		} else if (PAD_justRepeated(BTN_DOWN)) {
-			if (PlayerMenuNav_navigate(&nav, +1))
+			if (PlayerMenuNav_navigate(&nav, +1)) {
+				if (items[nav.selected].key)
+					current_key = items[nav.selected].key;
 				nav.dirty = 1;
+			}
 		} else {
 			// Value cycling (left/right)
 			MenuItem* item = &items[nav.selected];
 			if (item->values && item->values != player_button_labels) { // not an input binding
 				if (PAD_justRepeated(BTN_LEFT)) {
 					if (PlayerMenuNav_cycleValue(item, -1)) {
+						if (items[nav.selected].key)
+							current_key = items[nav.selected].key; // Track before on_change
 						if (item->on_change)
 							item->on_change(list, nav.selected);
 						else if (list->on_change)
@@ -4637,6 +4705,8 @@ int Menu_options(MenuList* list) {
 					}
 				} else if (PAD_justRepeated(BTN_RIGHT)) {
 					if (PlayerMenuNav_cycleValue(item, +1)) {
+						if (items[nav.selected].key)
+							current_key = items[nav.selected].key; // Track before on_change
 						if (item->on_change)
 							item->on_change(list, nav.selected);
 						else if (list->on_change)
@@ -4646,6 +4716,9 @@ int Menu_options(MenuList* list) {
 				}
 			}
 		}
+
+		// Refresh items if needed (before accessing for action buttons)
+		Menu_refreshItems(list, &items, &count, &nav, &current_key, max_visible_options);
 
 		// Action buttons (A/B/X)
 		MenuItem* item = &items[nav.selected];
@@ -4702,6 +4775,9 @@ int Menu_options(MenuList* list) {
 		default:
 			break;
 		}
+
+		// Refresh after all callbacks (ensures items is valid before rendering)
+		Menu_refreshItems(list, &items, &count, &nav, &current_key, max_visible_options);
 
 		if (!defer_menu)
 			PWR_update(&nav.dirty, &show_settings, Menu_beforeSleep, Menu_afterSleep);

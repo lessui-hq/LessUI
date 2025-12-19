@@ -39,6 +39,7 @@ typedef struct PlayerOptionList {
 
 	int enabled_count; // Number of enabled options (filtered)
 	PlayerOption** enabled_options; // Array of pointers to enabled options
+	int dirty; // Visibility changed, needs rebuild
 } PlayerOptionList;
 
 /**
