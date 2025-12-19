@@ -536,8 +536,8 @@ void PLAT_setNearestNeighbor(int enabled) {}
 
 void PLAT_setSharpness(int sharpness) {
 	(void)sharpness;
-	// Force overlay regeneration by invalidating live state
-	effect_state.live_scale = -1;
+	// Miyoo Mini doesn't support sharpness modes (hardware-accelerated blitting only).
+	// Effect overlay doesn't need regeneration since it's unaffected by this setting.
 }
 
 /**
