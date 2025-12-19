@@ -334,9 +334,9 @@ void test_full_workflow(void) {
 	// All effects now use procedural generation
 	TEST_ASSERT_EQUAL_INT(1, EFFECT_usesGeneration(state.type));
 
-	// Generated effects use full opacity (per-pixel alpha does the work)
-	int opacity = EFFECT_getGeneratedOpacity(state.type);
-	TEST_ASSERT_EQUAL_INT(255, opacity);
+	// Effects use scale-dependent opacity: 30 + (scale * 20)
+	int opacity = EFFECT_getOpacity(state.scale);
+	TEST_ASSERT_EQUAL_INT(110, opacity); // scale=4 -> 30 + 80 = 110
 
 	// Mark as live after regeneration
 	EFFECT_markLive(&state);

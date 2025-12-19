@@ -33,6 +33,7 @@
 #include "effect_surface.h"
 #include "effect_system.h"
 #include "platform.h"
+#include "render_common.h"
 #include "utils.h"
 
 #include "ion.h"
@@ -373,7 +374,7 @@ void PLAT_setSharpness(int sharpness) {}
 /**
  * Updates the effect overlay surface.
  * Uses shared effect_system for effect generation.
- * Supports all effects (LINE, GRID, CRT, SLOT).
+ * Supports all effects (LINE, GRID, GRILLE, SLOT).
  */
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
@@ -399,7 +400,7 @@ static void updateEffectOverlay(void) {
 	// All effects use procedural generation (with color support for GRID)
 	vid.effect = EFFECT_createGeneratedSurfaceWithColor(effect_state.type, scale, vid.width,
 	                                                    vid.height, effect_state.color);
-	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+	int opacity = EFFECT_getOpacity(scale);
 
 	if (vid.effect) {
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
@@ -489,8 +490,15 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Update and composite effect overlay (only in game mode with new frame)
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
-		if (vid.effect) {
-			SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+		if (vid.effect && vid.renderer) {
+			// Calculate content area to align effect with scaled content pixels.
+			// Sample from (0,0) of effect and render to content position.
+			// This ensures the effect pattern aligns correctly regardless of
+			// screen resolution (fixes misalignment where dst_y % scale != 0).
+			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.width, vid.height);
+			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+			SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
 		}
 	}
 

@@ -87,7 +87,8 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	int target_h = ctx->device_height;
 
 	// All effects use procedural generation (with color support for GRID)
-	int opacity = EFFECT_getGeneratedOpacity(fx->type);
+	int scale = fx->scale > 0 ? fx->scale : 1;
+	int opacity = EFFECT_getOpacity(scale);
 
 	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
 	          fx->color, opacity);

@@ -5,7 +5,7 @@
  * duplicated across all platform files. The opacity tables and pattern
  * path generation are now in a single location.
  *
- * All effects (LINE, GRID, CRT, SLOT) are procedurally generated at runtime.
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated at runtime.
  */
 
 #include "effect_system.h"
@@ -68,25 +68,16 @@ int EFFECT_usesGeneration(int type) {
 }
 
 int EFFECT_getOpacity(int scale) {
-	// Legacy PNG-based effects use opaque black patterns (alpha=255 in PNG).
+	// Effects use opaque black patterns (alpha=255 for dark areas).
 	// Control visibility via global opacity, scaling linearly:
 	// - Lower scales (larger pixels/coarser patterns) = lighter/more subtle
 	// - Higher scales (smaller pixels/finer patterns) = darker to remain visible
 	//
 	// Formula: opacity = 30 + (scale * 20)
-	// Scale 2: 70, Scale 3: 90, Scale 4: 110, ... Scale 8: 190
+	// Scale 2: 70 (27%), Scale 3: 90 (35%), Scale 4: 110 (43%), ... Scale 8: 190 (75%)
 	//
-	// Note: Generated effects (LINE, GRID, CRT) have alpha baked into the pattern
-	// so they return 255 (fully opaque surface, per-pixel alpha does the work).
+	// This allows cranking up opacity for debugging and ensures effects remain
+	// visible at high resolutions while not being too heavy at low resolutions.
 	int opacity = 30 + (scale * 20);
 	return (opacity > 255) ? 255 : opacity;
-}
-
-int EFFECT_getGeneratedOpacity(int type) {
-	// Generated effects have alpha values baked into the pattern.
-	// CRT uses per-pixel alpha from the phosphor pattern.
-	// LINE/GRID/SLOT use per-pixel alpha for scanline/border intensity.
-	// Return 255 so the surface blits at full opacity, letting per-pixel alpha work.
-	(void)type;
-	return 255;
 }

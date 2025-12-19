@@ -47,7 +47,7 @@ SDL_Texture* EFFECT_loadAndTileWithColor(SDL_Renderer* renderer, const char* pat
 /**
  * Creates an effect texture using procedural generation.
  *
- * For LINE, GRID, CRT, and SLOT effects. Generates the pattern directly without loading files.
+ * For LINE, GRID, GRILLE, and SLOT effects. Generates the pattern directly without loading files.
  *
  * @param renderer SDL renderer
  * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)

@@ -122,7 +122,7 @@ void EFFECT_markLive(EffectState* state);
 /**
  * Checks if an effect type uses procedural generation.
  *
- * All effects (LINE, GRID, CRT, SLOT) are procedurally generated at runtime
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated at runtime
  * via effect_generate.c functions.
  *
  * @param type Effect type to check
@@ -151,16 +151,5 @@ int EFFECT_usesGeneration(int type);
  * @return Opacity value 0-255
  */
 int EFFECT_getOpacity(int scale);
-
-/**
- * Gets the opacity for generated effects (LINE, GRID, CRT).
- *
- * Generated effects have alpha baked into each pixel, so they always
- * return 255 (fully opaque surface) and let per-pixel alpha do the work.
- *
- * @param type Effect type (unused, always returns 255)
- * @return Always 255
- */
-int EFFECT_getGeneratedOpacity(int type);
 
 #endif /* __EFFECT_SYSTEM_H__ */

@@ -17,7 +17,7 @@ char* player_onoff_labels[] = {"Off", "On", NULL};
 
 char* player_scaling_labels[] = {"Native", "Aspect", "Fullscreen", "Cropped", NULL};
 
-char* player_effect_labels[] = {"None", "Lines", "Grid", "CRT", "Slot", NULL};
+char* player_effect_labels[] = {"None", "Lines", "Grid", "Grille", "Slot", NULL};
 
 char* player_sharpness_labels[] = {"Sharp", "Crisp", "Soft", NULL};
 

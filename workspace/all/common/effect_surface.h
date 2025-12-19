@@ -2,7 +2,7 @@
  * effect_surface.h - CPU-based effect pattern generation and tiling
  *
  * For SDL1 platforms (miyoomini, trimuismart, rg35xx).
- * All effects (LINE, GRID, CRT, SLOT) are procedurally generated.
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated.
  */
 
 #ifndef __EFFECT_SURFACE_H__

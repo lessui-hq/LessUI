@@ -13,42 +13,34 @@
 /**
  * Aperture grille pattern - 3x3 tile
  *
- * Simulates Sony Trinitron-style displays. Symmetric pattern matching
- * zfast_crt shader behavior: darkest at pixel boundaries, brightest at center.
- *
- * Each pixel is {R, G, B, A} where alpha controls darkening.
- * Higher alpha = more darkening, lower alpha = more light through.
+ * Simulates Sony Trinitron-style displays with RGB phosphor tints.
+ * Alpha values scaled up (×2.833) to compensate for global alpha.
+ * At scale 3 (global alpha=90), effective values match original design.
  *
  * Rows:
- *   0: Dark scanline (edge - top of content pixel)
- *   1: Bright phosphor center (lowest alpha, most light)
- *   2: Dark scanline (edge - bottom of content pixel)
+ *   0: Dark scanline (edge) - alpha 255 (was 90)
+ *   1: Bright phosphor center - alpha 14-28 (was 5-10)
+ *   2: Dark scanline (edge) - alpha 255 (was 90)
  *
- * Columns simulate RGB aperture grille:
- *   0: Cyan-ish phosphor
- *   1: Blue phosphor
- *   2: Red phosphor
+ * Columns: Cyan, Blue, Red phosphor tints
  */
 static const uint8_t GRILLE_TILE[3][3][4] = {
-    // Row 0: dark scanline (top edge) - alpha 90 = 35% darkening
-    {{0, 1, 1, 90}, {1, 0, 3, 90}, {2, 0, 0, 90}},
-    // Row 1: phosphor, low alpha (brightest center)
-    {{0, 252, 245, 5}, {0, 0, 243, 6}, {236, 1, 0, 10}},
-    // Row 2: dark scanline (bottom edge) - alpha 90 = 35% darkening
-    {{0, 1, 1, 90}, {1, 0, 3, 90}, {2, 0, 0, 90}}};
+    // Row 0: dark scanline (top edge)
+    {{0, 1, 1, 255}, {1, 0, 3, 255}, {2, 0, 0, 255}},
+    // Row 1: phosphor with RGB tints (scaled alpha: 5→14, 6→17, 10→28)
+    {{0, 252, 245, 14}, {0, 0, 243, 17}, {236, 1, 0, 28}},
+    // Row 2: dark scanline (bottom edge)
+    {{0, 1, 1, 255}, {1, 0, 3, 255}, {2, 0, 0, 255}}};
 
 /**
  * Simple scanline pattern - 1x3 tile (no horizontal variation)
  *
- * Symmetric pattern matching zfast_crt shader behavior:
- *   0: Edge (dark) - top of content pixel
- *   1: Center (bright) - middle of content pixel
- *   2: Edge (dark) - bottom of content pixel
+ * Symmetric scanlines. Alpha values scaled up (×2.833) to compensate
+ * for global alpha. At scale 3 (global alpha=90), matches original.
  *
- * The shader darkens at pixel boundaries, brightest at center.
- * Alpha 90 = 35% darkening at edges.
+ * Pattern: {255, 6, 255} (was {90, 2, 90})
  */
-static const uint8_t LINE_ALPHA[3] = {90, 2, 90};
+static const uint8_t LINE_ALPHA[3] = {255, 6, 255};
 
 void EFFECT_generateGrille(uint32_t* pixels, int width, int height, int pitch, int scale) {
 	if (!pixels || width <= 0 || height <= 0 || scale < 1)
@@ -112,10 +104,9 @@ void EFFECT_generateGridWithColor(uint32_t* pixels, int width, int height, int p
 		b = (b5 << 3) | (b5 >> 2);
 	}
 
-	// Alpha values matched to MinUI's weighted blending:
-	// - 75% brightness = 25% darkening = alpha 64 (scale 2)
-	// - 60% brightness = 40% darkening = alpha 102 (scale 3+)
-	// - 40% brightness = 60% darkening = alpha 153 (scale 3+ corner)
+	// Grid pattern: graduated alpha for soft edges, scaled up (×2.833) for global alpha.
+	// Alpha values: 64→181, 102→289 (capped to 255), 153→434 (capped to 255)
+	// Global alpha (scale-dependent) controls overall effect intensity.
 
 	for (int y = 0; y < height; y++) {
 		int cell_y = y % scale;
@@ -128,17 +119,17 @@ void EFFECT_generateGridWithColor(uint32_t* pixels, int width, int height, int p
 
 			uint8_t alpha;
 			if (scale == 2) {
-				// Scale 2: top row and left column dimmed, bottom-right clear
+				// Scale 2: borders have alpha 181 (was 64)
 				int is_interior = (cell_x == scale - 1) && (cell_y == scale - 1);
-				alpha = is_interior ? 0 : 64;
+				alpha = is_interior ? 0 : 181;
 			} else {
-				// Scale 3+: left column and bottom row dimmed, corner extra dark
+				// Scale 3+: graduated alpha for softer edges
 				if (is_left && is_bottom) {
-					alpha = 153; // 40% brightness (corner)
+					alpha = 255; // Corner (was 153, now capped at 255)
 				} else if (is_left || is_bottom) {
-					alpha = 102; // 60% brightness (edges)
+					alpha = 255; // Edge (was 102→289, capped at 255)
 				} else {
-					alpha = 0; // 100% brightness (interior)
+					alpha = 0; // Interior (transparent)
 				}
 			}
 
@@ -158,21 +149,15 @@ void EFFECT_generateSlot(uint32_t* pixels, int width, int height, int pitch, int
 
 	int pitch_pixels = pitch / 4;
 
-	// Slot mask pattern scaled to content pixels (like LINE/CRT):
-	// - One slot "half" per content pixel row
+	// Slot mask pattern: graduated alpha scaled up (×2.833) for global alpha.
+	// Alpha values: 64→181, 102→289 (capped), 153→434 (capped), 60→170
 	// - Horizontal border at top of each content pixel
 	// - Vertical border alternates sides for stagger effect
-	// - Graduated alpha like GRID for softer edges
-	// - Glow row below horizontal border (scale 3+)
+	// - Phosphor glow below borders (scale 3+)
 
-	// Alpha values matched to GRID for consistency:
-	// - 64 = 25% darkening (scale 2, all borders same)
-	// - 102 = 40% darkening (scale 3+, edges)
-	// - 153 = 60% darkening (scale 3+, corners/intersections)
-	// - 60 = subtle phosphor glow (~24% darkening, softer than edges)
-	uint8_t edge_alpha = (scale == 2) ? 64 : 102;
-	uint8_t corner_alpha = (scale == 2) ? 64 : 153;
-	uint8_t glow_alpha = 60;
+	uint8_t edge_alpha = (scale == 2) ? 181 : 255;   // Was 64/102, scaled up
+	uint8_t corner_alpha = (scale == 2) ? 181 : 255; // Was 64/153, scaled up
+	uint8_t glow_alpha = 170;                        // Was 60, scaled up
 
 	for (int y = 0; y < height; y++) {
 		int content_row = y / scale; // Which content pixel row

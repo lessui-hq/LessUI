@@ -42,6 +42,7 @@
 #include "effect_surface.h"
 #include "effect_system.h"
 #include "platform.h"
+#include "render_common.h"
 #include "scaler.h"
 #include "utils.h"
 
@@ -565,7 +566,7 @@ static void updateEffectOverlay(void) {
 	// All effects use procedural generation (with color support for GRID)
 	SDL_Surface* temp = EFFECT_createGeneratedSurfaceWithColor(
 	    effect_state.type, scale, FIXED_WIDTH, FIXED_HEIGHT, effect_state.color);
-	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+	int opacity = EFFECT_getOpacity(scale);
 	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", effect_state.type,
 	          scale, effect_state.color, opacity);
 
@@ -694,8 +695,16 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Apply effect overlay when in game mode with a new frame
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
-		if (vid.effect) {
-			GFX_BlitSurfaceExec(vid.effect, NULL, vid.video, NULL, 0, 0, 0);
+		if (vid.effect && vid.renderer) {
+			// Calculate content area to align effect with scaled content pixels.
+			// Sample from (0,0) of effect and render to content position.
+			// This ensures the effect pattern aligns correctly regardless of
+			// screen resolution (fixes 560p misalignment where dst_y % scale != 0).
+			RenderDestRect dest =
+			    RENDER_calcDestRect(vid.renderer, vid.video->w, vid.video->h);
+			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+			GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);
 		}
 	}
 

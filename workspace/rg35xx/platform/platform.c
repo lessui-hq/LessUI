@@ -29,6 +29,7 @@
 #include "effect_surface.h"
 #include "effect_system.h"
 #include "platform.h"
+#include "render_common.h"
 #include "utils.h"
 
 #include "de_atm7059.h"
@@ -480,7 +481,7 @@ void PLAT_setSharpness(int sharpness) {
  *
  * Platform-specific optimization for rg35xx:
  * - LINE/GRID: Use fast scaler-based rendering (simpler patterns)
- * - CRT/SLOT: Use overlay blending (complex patterns with per-pixel alpha)
+ * - GRILLE/SLOT: Use overlay blending (complex patterns with per-pixel alpha)
  *
  * Note: All effects are still procedurally generated - this just determines
  * the rendering path, not whether PNGs are loaded.
@@ -496,7 +497,7 @@ static int effectUsesOverlay(int type) {
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
 
-	// Only overlay effects (CRT, SLOT) use this path
+	// Only overlay effects (GRILLE, SLOT) use this path
 	// LINE/GRID use scaler functions instead
 	if (!effectUsesOverlay(effect_state.type)) {
 		if (vid.effect) {
@@ -515,10 +516,10 @@ static void updateEffectOverlay(void) {
 
 	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	// CRT and SLOT use procedural generation (with color support for GRID)
+	// GRILLE and SLOT use procedural generation (with color support for GRID)
 	vid.effect = EFFECT_createGeneratedSurfaceWithColor(effect_state.type, scale, vid.width,
 	                                                    vid.height, effect_state.color);
-	int opacity = EFFECT_getGeneratedOpacity(effect_state.type);
+	int opacity = EFFECT_getOpacity(scale);
 
 	if (vid.effect) {
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
@@ -621,8 +622,15 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Update and composite effect overlay (only in game mode with new frame)
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
-		if (vid.effect) {
-			SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+		if (vid.effect && vid.renderer) {
+			// Calculate content area to align effect with scaled content pixels.
+			// Sample from (0,0) of effect and render to content position.
+			// This ensures the effect pattern aligns correctly regardless of
+			// screen resolution (fixes misalignment where dst_y % scale != 0).
+			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.width, vid.height);
+			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+			SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
 		}
 	}
 

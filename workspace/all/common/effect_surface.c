@@ -1,7 +1,7 @@
 /**
  * effect_surface.c - CPU-based effect pattern generation and tiling for SDL1 platforms
  *
- * All effects (LINE, GRID, CRT, SLOT) are procedurally generated via effect_generate.c.
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated via effect_generate.c.
  */
 
 #include "effect_surface.h"
@@ -195,7 +195,7 @@ SDL_Surface* EFFECT_createGeneratedSurfaceWithColor(int type, int scale, int tar
 		break;
 	case EFFECT_GRILLE:
 		EFFECT_generateGrille(pixels, target_w, target_h, pitch, scale);
-		LOG_info("EFFECT_createGeneratedSurfaceWithColor: generated CRT %dx%d scale=%d", target_w,
+		LOG_info("EFFECT_createGeneratedSurfaceWithColor: generated GRILLE %dx%d scale=%d", target_w,
 		         target_h, scale);
 		break;
 	case EFFECT_SLOT:
