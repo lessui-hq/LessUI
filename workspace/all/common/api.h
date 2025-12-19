@@ -313,13 +313,13 @@ enum {
  * CRT/LCD visual effects.
  *
  * LINE/GRID use shadow-only overlays (black pixels with alpha).
- * CRT uses full aperture grille with RGB phosphor tints + scanlines.
+ * GRILLE uses full aperture grille with RGB phosphor tints + scanlines.
  */
 enum {
 	EFFECT_NONE, // No effect
 	EFFECT_LINE, // Horizontal scanlines (shadow only)
 	EFFECT_GRID, // LCD pixel grid (1px border per content pixel)
-	EFFECT_CRT, // Full CRT: aperture grille RGB phosphors + scanlines
+	EFFECT_GRILLE, // Aperture grille: RGB phosphor stripes + scanlines
 	EFFECT_SLOT, // Slot mask (staggered brick pattern)
 	EFFECT_COUNT,
 };

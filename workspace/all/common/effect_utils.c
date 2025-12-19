@@ -121,8 +121,8 @@ SDL_Texture* EFFECT_createGeneratedTextureWithColor(SDL_Renderer* renderer, int 
 	case EFFECT_GRID:
 		EFFECT_generateGridWithColor(pixels, target_w, target_h, pitch, scale, color);
 		break;
-	case EFFECT_CRT:
-		EFFECT_generateCRT(pixels, target_w, target_h, pitch, scale);
+	case EFFECT_GRILLE:
+		EFFECT_generateGrille(pixels, target_w, target_h, pitch, scale);
 		break;
 	case EFFECT_SLOT:
 		EFFECT_generateSlot(pixels, target_w, target_h, pitch, scale);

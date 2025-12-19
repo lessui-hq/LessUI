@@ -29,7 +29,7 @@
 #define EFFECT_NONE 0
 #define EFFECT_LINE 1
 #define EFFECT_GRID 2
-#define EFFECT_CRT  3
+#define EFFECT_GRILLE  3
 #define EFFECT_SLOT 4
 
 // Path constant (normally from defines.h)
@@ -157,9 +157,9 @@ void test_EFFECT_setColor_does_not_change_current_color(void) {
 
 void test_EFFECT_applyPending_copies_type(void) {
 	EFFECT_init(&state);
-	EFFECT_setType(&state, EFFECT_CRT);
+	EFFECT_setType(&state, EFFECT_GRILLE);
 	EFFECT_applyPending(&state);
-	TEST_ASSERT_EQUAL_INT(EFFECT_CRT, state.type);
+	TEST_ASSERT_EQUAL_INT(EFFECT_GRILLE, state.type);
 }
 
 void test_EFFECT_applyPending_copies_scale(void) {
@@ -243,9 +243,9 @@ void test_EFFECT_needsUpdate_returns_0_when_all_match(void) {
 
 void test_EFFECT_markLive_copies_type(void) {
 	EFFECT_init(&state);
-	state.type = EFFECT_CRT;
+	state.type = EFFECT_GRILLE;
 	EFFECT_markLive(&state);
-	TEST_ASSERT_EQUAL_INT(EFFECT_CRT, state.live_type);
+	TEST_ASSERT_EQUAL_INT(EFFECT_GRILLE, state.live_type);
 }
 
 void test_EFFECT_markLive_copies_scale(void) {

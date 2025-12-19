@@ -5,7 +5,7 @@
  * All functions write directly to pixel buffers with no external dependencies.
  *
  * Test coverage:
- * - EFFECT_generateCRT - CRT aperture grille pattern
+ * - EFFECT_generateGrille - Aperture grille pattern (RGB phosphor stripes)
  * - EFFECT_generateLine - Simple scanline pattern
  * - EFFECT_generateGrid - LCD pixel grid pattern
  * - EFFECT_generateGridWithColor - Grid with color tinting
@@ -118,19 +118,19 @@ void test_generateLine_all_pixels_same_in_row(void) {
 }
 
 ///////////////////////////////
-// EFFECT_generateCRT tests
+// EFFECT_generateGrille tests
 ///////////////////////////////
 
-void test_generateCRT_null_buffer_returns_safely(void) {
-	EFFECT_generateCRT(NULL, 10, 10, 40, 2);
+void test_generateGrille_null_buffer_returns_safely(void) {
+	EFFECT_generateGrille(NULL, 10, 10, 40, 2);
 }
 
-void test_generateCRT_scale3_has_horizontal_variation(void) {
+void test_generateGrille_scale3_has_horizontal_variation(void) {
 	int pitch;
 	uint32_t* buf = create_buffer(9, 3, &pitch);
-	EFFECT_generateCRT(buf, 9, 3, pitch, 3);
+	EFFECT_generateGrille(buf, 9, 3, pitch, 3);
 
-	// CRT has RGB phosphor variation horizontally
+	// Grille has RGB phosphor variation horizontally
 	// At row 1 (bright center), columns should have different colors
 	uint32_t pixel_col0 = buf[1 * 9 + 0];
 	uint32_t pixel_col1 = buf[1 * 9 + 1];
@@ -152,10 +152,10 @@ void test_generateCRT_scale3_has_horizontal_variation(void) {
 	free(buf);
 }
 
-void test_generateCRT_symmetric_scanlines(void) {
+void test_generateGrille_symmetric_scanlines(void) {
 	int pitch;
 	uint32_t* buf = create_buffer(3, 6, &pitch);
-	EFFECT_generateCRT(buf, 3, 6, pitch, 3);
+	EFFECT_generateGrille(buf, 3, 6, pitch, 3);
 
 	// Rows 0 and 2 should have same alpha (both are dark scanline edges)
 	uint8_t alpha_y0 = get_alpha(buf[0 * 3]);
@@ -384,7 +384,7 @@ void test_all_functions_handle_1x1_buffer(void) {
 
 	// Should not crash
 	EFFECT_generateLine(buf, 1, 1, pitch, 2);
-	EFFECT_generateCRT(buf, 1, 1, pitch, 2);
+	EFFECT_generateGrille(buf, 1, 1, pitch, 2);
 	EFFECT_generateGrid(buf, 1, 1, pitch, 2);
 	EFFECT_generateSlot(buf, 1, 1, pitch, 2);
 
@@ -397,7 +397,7 @@ void test_all_functions_handle_scale1(void) {
 
 	// Scale 1 should work (though unusual)
 	EFFECT_generateLine(buf, 4, 4, pitch, 1);
-	EFFECT_generateCRT(buf, 4, 4, pitch, 1);
+	EFFECT_generateGrille(buf, 4, 4, pitch, 1);
 	EFFECT_generateGrid(buf, 4, 4, pitch, 1);
 	EFFECT_generateSlot(buf, 4, 4, pitch, 1);
 
@@ -410,7 +410,7 @@ void test_all_functions_handle_large_scale(void) {
 
 	// Large scale should work
 	EFFECT_generateLine(buf, 20, 20, pitch, 10);
-	EFFECT_generateCRT(buf, 20, 20, pitch, 10);
+	EFFECT_generateGrille(buf, 20, 20, pitch, 10);
 	EFFECT_generateGrid(buf, 20, 20, pitch, 10);
 	EFFECT_generateSlot(buf, 20, 20, pitch, 10);
 
@@ -427,10 +427,10 @@ int main(void) {
 	RUN_TEST(test_generateLine_scale3_has_three_distinct_zones);
 	RUN_TEST(test_generateLine_all_pixels_same_in_row);
 
-	// EFFECT_generateCRT
-	RUN_TEST(test_generateCRT_null_buffer_returns_safely);
-	RUN_TEST(test_generateCRT_scale3_has_horizontal_variation);
-	RUN_TEST(test_generateCRT_symmetric_scanlines);
+	// EFFECT_generateGrille
+	RUN_TEST(test_generateGrille_null_buffer_returns_safely);
+	RUN_TEST(test_generateGrille_scale3_has_horizontal_variation);
+	RUN_TEST(test_generateGrille_symmetric_scanlines);
 
 	// EFFECT_generateGrid
 	RUN_TEST(test_generateGrid_null_buffer_returns_safely);

@@ -16,7 +16,7 @@
  * For LINE, GRID, CRT, and SLOT effects. Generates the pattern directly into
  * the surface pixels without loading any files.
  *
- * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)
  * @param scale    Content-to-screen scale factor
  * @param target_w Target surface width
  * @param target_h Target surface height
@@ -30,7 +30,7 @@ SDL_Surface* EFFECT_createGeneratedSurface(int type, int scale, int target_w, in
  * Same as EFFECT_createGeneratedSurface but with color support for GRID effect.
  * Used for Game Boy DMG palette matching.
  *
- * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)
  * @param scale    Content-to-screen scale factor
  * @param target_w Target surface width
  * @param target_h Target surface height

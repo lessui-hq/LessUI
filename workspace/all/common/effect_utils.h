@@ -50,7 +50,7 @@ SDL_Texture* EFFECT_loadAndTileWithColor(SDL_Renderer* renderer, const char* pat
  * For LINE, GRID, CRT, and SLOT effects. Generates the pattern directly without loading files.
  *
  * @param renderer SDL renderer
- * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)
  * @param scale    Content-to-screen scale factor
  * @param target_w Target texture width in pixels
  * @param target_h Target texture height in pixels
@@ -66,7 +66,7 @@ SDL_Texture* EFFECT_createGeneratedTexture(SDL_Renderer* renderer, int type, int
  * Used for Game Boy DMG palette matching.
  *
  * @param renderer SDL renderer
- * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_CRT, EFFECT_SLOT)
+ * @param type     Effect type (EFFECT_LINE, EFFECT_GRID, EFFECT_GRILLE, EFFECT_SLOT)
  * @param scale    Content-to-screen scale factor
  * @param target_w Target texture width in pixels
  * @param target_h Target texture height in pixels

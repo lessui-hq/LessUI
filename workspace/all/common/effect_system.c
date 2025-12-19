@@ -63,7 +63,7 @@ void EFFECT_markLive(EffectState* state) {
 
 int EFFECT_usesGeneration(int type) {
 	// All effects use procedural generation (effect_generate.c)
-	return (type == EFFECT_LINE || type == EFFECT_GRID || type == EFFECT_CRT ||
+	return (type == EFFECT_LINE || type == EFFECT_GRID || type == EFFECT_GRILLE ||
 	        type == EFFECT_SLOT);
 }
 

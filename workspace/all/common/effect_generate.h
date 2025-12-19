@@ -8,7 +8,7 @@
  * Pattern types:
  * - LINE: Simple horizontal scanlines (black + alpha)
  * - GRID: LCD pixel borders (1px dark border per content pixel)
- * - CRT: Full aperture grille with RGB phosphor tints + scanlines
+ * - GRILLE: Aperture grille with RGB phosphor tints + scanlines
  * - SLOT: Staggered brick/slot mask pattern
  */
 
@@ -18,9 +18,12 @@
 #include <stdint.h>
 
 /**
- * Generates CRT aperture grille pattern with phosphor RGB tints.
+ * Generates aperture grille pattern with phosphor RGB tints.
  *
- * Based on zfast_crt shader - symmetric 3x3 repeating tile:
+ * Simulates Sony Trinitron-style displays - vertical phosphor stripes
+ * with horizontal scanlines. Based on zfast_crt shader.
+ *
+ * Pattern (symmetric 3x3 repeating tile):
  * - Rows 0,2: Dark scanlines at pixel edges (alpha 90 = 35% darkening)
  * - Row 1: Bright phosphor center (lowest alpha, most light through)
  * - Columns alternate: cyan, blue, red phosphor tints
@@ -31,12 +34,12 @@
  * @param pitch   Buffer pitch in bytes (may differ from width*4)
  * @param scale   Content-to-screen scale factor (each band is `scale` pixels tall)
  */
-void EFFECT_generateCRT(uint32_t* pixels, int width, int height, int pitch, int scale);
+void EFFECT_generateGrille(uint32_t* pixels, int width, int height, int pitch, int scale);
 
 /**
  * Generates simple horizontal scanline pattern.
  *
- * Black-only pattern (no phosphor tints) - symmetric like CRT:
+ * Black-only pattern (no phosphor tints) - symmetric like grille:
  * - Rows 0,2: Dark scanlines at pixel edges (alpha 90 = 35% darkening)
  * - Row 1: Bright center (minimal alpha, most light through)
  *

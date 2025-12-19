@@ -1086,7 +1086,7 @@ These modules were extracted from large files (api.c, launcher.c, player.c) to e
 **File:** `tests/unit/all/common/test_effect_generate.c`
 
 - EFFECT_generateLine() - Scanline pattern with symmetric dark edges
-- EFFECT_generateCRT() - CRT aperture grille with RGB phosphor tints
+- EFFECT_generateGrille() - Aperture grille with RGB phosphor tints
 - EFFECT_generateGrid() - LCD pixel grid with graduated alpha
 - EFFECT_generateGridWithColor() - Grid with RGB565 color conversion
 - EFFECT_generateSlot() - Staggered slot mask with alternating borders

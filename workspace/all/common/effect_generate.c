@@ -11,10 +11,10 @@
 #include <stddef.h>
 
 /**
- * CRT aperture grille pattern - 3x3 tile
+ * Aperture grille pattern - 3x3 tile
  *
- * Symmetric pattern matching zfast_crt shader behavior:
- * darkest at pixel boundaries, brightest at center.
+ * Simulates Sony Trinitron-style displays. Symmetric pattern matching
+ * zfast_crt shader behavior: darkest at pixel boundaries, brightest at center.
  *
  * Each pixel is {R, G, B, A} where alpha controls darkening.
  * Higher alpha = more darkening, lower alpha = more light through.
@@ -29,7 +29,7 @@
  *   1: Blue phosphor
  *   2: Red phosphor
  */
-static const uint8_t CRT_TILE[3][3][4] = {
+static const uint8_t GRILLE_TILE[3][3][4] = {
     // Row 0: dark scanline (top edge) - alpha 90 = 35% darkening
     {{0, 1, 1, 90}, {1, 0, 3, 90}, {2, 0, 0, 90}},
     // Row 1: phosphor, low alpha (brightest center)
@@ -50,7 +50,7 @@ static const uint8_t CRT_TILE[3][3][4] = {
  */
 static const uint8_t LINE_ALPHA[3] = {90, 2, 90};
 
-void EFFECT_generateCRT(uint32_t* pixels, int width, int height, int pitch, int scale) {
+void EFFECT_generateGrille(uint32_t* pixels, int width, int height, int pitch, int scale) {
 	if (!pixels || width <= 0 || height <= 0 || scale < 1)
 		return;
 
@@ -65,7 +65,7 @@ void EFFECT_generateCRT(uint32_t* pixels, int width, int height, int pitch, int 
 		for (int x = 0; x < width; x++) {
 			int pos_in_pixel_x = x % scale;
 			int tile_col = (pos_in_pixel_x * 3) / scale;
-			const uint8_t* p = CRT_TILE[tile_row][tile_col];
+			const uint8_t* p = GRILLE_TILE[tile_row][tile_col];
 			// ARGB8888: alpha in high byte
 			row[x] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 		}

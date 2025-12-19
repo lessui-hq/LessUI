@@ -486,7 +486,7 @@ void PLAT_setSharpness(int sharpness) {
  * the rendering path, not whether PNGs are loaded.
  */
 static int effectUsesOverlay(int type) {
-	return type == EFFECT_CRT || type == EFFECT_SLOT;
+	return type == EFFECT_GRILLE || type == EFFECT_SLOT;
 }
 
 /**

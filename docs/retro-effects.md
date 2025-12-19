@@ -116,7 +116,7 @@ All effects are now procedurally generated at runtime - no PNG files required.
 
 - `EFFECT_generateLine()` - Horizontal scanline pattern
 - `EFFECT_generateGrid()` - LCD pixel border pattern
-- `EFFECT_generateCRT()` - RGB phosphor aperture grille + scanlines
+- `EFFECT_generateGrille()` - RGB phosphor aperture grille + scanlines
 - `EFFECT_generateSlot()` - Staggered brick/slot mask pattern
 
 **SDL2 rendering:** `workspace/all/common/effect_utils.{c,h}`
@@ -147,7 +147,7 @@ Effects are set via the platform API:
 ```c
 PLAT_setEffect(EFFECT_LINE);     // Enable scanlines
 PLAT_setEffect(EFFECT_GRID);     // Enable LCD grid
-PLAT_setEffect(EFFECT_CRT);      // Enable CRT phosphor effect
+PLAT_setEffect(EFFECT_GRILLE);   // Enable aperture grille
 PLAT_setEffect(EFFECT_SLOT);     // Enable slot mask
 PLAT_setEffect(EFFECT_NONE);     // Disable effects
 ```
