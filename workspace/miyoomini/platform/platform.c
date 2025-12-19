@@ -42,6 +42,7 @@
 #include "effect_surface.h"
 #include "effect_system.h"
 #include "platform.h"
+#include "render_common.h"
 #include "scaler.h"
 #include "utils.h"
 
@@ -69,6 +70,9 @@ static const DeviceInfo miyoomini_devices[] = {
 
     // Miyoo Mini Flip (MY285 - same as standard but clamshell form factor)
     {.device_id = "miyoominiflip", .display_name = "Mini Flip", .manufacturer = "Miyoo"},
+
+    // Standard Miyoo Mini (560p variant)
+    {.device_id = "miyoomini560p", .display_name = "Mini (560p)", .manufacturer = "Miyoo"},
 
     // Sentinel
     {NULL, NULL, NULL}};
@@ -98,6 +102,11 @@ static const VariantConfig miyoomini_variants[] = {
      .screen_height = 560,
      .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
+    {.variant = VARIANT_MINI_STANDARD_560P,
+     .screen_width = 752,
+     .screen_height = 560,
+     .screen_diagonal_default = 2.8f,
+     .hw_features = HW_FEATURE_NEON},
     {.variant = VARIANT_NONE} // Sentinel
 };
 
@@ -110,7 +119,8 @@ typedef struct {
 } DeviceVariantMap;
 
 static const DeviceVariantMap miyoomini_device_map[] = {
-    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini
+    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini (480p)
+    {0, 1, VARIANT_MINI_STANDARD_560P, &miyoomini_devices[4]}, // Standard Mini (560p)
     {1, 0, VARIANT_MINI_PLUS, &miyoomini_devices[1]}, // Plus (480p)
     {1, 1, VARIANT_MINI_PLUS_560P, &miyoomini_devices[2]}, // Plus (560p)
     {-1, -1, VARIANT_NONE, NULL} // Sentinel
@@ -526,13 +536,13 @@ void PLAT_setNearestNeighbor(int enabled) {}
 
 void PLAT_setSharpness(int sharpness) {
 	(void)sharpness;
-	// Force overlay regeneration by invalidating live state
-	effect_state.live_scale = -1;
+	// Miyoo Mini doesn't support sharpness modes (hardware-accelerated blitting only).
+	// Effect overlay doesn't need regeneration since it's unaffected by this setting.
 }
 
 /**
  * Creates or updates the effect overlay surface.
- * Now uses EFFECT_getPatternPath() and EFFECT_getOpacity() from effect_system.
+ * Uses procedural generation from effect_generate.h.
  */
 static void updateEffectOverlay(void) {
 	// Apply pending effect settings
@@ -562,29 +572,15 @@ static void updateEffectOverlay(void) {
 
 	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	// Use shared EFFECT_getPatternPath() instead of local getEffectPattern()
-	char pattern_path[256];
-	const char* pattern =
-	    EFFECT_getPatternPath(pattern_path, sizeof(pattern_path), effect_state.type, scale);
-	if (!pattern) {
-		LOG_debug("Effect: no pattern for type %d scale %d\n", effect_state.type, scale);
-		return;
-	}
-
-	// Use shared EFFECT_getOpacity()
+	// All effects use procedural generation (with color support for GRID)
+	SDL_Surface* temp = EFFECT_createGeneratedSurfaceWithColor(
+	    effect_state.type, scale, FIXED_WIDTH, FIXED_HEIGHT, effect_state.color);
 	int opacity = EFFECT_getOpacity(scale);
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d screen=%dx%d\n",
+	          effect_state.type, scale, effect_state.color, opacity, FIXED_WIDTH, FIXED_HEIGHT);
 
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
-
-	LOG_debug("Effect: creating overlay type=%d scale=%d opacity=%d color=0x%04x pattern=%s\n",
-	          effect_state.type, scale, opacity, color, pattern);
-
-	// Pattern is pre-sized for this scale, tile at 1:1 (no scaling)
-	SDL_Surface* temp =
-	    EFFECT_createTiledSurfaceWithColor(pattern, 1, FIXED_WIDTH, FIXED_HEIGHT, color);
 	if (!temp) {
-		LOG_error("Effect: EFFECT_createTiledSurfaceWithColor failed");
+		LOG_error("Effect: failed to create effect surface");
 		return;
 	}
 
@@ -642,7 +638,11 @@ void PLAT_vsync(int remaining) {
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	// Track scale for effect overlay generation
-	EFFECT_setScale(&effect_state, renderer->scale);
+	EFFECT_setScale(&effect_state, renderer->visual_scale);
+
+	LOG_debug("Scaler: src=%dx%d dst=%dx%d+%d+%d buffer_scale=%d visual_scale=%d aspect=%.2f\n",
+	          renderer->src_w, renderer->src_h, renderer->dst_w, renderer->dst_h, renderer->dst_x,
+	          renderer->dst_y, renderer->scale, renderer->visual_scale, renderer->aspect);
 
 	switch (renderer->scale) {
 	case 6:
@@ -708,8 +708,20 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Apply effect overlay when in game mode with a new frame
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
-		if (vid.effect) {
-			GFX_BlitSurfaceExec(vid.effect, NULL, vid.video, NULL, 0, 0, 0);
+		if (vid.effect && vid.renderer) {
+			// Calculate content area to align effect with scaled content pixels.
+			// Sample from (0,0) of effect and render to content position.
+			// This ensures the effect pattern aligns correctly regardless of
+			// screen resolution (fixes 560p misalignment where dst_y % scale != 0).
+			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.video->w, vid.video->h);
+			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+
+			LOG_debug("Effect blit: video=%dx%d dest_rect=%d,%d %dx%d effect=%dx%d\n", vid.video->w,
+			          vid.video->h, dst_rect.x, dst_rect.y, dst_rect.w, dst_rect.h, vid.effect->w,
+			          vid.effect->h);
+
+			GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);
 		}
 	}
 

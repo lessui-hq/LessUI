@@ -29,6 +29,7 @@
 #include "effect_surface.h"
 #include "effect_system.h"
 #include "platform.h"
+#include "render_common.h"
 #include "utils.h"
 
 #include "de_atm7059.h"
@@ -477,10 +478,16 @@ void PLAT_setSharpness(int sharpness) {
 
 /**
  * Checks if effect type uses overlay (vs scaler-based rendering).
- * LINE and GRID use scaler functions, all other effects use overlays.
+ *
+ * Platform-specific optimization for rg35xx:
+ * - LINE/GRID: Use fast scaler-based rendering (simpler patterns)
+ * - GRILLE/SLOT: Use overlay blending (complex patterns with per-pixel alpha)
+ *
+ * Note: All effects are still procedurally generated - this just determines
+ * the rendering path, not whether PNGs are loaded.
  */
 static int effectUsesOverlay(int type) {
-	return type != EFFECT_NONE && type != EFFECT_LINE && type != EFFECT_GRID;
+	return type == EFFECT_GRILLE || type == EFFECT_SLOT;
 }
 
 /**
@@ -490,7 +497,7 @@ static int effectUsesOverlay(int type) {
 static void updateEffectOverlay(void) {
 	EFFECT_applyPending(&effect_state);
 
-	// Only overlay effects (grille, slot, dot, dmg, gbc, lcd) use this path
+	// Only overlay effects (GRILLE, SLOT) use this path
 	// LINE/GRID use scaler functions instead
 	if (!effectUsesOverlay(effect_state.type)) {
 		if (vid.effect) {
@@ -504,20 +511,17 @@ static void updateEffectOverlay(void) {
 	if (!EFFECT_needsUpdate(&effect_state))
 		return;
 
-	// Use shared EFFECT_getPatternPath()
-	char pattern_path[256];
-	const char* pattern = EFFECT_getPatternPath(pattern_path, sizeof(pattern_path),
-	                                            effect_state.type, effect_state.scale);
-
 	if (vid.effect)
 		SDL_FreeSurface(vid.effect);
 
-	// Get color for grid effect tinting (GameBoy DMG palettes)
-	int color = (effect_state.type == EFFECT_GRID) ? effect_state.color : 0;
+	int scale = effect_state.scale > 0 ? effect_state.scale : 1;
 
-	vid.effect = EFFECT_createTiledSurfaceWithColor(pattern, 1, vid.width, vid.height, color);
+	// GRILLE and SLOT use procedural generation (with color support for GRID)
+	vid.effect = EFFECT_createGeneratedSurfaceWithColor(effect_state.type, scale, vid.width,
+	                                                    vid.height, effect_state.color);
+	int opacity = EFFECT_getOpacity(scale);
+
 	if (vid.effect) {
-		int opacity = EFFECT_getOpacity(effect_state.scale);
 		SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 		EFFECT_markLive(&effect_state);
 	}
@@ -542,7 +546,7 @@ void PLAT_vsync(int remaining) {
  * Uses scaler-based effects for LINE/GRID on this platform.
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	EFFECT_setScale(&effect_state, renderer->scale);
+	EFFECT_setScale(&effect_state, renderer->visual_scale);
 
 	// LINE effect - use scaler functions
 	if (effect_state.next_type == EFFECT_LINE) {
@@ -618,8 +622,15 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Update and composite effect overlay (only in game mode with new frame)
 	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
 		updateEffectOverlay();
-		if (vid.effect) {
-			SDL_BlitSurface(vid.effect, NULL, vid.screen, NULL);
+		if (vid.effect && vid.renderer) {
+			// Calculate content area to align effect with scaled content pixels.
+			// Sample from (0,0) of effect and render to content position.
+			// This ensures the effect pattern aligns correctly regardless of
+			// screen resolution (fixes misalignment where dst_y % scale != 0).
+			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.width, vid.height);
+			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+			SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
 		}
 	}
 

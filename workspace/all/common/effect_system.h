@@ -8,7 +8,6 @@
  * Features:
  * - Effect state tracking with deferred updates
  * - Opacity calculation based on effect type and scale factor
- * - Pattern path generation for effect overlay textures
  *
  * Usage:
  *   EffectState effect;
@@ -16,9 +15,7 @@
  *   EFFECT_setType(&effect, EFFECT_LINE);
  *   EFFECT_setScale(&effect, 3);
  *   if (EFFECT_needsUpdate(&effect)) {
- *       int opacity = EFFECT_getOpacity(effect.scale);
- *       const char* path = EFFECT_getPatternPath(buf, sizeof(buf), effect.type, effect.scale);
- *       // Load and apply effect texture...
+ *       // Generate effect pattern using effect_generate.h functions
  *       EFFECT_markLive(&effect);
  *   }
  */
@@ -123,47 +120,26 @@ int EFFECT_needsUpdate(const EffectState* state);
 void EFFECT_markLive(EffectState* state);
 
 /**
- * Gets the appropriate opacity for an effect at a given scale.
+ * Checks if an effect type uses procedural generation.
  *
- * All effect patterns use opaque black (alpha=255 in PNG). Visibility is
- * controlled via global opacity using a simple linear formula:
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated at runtime
+ * via effect_generate.c functions.
  *
- *   opacity = 30 + (scale * 20)
+ * @param type Effect type to check
+ * @return 1 if type uses generation, 0 otherwise
+ */
+int EFFECT_usesGeneration(int type);
+
+/**
+ * Gets the global opacity for effect overlays.
  *
- * This gives:
- *   Scale 2: 70    (coarse patterns, subtle)
- *   Scale 3: 90
- *   Scale 4: 110
- *   Scale 5: 130
- *   Scale 6: 150
- *   Scale 7: 170
- *   Scale 8: 190   (fine patterns, more visible)
+ * Returns constant opacity (128) for all scales. Per-pixel alpha values in
+ * the generated patterns control pattern structure; this global opacity
+ * controls overall visibility.
  *
- * @param scale Current scale factor
- * @return Opacity value 0-255
+ * @param scale Current scale factor (unused, kept for API compatibility)
+ * @return Opacity value (always 128)
  */
 int EFFECT_getOpacity(int scale);
-
-/**
- * Gets the pattern file path for an effect.
- *
- * Generates the path to the scale-specific effect pattern PNG.
- * All effects use scaled patterns: line-2.png, grid-3.png, crt-4.png, etc.
- *
- * @param buf     Buffer to write path into
- * @param bufsize Size of buffer
- * @param type    Effect type (determines pattern name: line, grid, crt)
- * @param scale   Current scale factor (clamped to 2-8)
- * @return Pointer to buf, or NULL if type is EFFECT_NONE or invalid
- */
-const char* EFFECT_getPatternPath(char* buf, int bufsize, int type, int scale);
-
-/**
- * Clamps scale to available pattern files (2-8).
- *
- * @param scale Current scale factor
- * @return Pattern scale (2-8)
- */
-int EFFECT_getPatternScale(int scale);
 
 #endif /* __EFFECT_SYSTEM_H__ */

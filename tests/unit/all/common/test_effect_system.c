@@ -15,8 +15,6 @@
  * - EFFECT_needsUpdate - Change detection
  * - EFFECT_markLive - Live state tracking
  * - EFFECT_getOpacity - Opacity calculation
- * - EFFECT_getPatternScale - Scale clamping
- * - EFFECT_getPatternPath - Path generation
  */
 
 #include "unity.h"
@@ -28,11 +26,11 @@
 // by defining what it actually needs
 
 // Effect type constants (normally from api.h)
-#define EFFECT_NONE   0
-#define EFFECT_LINE   1
-#define EFFECT_GRID   2
-#define EFFECT_GRILLE 3
-#define EFFECT_SLOT   4
+#define EFFECT_NONE 0
+#define EFFECT_LINE 1
+#define EFFECT_GRID 2
+#define EFFECT_GRILLE  3
+#define EFFECT_SLOT 4
 
 // Path constant (normally from defines.h)
 #define RES_PATH "/tmp/test/.system/test/res"
@@ -299,105 +297,18 @@ void test_EFFECT_getOpacity_stays_within_valid_range(void) {
 }
 
 void test_EFFECT_getOpacity_clamps_to_255_at_high_scale(void) {
-	// High scales should clamp to maximum valid alpha value
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(15));
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(20));
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(100));
+	// Constant opacity (128) for all scales - no clamping needed
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(15));
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(20));
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(100));
 }
 
 void test_EFFECT_getOpacity_low_scale_produces_low_opacity(void) {
-	// Lower scales should produce lower opacity (for subtlety)
+	// Constant opacity (128) for all scales
 	int opacity_1 = EFFECT_getOpacity(1);
 	int opacity_2 = EFFECT_getOpacity(2);
-	// Both should be well below maximum
-	TEST_ASSERT_LESS_THAN(128, opacity_1);
-	TEST_ASSERT_LESS_THAN(128, opacity_2);
-}
-
-///////////////////////////////
-// EFFECT_getPatternScale tests
-///////////////////////////////
-
-void test_EFFECT_getPatternScale_clamps_minimum_to_2(void) {
-	TEST_ASSERT_EQUAL_INT(2, EFFECT_getPatternScale(1));
-	TEST_ASSERT_EQUAL_INT(2, EFFECT_getPatternScale(0));
-	TEST_ASSERT_EQUAL_INT(2, EFFECT_getPatternScale(-1));
-}
-
-void test_EFFECT_getPatternScale_clamps_maximum_to_8(void) {
-	TEST_ASSERT_EQUAL_INT(8, EFFECT_getPatternScale(9));
-	TEST_ASSERT_EQUAL_INT(8, EFFECT_getPatternScale(10));
-	TEST_ASSERT_EQUAL_INT(8, EFFECT_getPatternScale(100));
-}
-
-void test_EFFECT_getPatternScale_passes_through_valid_scales(void) {
-	TEST_ASSERT_EQUAL_INT(2, EFFECT_getPatternScale(2));
-	TEST_ASSERT_EQUAL_INT(3, EFFECT_getPatternScale(3));
-	TEST_ASSERT_EQUAL_INT(4, EFFECT_getPatternScale(4));
-	TEST_ASSERT_EQUAL_INT(5, EFFECT_getPatternScale(5));
-	TEST_ASSERT_EQUAL_INT(6, EFFECT_getPatternScale(6));
-	TEST_ASSERT_EQUAL_INT(7, EFFECT_getPatternScale(7));
-	TEST_ASSERT_EQUAL_INT(8, EFFECT_getPatternScale(8));
-}
-
-///////////////////////////////
-// EFFECT_getPatternPath tests
-///////////////////////////////
-
-void test_EFFECT_getPatternPath_returns_null_for_none(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_NONE, 3);
-	TEST_ASSERT_NULL(result);
-}
-
-void test_EFFECT_getPatternPath_generates_line_path(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_LINE, 3);
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/line-3.png", result);
-}
-
-void test_EFFECT_getPatternPath_generates_grid_path(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_GRID, 4);
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/grid-4.png", result);
-}
-
-void test_EFFECT_getPatternPath_generates_grille_path(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_GRILLE, 5);
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/grille-5.png", result);
-}
-
-void test_EFFECT_getPatternPath_generates_slot_path(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_SLOT, 2);
-	TEST_ASSERT_NOT_NULL(result);
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/slot-2.png", result);
-}
-
-void test_EFFECT_getPatternPath_clamps_scale_low(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_LINE, 1);
-	TEST_ASSERT_NOT_NULL(result);
-	// Scale 1 gets clamped to 2
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/line-2.png", result);
-}
-
-void test_EFFECT_getPatternPath_clamps_scale_high(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), EFFECT_GRID, 10);
-	TEST_ASSERT_NOT_NULL(result);
-	// Scale 10 gets clamped to 8
-	TEST_ASSERT_EQUAL_STRING(RES_PATH "/grid-8.png", result);
-}
-
-void test_EFFECT_getPatternPath_returns_null_for_invalid_type(void) {
-	char buf[256];
-	const char* result = EFFECT_getPatternPath(buf, sizeof(buf), 99, 3);
-	TEST_ASSERT_NULL(result);
+	TEST_ASSERT_EQUAL_INT(128, opacity_1);
+	TEST_ASSERT_EQUAL_INT(128, opacity_2);
 }
 
 ///////////////////////////////
@@ -419,14 +330,12 @@ void test_full_workflow(void) {
 	// Check if we need to regenerate texture
 	TEST_ASSERT_EQUAL_INT(1, EFFECT_needsUpdate(&state));
 
-	// Simulate texture regeneration
-	char path[256];
-	const char* pattern = EFFECT_getPatternPath(path, sizeof(path), state.type, state.scale);
-	TEST_ASSERT_NOT_NULL(pattern);
+	// All effects now use procedural generation
+	TEST_ASSERT_EQUAL_INT(1, EFFECT_usesGeneration(state.type));
+
+	// Effects use constant opacity: 128 (50%) for all scales
 	int opacity = EFFECT_getOpacity(state.scale);
-	// Opacity should be valid and reasonable for scale 4
-	TEST_ASSERT_GREATER_OR_EQUAL(50, opacity);
-	TEST_ASSERT_LESS_OR_EQUAL(255, opacity);
+	TEST_ASSERT_EQUAL_INT(128, opacity);
 
 	// Mark as live after regeneration
 	EFFECT_markLive(&state);
@@ -486,21 +395,6 @@ int main(void) {
 	RUN_TEST(test_EFFECT_getOpacity_stays_within_valid_range);
 	RUN_TEST(test_EFFECT_getOpacity_clamps_to_255_at_high_scale);
 	RUN_TEST(test_EFFECT_getOpacity_low_scale_produces_low_opacity);
-
-	// EFFECT_getPatternScale
-	RUN_TEST(test_EFFECT_getPatternScale_clamps_minimum_to_2);
-	RUN_TEST(test_EFFECT_getPatternScale_clamps_maximum_to_8);
-	RUN_TEST(test_EFFECT_getPatternScale_passes_through_valid_scales);
-
-	// EFFECT_getPatternPath
-	RUN_TEST(test_EFFECT_getPatternPath_returns_null_for_none);
-	RUN_TEST(test_EFFECT_getPatternPath_generates_line_path);
-	RUN_TEST(test_EFFECT_getPatternPath_generates_grid_path);
-	RUN_TEST(test_EFFECT_getPatternPath_generates_grille_path);
-	RUN_TEST(test_EFFECT_getPatternPath_generates_slot_path);
-	RUN_TEST(test_EFFECT_getPatternPath_clamps_scale_low);
-	RUN_TEST(test_EFFECT_getPatternPath_clamps_scale_high);
-	RUN_TEST(test_EFFECT_getPatternPath_returns_null_for_invalid_type);
 
 	// Integration
 	RUN_TEST(test_full_workflow);

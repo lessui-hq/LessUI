@@ -61,6 +61,7 @@
 #define VARIANT_MINI_STANDARD (VARIANT_PLATFORM_BASE + 0) // 640x480, SAR ADC
 #define VARIANT_MINI_PLUS (VARIANT_PLATFORM_BASE + 1) // 640x480, AXP223 PMIC
 #define VARIANT_MINI_PLUS_560P (VARIANT_PLATFORM_BASE + 2) // 752x560, AXP223 PMIC
+#define VARIANT_MINI_STANDARD_560P (VARIANT_PLATFORM_BASE + 3) // 752x560, SAR ADC
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -172,8 +173,12 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
-#define SCALE_MODIFIER ((platform_variant.variant >= VARIANT_MINI_PLUS) ? 1.0f : 0.92f)
-#define EDGE_PADDING ((platform_variant.variant >= VARIANT_MINI_PLUS) ? 10 : 5)
+// Standard variants (non-Plus) have smaller screen and need adjusted scaling
+#define IS_STANDARD_VARIANT                                                                        \
+	(platform_variant.variant == VARIANT_MINI_STANDARD ||                                          \
+	 platform_variant.variant == VARIANT_MINI_STANDARD_560P)
+#define SCALE_MODIFIER (IS_STANDARD_VARIANT ? 0.92f : 1.0f)
+#define EDGE_PADDING (IS_STANDARD_VARIANT ? 5 : 10)
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
 

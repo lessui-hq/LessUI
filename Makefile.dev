@@ -92,7 +92,9 @@ LAUNCHER_SOURCE = workspace/all/launcher/launcher.c \
                workspace/all/launcher/launcher_thumbnail.c \
                workspace/all/launcher/recent_file.c \
                workspace/all/launcher/launcher_emu_cache.c \
+               workspace/all/launcher/launcher_res_cache.c \
                workspace/all/common/effect_system.c \
+               workspace/all/common/effect_generate.c \
                workspace/all/common/render_common.c \
                workspace/all/common/render_sdl2.c \
                workspace/all/common/effect_utils.c \

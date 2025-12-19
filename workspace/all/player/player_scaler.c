@@ -285,4 +285,23 @@ void PlayerScaler_calculate(const PlayerScalerInput* input, PlayerScalerResult* 
 	} else {
 		result->aspect = aspect_ratio; // Aspect ratio for SDL2 accelerated scaling
 	}
+
+	// Calculate effect scale based on final visual dimensions (accounts for GPU scaling).
+	// For modes with GPU scaling (aspect/fullscreen), effects should match the visual scale
+	// on screen, not the intermediate buffer scale. This prevents chunky effects when
+	// content is scaled up in buffer then GPU-scaled down to fit screen.
+	if (mode == SCALER_MODE_NATIVE || mode == SCALER_MODE_CROPPED) {
+		// No GPU scaling - effect scale matches buffer scale
+		result->visual_scale = result->scale;
+	} else {
+		// GPU scaling active - calculate visual scale based on device dimensions
+		// Use min() to match the constraining dimension (usually height)
+		int visual_scale_w = input->device_w / src_w;
+		int visual_scale_h = input->device_h / src_h;
+		result->visual_scale = (visual_scale_w < visual_scale_h) ? visual_scale_w : visual_scale_h;
+
+		// Ensure minimum scale of 1
+		if (result->visual_scale < 1)
+			result->visual_scale = 1;
+	}
 }

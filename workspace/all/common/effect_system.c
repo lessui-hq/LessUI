@@ -4,6 +4,8 @@
  * This module consolidates the effect management logic that was previously
  * duplicated across all platform files. The opacity tables and pattern
  * path generation are now in a single location.
+ *
+ * All effects (LINE, GRID, GRILLE, SLOT) are procedurally generated at runtime.
  */
 
 #include "effect_system.h"
@@ -59,49 +61,18 @@ void EFFECT_markLive(EffectState* state) {
 	state->live_color = state->color;
 }
 
+int EFFECT_usesGeneration(int type) {
+	// All effects use procedural generation (effect_generate.c)
+	return (type == EFFECT_LINE || type == EFFECT_GRID || type == EFFECT_GRILLE ||
+	        type == EFFECT_SLOT);
+}
+
 int EFFECT_getOpacity(int scale) {
-	// All effects use opaque black patterns (alpha=255 in PNG).
-	// Control visibility via global opacity, scaling linearly:
-	// - Lower scales (larger pixels/coarser patterns) = lighter/more subtle
-	// - Higher scales (smaller pixels/finer patterns) = darker to remain visible
+	// Effects use opaque black patterns (alpha=255 for dark areas).
+	// Global opacity is constant at 128 (50%) for all scales, matching MinUI's approach.
 	//
-	// Formula: opacity = 30 + (scale * 20)
-	// Scale 2: 70, Scale 3: 90, Scale 4: 110, ... Scale 8: 190
-	int opacity = 30 + (scale * 20);
-	return (opacity > 255) ? 255 : opacity;
-}
-
-int EFFECT_getPatternScale(int scale) {
-	// All effects use scale-specific patterns (line-N.png, grid-N.png, crt-N.png)
-	// Available scales: 2, 3, 4, 5, 6, 7, 8
-	if (scale < 2)
-		return 2;
-	if (scale > 8)
-		return 8;
-	return scale;
-}
-
-const char* EFFECT_getPatternPath(char* buf, int bufsize, int type, int scale) {
-	const char* pattern_name = NULL;
-	switch (type) {
-	case EFFECT_LINE:
-		pattern_name = "line";
-		break;
-	case EFFECT_GRID:
-		pattern_name = "grid";
-		break;
-	case EFFECT_GRILLE:
-		pattern_name = "grille";
-		break;
-	case EFFECT_SLOT:
-		pattern_name = "slot";
-		break;
-	default:
-		return NULL;
-	}
-
-	// All patterns are scale-specific: line-2.png, grid-3.png, etc.
-	(void)snprintf(buf, bufsize, RES_PATH "/%s-%d.png", pattern_name,
-	               EFFECT_getPatternScale(scale));
-	return buf;
+	// This provides consistent visibility across all resolutions and makes it easy
+	// to adjust for debugging (just change this constant).
+	(void)scale;
+	return 128;
 }

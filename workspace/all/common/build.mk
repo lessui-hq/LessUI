@@ -83,7 +83,7 @@ COMMON_SOURCE = \
 	$(PLATFORM_DIR)/platform.c
 
 # Add shared rendering modules
-COMMON_SOURCE += $(COMMON_DIR)/effect_system.c $(COMMON_DIR)/render_common.c
+COMMON_SOURCE += $(COMMON_DIR)/effect_system.c $(COMMON_DIR)/effect_generate.c $(COMMON_DIR)/render_common.c
 
 # Add effect support - SDL2 platforms use render_sdl2 + effect_utils, SDL1 platforms use effect_surface
 ifeq ($(SDL),SDL2)

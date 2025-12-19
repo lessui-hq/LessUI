@@ -312,15 +312,15 @@ enum {
 /**
  * CRT/LCD visual effects.
  *
- * All effects use shadow-only overlays (black pixels with alpha).
- * Patterns based on MAME HLSL shaders by cgwg, Themaister, et al.
+ * LINE/GRID use shadow-only overlays (black pixels with alpha).
+ * GRILLE uses full aperture grille with RGB phosphor tints + scanlines.
  */
 enum {
 	EFFECT_NONE, // No effect
-	EFFECT_LINE, // Horizontal scanlines
-	EFFECT_GRID, // Pixel grid (2x2)
-	EFFECT_GRILLE, // Aperture grille (vertical stripes, 50% shadow)
-	EFFECT_SLOT, // Slot mask (staggered vertical slots)
+	EFFECT_LINE, // Horizontal scanlines (shadow only)
+	EFFECT_GRID, // LCD pixel grid (1px border per content pixel)
+	EFFECT_GRILLE, // Aperture grille: RGB phosphor stripes + scanlines
+	EFFECT_SLOT, // Slot mask (staggered brick pattern)
 	EFFECT_COUNT,
 };
 
@@ -335,7 +335,8 @@ typedef struct GFX_Renderer {
 	void* dst; // Destination surface pixel data
 	void* blit; // Blit surface for intermediate operations
 	double aspect; // 0=integer scale, -1=fullscreen, >0=aspect ratio for SDL2 accelerated scaling
-	int scale; // Integer scale factor
+	int scale; // Integer scale factor (intermediate buffer scale)
+	int visual_scale; // Visual scale for effects (accounts for GPU downscaling)
 
 	// TODO: document this better
 	int true_w; // True source width

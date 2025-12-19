@@ -23,6 +23,7 @@ typedef struct GFX_Renderer {
 	void* blit;
 	double aspect;
 	int scale;
+	int visual_scale;
 	int true_w;
 	int true_h;
 	int src_x;
@@ -269,6 +270,7 @@ void test_dest_rect_native_scaling_centered(void) {
 	    .src_w = 160,
 	    .src_h = 144,
 	    .scale = 2,
+	    .visual_scale = 2,
 	    .aspect = 0, // Native scaling
 	};
 
@@ -287,6 +289,7 @@ void test_dest_rect_native_scaling_1x(void) {
 	    .src_w = 256,
 	    .src_h = 240,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 0,
 	};
 
@@ -305,6 +308,7 @@ void test_dest_rect_native_scaling_fills_screen(void) {
 	    .src_w = 320,
 	    .src_h = 240,
 	    .scale = 2,
+	    .visual_scale = 2,
 	    .aspect = 0,
 	};
 
@@ -326,6 +330,7 @@ void test_dest_rect_fullscreen_stretch(void) {
 	    .src_w = 160,
 	    .src_h = 144,
 	    .scale = 2,
+	    .visual_scale = 2,
 	    .aspect = -1, // Fullscreen stretch
 	};
 
@@ -343,6 +348,7 @@ void test_dest_rect_fullscreen_stretch_any_aspect(void) {
 	    .src_w = 256,
 	    .src_h = 224,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = -999, // Any negative value
 	};
 
@@ -364,6 +370,7 @@ void test_dest_rect_aspect_4_3_on_4_3_screen(void) {
 	    .src_w = 320,
 	    .src_h = 240,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 4.0 / 3.0, // 4:3 content
 	};
 
@@ -381,6 +388,7 @@ void test_dest_rect_aspect_4_3_on_16_9_screen(void) {
 	    .src_w = 320,
 	    .src_h = 240,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 4.0 / 3.0, // 4:3 content
 	};
 
@@ -401,6 +409,7 @@ void test_dest_rect_aspect_16_9_on_4_3_screen(void) {
 	    .src_w = 854,
 	    .src_h = 480,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 16.0 / 9.0, // 16:9 content
 	};
 
@@ -421,6 +430,7 @@ void test_dest_rect_aspect_1_1_square(void) {
 	    .src_w = 256,
 	    .src_h = 256,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 1.0, // Square content
 	};
 
@@ -441,6 +451,7 @@ void test_dest_rect_aspect_game_boy(void) {
 	    .src_w = 160,
 	    .src_h = 144,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 10.0 / 9.0, // Game Boy aspect ratio
 	};
 
@@ -465,6 +476,7 @@ void test_dest_rect_very_wide_aspect(void) {
 	    .src_w = 320,
 	    .src_h = 100,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 3.2, // Very wide (3.2:1)
 	};
 
@@ -485,6 +497,7 @@ void test_dest_rect_very_tall_aspect(void) {
 	    .src_w = 100,
 	    .src_h = 320,
 	    .scale = 1,
+	    .visual_scale = 1,
 	    .aspect = 0.3125, // Very tall (1:3.2)
 	};
 
