@@ -546,7 +546,7 @@ void PLAT_vsync(int remaining) {
  * Uses scaler-based effects for LINE/GRID on this platform.
  */
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	EFFECT_setScale(&effect_state, renderer->scale);
+	EFFECT_setScale(&effect_state, renderer->visual_scale);
 
 	// LINE effect - use scaler functions
 	if (effect_state.next_type == EFFECT_LINE) {

@@ -629,7 +629,7 @@ void PLAT_vsync(int remaining) {
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	// Track scale for effect overlay generation
-	EFFECT_setScale(&effect_state, renderer->scale);
+	EFFECT_setScale(&effect_state, renderer->visual_scale);
 
 	switch (renderer->scale) {
 	case 6:
@@ -700,8 +700,7 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 			// Sample from (0,0) of effect and render to content position.
 			// This ensures the effect pattern aligns correctly regardless of
 			// screen resolution (fixes 560p misalignment where dst_y % scale != 0).
-			RenderDestRect dest =
-			    RENDER_calcDestRect(vid.renderer, vid.video->w, vid.video->h);
+			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.video->w, vid.video->h);
 			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
 			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
 			GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);

@@ -3380,12 +3380,14 @@ void selectScaler(int src_w, int src_h, int src_p) {
 	renderer.dst_h = result.dst_h;
 	renderer.dst_p = result.dst_p;
 	renderer.scale = result.scale;
+	renderer.visual_scale = result.visual_scale;
 	renderer.aspect = result.aspect;
 	renderer.true_w = result.true_w;
 	renderer.true_h = result.true_h;
 
-	LOG_debug("Scaler: %s %dx%d->%dx%d, scale=%d, aspect=%.2f", result.scaler_name, src_w, src_h,
-	          result.dst_w, result.dst_h, result.scale, result.aspect);
+	LOG_debug("Scaler: %s %dx%d->%dx%d, scale=%d, visual_scale=%d, aspect=%.2f", result.scaler_name,
+	          src_w, src_h, result.dst_w, result.dst_h, result.scale, result.visual_scale,
+	          result.aspect);
 
 	renderer.blit = GFX_getScaler(&renderer);
 

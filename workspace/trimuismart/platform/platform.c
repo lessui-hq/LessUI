@@ -421,7 +421,7 @@ void PLAT_vsync(int remaining) {
 ///////////////////////////////
 
 scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
-	EFFECT_setScale(&effect_state, renderer->scale);
+	EFFECT_setScale(&effect_state, renderer->visual_scale);
 
 	switch (renderer->scale) {
 	case 6:

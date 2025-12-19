@@ -335,7 +335,8 @@ typedef struct GFX_Renderer {
 	void* dst; // Destination surface pixel data
 	void* blit; // Blit surface for intermediate operations
 	double aspect; // 0=integer scale, -1=fullscreen, >0=aspect ratio for SDL2 accelerated scaling
-	int scale; // Integer scale factor
+	int scale; // Integer scale factor (intermediate buffer scale)
+	int visual_scale; // Visual scale for effects (accounts for GPU downscaling)
 
 	// TODO: document this better
 	int true_w; // True source width

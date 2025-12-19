@@ -297,19 +297,18 @@ void test_EFFECT_getOpacity_stays_within_valid_range(void) {
 }
 
 void test_EFFECT_getOpacity_clamps_to_255_at_high_scale(void) {
-	// High scales should clamp to maximum valid alpha value
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(15));
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(20));
-	TEST_ASSERT_EQUAL_INT(255, EFFECT_getOpacity(100));
+	// Constant opacity (128) for all scales - no clamping needed
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(15));
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(20));
+	TEST_ASSERT_EQUAL_INT(128, EFFECT_getOpacity(100));
 }
 
 void test_EFFECT_getOpacity_low_scale_produces_low_opacity(void) {
-	// Lower scales should produce lower opacity (for subtlety)
+	// Constant opacity (128) for all scales
 	int opacity_1 = EFFECT_getOpacity(1);
 	int opacity_2 = EFFECT_getOpacity(2);
-	// Both should be well below maximum
-	TEST_ASSERT_LESS_THAN(128, opacity_1);
-	TEST_ASSERT_LESS_THAN(128, opacity_2);
+	TEST_ASSERT_EQUAL_INT(128, opacity_1);
+	TEST_ASSERT_EQUAL_INT(128, opacity_2);
 }
 
 ///////////////////////////////
@@ -334,9 +333,9 @@ void test_full_workflow(void) {
 	// All effects now use procedural generation
 	TEST_ASSERT_EQUAL_INT(1, EFFECT_usesGeneration(state.type));
 
-	// Effects use scale-dependent opacity: 30 + (scale * 20)
+	// Effects use constant opacity: 128 (50%) for all scales
 	int opacity = EFFECT_getOpacity(state.scale);
-	TEST_ASSERT_EQUAL_INT(110, opacity); // scale=4 -> 30 + 80 = 110
+	TEST_ASSERT_EQUAL_INT(128, opacity);
 
 	// Mark as live after regeneration
 	EFFECT_markLive(&state);

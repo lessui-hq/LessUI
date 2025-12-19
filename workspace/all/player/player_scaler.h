@@ -73,6 +73,7 @@ typedef struct {
 
 	// Scaling parameters
 	int scale; /**< Integer scale factor (-1 for nearest neighbor) */
+	int visual_scale; /**< Visual scale for effects (accounts for GPU downscaling) */
 	double aspect; /**< 0=integer, -1=fullscreen, >0=aspect ratio */
 
 	// Original dimensions (before cropping)

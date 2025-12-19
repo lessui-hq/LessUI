@@ -69,15 +69,10 @@ int EFFECT_usesGeneration(int type) {
 
 int EFFECT_getOpacity(int scale) {
 	// Effects use opaque black patterns (alpha=255 for dark areas).
-	// Control visibility via global opacity, scaling linearly:
-	// - Lower scales (larger pixels/coarser patterns) = lighter/more subtle
-	// - Higher scales (smaller pixels/finer patterns) = darker to remain visible
+	// Global opacity is constant at 128 (50%) for all scales, matching MinUI's approach.
 	//
-	// Formula: opacity = 30 + (scale * 20)
-	// Scale 2: 70 (27%), Scale 3: 90 (35%), Scale 4: 110 (43%), ... Scale 8: 190 (75%)
-	//
-	// This allows cranking up opacity for debugging and ensures effects remain
-	// visible at high resolutions while not being too heavy at low resolutions.
-	int opacity = 30 + (scale * 20);
-	return (opacity > 255) ? 255 : opacity;
+	// This provides consistent visibility across all resolutions and makes it easy
+	// to adjust for debugging (just change this constant).
+	(void)scale;
+	return 128;
 }

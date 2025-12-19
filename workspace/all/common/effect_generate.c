@@ -155,9 +155,9 @@ void EFFECT_generateSlot(uint32_t* pixels, int width, int height, int pitch, int
 	// - Vertical border alternates sides for stagger effect
 	// - Phosphor glow below borders (scale 3+)
 
-	uint8_t edge_alpha = (scale == 2) ? 181 : 255;   // Was 64/102, scaled up
+	uint8_t edge_alpha = (scale == 2) ? 181 : 255; // Was 64/102, scaled up
 	uint8_t corner_alpha = (scale == 2) ? 181 : 255; // Was 64/153, scaled up
-	uint8_t glow_alpha = 170;                        // Was 60, scaled up
+	uint8_t glow_alpha = 170; // Was 60, scaled up
 
 	for (int y = 0; y < height; y++) {
 		int content_row = y / scale; // Which content pixel row

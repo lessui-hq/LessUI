@@ -294,7 +294,7 @@ void SDL2_setEffectColor(SDL2_RenderContext* ctx, int color) {
 }
 
 scaler_t SDL2_getScaler(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
-	EFFECT_setScale(&ctx->effect_state, renderer->scale);
+	EFFECT_setScale(&ctx->effect_state, renderer->visual_scale);
 	return scale1x1_c16; // Hardware does scaling
 }
 
