@@ -190,7 +190,7 @@ SDL_Surface* EFFECT_createGeneratedSurfaceWithColor(int type, int scale, int tar
 	case EFFECT_GRID:
 		EFFECT_generateGridWithColor(pixels, target_w, target_h, pitch, scale, color);
 		LOG_info(
-		    "EFFECT_createGeneratedSurfaceWithColor: generated GRID %dx%d scale=%d color=0x%04x\n",
+		    "EFFECT_createGeneratedSurfaceWithColor: generated GRID %dx%d scale=%d color=0x%04x",
 		    target_w, target_h, scale, color);
 		break;
 	case EFFECT_GRILLE:

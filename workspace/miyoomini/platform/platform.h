@@ -173,8 +173,12 @@
 ///////////////////////////////
 
 #define SCREEN_DIAGONAL (platform_variant.screen_diagonal)
-#define SCALE_MODIFIER ((platform_variant.variant == VARIANT_MINI_STANDARD || platform_variant.variant == VARIANT_MINI_STANDARD_560P) ? 0.92f : 1.0f)
-#define EDGE_PADDING ((platform_variant.variant == VARIANT_MINI_STANDARD || platform_variant.variant == VARIANT_MINI_STANDARD_560P) ? 5 : 10)
+// Standard variants (non-Plus) have smaller screen and need adjusted scaling
+#define IS_STANDARD_VARIANT                                                                        \
+	(platform_variant.variant == VARIANT_MINI_STANDARD ||                                          \
+	 platform_variant.variant == VARIANT_MINI_STANDARD_560P)
+#define SCALE_MODIFIER (IS_STANDARD_VARIANT ? 0.92f : 1.0f)
+#define EDGE_PADDING (IS_STANDARD_VARIANT ? 5 : 10)
 #define FIXED_WIDTH (platform_variant.screen_width)
 #define FIXED_HEIGHT (platform_variant.screen_height)
 
