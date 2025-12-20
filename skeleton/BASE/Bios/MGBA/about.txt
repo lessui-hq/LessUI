@@ -1,6 +1,0 @@
-Game Boy Advance (mGBA)
-
-Core: mgba
-
-BIOS (optional):
-  gba_bios.bin - improves compatibility

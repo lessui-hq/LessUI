@@ -1,8 +1,0 @@
-Capcom Play System 2
-
-Core: fbneo
-
-Supported file types:
-  .zip, .7z
-
-No BIOS required.

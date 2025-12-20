@@ -1,8 +1,0 @@
-Super Game Boy
-
-Core: mgba
-
-BIOS (optional):
-  sgb_bios.bin - enables SGB borders
-  gb_bios.bin - Game Boy boot animation
-  gbc_bios.bin - Game Boy Color boot animation
