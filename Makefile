@@ -34,15 +34,27 @@ endif
 
 ###########################################################
 # Release versioning
+#
+# CI builds (GitHub Actions): Use VERSION file (e.g., v0.0.1)
+# Local dev builds: Use dev-YYYYMMDD format
+#
+# Output:
+#   - ZIP: LessUI-<version>.zip
+#   - version.txt: <version>\n<git-hash>
 
 BUILD_HASH := $(shell git rev-parse --short HEAD)
 export BUILD_HASH
 RELEASE_TIME := $(shell TZ=GMT date +%Y%m%d)
-RELEASE_BETA =
-RELEASE_BASE = LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
+
+# Determine release name based on environment
+ifeq ($(CI_RELEASE),true)
+# CI release build (tag push): use VERSION file (semver)
+RELEASE_VERSION := $(shell cat VERSION 2>/dev/null || echo "v0.0.0")
+RELEASE_NAME = LessUI-$(RELEASE_VERSION)
+else
+# Local dev build: use dev-DATE format with collision detection
+RELEASE_BASE = LessUI-dev-$(RELEASE_TIME)
 RELEASE_DOT := $(shell find ./releases/. -name "${RELEASE_BASE}-*.zip" 2>/dev/null | wc -l | sed 's/ //g')
-# First build has no suffix, subsequent builds use -1, -2, etc.
-# Check if unnumbered release exists, if so start numbering from RELEASE_DOT+1
 RELEASE_SUFFIX := $(shell \
 	if [ "$(RELEASE_DOT)" = "0" ] && [ ! -f "./releases/${RELEASE_BASE}.zip" ]; then \
 		echo ""; \
@@ -52,6 +64,8 @@ RELEASE_SUFFIX := $(shell \
 		echo "-$$(($(RELEASE_DOT) + 1))"; \
 	fi)
 RELEASE_NAME = $(RELEASE_BASE)$(RELEASE_SUFFIX)
+RELEASE_VERSION = dev-$(RELEASE_TIME)$(RELEASE_SUFFIX)
+endif
 
 ###########################################################
 # Build configuration
@@ -78,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -115,6 +129,11 @@ help:
 	@echo "  make dev-deploy       Deploy to SD card (requires LESSUI_DEV volume)"
 	@echo "  make dev-build-deploy Build and deploy (no compression)"
 	@echo ""
+	@echo "Release:"
+	@echo "  make release-patch    Create patch release (v1.0.0 → v1.0.1)"
+	@echo "  make release-minor    Create minor release (v1.0.1 → v1.1.0)"
+	@echo "  make release-major    Create major release (v1.1.0 → v2.0.0)"
+	@echo ""
 	@echo "Housekeeping:"
 	@echo "  make clean            Remove all build artifacts"
 	@echo "  make name             Print release name"
@@ -131,6 +150,21 @@ shell:
 # Print release name (useful for CI/scripts)
 name:
 	@echo $(RELEASE_NAME)
+
+# Create a release using git-flow
+# Usage: make release-patch (or release-minor/release-major)
+release-patch:
+	@./scripts/release.sh patch
+
+release-minor:
+	@./scripts/release.sh minor
+
+release-major:
+	@./scripts/release.sh major
+
+# Legacy alias (deprecated)
+release:
+	@./scripts/release.sh $(TYPE)
 
 # QA convenience targets (forward to Makefile.qa)
 test:
@@ -325,7 +359,7 @@ stage: tidy
 	@echo "# ----------------------------------------------------"
 	@mkdir -p ./build/PAYLOAD/.system
 	@rsync -a ./build/SYSTEM/ ./build/PAYLOAD/.system/
-	@cd ./build/PAYLOAD/.system && printf '%s\n%s\n' "$(RELEASE_NAME)" "$(BUILD_HASH)" > version.txt
+	@cd ./build/PAYLOAD/.system && printf '%s\n%s\n' "$(RELEASE_VERSION)" "$(BUILD_HASH)" > version.txt
 	@./commits.sh > ./build/PAYLOAD/.system/commits.txt
 	@mkdir -p ./build/PAYLOAD/.system/common/cores/arm32 ./build/PAYLOAD/.system/common/cores/arm64
 	@jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
@@ -350,12 +384,12 @@ compress:
 		rm -rf ./workspace/readmes; \
 	fi
 	@if [ -d ./build/PAYLOAD/.tmp_update ]; then \
-		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update; \
+		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update; \
 	else \
-		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
+		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
 	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@cd ./build/BASE && 7zz a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
+	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
 
 # Package: full release build (stage + compress)

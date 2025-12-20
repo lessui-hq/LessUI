@@ -37,7 +37,7 @@ early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	@mkdir -p other
 	@cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) -s NO_PYTHON=1 dtc
 	@cd $(REQUIRES_FBSET) && $(MAKE) -s
-	@cd $(REQUIRES_SDL2) && MAKEFLAGS=--no-print-directory CFLAGS="-O2 -march=armv8-a+crc -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
+	@cd $(REQUIRES_SDL2) && MAKEFLAGS=--no-print-directory CFLAGS="-O2 -marm -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
 		./configure CC=${CROSS_COMPILE}gcc --host=arm-buildroot-linux-gnueabihf \
 		  --enable-arm-neon \
 		  --disable-oss \

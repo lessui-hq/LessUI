@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build but skip release)"
+        type: boolean
+        default: true
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: sprinters:aws:ubuntu-24.04-arm:c7gd.xlarge
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq rsync 7zip
+
+      - name: Build all platforms
+        run: make all
+        env:
+          CI_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Verify build artifacts
+        run: |
+          if ! ls releases/*.zip 1>/dev/null 2>&1; then
+            echo "Error: No release artifacts found in releases/"
+            exit 1
+          fi
+          echo "Found artifacts:"
+          ls -la releases/*.zip
+
+      - name: Generate checksums
+        run: |
+          cd releases
+          sha256sum *.zip > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attest build provenance
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: releases/*.zip
+
+      - name: Upload build artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.version }}
+          path: releases/*.zip
+          retention-days: 7
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LessUI ${{ steps.version.outputs.version }}
+          files: |
+            releases/*.zip
+            releases/SHA256SUMS
+          generate_release_notes: true
+          make_latest: "true"
