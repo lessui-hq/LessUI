@@ -46,76 +46,8 @@ run_report() {
 		exit 0
 	fi
 
-	# Run the report generator with progress updates
-	{
-		# Run the report generator in background
-		"$PAK_DIR/bin/generate-report" >"$REPORT_FILE" 2>&1 &
-		REPORT_PID=$!
-
-		# Show progress with step information based on timing estimates
-		# Steps: device tree, cpu scaling, cpu benchmark (slow), gpu, display, audio,
-		#        arch test, sdl libs, system, modules, hardware, pwm, buses, special hw,
-		#        environment, network, dmesg
-
-		shui progress "Generating report..." --value 5 --subtext "Device tree detection"
-		sleep 1
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 10 --subtext "CPU frequency analysis"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 20 --subtext "CPU benchmark (this takes a while)"
-			sleep 8
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 40 --subtext "GPU and display info"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 50 --subtext "Audio subsystem"
-			sleep 1
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 55 --subtext "Architecture detection"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 65 --subtext "System information"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 70 --subtext "Hardware paths"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 80 --subtext "Power management detection"
-			sleep 2
-		fi
-
-		if kill -0 "$REPORT_PID" 2>/dev/null; then
-			shui progress "Generating report..." --value 88 --subtext "Network and environment"
-			sleep 2
-		fi
-
-		# Wait for completion if still running
-		while kill -0 "$REPORT_PID" 2>/dev/null; do
-			shui progress "Generating report..." --value 90 --subtext "Finishing up..."
-			sleep 1
-		done
-
-		wait "$REPORT_PID"
-
-		shui progress "Complete!" --value 100
-		sleep 0.5
-	}
+	# Run the report generator (it handles its own progress updates via shui)
+	"$PAK_DIR/bin/generate-report" >"$REPORT_FILE" 2>&1
 
 	# Verify report was created and show result
 	if [ -s "$REPORT_FILE" ]; then

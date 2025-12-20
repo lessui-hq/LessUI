@@ -15,6 +15,22 @@ SCRIPT_DIR="$(dirname "$0")"
 PAK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ###############################################################################
+# Cleanup and signal handling
+###############################################################################
+
+# Track background PIDs for cleanup on exit
+CHILD_PIDS=""
+
+cleanup_children() {
+	for pid in $CHILD_PIDS; do
+		kill "$pid" 2>/dev/null
+		kill -9 "$pid" 2>/dev/null
+	done
+}
+
+trap cleanup_children EXIT INT TERM HUP
+
+###############################################################################
 # Logging helpers - Markdown formatted output
 ###############################################################################
 
@@ -63,6 +79,79 @@ code_start() {
 
 code_end() {
 	echo '```'
+}
+
+# Progress update helper - calls shui directly
+progress() {
+	pct="$1"
+	msg="$2"
+	shui progress "Generating report..." --value "$pct" --subtext "$msg" 2>/dev/null || true
+}
+
+# Run command with timeout
+# Usage: with_timeout <seconds> <command> [args...]
+# Returns: command exit code, or 124 on timeout (matching GNU timeout)
+with_timeout() {
+	secs="$1"
+	shift
+	if command -v timeout >/dev/null 2>&1; then
+		timeout "$secs" "$@"
+	else
+		# Fallback: watchdog process pattern
+		# Run command in background
+		"$@" &
+		cmd_pid=$!
+		CHILD_PIDS="$CHILD_PIDS $cmd_pid"
+
+		# Start watchdog that kills command after timeout
+		(
+			sleep "$secs"
+			kill "$cmd_pid" 2>/dev/null
+		) &
+		watchdog_pid=$!
+		CHILD_PIDS="$CHILD_PIDS $watchdog_pid"
+
+		# Wait for command to finish (either naturally or killed by watchdog)
+		wait "$cmd_pid" 2>/dev/null
+		ret=$?
+
+		# Kill watchdog if command finished before timeout
+		kill "$watchdog_pid" 2>/dev/null
+		wait "$watchdog_pid" 2>/dev/null
+
+		# Return 124 if killed by signal (128+signal), else actual exit code
+		if [ "$ret" -gt 128 ]; then
+			return 124
+		fi
+		return "$ret"
+	fi
+}
+
+# Safe wrappers for commands known to hang
+# Stderr is suppressed here so callers get clean output
+safe_iwconfig() {
+	with_timeout 3 iwconfig "$@" 2>/dev/null
+}
+
+safe_iw() {
+	with_timeout 3 iw "$@" 2>/dev/null
+}
+
+safe_wpa_cli() {
+	with_timeout 3 wpa_cli "$@" 2>/dev/null
+}
+
+safe_ifconfig() {
+	with_timeout 3 ifconfig "$@" 2>/dev/null
+}
+
+safe_hciconfig() {
+	with_timeout 3 hciconfig "$@" 2>/dev/null
+}
+
+# Note: callers should pipe "quit" command to ensure bluetoothctl exits cleanly
+safe_bluetoothctl() {
+	with_timeout 3 bluetoothctl "$@" 2>/dev/null
 }
 
 ###############################################################################
@@ -2683,10 +2772,41 @@ fn_network() {
 
 	log_h2 "Interfaces"
 	code_start
-	ifconfig 2>/dev/null || ip addr 2>/dev/null || echo "No network tools available"
+	safe_ifconfig 2>/dev/null || ip addr 2>/dev/null || echo "No network tools available"
 	code_end
 
 	log_h2 "WiFi Status"
+
+	# Probe wireless tools once to avoid repeated timeouts if driver is stuck
+	iw_works=0
+	iwconfig_works=0
+	wpa_works=0
+
+	if command -v iw >/dev/null 2>&1; then
+		if safe_iw dev 2>/dev/null | grep -q .; then
+			iw_works=1
+		else
+			log_warn "iw command timed out or failed - skipping detailed wireless info"
+		fi
+	elif command -v iwconfig >/dev/null 2>&1; then
+		# Fallback to iwconfig for older/vendor drivers
+		if safe_iwconfig 2>/dev/null | grep -q "wlan\|802\.11"; then
+			iwconfig_works=1
+			log_info "Using iwconfig (iw not available)"
+		else
+			log_warn "iwconfig timed out or failed"
+		fi
+	else
+		log_info "No wireless tools available (iw/iwconfig not found)"
+	fi
+
+	if command -v wpa_cli >/dev/null 2>&1; then
+		if safe_wpa_cli status 2>/dev/null | grep -q .; then
+			wpa_works=1
+		else
+			log_warn "wpa_cli timed out or failed - skipping wpa_supplicant info"
+		fi
+	fi
 
 	# Find all WiFi interfaces (not just wlan0)
 	found_wifi=0
@@ -2699,7 +2819,7 @@ fn_network() {
 			echo "| Property | Value |"
 			echo "|----------|-------|"
 
-			# Basic interface info
+			# Basic interface info (from sysfs - always safe)
 			if [ -f "$iface/operstate" ]; then
 				echo "| operstate | \`$(cat "$iface/operstate" 2>/dev/null || echo 'N/A')\` |"
 			fi
@@ -2745,76 +2865,100 @@ fn_network() {
 				echo "| power control | \`$power_control\` |"
 			fi
 
-			# Wireless-specific info
-			log_h3 "$ifname Wireless Details"
-			echo ""
-			echo "| Property | Value |"
-			echo "|----------|-------|"
+			# Wireless-specific info (only if tools responded to probe)
+			if [ "$iw_works" = "1" ]; then
+				log_h3 "$ifname Wireless Details"
+				echo ""
+				echo "| Property | Value |"
+				echo "|----------|-------|"
 
-			# Check for wireless extensions support
-			if command -v iwconfig >/dev/null 2>&1; then
-				tx_power=$(iwconfig "$ifname" 2>/dev/null | grep "Tx-Power" | sed 's/.*Tx-Power=\([^ ]*\).*/\1/')
-				if [ -n "$tx_power" ]; then
-					echo "| TX Power | $tx_power |"
-				fi
-			fi
-
-			# Check for iw support (modern wireless tools)
-			if command -v iw >/dev/null 2>&1; then
 				# PHY info
-				phy=$(iw dev "$ifname" info 2>/dev/null | grep wiphy | awk '{print $2}')
+				phy=$(safe_iw dev "$ifname" info 2>/dev/null | grep wiphy | awk '{print $2}')
 				if [ -n "$phy" ]; then
 					echo "| PHY | phy$phy |"
 
-					# Channel capabilities
-					channels=$(iw phy "phy$phy" info 2>/dev/null | grep -c "MHz")
-					if [ -n "$channels" ] && [ "$channels" -gt 0 ]; then
-						echo "| Supported channels | $channels |"
-					fi
+					# Get phy info once and parse multiple values
+					phy_info=$(safe_iw phy "phy$phy" info 2>/dev/null)
+					if [ -n "$phy_info" ]; then
+						channels=$(echo "$phy_info" | grep -c "MHz")
+						[ "$channels" -gt 0 ] && echo "| Supported channels | $channels |"
 
-					# Check for 2.4GHz support
-					has_2ghz=$(iw phy "phy$phy" info 2>/dev/null | grep -c "2... MHz")
-					if [ -n "$has_2ghz" ] && [ "$has_2ghz" -gt 0 ]; then
-						echo "| 2.4 GHz support | ✓ Yes ($has_2ghz channels) |"
-					fi
+						has_2ghz=$(echo "$phy_info" | grep -c "2... MHz")
+						[ "$has_2ghz" -gt 0 ] && echo "| 2.4 GHz support | ✓ Yes ($has_2ghz channels) |"
 
-					# Check for 5GHz support
-					has_5ghz=$(iw phy "phy$phy" info 2>/dev/null | grep -c "5... MHz")
-					if [ -n "$has_5ghz" ] && [ "$has_5ghz" -gt 0 ]; then
-						echo "| 5 GHz support | ✓ Yes ($has_5ghz channels) |"
+						has_5ghz=$(echo "$phy_info" | grep -c "5... MHz")
+						[ "$has_5ghz" -gt 0 ] && echo "| 5 GHz support | ✓ Yes ($has_5ghz channels) |"
 					fi
 				fi
 
 				# Current connection status
 				if [ -f "$iface/operstate" ] && [ "$(cat "$iface/operstate")" = "up" ]; then
-					ssid=$(iw dev "$ifname" link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')
-					if [ -n "$ssid" ] && [ "$ssid" != "Not connected." ]; then
-						echo "| Connected SSID | \`$ssid\` |"
+					link_info=$(safe_iw dev "$ifname" link 2>/dev/null)
+					if [ -n "$link_info" ]; then
+						ssid=$(echo "$link_info" | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')
+						if [ -n "$ssid" ] && [ "$ssid" != "Not connected." ]; then
+							echo "| Connected SSID | \`$ssid\` |"
 
-						freq=$(iw dev "$ifname" link 2>/dev/null | grep freq: | awk '{print $2}')
-						[ -n "$freq" ] && echo "| Frequency | ${freq} MHz |"
+							freq=$(echo "$link_info" | grep freq: | awk '{print $2}')
+							[ -n "$freq" ] && echo "| Frequency | ${freq} MHz |"
 
-						signal=$(iw dev "$ifname" link 2>/dev/null | grep signal: | awk '{print $2, $3}')
-						[ -n "$signal" ] && echo "| Signal strength | $signal |"
+							signal=$(echo "$link_info" | grep signal: | awk '{print $2, $3}')
+							[ -n "$signal" ] && echo "| Signal strength | $signal |"
 
-						tx_bitrate=$(iw dev "$ifname" link 2>/dev/null | grep "tx bitrate:" | sed 's/.*tx bitrate: \(.*\)/\1/')
-						[ -n "$tx_bitrate" ] && echo "| TX bitrate | $tx_bitrate |"
+							tx_bitrate=$(echo "$link_info" | grep "tx bitrate:" | sed 's/.*tx bitrate: \(.*\)/\1/')
+							[ -n "$tx_bitrate" ] && echo "| TX bitrate | $tx_bitrate |"
 
-						rx_bitrate=$(iw dev "$ifname" link 2>/dev/null | grep "rx bitrate:" | sed 's/.*rx bitrate: \(.*\)/\1/')
-						[ -n "$rx_bitrate" ] && echo "| RX bitrate | $rx_bitrate |"
+							rx_bitrate=$(echo "$link_info" | grep "rx bitrate:" | sed 's/.*rx bitrate: \(.*\)/\1/')
+							[ -n "$rx_bitrate" ] && echo "| RX bitrate | $rx_bitrate |"
+						fi
 					fi
+				fi
+			elif [ "$iwconfig_works" = "1" ]; then
+				# Fallback: use iwconfig for basic wireless info
+				log_h3 "$ifname Wireless Details (iwconfig)"
+				echo ""
+				echo "| Property | Value |"
+				echo "|----------|-------|"
+
+				iwcfg=$(safe_iwconfig "$ifname" 2>/dev/null)
+				if [ -n "$iwcfg" ]; then
+					# Extract what we can from iwconfig output
+					essid=$(echo "$iwcfg" | grep -o 'ESSID:"[^"]*"' | cut -d'"' -f2)
+					[ -n "$essid" ] && echo "| ESSID | \`$essid\` |"
+
+					mode=$(echo "$iwcfg" | grep -o 'Mode:[^ ]*' | cut -d: -f2)
+					[ -n "$mode" ] && echo "| Mode | $mode |"
+
+					freq=$(echo "$iwcfg" | grep -o 'Frequency:[^ ]*' | cut -d: -f2)
+					[ -n "$freq" ] && echo "| Frequency | $freq |"
+
+					ap=$(echo "$iwcfg" | grep -o 'Access Point: [^ ]*' | cut -d' ' -f3)
+					[ -n "$ap" ] && [ "$ap" != "Not-Associated" ] && echo "| Access Point | \`$ap\` |"
+
+					bitrate=$(echo "$iwcfg" | grep -o 'Bit Rate[=:][^ ]*' | cut -d'=' -f2 | cut -d':' -f2)
+					[ -n "$bitrate" ] && echo "| Bit Rate | $bitrate |"
+
+					txpower=$(echo "$iwcfg" | grep -o 'Tx-Power[=:][^ ]*' | cut -d'=' -f2 | cut -d':' -f2)
+					[ -n "$txpower" ] && echo "| TX Power | $txpower |"
+
+					quality=$(echo "$iwcfg" | grep -o 'Link Quality[=:][^ ]*' | cut -d'=' -f2 | cut -d':' -f2)
+					[ -n "$quality" ] && echo "| Link Quality | $quality |"
+
+					signal=$(echo "$iwcfg" | grep -o 'Signal level[=:][^ ]*' | cut -d'=' -f2 | cut -d':' -f2)
+					[ -n "$signal" ] && echo "| Signal Level | $signal |"
 				fi
 			fi
 
-			# Check for wpa_supplicant status
-			if command -v wpa_cli >/dev/null 2>&1; then
-				wpa_state=$(wpa_cli -i "$ifname" status 2>/dev/null | grep "wpa_state=" | cut -d= -f2)
+			# Check for wpa_supplicant status (only if probe succeeded)
+			if [ "$wpa_works" = "1" ]; then
+				wpa_status=$(safe_wpa_cli -i "$ifname" status 2>/dev/null)
+				wpa_state=$(echo "$wpa_status" | grep "wpa_state=" | cut -d= -f2)
 				if [ -n "$wpa_state" ]; then
 					echo "| wpa_supplicant state | $wpa_state |"
 
 					if [ "$wpa_state" = "COMPLETED" ]; then
-						wpa_ssid=$(wpa_cli -i "$ifname" status 2>/dev/null | grep "^ssid=" | cut -d= -f2)
-						wpa_ip=$(wpa_cli -i "$ifname" status 2>/dev/null | grep "ip_address=" | cut -d= -f2)
+						wpa_ssid=$(echo "$wpa_status" | grep "^ssid=" | cut -d= -f2)
+						wpa_ip=$(echo "$wpa_status" | grep "ip_address=" | cut -d= -f2)
 						[ -n "$wpa_ssid" ] && echo "| wpa SSID | \`$wpa_ssid\` |"
 						[ -n "$wpa_ip" ] && echo "| wpa IP | \`$wpa_ip\` |"
 					fi
@@ -2884,6 +3028,24 @@ fn_network() {
 
 	log_h2 "Bluetooth Status"
 
+	# Probe Bluetooth tools once to avoid repeated timeouts
+	hciconfig_works=0
+	bluetoothctl_works=0
+	if command -v hciconfig >/dev/null 2>&1; then
+		if safe_hciconfig 2>/dev/null | grep -q .; then
+			hciconfig_works=1
+		else
+			log_warn "hciconfig timed out or failed - skipping detailed controller info"
+		fi
+	fi
+	if command -v bluetoothctl >/dev/null 2>&1; then
+		if printf '%s\n' "show" "quit" | safe_bluetoothctl 2>/dev/null | grep -q .; then
+			bluetoothctl_works=1
+		else
+			log_warn "bluetoothctl timed out or failed - skipping runtime status"
+		fi
+	fi
+
 	# Check for Bluetooth interfaces
 	found_bt=0
 	for hci in /sys/class/bluetooth/hci*; do
@@ -2895,6 +3057,7 @@ fn_network() {
 			echo "| Property | Value |"
 			echo "|----------|-------|"
 
+			# Basic info from sysfs (always safe)
 			if [ -f "$hci/address" ]; then
 				echo "| MAC address | \`$(cat "$hci/address" 2>/dev/null || echo 'N/A')\` |"
 			fi
@@ -2931,78 +3094,76 @@ fn_network() {
 				echo "| power control | \`$power_control\` |"
 			fi
 
-			# Controller type and version
-			log_h3 "$hciname Controller Details"
-			echo ""
-			echo "| Property | Value |"
-			echo "|----------|-------|"
+			# Controller details (only if hciconfig probe passed)
+			if [ "$hciconfig_works" = "1" ]; then
+				log_h3 "$hciname Controller Details"
+				echo ""
+				echo "| Property | Value |"
+				echo "|----------|-------|"
 
-			if command -v hciconfig >/dev/null 2>&1; then
-				# Get detailed controller info
-				hci_type=$(hciconfig "$hciname" 2>/dev/null | grep "Type:" | cut -d: -f2- | xargs)
-				[ -n "$hci_type" ] && echo "| Type | $hci_type |"
+				# Get hciconfig output once and parse
+				hci_info=$(safe_hciconfig "$hciname" 2>/dev/null)
+				if [ -n "$hci_info" ]; then
+					hci_type=$(echo "$hci_info" | grep "Type:" | cut -d: -f2- | xargs)
+					[ -n "$hci_type" ] && echo "| Type | $hci_type |"
 
-				hci_bus=$(hciconfig "$hciname" 2>/dev/null | grep "Bus:" | cut -d: -f2- | xargs)
-				[ -n "$hci_bus" ] && echo "| Bus | $hci_bus |"
+					hci_bus=$(echo "$hci_info" | grep "Bus:" | cut -d: -f2- | xargs)
+					[ -n "$hci_bus" ] && echo "| Bus | $hci_bus |"
 
-				# BD Address (Bluetooth Device Address)
-				bd_addr=$(hciconfig "$hciname" 2>/dev/null | grep "BD Address:" | cut -d: -f2- | awk '{print $1}')
-				[ -n "$bd_addr" ] && echo "| BD Address | \`$bd_addr\` |"
+					bd_addr=$(echo "$hci_info" | grep "BD Address:" | cut -d: -f2- | awk '{print $1}')
+					[ -n "$bd_addr" ] && echo "| BD Address | \`$bd_addr\` |"
 
-				# ACL/SCO MTU
-				acl_mtu=$(hciconfig "$hciname" 2>/dev/null | grep "ACL MTU:" | cut -d: -f2- | xargs)
-				[ -n "$acl_mtu" ] && echo "| ACL MTU | $acl_mtu |"
+					acl_mtu=$(echo "$hci_info" | grep "ACL MTU:" | cut -d: -f2- | xargs)
+					[ -n "$acl_mtu" ] && echo "| ACL MTU | $acl_mtu |"
 
-				# Current state (UP/DOWN, RUNNING, etc.)
-				if hciconfig "$hciname" 2>/dev/null | grep -q "UP RUNNING"; then
-					echo "| Controller state | ✓ UP and RUNNING |"
-				elif hciconfig "$hciname" 2>/dev/null | grep -q "DOWN"; then
-					echo "| Controller state | DOWN (disabled) |"
+					if echo "$hci_info" | grep -q "UP RUNNING"; then
+						echo "| Controller state | ✓ UP and RUNNING |"
+					elif echo "$hci_info" | grep -q "DOWN"; then
+						echo "| Controller state | DOWN (disabled) |"
+					fi
 				fi
 			fi
 
-			# Check for bluetoothctl info
-			if command -v bluetoothctl >/dev/null 2>&1; then
+			# Runtime status (only if bluetoothctl probe passed)
+			if [ "$bluetoothctl_works" = "1" ]; then
 				log_h3 "$hciname Runtime Status"
 				echo ""
 				echo "| Property | Value |"
 				echo "|----------|-------|"
 
-				# Controller info via bluetoothctl
-				bt_powered=$(echo "show" | bluetoothctl 2>/dev/null | grep "Powered:" | awk '{print $2}')
-				[ -n "$bt_powered" ] && echo "| Powered | $bt_powered |"
+				# Get bluetoothctl show output once and parse
+				bt_show=$(printf '%s\n' "show" "quit" | safe_bluetoothctl 2>/dev/null)
+				if [ -n "$bt_show" ]; then
+					bt_powered=$(echo "$bt_show" | grep "Powered:" | awk '{print $2}')
+					[ -n "$bt_powered" ] && echo "| Powered | $bt_powered |"
 
-				bt_discoverable=$(echo "show" | bluetoothctl 2>/dev/null | grep "Discoverable:" | awk '{print $2}')
-				[ -n "$bt_discoverable" ] && echo "| Discoverable | $bt_discoverable |"
+					bt_discoverable=$(echo "$bt_show" | grep "Discoverable:" | awk '{print $2}')
+					[ -n "$bt_discoverable" ] && echo "| Discoverable | $bt_discoverable |"
 
-				bt_pairable=$(echo "show" | bluetoothctl 2>/dev/null | grep "Pairable:" | awk '{print $2}')
-				[ -n "$bt_pairable" ] && echo "| Pairable | $bt_pairable |"
+					bt_pairable=$(echo "$bt_show" | grep "Pairable:" | awk '{print $2}')
+					[ -n "$bt_pairable" ] && echo "| Pairable | $bt_pairable |"
 
-				bt_discovering=$(echo "show" | bluetoothctl 2>/dev/null | grep "Discovering:" | awk '{print $2}')
-				[ -n "$bt_discovering" ] && echo "| Discovering | $bt_discovering |"
-			fi
+					bt_discovering=$(echo "$bt_show" | grep "Discovering:" | awk '{print $2}')
+					[ -n "$bt_discovering" ] && echo "| Discovering | $bt_discovering |"
+				fi
 
-			# Paired devices
-			if command -v bluetoothctl >/dev/null 2>&1; then
+				# Paired devices
 				log_h3 "$hciname Paired Devices"
-
-				paired_count=$(echo "paired-devices" | bluetoothctl 2>/dev/null | grep -c "Device" || echo "0")
+				paired_output=$(printf '%s\n' "paired-devices" "quit" | safe_bluetoothctl 2>/dev/null)
+				paired_count=$(echo "$paired_output" | grep -c "Device" || echo "0")
 				echo ""
 				echo "- **$paired_count device(s) paired**"
 
 				if [ "$paired_count" -gt 0 ]; then
 					echo ""
 					code_start
-					echo "paired-devices" | bluetoothctl 2>/dev/null | grep "Device" || true
+					echo "$paired_output" | grep "Device" || true
 					code_end
 				fi
-			fi
 
-			# Connected devices
-			if command -v bluetoothctl >/dev/null 2>&1; then
+				# Connected devices
 				log_h3 "$hciname Connected Devices"
-
-				connected_devices=$(echo "devices" | bluetoothctl 2>/dev/null | grep "Device")
+				connected_devices=$(printf '%s\n' "devices" "quit" | safe_bluetoothctl 2>/dev/null | grep "Device")
 				if [ -n "$connected_devices" ]; then
 					echo ""
 					code_start
@@ -3147,35 +3308,66 @@ main() {
 	log_info "Platform: ${PLATFORM:-unknown}"
 
 	# Core hardware detection (most important for platform bring-up)
+	progress 5 "Device tree detection"
 	fn_device_tree
+
+	progress 10 "CPU frequency scaling"
 	fn_cpu_scaling
+
+	progress 15 "CPU benchmark"
 	fn_cpu_benchmark
+
+	progress 50 "GPU detection"
 	fn_gpu
+
+	progress 55 "Display info"
 	fn_display
+
+	progress 58 "Audio subsystem"
 	fn_audio
 
 	# Architecture and binary compatibility
+	progress 62 "Architecture detection"
 	fn_arch_test
+
+	progress 65 "SDL libraries"
 	fn_sdl_libraries
 
 	# System state
+	progress 68 "System information"
 	fn_system
+
+	progress 72 "Kernel modules"
 	fn_modules
 
 	# Hardware interfaces
+	progress 75 "Hardware paths"
 	fn_hardware
+
+	progress 78 "PWM detection"
 	fn_pwm
+
+	progress 80 "Bus enumeration"
 	fn_buses
+
+	progress 83 "Special hardware"
 	fn_special_hardware
+
+	progress 86 "Power management"
 	fn_power_management
 
 	# Environment and config
+	progress 90 "Environment variables"
 	fn_environment
+
+	progress 93 "Network interfaces"
 	fn_network
 
 	# Debug info (at end since it's verbose)
+	progress 97 "Kernel messages"
 	fn_dmesg
 
+	progress 100 "Complete!"
 	log_h1 "END OF REPORT"
 }
 
