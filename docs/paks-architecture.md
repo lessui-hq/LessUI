@@ -27,18 +27,18 @@ Paks can reference shared code in `workspace/all/common/` since they're in the s
 
 ```
 workspace/all/paks/
-├── makefile                        # Master makefile - discovers and builds all paks
+├── Makefile                        # Master makefile - discovers and builds all paks
 ├── Clock/
 │   ├── pak.json                    # Metadata (name, platforms, build type)
 │   ├── launch.sh                   # Entry point (cross-platform)
 │   ├── src/                        # Native C code
 │   │   ├── clock.c
-│   │   └── makefile                # Build configuration
+│   │   └── Makefile                # Build configuration
 │   └── build/                      # Generated output (per-platform)
 │       └── miyoomini/
 │           └── clock.elf
 │
-├── Wifi/                           # Future: WiFi configuration pak
+├── WiFi/                           # WiFi configuration pak
 │   ├── pak.json
 │   ├── launch.sh
 │   ├── bin/
@@ -54,7 +54,7 @@ workspace/all/paks/
 │   ├── launch.sh
 │   └── src/
 │       ├── minput.c
-│       └── makefile
+│       └── Makefile
 │
 └── Files/                          # Future: file manager pak
     ├── pak.json
@@ -71,7 +71,7 @@ workspace/all/paks/
 
 ```json
 {
-  "name": "Wifi",
+  "name": "WiFi",
   "type": "tool",
   "description": "Manage WiFi settings",
   "version": "1.0.0",

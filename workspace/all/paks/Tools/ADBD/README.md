@@ -28,7 +28,7 @@ The pak performs the following steps:
 
 ## Usage
 
-1. Ensure WiFi is configured on your Miyoo Mini Plus (stock WiFi settings or Wifi.pak)
+1. Ensure WiFi is configured on your Miyoo Mini Plus (stock WiFi settings or WiFi.pak)
 2. Launch ADBD.pak from the Tools menu
 3. Note your device's IP address from WiFi settings
 4. On your computer, run: `adb connect <device-ip>:5555`

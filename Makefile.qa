@@ -723,7 +723,7 @@ check-prettier:
 
 # Files to format with prettier (exclude third-party, build outputs, and templates)
 PRETTIER_PATTERNS = "workspace/all/paks/**/*.json" ".github/**/*.yml" "*.md" "docs/**/*.md" \
-                    "!workspace/all/paks/Tools/Wifi/res/**"
+                    "!workspace/all/paks/Tools/WiFi/res/**"
 PRETTIER_IGNORE = --ignore-path .gitignore
 
 # Format JSON, YAML, and Markdown in-place

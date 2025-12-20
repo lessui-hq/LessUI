@@ -33,7 +33,7 @@ File Server runs a web server ([dufs](https://github.com/sigoden/dufs/)) that le
 
 ## Usage
 
-1. Connect device to WiFi using the Wifi pak
+1. Connect device to WiFi using the WiFi pak
 2. Launch `Tools > File Server`
 3. Toggle "Enabled" to start the server
 4. Note the IP address shown in settings

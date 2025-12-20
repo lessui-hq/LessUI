@@ -142,10 +142,10 @@ LessUI uses **four systems** for platform-specific `.pak` directories:
 
 ```
 workspace/all/paks/
-├── Tools/                    # Tool paks (Clock, Input, Wifi, etc.)
+├── Tools/                    # Tool paks (Clock, Input, WiFi, etc.)
 ├── Emus/                     # Emulator paks (template-based)
 ├── Launcher/                    # System pak (template-based)
-└── makefile                  # Build orchestration
+└── Makefile                  # Build orchestration
 ```
 
 **1. Tool Paks** (`workspace/all/paks/Tools/`) - Self-contained cross-platform tools:
@@ -153,7 +153,7 @@ workspace/all/paks/
 - Each pak has its own directory with `pak.json`, `launch.sh`, and optional `src/`
 - Native code in `src/` is cross-compiled per platform
 - Constructed during `make system` (not `make setup`)
-- Examples: `Clock/`, `Input/`, `Bootlogo/`, `Files/`, `Wifi/`
+- Examples: `Clock/`, `Input/`, `Bootlogo/`, `Files/`, `WiFi/`
 - Platform-specific resources supported via `<platform>/` directories
 - Hybrid pattern supported (native for some platforms, shell-only for others)
 

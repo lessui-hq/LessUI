@@ -2,7 +2,7 @@
 # Orchestrates all pak builds using a standard hook interface
 #
 # Directory structure:
-#   Tools/     - Tool paks (Clock, Input, Wifi, etc.)
+#   Tools/     - Tool paks (Clock, Input, WiFi, etc.)
 #   Emus/      - Emulator paks (template-based)
 #   Launcher/     - System pak (template-based)
 #

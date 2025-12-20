@@ -277,7 +277,7 @@ New algorithm calculates optimal rows from screen space:
   - HDMI: State detection, audio routing, EDID
   - Power management, kernel config, USB modes, watchdog
 - **Benchmark** - Performance testing and frequency debugging
-- **Wifi** - Network configuration with on-screen keyboard
+- **WiFi** - Network configuration with on-screen keyboard
 
 ### Shell UI (shui)
 
