@@ -31,7 +31,7 @@ setup:
 			echo "Extracting override arm32 cores ($$OVERRIDE_VERSION)..."; \
 			rm -rf "$(CORES_DIR)/extracted/override/arm32"; \
 			mkdir -p "$(CORES_DIR)/extracted/override/arm32"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/override/arm32" "$(CORES_DIR)/override/linux-arm32.zip" >/dev/null; \
+			7z e -y -o"$(CORES_DIR)/extracted/override/arm32" "$(CORES_DIR)/override/linux-arm32.zip" >/dev/null; \
 			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-arm32"; \
 			rsync -a "$(CORES_DIR)/extracted/override/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
 		fi; \
@@ -45,7 +45,7 @@ setup:
 			curl -sL $(CORES_BASE)/linux-arm32.zip -o /tmp/lessui-cores-arm32.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/arm32"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/arm32"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm32" /tmp/lessui-cores-arm32.zip >/dev/null; \
+			7z e -y -o"$(CORES_DIR)/extracted/remote/arm32" /tmp/lessui-cores-arm32.zip >/dev/null; \
 			rm /tmp/lessui-cores-arm32.zip; \
 			echo "$(PLAYER_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm32"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm32/" "$$BUILD_CORES_DIR/arm32/"; \
@@ -61,7 +61,7 @@ setup:
 			echo "Extracting override arm64 cores ($$OVERRIDE_VERSION)..."; \
 			rm -rf "$(CORES_DIR)/extracted/override/arm64"; \
 			mkdir -p "$(CORES_DIR)/extracted/override/arm64"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/override/arm64" "$(CORES_DIR)/override/linux-arm64.zip" >/dev/null; \
+			7z e -y -o"$(CORES_DIR)/extracted/override/arm64" "$(CORES_DIR)/override/linux-arm64.zip" >/dev/null; \
 			echo "$$OVERRIDE_VERSION" > "$(CORES_DIR)/extracted/override/.version-arm64"; \
 			rsync -a "$(CORES_DIR)/extracted/override/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
 		fi; \
@@ -75,7 +75,7 @@ setup:
 			curl -sL $(CORES_BASE)/linux-arm64.zip -o /tmp/lessui-cores-arm64.zip; \
 			rm -rf "$(CORES_DIR)/extracted/remote/arm64"; \
 			mkdir -p "$(CORES_DIR)/extracted/remote/arm64"; \
-			7zz e -y -o"$(CORES_DIR)/extracted/remote/arm64" /tmp/lessui-cores-arm64.zip >/dev/null; \
+			7z e -y -o"$(CORES_DIR)/extracted/remote/arm64" /tmp/lessui-cores-arm64.zip >/dev/null; \
 			rm /tmp/lessui-cores-arm64.zip; \
 			echo "$(PLAYER_CORES_VERSION)" > "$(CORES_DIR)/extracted/remote/.version-arm64"; \
 			rsync -a "$(CORES_DIR)/extracted/remote/arm64/" "$$BUILD_CORES_DIR/arm64/"; \
