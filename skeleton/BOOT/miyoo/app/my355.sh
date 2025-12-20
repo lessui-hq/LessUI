@@ -15,10 +15,9 @@ fi
 export PATH=/usr/miyoo/bin:/usr/miyoo/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 export LD_LIBRARY_PATH=/usr/miyoo/lib:/usr/lib:/lib
 
-
 # .tmp_update/updater does the actual installation (and later, updating)
 cp -rf .tmp_update $SDCARD_PATH/
-rm -rf "$SDCARD_PATH/$MIYOO_DIR"
+rm -rf "${SDCARD_PATH:?}/${MIYOO_DIR:?}"
 sync
 $SDCARD_PATH/.tmp_update/updater
 

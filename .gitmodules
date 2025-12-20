@@ -1,0 +1,3 @@
+[submodule "workspace/all/player/libretro-common"]
+	path = workspace/all/player/libretro-common
+	url = https://github.com/libretro/libretro-common

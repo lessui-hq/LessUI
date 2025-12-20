@@ -5,7 +5,7 @@ Platform implementation for the Magic Mini retro handheld device.
 > [!WARNING]
 > **This platform is deprecated and will be removed in a future LessUI release.**
 >
-> **Reason**: RK3326 chipset scandal and supplier fraud issues affecting device availability and support.
+> **Reason**: Supplier fraud issues affecting device availability and support.
 >
 > While the platform will continue to work with current LessUI releases, it will not receive new features or platform-specific bug fixes.
 
@@ -20,24 +20,29 @@ Platform implementation for the Magic Mini retro handheld device.
 ### Input
 - **D-Pad**: Up, Down, Left, Right
 - **Face Buttons**: A, B, X, Y
-- **Shoulder Buttons**: L1, R1, L2, R2
+- **Shoulder Buttons**: L1, R1, L2, R2, L3, R3 (L3/R3 also function as MENU button)
+- **Analog Sticks**: Left stick (digital conversion), Right stick (analog values)
 - **System Buttons**:
-  - MENU button
+  - MENU button (also triggered by L3/R3)
   - POWER button
   - Dedicated PLUS/MINUS volume buttons
 
 ### Input Method
-- **Primary**: Joystick API (SDL joystick indices defined but currently unused)
-- **Active**: Evdev codes for volume/power buttons only
-- **No SDL Keyboard**: All keyboard mappings are `BUTTON_NA`
+- **Primary**: Evdev input events (direct reading from `/dev/input/event*`)
+- **Implementation**: Reads raw `input_event` structures for all buttons and analog sticks
+- **No SDL Input**: Platform bypasses SDL keyboard and joystick APIs entirely
 
 ### CPU & Performance
-- ARM processor with NEON SIMD support
-- No overclocking support
+- Rockchip RK3566 SoC (quad-core ARM Cortex-A55)
+- ARM NEON SIMD support
+- CPU frequency scaling: 600MHz, 816MHz, 1.416GHz, 2.016GHz
+- GPU and DMC governor control
 
 ### Power Management
-- Basic power button detection via evdev (CODE_POWER = 116)
-- No battery monitoring daemon
+- Power button detection via evdev (CODE_POWER = 116)
+- Battery monitoring via sysfs (`/sys/class/power_supply/`)
+- Charging detection (`ac/online`)
+- Battery capacity with 6-level bucketing (10%, 20%, 40%, 60%, 80%, 100%)
 
 ### Storage
 - **Primary SD Card**: `/mnt/SDCARD` (internal/stock OS)
@@ -72,11 +77,12 @@ magicmini/
 
 ## Input System
 
-The Magic Mini has a **simplified input architecture**:
+The Magic Mini uses **direct evdev input**:
 
-1. **Joystick API**: Button indices are defined (JOY_A=0, JOY_B=1, etc.) but currently unused
-2. **Evdev Codes**: Only POWER and volume buttons (PLUS/MINUS) use evdev
-3. **No SDL Keyboard**: Platform does not use SDL keyboard events
+1. **Evdev Events**: All input via raw `/dev/input/event*` reading (`struct input_event`)
+2. **Analog Sticks**: Left stick generates digital button presses, right stick provides analog values
+3. **L3/R3 Behavior**: Both L3 and R3 trigger MENU button in addition to their own codes
+4. **No SDL**: Platform does not use SDL keyboard or joystick APIs
 
 ### Input Event Devices
 - **event2**: Gamepad/menu button input
@@ -124,7 +130,7 @@ make
 The platform automatically clones required dependencies on first build:
 - **351Files**: `github.com/shauninman/351Files.git` (file manager)
 
-Note: Unlike most platforms, Magic Mini has no SDL dependency in its makefile.
+Note: Unlike most platforms, Magic Mini has no SDL dependency in its Makefile.
 
 ## Installation
 
@@ -142,9 +148,9 @@ LessUI installs to the **secondary SD card** (`/storage/TF2`) with this structur
 │   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── Roms/                   ROM files organized by system
-├── LessUI.zip               Update package (if present)
+├── LessUI.7z               Update package (if present)
 └── log.txt                 Installation/update log
 ```
 
@@ -159,7 +165,7 @@ SYSTEM.squashfs/
 │   ├── bin/
 │   │   └── autostart.sh    # Magic Mini's boot.sh gets installed here
 │   └── config/
-│       └── minui/
+│       └── launcher/
 │           ├── installing.bmp  # Copied from install/installing.bmp
 │           └── updating.bmp    # Copied from install/updating.bmp
 ```
@@ -170,11 +176,11 @@ The `autostart.sh` script runs on device boot and checks for LessUI updates on t
 
 1. Device boots stock OS from internal SD
 2. Stock OS runs `/usr/bin/autostart.sh` (LessUI's boot.sh)
-3. Script checks for `LessUI.zip` on `/storage/TF2`
-4. If ZIP found:
+3. Script checks for `LessUI.7z` on `/storage/TF2`
+4. If archive found:
    - Display splash screen to framebuffer (`installing.bmp` or `updating.bmp`)
-   - Extract ZIP to `/storage/TF2`
-   - Delete ZIP file
+   - Extract archive to `/storage/TF2`
+   - Delete archive
    - Run `.system/magicmini/bin/install.sh` to complete setup
 5. Launch LessUI via `.system/magicmini/paks/LessUI.pak/launch.sh`
 6. If launcher exits, shutdown device (prevents stock OS from interfering)
@@ -184,7 +190,7 @@ The `autostart.sh` script runs on device boot and checks for LessUI updates on t
 The platform uses a unique BMP display method:
 
 ```bash
-dd if=/usr/config/minui/installing.bmp of=/dev/fb0 bs=71 skip=1
+dd if=/usr/config/launcher/installing.bmp of=/dev/fb0 bs=71 skip=1
 echo 0,0 > /sys/class/graphics/fb0/pan
 ```
 
@@ -273,7 +279,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Boot image notes: `./install/notes.txt` (BMP format details)

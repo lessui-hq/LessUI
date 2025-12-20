@@ -74,7 +74,7 @@ This platform supports two hardware variants detected at runtime:
 - **L3/R3**: Buttons 9 and 10 respectively
 - **LED Control**: Additional LED strips (max_scale_lr, max_scale_f1f2)
 
-**Detection**: The boot script checks for "Trimui Brick" string in `/usr/trimui/bin/MainUI`. The `is_brick` flag is set via `DEVICE` environment variable and propagates to all platform code.
+**Detection**: The boot script checks for "Trimui Brick" string in `/usr/trimui/bin/MainUI`, sets `DEVICE=brick` environment variable, and the platform detects the variant at runtime. The system applies the appropriate variant configuration (resolution, button mappings, LED control, etc.).
 
 ## Directory Structure
 
@@ -100,8 +100,7 @@ tg5040/
 └── other/             Third-party dependencies
     ├── DinguxCommander-sdl2/  File manager (SDL2)
     ├── evtest/        Input device testing tool
-    ├── jstest/        Joystick testing tool
-    └── unzip60/       ZIP extraction utility
+    └── jstest/        Joystick testing tool
 ```
 
 ## Input System
@@ -194,7 +193,6 @@ The platform automatically clones required dependencies on first build:
 - **DinguxCommander-sdl2**: `github.com/shauninman/DinguxCommander-sdl2.git`
 - **evtest**: `github.com/freedesktop-unofficial-mirror/evtest.git`
 - **jstest**: `github.com/datrh/joyutils.git`
-- **unzip60**: `github.com/shauninman/unzip60.git`
 
 ### Supported Libretro Cores
 - **NES**: fceumm
@@ -228,7 +226,7 @@ LessUI installs to the SD card with the following structure:
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale - standard)
 │       ├── assets@3x.png   UI sprite sheet (3x scale - Brick)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/            Update staging area
 │   └── tg5040/             Platform boot components
 │       ├── show.elf        Splash screen display
@@ -241,7 +239,7 @@ LessUI installs to the SD card with the following structure:
 ├── .userdata/              User settings and saves
 │   └── tg5040/             Platform-specific settings
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Boot Process
@@ -250,13 +248,13 @@ LessUI installs to the SD card with the following structure:
 2. Script remounts SD cards as read-write (Brick has `/mnt/UDISK` too)
 3. Sets CPU governor to "userspace" and frequency to 2.0 GHz
 4. Detects variant by checking MainUI binary for "Trimui Brick" string
-5. If `LessUI.zip` exists:
+5. If `LessUI.7z` exists:
    - Disables LED animations (standard + Brick-specific LEDs if applicable)
    - Displays variant-appropriate splash screen:
      - Standard: `installing.png` or `updating.png` (1280x720)
      - Brick: `brick/installing.png` or `brick/updating.png` (1024x768)
-   - Extracts `LessUI.zip` to SD card
-   - Deletes ZIP file
+   - Extracts `LessUI.7z` to SD card
+   - Deletes archive
    - Runs `.system/tg5040/bin/install.sh` to complete setup
    - Reboots if fresh install
 6. Launches LessUI via `.system/tg5040/paks/LessUI.pak/launch.sh`
@@ -264,11 +262,11 @@ LessUI installs to the SD card with the following structure:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/`)
+1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
+3. Boot script auto-detects archive and performs update
 4. Displays variant-appropriate update splash
-5. ZIP is deleted after successful extraction
+5. Archive is deleted after successful extraction
 
 ### Migration from TG3040
 
@@ -296,15 +294,13 @@ Runtime detection is performed in multiple layers:
 
 2. **Settings Library** (`libmsettings`):
    - Reads `DEVICE` environment variable
-   - Sets `is_brick` flag
    - Uses variant-specific brightness tables
 
-3. **Platform Header** (`platform.h`):
-   - Declares `extern int is_brick`
-   - Uses ternary operators for runtime configuration:
-     - `FIXED_SCALE = is_brick ? 3 : 2`
-     - `FIXED_WIDTH = is_brick ? 1024 : 1280`
-     - `JOY_L3 = is_brick ? 9 : JOY_NA`
+3. **Platform Code** (`platform.h`):
+   - Uses variant detection helpers for runtime configuration:
+     - `VARIANT_IS(VARIANT_TG5040_BRICK)` for checks
+     - `JOY_L3 = (VARIANT_IS(VARIANT_TG5040_BRICK) ? 9 : JOY_NA)`
+     - Display dimensions from `platform_variant.screen_width/height`
 
 ### Audio Configuration
 
@@ -465,7 +461,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 

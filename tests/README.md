@@ -2,29 +2,30 @@
 
 This directory contains the test suite for LessUI, organized to mirror the source code structure.
 
-**Current Status: 364 tests, all passing** ✅
+**Current Status: 1470 tests, all passing** ✅
 
 ## Quick Start
 
 ```bash
-make test   # Run all 364 tests in Docker (recommended)
+make test        # Run all 1470 tests in Docker (recommended)
+make test-asan   # Run with AddressSanitizer + UBSan (catches memory bugs)
 ```
 
-Tests run in a Debian Buster ARM64 container that matches the platform toolchains exactly. This ensures consistency across development environments and catches platform-specific issues.
+Tests run in an Ubuntu 24.04 Docker container. This ensures consistency across development environments and catches platform-specific issues.
 
 ## Test Environment
 
 **Docker Container Specifications:**
-- Base: Debian Buster (10) ARM64
-- Compiler: GCC 8.3.0-6 (matches platform toolchains)
-- C Library: GLIBC 2.28
-- Architecture: aarch64 (falls back to C implementations for 32-bit ARM assembly)
-- Dockerfile: `tests/Dockerfile`
+- Base: Ubuntu 24.04 LTS
+- Compiler: Modern GCC
+- Complete QA toolchain (clang-tidy, clang-format, shellcheck)
+- SDL2 development libraries included
+- Dockerfile: `Dockerfile`
 
 **Why Docker?**
-- Eliminates macOS ARM architecture differences
-- Matches the exact GCC/libc versions used by platform toolchains
-- Consistent test results across all development machines
+- Consistent environment across all development machines
+- Matches GitHub Actions CI environment
+- Eliminates platform-specific differences
 - No need to install native build tools on macOS
 
 ## Directory Structure
@@ -33,34 +34,48 @@ Tests run in a Debian Buster ARM64 container that matches the platform toolchain
 tests/
 ├── unit/                           # Unit tests (mirror workspace/ structure)
 │   └── all/
-│       └── common/
-│           ├── test_utils.c              # Utils (string, file, name, date, math) - 100 tests
-│           ├── test_api_pad.c            # Input state machine - 21 tests
-│           ├── test_collections.c        # Array/Hash data structures - 30 tests
-│           ├── test_gfx_text.c           # Text truncation/wrapping - 32 tests
-│           ├── test_audio_resampler.c    # Audio resampling - 18 tests
-│           ├── test_minarch_paths.c      # Save file paths - 16 tests
-│           ├── test_minui_utils.c        # Launcher helpers - 17 tests
-│           ├── test_m3u_parser.c         # M3U parsing - 20 tests
-│           ├── test_minui_file_utils.c   # File/dir checking - 25 tests
-│           ├── test_map_parser.c         # map.txt aliasing - 22 tests
-│           ├── test_collection_parser.c  # Collection lists - 11 tests
-│           ├── test_recent_file.c        # Recent games parsing - 13 tests
-│           ├── test_recent_writer.c      # Recent games writing - 5 tests
-│           ├── test_directory_utils.c    # Directory ops (→ minui_file_utils) - 7 tests
-│           └── test_binary_file_utils.c  # Binary file I/O - 12 tests
+│       ├── common/                 # Tests for workspace/all/common/
+│       │   ├── test_utils.c              # Utils (string, file, name, date, math)
+│       │   ├── test_api_pad.c            # Input state machine
+│       │   ├── test_gfx_text.c           # Text truncation/wrapping
+│       │   ├── test_audio_resampler.c    # Audio resampling
+│       │   ├── test_binary_file_utils.c  # Binary file I/O
+│       │   ├── test_effect_system.c      # Visual effect state
+│       │   ├── test_platform_variant.c   # Platform detection
+│       │   └── ...                       # Other common module tests
+│       ├── launcher/               # Tests for workspace/all/launcher/
+│       │   ├── test_launcher_utils.c     # Launcher helpers
+│       │   ├── test_launcher_entry.c     # Entry type, sorting
+│       │   ├── test_launcher_state.c     # State persistence
+│       │   ├── test_m3u_parser.c         # M3U parsing
+│       │   ├── test_map_parser.c         # map.txt aliasing
+│       │   ├── test_collection_parser.c  # Collection lists
+│       │   ├── test_recent_*.c           # Recent games (read/write/runtime)
+│       │   ├── test_directory_index.c    # Directory indexing
+│       │   └── ...                       # Other launcher module tests
+│       └── player/                 # Tests for workspace/all/player/
+│           ├── test_player_paths.c       # Save file paths
+│           ├── test_player_utils.c       # Player utilities
+│           ├── test_player_config.c      # Config path generation
+│           ├── test_player_options.c     # Option management
+│           ├── test_player_cpu.c         # CPU scaling algorithm
+│           ├── test_player_menu.c        # Menu system
+│           ├── test_player_env.c         # Environment callbacks
+│           └── ...                       # Other player module tests
 ├── integration/                    # Integration tests (end-to-end tests)
 ├── fixtures/                       # Test data, sample ROMs, configs
-├── support/                        # Test infrastructure
+├── vendor/                         # Third-party test libraries
 │   ├── unity/                      # Unity test framework
-│   ├── fff/                        # Fake Function Framework (SDL mocking)
-│   │   └── fff.h                   # Header-only mocking library
+│   └── fff/                        # Fake Function Framework (SDL mocking)
+│       └── fff.h                   # Header-only mocking library
+├── support/                        # Test infrastructure
 │   ├── platform.h                  # Platform stubs for testing
 │   ├── sdl_stubs.h                 # Minimal SDL type definitions
 │   ├── sdl_fakes.h/c               # SDL function mocks (fff-based)
 │   ├── platform_mocks.h/c          # Platform function mocks
-│   └── fs_mocks.h/c                # File system mocks (--wrap-based)
-├── Dockerfile                      # Test environment (Debian Buster ARM64)
+│   ├── fs_mocks.h/c                # File system mocks (--wrap-based)
+│   ├── test_helpers.h/c            # Setup/teardown utilities
+│   └── test_temp.h/c               # Temp file/directory management
 └── README.md                       # This file
 ```
 
@@ -76,7 +91,7 @@ workspace/all/common/utils/file_utils.c   →  tests/unit/all/common/test_file_u
 workspace/all/common/utils/name_utils.c   →  tests/unit/all/common/test_name_utils.c
 workspace/all/common/utils/date_utils.c   →  tests/unit/all/common/test_date_utils.c
 workspace/all/common/utils/math_utils.c   →  tests/unit/all/common/test_math_utils.c
-workspace/all/minui/minui.c               →  tests/unit/all/minui/test_minui.c
+workspace/all/launcher/launcher.c               →  tests/unit/all/launcher/test_launcher.c
 ```
 
 This makes it easy to:
@@ -111,17 +126,17 @@ This makes it easy to:
 
 ### Docker-Based Testing (Default)
 
-Tests run in a Debian Buster ARM64 container that matches the platform toolchains exactly (GCC 8.3.0, GLIBC 2.28). This eliminates macOS-specific build issues and ensures consistency with the actual build environment.
+Tests run in an Ubuntu 24.04 container. This eliminates macOS-specific build issues and ensures consistency across all development environments.
 
 ```bash
 # Run all tests (uses Docker automatically)
 make test
 
 # Enter Docker container for debugging
-make -f makefile.qa docker-shell
+make -f Makefile.qa docker-shell
 
 # Rebuild Docker image
-make -f makefile.qa docker-build
+make -f Makefile.qa docker-build
 ```
 
 ### Native Testing (Advanced)
@@ -130,7 +145,7 @@ Run tests directly on your host system (not recommended on macOS due to architec
 
 ```bash
 # Run all tests natively
-make -f makefile.qa test-native
+make -f Makefile.qa test-native
 
 # Run individual test executables
 ./tests/utils_test         # Timing tests (2 tests)
@@ -154,7 +169,7 @@ make -f makefile.qa test-native
 
 ### Clean and Rebuild
 ```bash
-make -f makefile.qa clean-tests
+make -f Makefile.qa clean-tests
 make test
 ```
 
@@ -162,21 +177,21 @@ make test
 
 ### 1. Mirror the Source Structure
 
-If adding tests for `workspace/all/minui/minui.c`:
+If adding tests for `workspace/all/launcher/launcher.c`:
 
 ```bash
 # Create directory
-mkdir -p tests/unit/all/minui
+mkdir -p tests/unit/all/launcher
 
 # Create test file
-touch tests/unit/all/minui/test_minui.c
+touch tests/unit/all/launcher/test_launcher.c
 ```
 
 ### 2. Use Unity Framework
 
 ```c
-#include "../../../../workspace/all/minui/minui.h"
-#include "../../../support/unity/unity.h"
+#include "../../../../workspace/all/launcher/launcher.h"
+#include "unity.h"  // Via -I tests/vendor/unity include path
 
 void setUp(void) {
     // Run before each test
@@ -197,12 +212,12 @@ int main(void) {
 }
 ```
 
-### 3. Update makefile.qa
+### 3. Update Makefile.qa
 
 Add your test to the build:
 
 ```makefile
-tests/unit_tests: tests/unit/all/minui/test_minui.c ...
+tests/unit_tests: tests/unit/all/launcher/test_launcher.c ...
     @$(CC) -o $@ $^ ...
 ```
 
@@ -217,7 +232,7 @@ TEST_ASSERT_NOT_NULL(pointer)
 TEST_ASSERT_NULL(pointer)
 ```
 
-See `support/unity/unity.h` for full list.
+See `vendor/unity/unity.h` for full list.
 
 ## SDL Function Mocking
 
@@ -226,14 +241,16 @@ LessUI uses SDL extensively for graphics, input, and audio. Testing SDL-dependen
 ### Infrastructure Overview
 
 ```
-tests/support/
-├── fff/
-│   └── fff.h              # Fake Function Framework (MIT licensed)
-├── sdl_stubs.h            # Minimal SDL type definitions
-├── sdl_fakes.h            # fff-based SDL function fakes (declarations)
-├── sdl_fakes.c            # fff-based SDL function fakes (definitions)
-├── platform_mocks.h       # Mock PLAT_* interface
-└── platform_mocks.c       # Mock PLAT_* implementations
+tests/
+├── vendor/
+│   └── fff/
+│       └── fff.h          # Fake Function Framework (MIT licensed)
+└── support/
+    ├── sdl_stubs.h        # Minimal SDL type definitions
+    ├── sdl_fakes.h        # fff-based SDL function fakes (declarations)
+    ├── sdl_fakes.c        # fff-based SDL function fakes (definitions)
+    ├── platform_mocks.h   # Mock PLAT_* interface
+    └── platform_mocks.c   # Mock PLAT_* implementations
 ```
 
 ### What is fff?
@@ -250,10 +267,10 @@ The **Fake Function Framework** is a header-only C mocking library that generate
 #### Example: Mocking SDL_PollEvent
 
 ```c
-#include "../../../support/unity/unity.h"
-#include "../../../support/fff/fff.h"
-#include "../../../support/sdl_stubs.h"
-#include "../../../support/sdl_fakes.h"
+#include "unity.h"      // Via -I tests/vendor/unity
+#include "fff.h"        // Via -I tests/vendor/fff
+#include "sdl_stubs.h"  // Via -I tests/support
+#include "sdl_fakes.h"
 
 DEFINE_FFF_GLOBALS;
 
@@ -345,7 +362,7 @@ RESET_FAKE(SDL_BlitSurface);
 For mocking platform-specific `PLAT_*` functions, use `platform_mocks.c`:
 
 ```c
-#include "../../../support/platform_mocks.h"
+#include "platform_mocks.h"  // Via -I tests/support
 
 void test_battery_status(void) {
     // Configure mock battery state
@@ -365,7 +382,7 @@ See `tests/unit/all/common/test_gfx_text.c` for a comprehensive demonstration of
 
 ### When to Extract vs. Mock
 
-**Extract to separate module** (like `pad.c`, `collections.c`) when:
+**Extract to separate module** (like `pad.c`, `gfx_text.c`) when:
 - Logic is pure (no SDL dependencies)
 - Functions can be reused across components
 - Code is tightly coupled to complex global state
@@ -384,7 +401,7 @@ See `tests/unit/all/common/test_gfx_text.c` for a comprehensive demonstration of
 
 For more fff features, see:
 - [fff GitHub](https://github.com/meekrosoft/fff)
-- `tests/support/fff/fff.h` (inline documentation)
+- `tests/vendor/fff/fff.h` (inline documentation)
 - `tests/unit/all/common/test_gfx_text.c` (real-world usage examples)
 
 ## File System Function Mocking
@@ -414,7 +431,7 @@ gcc ... -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fgets
 
 **Platform support:**
 - ✅ Linux (GCC/GNU ld)
-- ✅ Docker (Debian Buster with GCC) - **This is how we test**
+- ✅ Docker (Ubuntu 24.04 with GCC) - **This is how we test**
 - ❌ macOS (uses ld64, doesn't support --wrap)
 
 ### Using File Mocking
@@ -422,9 +439,9 @@ gcc ... -Wl,--wrap=exists -Wl,--wrap=fopen -Wl,--wrap=fgets
 #### Example: Testing M3U Parser
 
 ```c
-#include "../../../support/unity/unity.h"
-#include "../../../support/fs_mocks.h"
-#include "../../../../workspace/all/common/m3u_parser.h"
+#include "unity.h"      // Via -I tests/vendor/unity
+#include "fs_mocks.h"   // Via -I tests/support
+#include "../../../../workspace/all/launcher/launcher_m3u.h"
 
 void setUp(void) {
     // Reset mock file system before each test
@@ -465,9 +482,9 @@ int mock_fs_exists(const char* path);               // Check if mock file exists
 ### Complete Examples
 
 **Real-world usage:**
-- `tests/unit/all/common/test_m3u_parser.c` - M3U playlist parsing (read-only with mocking)
-- `tests/unit/all/common/test_minui_file_utils.c` - File existence checking
-- `tests/unit/all/common/test_recent_writer.c` - File writing with real temp files
+- `tests/unit/all/launcher/test_m3u_parser.c` - M3U playlist parsing (read-only with mocking)
+- `tests/unit/all/launcher/test_launcher_file_utils.c` - File existence checking
+- `tests/unit/all/launcher/test_recent_writer.c` - File writing with real temp files
 
 ### Compilation Requirements
 
@@ -537,6 +554,194 @@ void test_saveRecents(void) {
 }
 ```
 
+## Test Helpers (Setup/Teardown)
+
+The test suite provides centralized helper functions to prevent test pollution and ensure proper cleanup.
+
+### Infrastructure Overview
+
+```
+tests/support/
+├── test_helpers.h         # Central reset utilities
+├── test_helpers.c         # Reset function implementations
+├── test_temp.h            # Temp file/directory management
+└── test_temp.c            # Temp file implementations
+```
+
+### Why Use Test Helpers?
+
+Test pollution occurs when state from one test leaks into another, causing:
+- Intermittent failures ("works on my machine")
+- Order-dependent test results
+- Difficult-to-debug failures
+
+The helper functions ensure tests are isolated by resetting all mock state and cleaning up resources.
+
+### Basic Usage
+
+```c
+#include "unity.h"
+#include "test_helpers.h"
+
+void setUp(void) {
+    test_reset_all();  // Reset SDL fakes, FS mocks, fff history
+}
+
+void tearDown(void) {
+    test_cleanup_all();  // Clean up temp files
+}
+
+void test_example(void) {
+    // Your test code here
+}
+```
+
+### Selective Reset Functions
+
+If you only need specific resets:
+
+```c
+void setUp(void) {
+    test_reset_sdl_fakes();   // Only reset SDL mocks
+    test_reset_fs_mocks();    // Only reset file system mocks
+    test_reset_fff_history(); // Only reset fff call history
+}
+```
+
+### Available Functions
+
+| Function | Purpose |
+|----------|---------|
+| `test_reset_all()` | Reset all mock state (SDL fakes, FS mocks, fff history) |
+| `test_cleanup_all()` | Clean up all temp files/directories |
+| `test_reset_sdl_fakes()` | Reset SDL function mocks |
+| `test_reset_fs_mocks()` | Reset file system mocks |
+| `test_reset_fff_history()` | Reset fff call sequence history |
+
+## Temp File Management
+
+The `test_temp.h` module provides safe, auto-cleaned temp file creation.
+
+### Benefits
+
+- **No fixed paths** - Unique paths prevent collisions in parallel test runs
+- **Automatic cleanup** - Files cleaned even when tests fail
+- **Cross-platform** - Works on Linux and macOS
+
+### Creating Temp Files
+
+```c
+#include "test_temp.h"
+
+void tearDown(void) {
+    test_temp_cleanup();  // Required: clean up temp files
+}
+
+void test_file_operations(void) {
+    // Create empty temp file
+    const char* path = test_temp_file(".txt");
+
+    // Create temp file with content
+    const char* config = test_temp_file_with_content(".cfg", "option=value\n");
+
+    // Create temp file with binary data
+    uint8_t sram[8192] = {0};
+    const char* save = test_temp_file_with_binary(".sav", sram, sizeof(sram));
+
+    // Files are automatically cleaned in tearDown()
+}
+```
+
+### Creating Temp Directories
+
+```c
+void test_directory_operations(void) {
+    // Create temp directory
+    const char* dir = test_temp_dir();
+
+    // Create nested subdirectory
+    const char* roms_dir = test_temp_subdir(dir, "Roms/GB");
+    // roms_dir is now "/tmp/test_dir_XXXXXX/Roms/GB"
+
+    // Create file inside temp directory
+    const char* rom = test_temp_create_file(dir, "Roms/GB/game.gb", "ROM DATA");
+
+    // All cleaned automatically in tearDown()
+}
+```
+
+### Available Functions
+
+| Function | Purpose |
+|----------|---------|
+| `test_temp_file(suffix)` | Create empty temp file with optional suffix |
+| `test_temp_file_with_content(suffix, content)` | Create temp file with text content |
+| `test_temp_file_with_binary(suffix, data, size)` | Create temp file with binary data |
+| `test_temp_dir()` | Create empty temp directory |
+| `test_temp_subdir(base, subpath)` | Create nested directory under temp dir |
+| `test_temp_create_file(dir, filename, content)` | Create file inside temp directory |
+| `test_temp_cleanup()` | Remove all tracked temp resources |
+| `test_temp_count()` | Get count of tracked resources (for debugging) |
+
+## Memory Sanitizer Testing
+
+The test suite supports AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) to catch memory bugs.
+
+### What Sanitizers Detect
+
+**AddressSanitizer (ASan):**
+- Buffer overflows (heap, stack, global)
+- Use-after-free
+- Use-after-return
+- Memory leaks
+- Double-free
+
+**UndefinedBehaviorSanitizer (UBSan):**
+- Integer overflow
+- Null pointer dereference
+- Misaligned memory access
+- Invalid shift operations
+
+### Running Tests with Sanitizers
+
+```bash
+# Run all tests with ASan + UBSan (Docker, recommended)
+make test-asan
+
+# Or explicitly via Docker
+make docker-test-asan
+
+# Native (Linux hosts with GCC only)
+make -f Makefile.qa test-asan-native
+```
+
+### Example Output
+
+When ASan detects an issue, you'll see detailed output:
+
+```
+=================================================================
+==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x...
+READ of size 1 at 0x... thread T0
+    #0 0x... in my_function /path/to/file.c:42
+    #1 0x... in test_my_function /path/to/test.c:15
+    ...
+```
+
+### When to Use Sanitizers
+
+- **During development** - Catch bugs early
+- **Before releases** - Comprehensive memory checking
+- **Investigating crashes** - Get detailed stack traces
+- **CI integration** - Add `make test-asan` to your workflow
+
+### Notes
+
+- Sanitizers add ~2x slowdown but catch critical bugs
+- Requires GCC (runs in Docker for consistency)
+- Leak detection is enabled by default
+- Tests continue on errors (doesn't halt at first issue)
+
 ## Test Guidelines
 
 ### Good Test Characteristics
@@ -582,30 +787,35 @@ void test_getEmuName_with_parens(void) {
 
 ## Test Summary
 
-**Total: 364 tests across 16 test suites**
-- **342 unit tests** - Testing individual modules in isolation
-- **22 integration tests** - Testing modules working together with real file I/O
+**Total: 1470 tests across 47 test suites**
 
 ### Extracted Modules (Testable Logic)
 
-These modules were extracted from large files (api.c, minui.c, minarch.c) to enable comprehensive unit testing:
+These modules were extracted from large files (api.c, launcher.c, player.c) to enable comprehensive unit testing:
 
 | Module | Lines | Tests | Extracted From | Key Functions |
 |--------|-------|-------|----------------|---------------|
-| utils.c | 703 | 100 | (original) | String, file, name, date, math utilities |
-| pad.c | 183 | 21 | api.c | Button state machine, analog input |
-| collections.c | 193 | 30 | minui.c | Array, Hash data structures |
+| utils.c | 703 | 123 | (original) | String, file, name, date, math utilities |
+| ui_layout.c | ~100 | 20 | api.c | UI layout calculations (DP scaling, pill heights) |
+| str_compare.c | 119 | 28 | (original) | Natural string sorting, article handling |
+| nointro_parser.c | 266 | 39 | (original) | No-Intro ROM naming conventions |
+| effect_system.c | 106 | 43 | platform files | Visual effect state management |
+| player_utils.c | ~120 | 41 | player.c | Core name extraction, option search, string utils |
+| player_config.c | ~50 | 19 | player.c | Config path generation, option name mapping |
+| player_options.c | ~70 | 36 | player.c | Option list search and manipulation |
+| pad.c | 183 | 36 | api.c | Button state machine, analog input |
 | gfx_text.c | 170 | 32 | api.c | Text truncation, wrapping, sizing |
-| audio_resampler.c | 90 | 18 | api.c | Bresenham sample rate conversion |
-| minarch_paths.c | 77 | 16 | minarch.c | Save file path generation |
-| minui_utils.c | 48 | 17 | minui.c | Index char, console dir detection |
-| m3u_parser.c | 132 | 20 | minui.c | M3U playlist parsing (getFirstDisc + getAllDiscs) |
-| minui_file_utils.c | 130 | 25 | minui.c | File/dir checking (hasEmu, hasCue, hasM3u, hasNonHiddenFiles) |
-| map_parser.c | 64 | 22 | minui.c/minarch.c | ROM display name aliasing (map.txt) |
-| collection_parser.c | 70 | 11 | minui.c | Custom ROM list parsing (.txt files) |
-| recent_file.c | 95 | 18 | minui.c | Recent games read/write (parse + save) |
-| binary_file_utils.c | 42 | 12 | minarch.c | Binary file read/write (fread/fwrite) |
-| **Total** | **1,997** | **342** | | |
+| launcher_file_utils.c | 130 | 25 | launcher.c | File/dir checking (hasEmu, hasCue, hasM3u) |
+| map_parser.c | 64 | 22 | launcher.c/player.c | ROM display name aliasing (map.txt) |
+| m3u_parser.c | 132 | 20 | launcher.c | M3U playlist parsing |
+| audio_resampler.c | 162 | 20 | api.c | Sample rate conversion |
+| recent_file.c | 95 | 18 | launcher.c | Recent games read/write |
+| launcher_utils.c | 48 | 17 | launcher.c | Index char, console dir detection |
+| player_paths.c | 77 | 16 | player.c | Save file path generation |
+| platform_variant.c | 67 | 14 | (original) | Platform variant detection |
+| binary_file_utils.c | 42 | 12 | player.c | Binary file read/write |
+| collection_parser.c | 70 | 11 | launcher.c | Custom ROM list parsing |
+| **Total** | **~2,870** | **622** | | |
 
 ### Testing Technologies
 
@@ -703,20 +913,6 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Note:** Extracted from `api.c` for testability without SDL dependencies.
 
-### workspace/all/common/collections.c - ✅ 30 tests
-**File:** `tests/unit/all/common/test_collections.c`
-
-- Array lifecycle (Array_new, Array_free)
-- Array operations (push, pop, unshift, reverse)
-- Capacity growth (doubling when full)
-- StringArray operations (indexOf, StringArray_free)
-- Hash map operations (Hash_new, Hash_set, Hash_get, Hash_free)
-- Integration tests (ROM alias maps, recent games lists)
-
-**Coverage:** Complete coverage of dynamic array and hash map data structures.
-
-**Note:** Extracted from `minui.c` for reusability across all components.
-
 ### workspace/all/common/gfx_text.c - ✅ 32 tests
 **File:** `tests/unit/all/common/test_gfx_text.c`
 
@@ -742,20 +938,20 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Note:** Extracted from `api.c`'s SND_resampleNear(), pure algorithm with no SDL dependencies.
 
-### workspace/all/common/minarch_paths.c - ✅ 16 tests
-**File:** `tests/unit/all/common/test_minarch_paths.c`
+### workspace/all/common/player_paths.c - ✅ 16 tests
+**File:** `tests/unit/all/common/test_player_paths.c`
 
 - SRAM save file path generation (.sav files)
 - RTC file path generation (.rtc files)
 - Save state path generation (.st0-.st9 files)
 - Config file path generation (.cfg files with device tags)
 
-**Coverage:** Complete coverage of MinArch save file path logic.
+**Coverage:** Complete coverage of Player save file path logic.
 
-**Note:** Extracted from `minarch.c`, pure sprintf logic.
+**Note:** Extracted from `player.c`, pure sprintf logic.
 
-### workspace/all/common/minui_utils.c - ✅ 17 tests
-**File:** `tests/unit/all/common/test_minui_utils.c`
+### workspace/all/common/launcher_utils.c - ✅ 17 tests
+**File:** `tests/unit/all/common/test_launcher_utils.c`
 
 - LessUI_getIndexChar() - Alphabetical indexing for ROM navigation (7 tests)
 - LessUI_isConsoleDir() - Console directory classification (8 tests)
@@ -763,7 +959,7 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of LessUI helper utilities.
 
-**Note:** Extracted from `minui.c`, pure string logic.
+**Note:** Extracted from `launcher.c`, pure string logic.
 
 ### workspace/all/common/m3u_parser.c - ✅ 20 tests
 **File:** `tests/unit/all/common/test_m3u_parser.c`
@@ -778,11 +974,11 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of M3U parsing logic (getFirstDisc + getAllDiscs).
 
-**Note:** Extracted from `minui.c`, uses file system mocking.
+**Note:** Extracted from `launcher.c`, uses file system mocking.
 
-### workspace/all/common/minui_file_utils.c - ✅ 25 tests
+### workspace/all/common/launcher_file_utils.c - ✅ 25 tests
 **Files:**
-- `tests/unit/all/common/test_minui_file_utils.c` (18 tests)
+- `tests/unit/all/common/test_launcher_file_utils.c` (18 tests)
 - `tests/unit/all/common/test_directory_utils.c` (7 tests)
 
 **File existence checking (18 tests):**
@@ -801,7 +997,7 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of file and directory checking utilities.
 
-**Note:** Extracted from `minui.c` hasEmu/hasCue/hasM3u/hasCollections/hasRoms. File tests use mocking, directory tests use real temp directories with mkdtemp().
+**Note:** Extracted from `launcher.c` hasEmu/hasCue/hasM3u/hasCollections/hasRoms. File tests use mocking, directory tests use real temp directories with mkdtemp().
 
 ### workspace/all/common/map_parser.c - ✅ 22 tests
 **File:** `tests/unit/all/common/test_map_parser.c`
@@ -815,7 +1011,7 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of map.txt parsing logic.
 
-**Note:** Extracted from `minui.c`'s Directory_index() and `minarch.c`'s getAlias(), uses file system mocking.
+**Note:** Extracted from `launcher.c`'s Directory_index() and `player.c`'s getAlias(), uses file system mocking.
 
 ### workspace/all/common/collection_parser.c - ✅ 11 tests
 **File:** `tests/unit/all/common/test_collection_parser.c`
@@ -830,7 +1026,7 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of collection .txt parsing logic.
 
-**Note:** Extracted from `minui.c`'s getCollection(), uses file system mocking.
+**Note:** Extracted from `launcher.c`'s getCollection(), uses file system mocking.
 
 ### workspace/all/common/recent_file.c - ✅ 18 tests (13 read + 5 write)
 **Files:**
@@ -852,7 +1048,7 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 
 **Coverage:** Complete coverage of recent.txt read/write operations.
 
-**Note:** Extracted from `minui.c` loadRecents()/saveRecents(). Uses hybrid approach: file mocking for reads, real temp files for writes.
+**Note:** Extracted from `launcher.c` loadRecents()/saveRecents(). Uses hybrid approach: file mocking for reads, real temp files for writes.
 
 ### workspace/all/common/binary_file_utils.c - ✅ 12 tests
 **File:** `tests/unit/all/common/test_binary_file_utils.c`
@@ -867,9 +1063,94 @@ These modules were extracted from large files (api.c, minui.c, minarch.c) to ena
 - Partial reads
 - File overwriting
 
-**Coverage:** Complete coverage of binary file I/O patterns used in minarch.c.
+**Coverage:** Complete coverage of binary file I/O patterns used in player.c.
 
-**Note:** Extracted from `minarch.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
+**Note:** Extracted from `player.c` SRAM_read()/SRAM_write() patterns. Uses real temp files with mkstemp().
+
+### workspace/all/common/effect_system.c - ✅ 30 tests
+**File:** `tests/unit/all/common/test_effect_system.c`
+
+- EFFECT_init() - State initialization
+- EFFECT_setType/setScale/setColor() - Pending state setters
+- EFFECT_applyPending() - Apply pending changes
+- EFFECT_needsUpdate() - Change detection
+- EFFECT_markLive() - Mark as rendered
+- EFFECT_getOpacity() - Global opacity (constant 128)
+- EFFECT_usesGeneration() - Procedural generation check
+- Full workflow integration tests
+
+**Coverage:** Complete coverage of visual effect state management system.
+
+**Note:** Extracted from platform-specific files. Pure state management with no SDL dependencies.
+
+### workspace/all/common/effect_generate.c - ✅ 24 tests
+**File:** `tests/unit/all/common/test_effect_generate.c`
+
+- EFFECT_generateLine() - Horizontal scanline pattern generation
+- EFFECT_generateGrille() - Aperture grille pattern with RGB phosphor tints
+- EFFECT_generateGrid() - LCD pixel grid pattern
+- EFFECT_generateGridWithColor() - Grid with color tinting (for Game Boy DMG)
+- EFFECT_generateSlot() - Staggered slot mask pattern
+- Edge cases: null buffers, invalid dimensions, scale 1, large scale
+
+**Coverage:** Complete coverage of procedural effect pattern generation.
+
+**Note:** Pure C pattern generation with no SDL dependencies. All patterns write directly to ARGB8888 buffers.
+
+### workspace/all/common/player_utils.c - ✅ 41 tests
+**File:** `tests/unit/all/common/test_player_utils.c`
+
+- Player_getCoreName() - Extract core name from .so filename
+- Player_getOptionValueIndex() - Search option value arrays
+- Player_findNearestFrequency() - CPU frequency matching algorithm
+- Player_replaceString() - In-place string replacement
+- Player_escapeSingleQuotes() - Shell quote escaping
+
+**Coverage:** Complete coverage of pure utility functions extracted from player.c.
+
+**Note:** Zero external dependencies. Includes shell safety utilities and CPU scaling helpers.
+
+### workspace/all/common/player_config.c - ✅ 19 tests
+**File:** `tests/unit/all/common/test_player_config.c`
+
+- Player_getConfigPath() - Config file path generation with device tags
+- Player_getOptionDisplayName() - Option key to display name mapping
+- Game-specific vs default configs
+- Device-specific config paths
+- Edge cases (empty strings, special characters, long paths)
+
+**Coverage:** Complete coverage of config path utilities.
+
+**Note:** Extracted from `player.c` Config_getPath() and getOptionNameFromKey().
+
+### workspace/all/common/player_options.c - ✅ 36 tests
+**File:** `tests/unit/all/common/test_player_options.c`
+
+- Player_findOption() - Search option list by key
+- Player_getOptionValue() - Get current value string
+- Player_setOptionValue() - Set value by string matching
+- Player_setOptionRawValue() - Set value by index
+- Change tracking
+- Bounds checking
+- Edge cases (empty lists, NULL handling, invalid values)
+
+**Coverage:** Complete coverage of option list management operations.
+
+**Note:** Extracted from `player.c` OptionList_getOption/getOptionValue/setOptionValue functions.
+
+### workspace/all/common/platform_variant.c - ✅ 14 tests
+**File:** `tests/unit/all/common/test_platform_variant.c`
+
+- PLAT_getDeviceName() - Device name formatting
+- PlatformVariant structure field access
+- VARIANT_IS() macro - Variant checking
+- HAS_FEATURE() macro - Feature flag checking
+- DeviceInfo structure
+- Hardware feature flags (NEON, LID, RUMBLE, etc.)
+
+**Coverage:** Complete coverage of platform detection system.
+
+**Note:** Tests the unified platform variant system that supports multi-device platforms.
 
 ## Integration Tests
 
@@ -885,7 +1166,7 @@ Integration tests use a **component integration** approach:
 - No mocking - tests real file I/O and data flow between components
 - Easy to maintain - follows same pattern as existing 342 unit tests
 
-**Why not test the full minui.c/minarch.c applications?**
+**Why not test the full launcher.c/player.c applications?**
 The main launcher and frontend code is tightly coupled to SDL rendering and event loops. Testing these would require complex subprocess management or invasive code changes. Instead, we test the extracted business logic modules working together - this provides excellent coverage with minimal complexity.
 
 ### Available Integration Tests
@@ -909,14 +1190,14 @@ The main launcher and frontend code is tightly coupled to SDL rendering and even
 10. `test_recent_games_roundtrip` - Save/load/modify persistence
 11. `test_recent_with_save_states` - Recent + save state integration
 
-**MinArch Save File Workflows (4 tests):**
-12. `test_minarch_save_state_workflow` - Save state path + binary I/O
-13. `test_minarch_sram_rtc_workflow` - SRAM + RTC file handling
+**Player Save File Workflows (4 tests):**
+12. `test_player_save_state_workflow` - Save state path + binary I/O
+13. `test_player_sram_rtc_workflow` - SRAM + RTC file handling
 14. `test_all_save_slots` - All 10 slots (0-9)
 15. `test_auto_resume_slot_9` - Auto-resume workflow
 
 **Config File Workflows (2 tests):**
-16. `test_minarch_config_file_integration` - Game vs global configs
+16. `test_player_config_file_integration` - Game vs global configs
 17. `test_config_device_tags` - Device-specific config isolation
 
 **Advanced Integration (5 tests):**
@@ -932,7 +1213,7 @@ Integration tests run automatically with `make test` (Docker-based):
 
 ```bash
 make test                          # Run all tests (unit + integration)
-make -f makefile.qa test-native    # Run natively (advanced)
+make -f Makefile.qa test-native    # Run natively (advanced)
 ```
 
 Integration tests are included in the standard test suite and run in Docker like all other tests.
@@ -943,17 +1224,17 @@ Follow the same pattern as existing integration tests:
 
 ```c
 // 1. Include required modules
-#include "../../workspace/all/common/m3u_parser.h"
-#include "../../workspace/all/common/map_parser.h"
-#include "../support/unity/unity.h"
+#include "../../workspace/all/launcher/launcher_m3u.h"
+#include "../../workspace/all/launcher/launcher_map.h"
+#include "unity.h"  // Via -I tests/vendor/unity
 #include "integration_support.h"
 
 // 2. Use setUp/tearDown for temp directory management
 static char test_dir[256];
 
 void setUp(void) {
-    strcpy(test_dir, "/tmp/minui_integration_XXXXXX");
-    create_test_minui_structure(test_dir);
+    strcpy(test_dir, "/tmp/launcher_integration_XXXXXX");
+    create_test_launcher_structure(test_dir);
 }
 
 void tearDown(void) {
@@ -980,7 +1261,7 @@ void test_my_workflow(void) {
 
 Helper functions for creating test data structures:
 
-- `create_test_minui_structure()` - Creates temp LessUI directory structure
+- `create_test_launcher_structure()` - Creates temp LessUI directory structure
 - `create_test_rom()` - Creates placeholder ROM file
 - `create_test_m3u()` - Creates M3U file with disc entries
 - `create_test_map()` - Creates map.txt with ROM aliases
@@ -991,7 +1272,7 @@ These utilities make it easy to set up realistic test scenarios.
 
 ### Todo
 - [ ] Additional api.c GFX rendering functions (mostly SDL pixel operations)
-- [x] Integration tests for LessUI/MinArch workflows (22 tests implemented, all passing)
+- [x] Integration tests for LessUI/Player workflows (22 tests implemented, all passing)
 
 ## Continuous Integration
 
@@ -1007,7 +1288,7 @@ make test   # All tests in Docker
 ```
 
 CI systems should have Docker available. The test environment will automatically:
-- Pull/build the Debian Buster ARM64 test image
+- Pull/build the Ubuntu 24.04 test image
 - Compile and run all tests
 - Report any failures
 
@@ -1016,19 +1297,19 @@ CI systems should have Docker available. The test environment will automatically
 ### Debug in Docker Container
 ```bash
 # Enter the test container
-make -f makefile.qa docker-shell
+make -f Makefile.qa docker-shell
 
 # Inside container, build and run tests
-make -f makefile.qa clean-tests test-native
+make -f Makefile.qa clean-tests test-native
 
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \
-    workspace/all/common/utils/utils.c \
-    tests/support/unity/unity.c \
-    -I tests/support -I tests/support/unity -I workspace/all/common \
+    workspace/all/common/utils.c \
+    tests/vendor/unity/unity.c \
+    -I tests/support -I tests/vendor/unity -I workspace/all/common \
     -std=c99
 
-# Run with gdb (lldb not available in Debian Buster)
+# Run with gdb
 gdb tests/utils_test_debug
 (gdb) run
 (gdb) bt  # backtrace when crash occurs
@@ -1038,9 +1319,9 @@ gdb tests/utils_test_debug
 ```bash
 # Build with debug symbols
 gcc -g -o tests/utils_test_debug tests/unit/all/common/test_utils.c \
-    workspace/all/common/utils/utils.c \
-    tests/support/unity/unity.c \
-    -I tests/support -I tests/support/unity -I workspace/all/common \
+    workspace/all/common/utils.c \
+    tests/vendor/unity/unity.c \
+    -I tests/support -I tests/vendor/unity -I workspace/all/common \
     -std=c99
 
 # macOS
@@ -1072,11 +1353,11 @@ gdb tests/utils_test_debug
 
 - **Unity Framework**: https://github.com/ThrowTheSwitch/Unity
 - **Test Organization Best Practices**: See this README's structure section
-- **C Testing Tutorial**: support/unity/README.md
+- **C Testing Tutorial**: vendor/unity/README.md
 
 ## Questions?
 
 If you're adding tests and need help:
 1. Look at existing tests in `unit/all/common/test_utils.c`
-2. Check Unity documentation in `support/unity/`
+2. Check Unity documentation in `vendor/unity/`
 3. Ask in discussions or open an issue

@@ -1,0 +1,81 @@
+{
+  "platforms": {
+    "miyoomini": {
+      "description": "Miyoo Mini / Mini Plus",
+      "arch": "arm32",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": "nice -20 "
+    },
+    "trimuismart": {
+      "description": "TrimUI Smart / Model S",
+      "arch": "arm32",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "poweroff",
+      "nice_prefix": "nice -20 "
+    },
+    "my282": {
+      "description": "Miyoo Mini 4",
+      "arch": "arm32",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": "nice -20 "
+    },
+    "my355": {
+      "description": "Miyoo A30 / Flip",
+      "arch": "arm64",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": "nice -20 "
+    },
+    "magicmini": {
+      "description": "MagicX XU Mini M",
+      "arch": "arm64",
+      "sdcard_path": "/storage/TF2",
+      "shutdown_cmd": "",
+      "nice_prefix": "nice -20 "
+    },
+    "zero28": {
+      "description": "GKD Zero28",
+      "arch": "arm64",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "poweroff",
+      "nice_prefix": "nice -20 "
+    },
+    "tg5040": {
+      "description": "TrimUI Smart Pro / Brick",
+      "arch": "arm64",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "exec shutdown",
+      "nice_prefix": ""
+    },
+    "rgb30": {
+      "description": "Powkiddy RGB30",
+      "arch": "arm64",
+      "sdcard_path": "/storage/roms",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": ""
+    },
+    "m17": {
+      "description": "Powkiddy X55",
+      "arch": "arm32",
+      "sdcard_path": "/sdcard",
+      "shutdown_cmd": "",
+      "nice_prefix": ""
+    },
+    "rg35xx": {
+      "description": "Anbernic RG35XX original",
+      "arch": "arm32",
+      "sdcard_path": "/mnt/sdcard",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": ""
+    },
+    "rg35xxplus": {
+      "description": "Anbernic RG35XX Plus / H / 2024 / SP / Cube / RG34XX",
+      "arch": "arm32",
+      "sdcard_path": "/mnt/sdcard",
+      "shutdown_cmd": "shutdown",
+      "nice_prefix": ""
+    }
+  }
+}

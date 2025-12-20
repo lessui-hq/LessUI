@@ -20,6 +20,13 @@
 #define FIXED_HEIGHT 480
 #define FIXED_PITCH 640
 #define FIXED_SIZE 307200
+#define SCREEN_DIAGONAL 3.5f
+
+// HDMI support (for platform_variant.c and player_menu.c)
+#define HAS_HDMI 0
+#define HDMI_WIDTH 1280
+#define HDMI_HEIGHT 720
+#define HDMI_PITCH 2560
 
 // Button definitions (required by defines.h)
 #define BUTTON_NA -1
@@ -40,5 +47,7 @@
 #define BTN_MOD_BRIGHTNESS BTN_NONE
 #define BTN_MOD_PLUS BTN_NONE
 #define BTN_MOD_MINUS BTN_NONE
+
+// BTN_SLEEP and BTN_WAKE are provided by defines.h fallbacks
 
 #endif

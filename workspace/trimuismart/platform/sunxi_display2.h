@@ -31,7 +31,6 @@
 #ifndef __SUNXI_DISPLAY_H__
 #define __SUNXI_DISPLAY_H__
 
-typedef int bool;
 typedef unsigned int u32;
 
 // Forward declarations for display subsystem structures

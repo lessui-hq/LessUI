@@ -1,5 +1,5 @@
 /**
- * defines.h - Platform-specific constants and path definitions for MinUI
+ * defines.h - Platform-specific constants and path definitions for Launcher
  *
  * This file builds upon platform.h to create derived constants used throughout
  * the codebase. All paths are constructed from SDCARD_PATH and PLATFORM macros
@@ -61,7 +61,7 @@
 /**
  * Path to the main UI font file.
  */
-#define FONT_PATH RES_PATH "/BPreplayBold-unhinted.otf"
+#define FONT_PATH RES_PATH "/InterTight-Bold.ttf"
 
 /**
  * Platform-specific user data directory.
@@ -84,11 +84,11 @@
 /**
  * Recently played games list (shared across platforms).
  */
-#define RECENT_PATH SHARED_USERDATA_PATH "/.minui/recent.txt"
+#define RECENT_PATH SHARED_USERDATA_PATH "/.launcher/recent.txt"
 
 /**
  * Simple mode enable flag file.
- * If this file exists, MinUI shows a simplified interface.
+ * If this file exists, Launcher shows a simplified interface.
  */
 #define SIMPLE_MODE_PATH SHARED_USERDATA_PATH "/enable-simple-mode"
 
@@ -96,7 +96,7 @@
  * Auto-resume save state tracking file.
  * Stores the last game played for automatic resume on startup.
  */
-#define AUTO_RESUME_PATH SHARED_USERDATA_PATH "/.minui/auto_resume.txt"
+#define AUTO_RESUME_PATH SHARED_USERDATA_PATH "/.launcher/auto_resume.txt"
 
 /**
  * Save state slot used for auto-resume feature.
@@ -157,27 +157,27 @@
  */
 #define COLOR_WHITE                                                                                \
 	(SDL_Color) {                                                                                  \
-		TRIAD_WHITE                                                                                \
+		TRIAD_WHITE, 0                                                                             \
 	}
 #define COLOR_GRAY                                                                                 \
 	(SDL_Color) {                                                                                  \
-		TRIAD_GRAY                                                                                 \
+		TRIAD_GRAY, 0                                                                              \
 	}
 #define COLOR_BLACK                                                                                \
 	(SDL_Color) {                                                                                  \
-		TRIAD_BLACK                                                                                \
+		TRIAD_BLACK, 0                                                                             \
 	}
 #define COLOR_LIGHT_TEXT                                                                           \
 	(SDL_Color) {                                                                                  \
-		TRIAD_LIGHT_TEXT                                                                           \
+		TRIAD_LIGHT_TEXT, 0                                                                        \
 	}
 #define COLOR_DARK_TEXT                                                                            \
 	(SDL_Color) {                                                                                  \
-		TRIAD_DARK_TEXT                                                                            \
+		TRIAD_DARK_TEXT, 0                                                                         \
 	}
 #define COLOR_BUTTON_TEXT                                                                          \
 	(SDL_Color) {                                                                                  \
-		TRIAD_GRAY                                                                                 \
+		TRIAD_GRAY, 0                                                                              \
 	}
 
 ///////////////////////////////
@@ -185,30 +185,9 @@
 ///////////////////////////////
 
 /**
- * UI element sizes in logical pixels (before FIXED_SCALE multiplication).
- */
-#define PILL_SIZE 30 // Height of menu item pills
-#define BUTTON_SIZE 20 // Size of button graphics
-#define BUTTON_MARGIN 5 // Margin around buttons ((PILL_SIZE - BUTTON_SIZE) / 2)
-#define BUTTON_PADDING 12 // Padding inside buttons
-#define SETTINGS_SIZE 4 // Size of setting indicators
-#define SETTINGS_WIDTH 80 // Width of settings panel
-
-/**
- * Number of visible menu rows on the main screen.
- *
- * Default is 6 rows. Platform can override in platform.h if needed.
- * Calculation: FIXED_HEIGHT / (PILL_SIZE * FIXED_SCALE) - 2
- */
-#ifndef MAIN_ROW_COUNT
-#define MAIN_ROW_COUNT 6
-#endif
-
-/**
  * Screen padding in logical pixels.
  *
- * Default is 10 pixels. Platform can override in platform.h if needed.
- * Calculation: PILL_SIZE / 3 (or non-integer part divided by three)
+ * Used for button margin calculations in minput.
  */
 #ifndef PADDING
 #define PADDING 10
@@ -241,18 +220,6 @@
 #define MAX(a, b) (a) > (b) ? (a) : (b)
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define CEIL_DIV(a, b) ((a) + (b) - 1) / (b) // Integer ceiling division
-
-/**
- * Scaling macros for UI coordinates.
- *
- * These multiply logical coordinates by FIXED_SCALE to get physical screen coordinates.
- * Use these when passing coordinates to SDL or GFX functions.
- */
-#define SCALE1(a) ((a) * FIXED_SCALE)
-#define SCALE2(a, b) ((a) * FIXED_SCALE), ((b) * FIXED_SCALE)
-#define SCALE3(a, b, c) ((a) * FIXED_SCALE), ((b) * FIXED_SCALE), ((c) * FIXED_SCALE)
-#define SCALE4(a, b, c, d)                                                                         \
-	((a) * FIXED_SCALE), ((b) * FIXED_SCALE), ((c) * FIXED_SCALE), ((d) * FIXED_SCALE)
 
 ///////////////////////////////
 // Platform capability detection
@@ -345,20 +312,73 @@
 #endif
 
 ///////////////////////////////
-// HDMI output configuration
+// Derived display constants
 ///////////////////////////////
 
 /**
- * HDMI output resolution defaults.
+ * Standard display buffer calculations.
  *
- * If platform doesn't define HAS_HDMI, HDMI output uses same
- * resolution as the built-in screen.
+ * Platforms define FIXED_WIDTH and FIXED_HEIGHT in their platform.h:
+ * - Fixed hardware: Simple constant (e.g., #define FIXED_WIDTH 640)
+ * - Runtime variants: Macro with ternary (e.g., #define FIXED_WIDTH (is_560p ? 752 : 640))
+ *
+ * These derived constants then calculate pitch and size from those base values.
+ * All platforms use RGB565 (2 bytes per pixel, 16-bit depth).
+ */
+#define FIXED_BPP 2 // Bytes per pixel (RGB565)
+#define FIXED_DEPTH (FIXED_BPP * 8) // Bit depth (16-bit color)
+#define FIXED_PITCH (FIXED_WIDTH * FIXED_BPP) // Row stride in bytes
+#define FIXED_SIZE (FIXED_PITCH * FIXED_HEIGHT) // Total framebuffer size
+
+/**
+ * HDMI output buffer calculations.
+ * If HAS_HDMI is defined, platform must provide HDMI_WIDTH/HDMI_HEIGHT.
+ * Otherwise, HDMI uses the same resolution as the built-in screen.
  */
 #ifndef HAS_HDMI
 #define HDMI_WIDTH FIXED_WIDTH
 #define HDMI_HEIGHT FIXED_HEIGHT
-#define HDMI_PITCH FIXED_PITCH
-#define HDMI_SIZE FIXED_SIZE
+#endif
+#define HDMI_PITCH (HDMI_WIDTH * FIXED_BPP) // HDMI row stride
+#define HDMI_SIZE (HDMI_PITCH * HDMI_HEIGHT) // HDMI framebuffer size
+
+///////////////////////////////
+// Audio configuration
+///////////////////////////////
+
+/**
+ * SDL audio callback chunk size in samples.
+ * At 48kHz/60fps, one video frame = 800 samples.
+ *
+ * Tradeoff:
+ * - 512 samples (~10.7ms latency): More stable, fewer callbacks, better for CPU
+ * - 256 samples (~5.3ms latency): Lower latency, more responsive input
+ *
+ * Default 512 balances stability and responsiveness. Platforms can override.
+ */
+#ifndef SND_CHUNK_SAMPLES
+#define SND_CHUNK_SAMPLES 512
+#endif
+
+/**
+ * Audio ring buffer size in samples (stereo frames).
+ * Controls how much audio is buffered ahead (~85ms at 48kHz with 4096 samples).
+ * Lower values reduce latency, higher values prevent underruns on slow devices.
+ * Platforms can override this in platform.h if needed.
+ */
+#ifndef SND_BUFFER_SAMPLES
+#define SND_BUFFER_SAMPLES 4096
+#endif
+
+/**
+ * Rate control proportional gain (d parameter from Arntzen paper).
+ * Controls maximum pitch deviation for buffer level compensation.
+ * Higher values = more aggressive correction, faster response to jitter.
+ * Paper recommends 0.2-0.5%, but handhelds need 1.0-1.5% due to timing variance.
+ * Platforms can override this in platform.h if needed.
+ */
+#ifndef SND_RATE_CONTROL_D
+#define SND_RATE_CONTROL_D 0.012f
 #endif
 
 ///////////////////////////////
@@ -451,6 +471,15 @@ enum {
 	BTN_LEFT = BTN_DPAD_LEFT | BTN_ANALOG_LEFT,
 	BTN_RIGHT = BTN_DPAD_RIGHT | BTN_ANALOG_RIGHT,
 };
+#endif
+
+// Sleep/wake button fallbacks (if not defined by platform)
+// These must be after the BTN_* enum to use enum values as defaults
+#ifndef BTN_SLEEP
+#define BTN_SLEEP BTN_POWER
+#endif
+#ifndef BTN_WAKE
+#define BTN_WAKE BTN_MENU
 #endif
 
 #endif

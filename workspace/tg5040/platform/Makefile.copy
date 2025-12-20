@@ -1,0 +1,16 @@
+$(PLATFORM):
+	# $@
+	# show.elf (platform-specific build)
+	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
+	# installer
+	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
+	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
+	rsync -a ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
+	mkdir -p ./build/BOOT/common/$@/
+	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	# boot assets (standard and brick variants)
+	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png
+	mkdir -p ./build/BOOT/common/$@/brick
+	rsync -a ./skeleton/SYSTEM/res/installing@3x.png ./build/BOOT/common/$@/brick/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@3x.png ./build/BOOT/common/$@/brick/updating.png

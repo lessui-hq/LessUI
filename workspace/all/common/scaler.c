@@ -44,7 +44,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "platform.h" // for HAS_NEON
+#include "defines.h" // for FIXED_BPP, MIN
+#include "log.h"
+#include "scaler.h" // for function declarations and ROTATION_ constants
 
 /**
  * No-op scaler function (unused placeholder).
@@ -904,10 +906,12 @@ void scale6x6_c32(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
 }
 
 ///////////////////////////////
-// ARM NEON Optimized Scalers
+// ARM NEON Optimized Scalers (32-bit ARM only)
 ///////////////////////////////
 
-#ifdef HAS_NEON
+// These NEON scalers use ARM32-specific inline assembly (including the 'lr' register)
+// and are not compatible with ARM64/aarch64. ARM64 platforms fall back to C versions.
+#if defined(__arm__)
 
 /**
  * NEON-optimized memory copy using SIMD instructions.
@@ -3890,7 +3894,7 @@ void scaler_n32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
 	return;
 }
 
-#endif // HAS_NEON
+#endif // __arm__
 
 ///////////////////////////////
 // High-Level Scaler Dispatchers
@@ -3980,7 +3984,7 @@ void scaler_c32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
 	 ((((cG(B) << 1) + (cG(A) * 3)) / 5) & 0x3f) << 5 |                                            \
 	 ((((cB(B) << 1) + (cB(A) * 3)) / 5) & 0x1f))
 
-#define MIN(a, b) (a) < (b) ? (a) : (b)
+// MIN is provided by defines.h
 
 /**
  * Deinterlaced line-doubling scaler with blending.
@@ -4006,12 +4010,12 @@ void scale1x_line(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
 	int ip = sw * FIXED_BPP;
 	int src_stride = 2 * sp / FIXED_BPP;
 	int dst_stride = 2 * dp / FIXED_BPP;
-	int cpy_pitch = MIN(ip, dp);
+	int cpy_pitch = MIN(ip, (int)dp);
 
 	uint16_t k = 0x0000; // Black pixel for blending
 	uint16_t* restrict src_row = (uint16_t*)src;
 	uint16_t* restrict dst_row = (uint16_t*)dst;
-	for (int y = 0; y < sh; y += 2) {
+	for (int y = 0; y < (int)sh; y += 2) {
 		// Copy even line directly
 		memcpy(dst_row, src_row, cpy_pitch);
 		dst_row += dst_stride;
@@ -4188,5 +4192,338 @@ void scale3x_grid(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
 			src_row += 1;
 			dst_row += 3;
 		}
+	}
+}
+///////////////////////////////
+// Rotation implementations
+///////////////////////////////
+
+#if defined(__arm__) || defined(__aarch64__)
+#include <arm_neon.h>
+
+/**
+ * NEON-optimized 4x4 block transpose for RGB565.
+ *
+ * Transposes a 4x4 block of 16-bit pixels using NEON vector registers.
+ * Uses the standard two-stage transpose: first transpose pairs of rows,
+ * then transpose 2x2 sub-blocks via 32-bit view.
+ *
+ * Input:  [A B C D]    Output: [A E I M]
+ *         [E F G H]            [B F J N]
+ *         [I J K L]            [C G K O]
+ *         [M N O P]            [D H L P]
+ *
+ * @param r0-r3 Pointers to 4 uint16x4_t registers (modified in place)
+ */
+static inline void transpose_4x4_u16(uint16x4_t* r0, uint16x4_t* r1, uint16x4_t* r2,
+                                     uint16x4_t* r3) {
+	// Step 1: Transpose pairs of rows using vtrn
+	// vtrn interleaves elements: vtrn([A B C D], [E F G H]) = {[A E C G], [B F D H]}
+	uint16x4x2_t t01 = vtrn_u16(*r0, *r1);
+	uint16x4x2_t t23 = vtrn_u16(*r2, *r3);
+
+	// Step 2: Transpose 2x2 sub-blocks via 32-bit view
+	// Reinterpret as 32-bit to swap pairs: [A E][C G] with [I M][K O]
+	uint32x2x2_t u02 = vtrn_u32(vreinterpret_u32_u16(t01.val[0]), vreinterpret_u32_u16(t23.val[0]));
+	uint32x2x2_t u13 = vtrn_u32(vreinterpret_u32_u16(t01.val[1]), vreinterpret_u32_u16(t23.val[1]));
+
+	// Extract final transposed rows
+	*r0 = vreinterpret_u16_u32(u02.val[0]); // [A E I M]
+	*r1 = vreinterpret_u16_u32(u13.val[0]); // [B F J N]
+	*r2 = vreinterpret_u16_u32(u02.val[1]); // [C G K O]
+	*r3 = vreinterpret_u16_u32(u13.val[1]); // [D H L P]
+}
+
+/**
+ * NEON-optimized RGB565 rotation using 4x4 block transpose.
+ *
+ * Performs counter-clockwise rotation using NEON SIMD instructions.
+ * Processes image in 4x4 pixel blocks for efficient cache usage and
+ * vectorized transpose operations.
+ *
+ * @param rotation Rotation angle (ROTATION_0, ROTATION_90, ROTATION_180, ROTATION_270)
+ * @param src Source pixel buffer (RGB565 format)
+ * @param dst Destination pixel buffer (must be pre-allocated)
+ * @param src_w Source width in pixels
+ * @param src_h Source height in pixels
+ * @param src_p Source pitch in bytes (0 for auto-calculate)
+ * @param dst_p Destination pitch in bytes (0 for auto-calculate)
+ *
+ * @note For 90°/270°: dst buffer must be h×w pixels (dimensions swapped)
+ * @note Falls back to scalar code for edge pixels when dimensions not divisible by 4
+ */
+void rotate_n16(unsigned rotation, void* __restrict src, void* __restrict dst, uint32_t src_w,
+                uint32_t src_h, uint32_t src_p, uint32_t dst_p) {
+	uint16_t* src_pixels = (uint16_t*)src;
+	uint16_t* dst_pixels = (uint16_t*)dst;
+
+	// Auto-calculate pitches if not specified
+	if (src_p == 0)
+		src_p = src_w * sizeof(uint16_t);
+	if (dst_p == 0) {
+		if (rotation == ROTATION_90 || rotation == ROTATION_270)
+			dst_p = src_h * sizeof(uint16_t); // Swapped dimensions
+		else
+			dst_p = src_w * sizeof(uint16_t);
+	}
+
+	uint32_t src_stride = src_p / sizeof(uint16_t);
+	uint32_t dst_stride = dst_p / sizeof(uint16_t);
+
+	switch (rotation) {
+	case ROTATION_0:
+		// No rotation - use NEON memcpy for aligned data
+		if (src != dst) {
+			for (uint32_t y = 0; y < src_h; y++) {
+				memcpy(dst_pixels + y * dst_stride, src_pixels + y * src_stride,
+				       src_w * sizeof(uint16_t));
+			}
+		}
+		break;
+
+	case ROTATION_90: {
+		// 90° CCW: dst[y,x] = src[src_w-1-x, y]
+		// Output dimensions: height = src_w, width = src_h
+		// After transpose, rows become columns, then flip vertically
+
+		uint32_t block_h = src_h & ~3u; // Height rounded down to multiple of 4
+		uint32_t block_w = src_w & ~3u; // Width rounded down to multiple of 4
+
+		// Process 4x4 blocks with NEON
+		for (uint32_t by = 0; by < block_h; by += 4) {
+			for (uint32_t bx = 0; bx < block_w; bx += 4) {
+				// Load 4x4 block from source
+				uint16_t* src_block = src_pixels + by * src_stride + bx;
+				uint16x4_t r0 = vld1_u16(src_block + 0 * src_stride);
+				uint16x4_t r1 = vld1_u16(src_block + 1 * src_stride);
+				uint16x4_t r2 = vld1_u16(src_block + 2 * src_stride);
+				uint16x4_t r3 = vld1_u16(src_block + 3 * src_stride);
+
+				// Transpose the 4x4 block
+				transpose_4x4_u16(&r0, &r1, &r2, &r3);
+
+				// Calculate destination position for 90° CCW:
+				// Source block at (by, bx) maps to dst starting at (src_w - bx - 4, by)
+				// After transpose: rows r0,r1,r2,r3 contain columns 0,1,2,3 of src block
+				// For 90° CCW: column 0 of src -> row (src_w-1) of dst, etc.
+				uint32_t dst_y = src_w - bx - 4;
+				uint32_t dst_x = by;
+				uint16_t* dst_block = dst_pixels + dst_y * dst_stride + dst_x;
+
+				// Store transposed rows in reverse order for 90° CCW
+				// r0 (was col 0) -> dst row (src_w - bx - 1), but we're at dst_y = src_w - bx - 4
+				// So r0 goes to row +3, r1 to row +2, r2 to row +1, r3 to row +0
+				vst1_u16(dst_block + 3 * dst_stride, r0);
+				vst1_u16(dst_block + 2 * dst_stride, r1);
+				vst1_u16(dst_block + 1 * dst_stride, r2);
+				vst1_u16(dst_block + 0 * dst_stride, r3);
+			}
+		}
+
+		// Handle right edge (columns block_w to src_w-1) - scalar fallback
+		for (uint32_t src_y = 0; src_y < src_h; src_y++) {
+			for (uint32_t src_x = block_w; src_x < src_w; src_x++) {
+				uint32_t dst_x = src_y;
+				uint32_t dst_y = src_w - 1 - src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+
+		// Handle bottom edge (rows block_h to src_h-1) - scalar fallback
+		// Only need columns 0 to block_w-1 since right edge already handled
+		for (uint32_t src_y = block_h; src_y < src_h; src_y++) {
+			for (uint32_t src_x = 0; src_x < block_w; src_x++) {
+				uint32_t dst_x = src_y;
+				uint32_t dst_y = src_w - 1 - src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+		break;
+	}
+
+	case ROTATION_180: {
+		// 180°: dst[y,x] = src[src_h-1-y, src_w-1-x]
+		// Reverse rows and pixels within rows
+
+		for (uint32_t y = 0; y < src_h; y++) {
+			uint16_t* src_row = src_pixels + (src_h - 1 - y) * src_stride;
+			uint16_t* dst_row = dst_pixels + y * dst_stride;
+			uint32_t x = 0;
+
+			// NEON: process 8 pixels at a time with reversal
+			uint32_t block_w = src_w & ~7u;
+			for (; x < block_w; x += 8) {
+				// Load 8 pixels from end of source row
+				uint16x8_t pixels = vld1q_u16(src_row + src_w - x - 8);
+
+				// Reverse within 64-bit lanes: [A B C D E F G H] -> [D C B A H G F E]
+				pixels = vrev64q_u16(pixels);
+
+				// Swap high and low halves: [D C B A H G F E] -> [H G F E D C B A]
+				pixels = vcombine_u16(vget_high_u16(pixels), vget_low_u16(pixels));
+
+				vst1q_u16(dst_row + x, pixels);
+			}
+
+			// Scalar remainder
+			for (; x < src_w; x++) {
+				dst_row[x] = src_row[src_w - 1 - x];
+			}
+		}
+		break;
+	}
+
+	case ROTATION_270: {
+		// 270° CCW (90° CW): dst[y,x] = src[x, src_h-1-y]
+		// Output dimensions: height = src_w, width = src_h
+		// Transpose + horizontal flip
+
+		uint32_t block_h = src_h & ~3u;
+		uint32_t block_w = src_w & ~3u;
+
+		// Process 4x4 blocks with NEON
+		for (uint32_t by = 0; by < block_h; by += 4) {
+			for (uint32_t bx = 0; bx < block_w; bx += 4) {
+				// Load 4x4 block from source
+				uint16_t* src_block = src_pixels + by * src_stride + bx;
+				uint16x4_t r0 = vld1_u16(src_block + 0 * src_stride);
+				uint16x4_t r1 = vld1_u16(src_block + 1 * src_stride);
+				uint16x4_t r2 = vld1_u16(src_block + 2 * src_stride);
+				uint16x4_t r3 = vld1_u16(src_block + 3 * src_stride);
+
+				// Transpose the 4x4 block
+				transpose_4x4_u16(&r0, &r1, &r2, &r3);
+
+				// Calculate destination position for 270° CCW:
+				// Source (by, bx) -> dst (bx, src_h - by - 4)
+				// After transpose: rows contain columns of src
+				// For 270° CCW: column 0 of src -> row 0 of dst, column 3 -> row 3
+				// But x-coord is flipped: src row 0 -> dst col (src_h-1)
+				uint32_t dst_y = bx;
+				uint32_t dst_x = src_h - by - 4;
+				uint16_t* dst_block = dst_pixels + dst_y * dst_stride + dst_x;
+
+				// Store transposed rows - need to reverse each row for 270° CCW
+				// r0 contains [src[0,0], src[1,0], src[2,0], src[3,0]] after transpose
+				// For 270° CCW, this becomes dst row bx at x positions src_h-1-0, src_h-1-1, ...
+				// Which is positions (src_h - by - 1), (src_h - by - 2), (src_h - by - 3), (src_h -
+				// by - 4) Reverse each row before storing
+				r0 = vrev64_u16(r0);
+				r1 = vrev64_u16(r1);
+				r2 = vrev64_u16(r2);
+				r3 = vrev64_u16(r3);
+
+				vst1_u16(dst_block + 0 * dst_stride, r0);
+				vst1_u16(dst_block + 1 * dst_stride, r1);
+				vst1_u16(dst_block + 2 * dst_stride, r2);
+				vst1_u16(dst_block + 3 * dst_stride, r3);
+			}
+		}
+
+		// Handle right edge (columns block_w to src_w-1) - scalar fallback
+		for (uint32_t src_y = 0; src_y < src_h; src_y++) {
+			for (uint32_t src_x = block_w; src_x < src_w; src_x++) {
+				uint32_t dst_x = src_h - 1 - src_y;
+				uint32_t dst_y = src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+
+		// Handle bottom edge (rows block_h to src_h-1) - scalar fallback
+		for (uint32_t src_y = block_h; src_y < src_h; src_y++) {
+			for (uint32_t src_x = 0; src_x < block_w; src_x++) {
+				uint32_t dst_x = src_h - 1 - src_y;
+				uint32_t dst_y = src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+		break;
+	}
+
+	default:
+		// Invalid rotation value, fall back to C version
+		rotate_c16(rotation, src, dst, src_w, src_h, src_p, dst_p);
+		break;
+	}
+}
+#endif // __arm__ || __aarch64__
+
+/**
+ * C implementation of RGB565 rotation.
+ *
+ * Algorithm:
+ * - 0°:   memcpy rows (or no-op if src==dst)
+ * - 90°:  dst[y,x] = src[w-1-x, y]
+ * - 180°: dst[y,x] = src[h-1-y, w-1-x]
+ * - 270°: dst[y,x] = src[x, h-1-y]
+ */
+void rotate_c16(unsigned rotation, void* __restrict src, void* __restrict dst, uint32_t src_w,
+                uint32_t src_h, uint32_t src_p, uint32_t dst_p) {
+	uint16_t* src_pixels = (uint16_t*)src;
+	uint16_t* dst_pixels = (uint16_t*)dst;
+
+	// Auto-calculate pitches if not specified
+	if (src_p == 0)
+		src_p = src_w * sizeof(uint16_t);
+	if (dst_p == 0) {
+		if (rotation == ROTATION_90 || rotation == ROTATION_270)
+			dst_p = src_h * sizeof(uint16_t); // Swapped dimensions
+		else
+			dst_p = src_w * sizeof(uint16_t);
+	}
+
+	uint32_t src_stride = src_p / sizeof(uint16_t);
+	uint32_t dst_stride = dst_p / sizeof(uint16_t);
+
+	switch (rotation) {
+	case ROTATION_0:
+		// No rotation - just copy rows
+		if (src != dst) {
+			for (uint32_t y = 0; y < src_h; y++) {
+				memcpy(dst_pixels + y * dst_stride, src_pixels + y * src_stride,
+				       src_w * sizeof(uint16_t));
+			}
+		}
+		break;
+
+	case ROTATION_90:
+		// 90° CCW: dst[y,x] = src[src_w-1-x, y]
+		// Output dimensions: src_h × src_w
+		for (uint32_t src_y = 0; src_y < src_h; src_y++) {
+			for (uint32_t src_x = 0; src_x < src_w; src_x++) {
+				uint32_t dst_x = src_y;
+				uint32_t dst_y = src_w - 1 - src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+		break;
+
+	case ROTATION_180:
+		// 180°: dst[y,x] = src[src_h-1-y, src_w-1-x]
+		for (uint32_t src_y = 0; src_y < src_h; src_y++) {
+			for (uint32_t src_x = 0; src_x < src_w; src_x++) {
+				uint32_t dst_x = src_w - 1 - src_x;
+				uint32_t dst_y = src_h - 1 - src_y;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+		break;
+
+	case ROTATION_270:
+		// 270° CCW (90° CW): dst[y,x] = src[x, src_h-1-y]
+		// Output dimensions: src_h × src_w
+		for (uint32_t src_y = 0; src_y < src_h; src_y++) {
+			for (uint32_t src_x = 0; src_x < src_w; src_x++) {
+				uint32_t dst_x = src_h - 1 - src_y;
+				uint32_t dst_y = src_x;
+				dst_pixels[dst_y * dst_stride + dst_x] = src_pixels[src_y * src_stride + src_x];
+			}
+		}
+		break;
+
+	default:
+		// Invalid rotation value, skip rotation
+		LOG_error("rotate_c16: Invalid rotation value %u", rotation);
+		break;
 	}
 }

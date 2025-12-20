@@ -8,7 +8,7 @@ This directory contains the master source files for all LessUI visual assets. Th
 - **`assets.png`** - UI sprite sheet (icons, buttons, UI elements)
   - **Ideal resolution:** 512×512 (square, RGBA)
   - **Current:** 512×512 ✓
-  - Used by minui launcher for all UI rendering
+  - Used by launcher launcher for all UI rendering
 
 ### Boot Screens
 These 4:3 images are displayed during system operations:
@@ -50,19 +50,20 @@ After updating any source file, regenerate all variants:
 ```
 
 **Requirements:**
-- **ImageMagick** (required) - `brew install imagemagick`
-- **pngquant** (recommended) - `brew install pngquant` - Compresses PNGs by ~47%
+- **ImageMagick** (required) - `brew install imagemagick` - For PNG/BMP generation
+- **ffmpeg** (required) - `brew install ffmpeg` - For 16-bit RGB565 BMPs
 
 This script automatically creates:
 - **UI sprites:** `assets@1x.png` through `assets@4x.png` (128px to 512px)
 - **Boot screens (PNG):** `@1x`, `@2x`, `@3x` variants (320×240 to 960×720)
 - **Boot screens (BMP):** Multiple format variants for different platforms:
-  - `@1x.bmp` - 320×240 (4:3)
-  - `@1x-wide.bmp` - 480×272 (16:9)
-  - `@2x.bmp` - 640×480 (4:3)
-  - `@2x-rotated.bmp` - 480×640 (portrait)
-  - `@2x-square.bmp` - 720×720 (1:1)
-  - `@2x-wide.bmp` - 720×480 (3:2)
+  - `@1x.bmp` - 320×240 32-bit (gkdpixel)
+  - `@1x-wide.bmp` - 480×272 32-bit (m17)
+  - `@2x.bmp` - 640×480 32-bit (rg35xxplus, magicmini)
+  - `@2x-16bit.bmp` - 640×480 16-bit RGB565 (rg35xx)
+  - `@2x-rotated.bmp` - 480×640 32-bit (rg35xxplus rotated, magicmini)
+  - `@2x-square.bmp` - 720×720 32-bit (rg35xxplus CubeXX)
+  - `@2x-wide.bmp` - 720×480 32-bit (rg35xxplus RG34XX)
 
 All generated files are placed in `skeleton/SYSTEM/res/` and should be committed to the repository.
 
@@ -89,7 +90,10 @@ The generation script handles:
 - **Scaling** - Precise resize to target dimensions
 - **Cropping** - Center-crop for non-4:3 displays
 - **Rotation** - 90° rotation for portrait displays
-- **Format conversion** - PNG → BMP with proper headers (24-bit, standard 54-byte header)
+- **Format conversion** - PNG → BMP with proper formats:
+  - **32-bit BGRA** (most platforms) - ImageMagick with `-define bmp3:alpha=true`
+  - **16-bit RGB565** (rg35xx) - ffmpeg with `-pix_fmt rgb565le`
+  - **Top-down scanlines** (all BMPs) - Header patching with `scripts/bmp-topdown.sh`
 - **Background handling** - Black background fill for aspect ratio mismatches
 
 ### Platform Usage

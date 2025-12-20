@@ -72,7 +72,7 @@ The RG35XX uses a flexible dual-partition approach:
 - **TF1** (`/mnt/mmc`): Primary ROMS partition
 - **TF2** (`/mnt/sdcard`): Optional secondary partition
 
-Boot script detects which partition contains LessUI (`.system/rg35xx` or `LessUI.zip`) and creates symlinks accordingly. This allows LessUI to work with single or dual TF card setups.
+Boot script detects which partition contains LessUI (`.system/rg35xx` or `LessUI.7z`) and creates symlinks accordingly. This allows LessUI to work with single or dual TF card setups.
 
 ### Boot Firmware Integration
 LessUI runs through a custom ramdisk (`ramdisk.img`) and boot script (`dmenu.bin`) installed in the `/misc` partition:
@@ -106,7 +106,7 @@ rg35xx/
 │   └── readme.txt     Ramdisk modification instructions
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
-    └── DinguxCommander/ File manager (minui-rg35xx branch)
+    └── DinguxCommander/ File manager (launcher-rg35xx branch)
 ```
 
 ## Input System
@@ -160,7 +160,7 @@ make
 
 ### Dependencies
 The platform automatically clones required dependencies on first build:
-- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `minui-rg35xx`)
+- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `launcher-rg35xx`)
 
 ## Installation
 
@@ -179,9 +179,9 @@ LessUI installs to the SD card with the following structure:
 │   │   └── rootfs.ext2     Chroot filesystem image
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Boot Partition Layout (`/misc`)
@@ -201,15 +201,15 @@ LessUI modifies the `/misc` partition during installation:
 
 1. Stock firmware boots and runs `/misc/dmenu.bin` (LessUI's boot.sh)
 2. Script mounts SD card partitions (TF1 at `/mnt/mmc`, TF2 at `/mnt/sdcard`)
-3. Detects which partition contains LessUI by checking for `.system/rg35xx` or `LessUI.zip`
+3. Detects which partition contains LessUI by checking for `.system/rg35xx` or `LessUI.7z`
 4. Creates symlink if needed to unify partition access
-5. If `LessUI.zip` exists:
+5. If `LessUI.7z` exists:
    - Display splash screen based on install state (installing.bmp or updating.bmp)
    - Set framebuffer to 640x480x16
    - Extract splash images from uuencoded data in boot script
    - Display appropriate splash to `/dev/fb0`
-   - Extract `LessUI.zip` to SD card
-   - Delete ZIP file
+   - Extract `LessUI.7z` to SD card
+   - Delete archive
    - Run `.system/rg35xx/bin/install.sh` to update `/misc` partition
    - Reboot device
 6. Check for `rootfs.ext2` (required for LessUI)
@@ -222,9 +222,9 @@ LessUI modifies the `/misc` partition during installation:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root
+1. Place `LessUI.7z` in SD card root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
+3. Boot script auto-detects archive and performs update
 4. Install script checks MD5 checksums of `/misc` files
 5. Only updates `/misc` if files have changed (preserves custom boot logo)
 6. Device automatically reboots after update
@@ -350,7 +350,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Ramdisk notes: `./ramdisk/readme.txt` (modification instructions)

@@ -1,88 +1,204 @@
 /**
- * api.h - Platform abstraction API for MinUI
+ * api.h - Platform abstraction API for Launcher
  *
  * Provides a unified interface for graphics (GFX_*), sound (SND_*), input (PAD_*),
  * power management (PWR_*), and platform-specific functionality (PLAT_*).
  *
- * This header defines the public API used by minui (launcher) and minarch (emulator).
+ * This header defines the public API used by launcher and player (emulator).
  * Each platform implements the PLAT_* functions in their workspace/<platform>/ directory,
  * while common GFX_/SND_/PAD_/PWR_ functions are in workspace/all/common/api.c.
  */
 
 #ifndef __API_H__
 #define __API_H__
+#include "api_types.h"
 #include "defines.h"
+#include "log.h"
+#include "pad.h"
 #include "platform.h"
 #include "scaler.h"
 #include "sdl.h"
 
 ///////////////////////////////
-// Logging
+// Display Points (DP) scaling system
 ///////////////////////////////
 
 /**
- * Log severity levels.
- */
-enum {
-	LOG_DEBUG = 0, // Detailed debug information
-	LOG_INFO, // General informational messages
-	LOG_WARN, // Warning messages
-	LOG_ERROR, // Error messages
-};
-
-/**
- * Convenience macros for logging at different severity levels.
- */
-#define LOG_debug(fmt, ...) LOG_note(LOG_DEBUG, fmt, ##__VA_ARGS__)
-#define LOG_info(fmt, ...) LOG_note(LOG_INFO, fmt, ##__VA_ARGS__)
-#define LOG_warn(fmt, ...) LOG_note(LOG_WARN, fmt, ##__VA_ARGS__)
-#define LOG_error(fmt, ...) LOG_note(LOG_ERROR, fmt, ##__VA_ARGS__)
-
-/**
- * Logs a formatted message at the specified severity level.
+ * Resolution-independent UI scaling based on physical screen density (PPI).
  *
- * @param level Log severity (LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR)
- * @param fmt Printf-style format string
- * @param ... Format arguments
+ * The DP system automatically calculates optimal UI scaling from each device's
+ * physical screen size, eliminating per-platform manual tuning. UI elements
+ * are specified in density-independent "display points" (dp), then converted
+ * to physical pixels at runtime.
+ *
+ * Core formula:
+ *   ppi = sqrt(width² + height²) / diagonal_inches
+ *   dp_scale = ppi / 144.0  (144 = handheld gaming device baseline)
+ *
+ * Example: Miyoo Mini (640x480, 2.8") → 286 PPI → dp_scale ≈ 1.99
+ *
+ * Usage:
+ *   DP(30)           // Convert 30dp to physical pixels
+ *   DP2(10, 20)      // Convert two values
+ *   DP4(x, y, w, h)  // Convert four values (for SDL_Rect)
  */
-void LOG_note(int level, const char* fmt, ...);
+
+/**
+ * Global display scale factor.
+ *
+ * Calculated at startup from screen PPI. All UI coordinates should be
+ * converted through DP() macros using this value.
+ */
+extern float gfx_dp_scale;
+
+/**
+ * Convert display points to physical pixels.
+ *
+ * @param x Value in display points
+ * @return Value in physical pixels (rounded)
+ */
+#define DP(x) ((int)((x) * gfx_dp_scale + 0.5f))
+#define DP2(a, b) DP(a), DP(b)
+#define DP3(a, b, c) DP(a), DP(b), DP(c)
+#define DP4(a, b, c, d) DP(a), DP(b), DP(c), DP(d)
+
+/**
+ * Center pixel content within DP container.
+ *
+ * Handles the common case where container size is in DP (converted to pixels
+ * with rounding) and content size is measured in pixels (e.g., from SDL_TTF).
+ * Uses round-to-nearest to avoid bias, ensuring good centering across all devices.
+ *
+ * @param dp_size Container size in display points
+ * @param px_size Content size in pixels (e.g., text->w from TTF_Render)
+ * @return Offset in pixels to center content (rounded to nearest)
+ *
+ * Example: DP_CENTER_PX(ui.button_size, text->w)
+ */
+#define DP_CENTER_PX(dp_size, px_size) (((DP(dp_size) - (px_size)) + 1) / 2)
+
+/**
+ * Calculate X and Y offsets to visually center a single glyph in a container.
+ *
+ * Uses TTF_GlyphMetrics to get precise glyph bounds rather than relying on
+ * the rendered surface dimensions (which include side bearings and descender space).
+ * This produces accurate visual centering for button labels like "A", "B", etc.
+ *
+ * @param container_w Container width in pixels
+ * @param container_h Container height in pixels
+ * @param font TTF_Font to get metrics from
+ * @param ch Character to center (as UTF-16 codepoint)
+ * @param out_x Pointer to receive X offset for the text surface
+ * @param out_y Pointer to receive Y offset for the text surface
+ */
+static inline void GFX_centerGlyph(int container_w, int container_h, TTF_Font* font, Uint16 ch,
+                                   int* out_x, int* out_y) {
+	int minx, maxx, miny, maxy, advance;
+	TTF_GlyphMetrics(font, ch, &minx, &maxx, &miny, &maxy, &advance);
+
+	// Glyph visual width and height (actual inked area)
+	int glyph_w = maxx - minx;
+	int glyph_h = maxy - miny;
+
+	// Center the visual glyph bounds within container
+	// minx is the left bearing (offset from render origin to first inked pixel)
+	// The rendered surface places the glyph at x=minx, so we adjust for that
+	*out_x = (container_w - glyph_w + 1) / 2 - minx;
+
+	// maxy is distance from baseline to top of glyph
+	// Ascent is the font's max distance above baseline
+	// The rendered surface has ascent pixels above the baseline
+	int ascent = TTF_FontAscent(font);
+	int glyph_top_in_surface = ascent - maxy; // where glyph starts in surface
+	*out_y = (container_h - glyph_h + 1) / 2 - glyph_top_in_surface;
+}
+
+/**
+ * Convert physical pixels to display points.
+ *
+ * Use this when you have pixel measurements (e.g., from SDL_TTF) and need
+ * to work in DP space for layout calculations.
+ *
+ * @param px Value in physical pixels
+ * @return Value in display points (rounded)
+ */
+#define PX_TO_DP(px) ((int)((px) / gfx_dp_scale + 0.5f))
+
+/**
+ * Create SDL_Rect from DP coordinates.
+ *
+ * Use this for inline SDL_Rect creation when DP wrapper functions aren't available.
+ *
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ * @param w_dp Width in DP (0 for auto)
+ * @param h_dp Height in DP (0 for auto)
+ * @return SDL_Rect with pixel-converted coordinates
+ */
+#define DP_RECT(x_dp, y_dp, w_dp, h_dp) ((SDL_Rect){DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)})
 
 ///////////////////////////////
-// Video page buffer constants
+// UI Layout System (Display Points)
+///////////////////////////////
+
+#include "ui_layout.h"
+
+///////////////////////////////
+// Video Buffer Sizing (derived from screen dimensions)
 ///////////////////////////////
 
 /**
- * Double-buffered video system configuration.
+ * Video buffer sizing system.
  *
- * MinUI uses overscaled page buffers (FIXED_WIDTH * PAGE_SCALE) to support
- * various scaling operations. This allows UI elements to be drawn at high
- * resolution before scaling down to the physical screen.
+ * Buffer dimensions are derived from screen size and scaling constraints,
+ * not manually configured. This eliminates over-allocation while ensuring
+ * buffers are always large enough for worst-case scaling scenarios.
+ *
+ * When hardware scaling is used (fit=0), player renders content larger
+ * than the screen, then hardware scales it down. The buffer must hold
+ * this intermediate oversized frame.
+ *
+ * The maximum buffer size depends on:
+ * 1. Integer scale factor: MAX(ceil(screen_w/core_w), ceil(screen_h/core_h))
+ * 2. Aspect ratio correction: Can expand one dimension by up to 1.5x
+ *
+ * Example: GB 160x144 on 640x480 screen
+ *   - Scale 4x -> 640x576 (taller than screen)
+ *   - Aspect correction -> up to ~850x720
+ *   - Hardware scales down to 640x480 for display
  */
-#define PAGE_COUNT 2
-#ifndef PAGE_SCALE
-#define PAGE_SCALE 3 // Default 3x overscaling
+
+/**
+ * Buffer scale factor for CPU/hardware integer scaling.
+ *
+ * Platforms using CPU or hardware scaling (not SDL2 GPU) need oversized
+ * buffers to enable crisp integer scaling. The technique:
+ * 1. Core renders to a buffer that's an integer multiple of source size
+ * 2. CPU scaler enlarges using nearest-neighbor (crisp pixels)
+ * 3. Hardware scales the oversized buffer down to fit screen
+ *
+ * Example: Game Boy (160x144) on 320x240 screen needs 2x scale = 320x288 buffer
+ *
+ * Platforms define their own factor based on worst-case core dimensions.
+ * SDL2 GPU platforms use 1.0 (GPU handles scaling, no overallocation needed).
+ */
+#ifndef BUFFER_SCALE_FACTOR
+#define BUFFER_SCALE_FACTOR 1.0f
 #endif
-#define PAGE_WIDTH (FIXED_WIDTH * PAGE_SCALE)
-#define PAGE_HEIGHT (FIXED_HEIGHT * PAGE_SCALE)
-#define PAGE_PITCH (PAGE_WIDTH * FIXED_BPP)
-#define PAGE_SIZE (PAGE_PITCH * PAGE_HEIGHT)
-
-///////////////////////////////
 
 /**
- * Platform-specific page buffer configuration.
+ * Derived video buffer dimensions.
  *
- * Optionally defined in platform.h for platforms requiring different
- * pixel formats (e.g., RGB888 instead of RGB565).
+ * Buffer is screen size * scale factor, sized for integer scaling scenarios.
  */
-// TODO: these only seem to be used by a tmp.pak in trimui (model s)
-// used by minarch, optionally defined in platform.h
-#ifndef PLAT_PAGE_BPP
-#define PLAT_PAGE_BPP FIXED_BPP
-#endif
-#define PLAT_PAGE_DEPTH (PLAT_PAGE_BPP * 8)
-#define PLAT_PAGE_PITCH (PAGE_WIDTH * PLAT_PAGE_BPP)
-#define PLAT_PAGE_SIZE (PLAT_PAGE_PITCH * PAGE_HEIGHT)
+#define VIDEO_BUFFER_WIDTH ((int)(FIXED_WIDTH * BUFFER_SCALE_FACTOR + 0.5f))
+#define VIDEO_BUFFER_HEIGHT ((int)(FIXED_HEIGHT * BUFFER_SCALE_FACTOR + 0.5f))
+#define VIDEO_BUFFER_PITCH (VIDEO_BUFFER_WIDTH * FIXED_BPP)
+#define VIDEO_BUFFER_SIZE (VIDEO_BUFFER_PITCH * VIDEO_BUFFER_HEIGHT)
+
+/** Double-buffering for tear-free rendering */
+#define VIDEO_BUFFER_COUNT 2
+#define VIDEO_BUFFER_TOTAL (VIDEO_BUFFER_SIZE * VIDEO_BUFFER_COUNT)
 
 ///////////////////////////////
 // SDL pixel format masks
@@ -141,8 +257,9 @@ enum {
 	ASSET_WHITE_PILL, // Rounded rectangle (white)
 	ASSET_BLACK_PILL, // Rounded rectangle (black)
 	ASSET_DARK_GRAY_PILL, // Rounded rectangle (dark gray)
-	ASSET_OPTION, // Option indicator
-	ASSET_BUTTON, // Button background
+	ASSET_OPTION, // Option row background (gray, option_size)
+	ASSET_OPTION_WHITE, // Option row selected (white, option_size)
+	ASSET_BUTTON, // Button background (white, button_size)
 	ASSET_PAGE_BG, // Page background
 	ASSET_STATE_BG, // State indicator background
 	ASSET_PAGE, // Page indicator
@@ -193,27 +310,33 @@ enum {
 };
 
 /**
- * CRT-style visual effects.
+ * CRT/LCD visual effects.
+ *
+ * LINE/GRID use shadow-only overlays (black pixels with alpha).
+ * GRILLE uses full aperture grille with RGB phosphor tints + scanlines.
  */
 enum {
 	EFFECT_NONE, // No effect
-	EFFECT_LINE, // Horizontal scanlines
-	EFFECT_GRID, // Grid pattern
+	EFFECT_LINE, // Horizontal scanlines (shadow only)
+	EFFECT_GRID, // LCD pixel grid (1px border per content pixel)
+	EFFECT_GRILLE, // Aperture grille: RGB phosphor stripes + scanlines
+	EFFECT_SLOT, // Slot mask (staggered brick pattern)
 	EFFECT_COUNT,
 };
 
 /**
  * Rendering context for video scaling operations.
  *
- * Used by minarch to configure how emulator video output is scaled and
+ * Used by player to configure how emulator video output is scaled and
  * positioned on the physical screen.
  */
 typedef struct GFX_Renderer {
 	void* src; // Source surface pixel data
 	void* dst; // Destination surface pixel data
-	void* blit; // Blit surface for intermediate operations
+	void* blit; // Scaler function pointer (cast to scaler_t)
 	double aspect; // 0=integer scale, -1=fullscreen, >0=aspect ratio for SDL2 accelerated scaling
-	int scale; // Integer scale factor
+	int scale; // Integer scale factor (intermediate buffer scale)
+	int visual_scale; // Visual scale for effects (accounts for GPU downscaling)
 
 	// TODO: document this better
 	int true_w; // True source width
@@ -327,11 +450,26 @@ int GFX_hdmiChanged(void);
 void GFX_startFrame(void);
 
 /**
- * Flips the back buffer to the screen.
+ * Presents a frame to the display.
  *
- * @param screen SDL surface to flip
+ * @param renderer If non-NULL, scales/processes game frame and presents it.
+ *                 If NULL, presents the screen surface (UI mode).
+ *
+ * Internally handles:
+ * - Scaling and rotation (platform-specific)
+ * - Effect overlays (if enabled)
+ * - Double-buffer management
+ * - VSync
  */
-void GFX_flip(SDL_Surface* screen);
+void GFX_present(GFX_Renderer* renderer);
+
+/**
+ * Waits for vsync without presenting new content.
+ *
+ * Use this for frame pacing when the core didn't produce a new frame.
+ * The display continues showing the previous frame.
+ */
+void GFX_vsync(void);
 
 /**
  * Checks if platform supports overscan adjustment.
@@ -340,7 +478,7 @@ void GFX_flip(SDL_Surface* screen);
 #define GFX_supportsOverscan PLAT_supportsOverscan
 
 /**
- * Maintains 60fps timing when not calling GFX_flip() this frame.
+ * Maintains 60fps timing when not calling GFX_present() this frame.
  *
  * Use this to keep consistent frame timing during pause/sleep.
  */
@@ -350,29 +488,6 @@ void GFX_sync(void);
  * Shuts down the graphics subsystem.
  */
 void GFX_quit(void);
-
-/**
- * VSync modes for frame pacing.
- */
-enum {
-	VSYNC_OFF = 0, // No frame pacing
-	VSYNC_LENIENT, // Default, allows slight timing variance
-	VSYNC_STRICT, // Strict 60fps timing
-};
-
-/**
- * Gets current VSync mode.
- *
- * @return VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-int GFX_getVsync(void);
-
-/**
- * Sets VSync mode.
- *
- * @param vsync VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-void GFX_setVsync(int vsync);
 
 /**
  * Truncates text to fit within maximum width, adding ellipsis if needed.
@@ -406,12 +521,6 @@ int GFX_wrapText(TTF_Font* font, char* str, int max_width, int max_lines);
 #define GFX_getScaler PLAT_getScaler
 
 /**
- * Blits a renderer's output to the screen.
- * @param renderer Rendering context
- */
-#define GFX_blitRenderer PLAT_blitRenderer
-
-/**
  * Gets anti-aliased scaler for smooth scaling operations.
  *
  * @param renderer Rendering context
@@ -425,14 +534,22 @@ scaler_t GFX_getAAScaler(const GFX_Renderer* renderer);
 void GFX_freeAAScaler(void);
 
 /**
+ * Scales an image to fit within maximum dimensions while preserving aspect ratio.
+ *
+ * @param src Source surface to scale
+ * @param max_w Maximum width in pixels
+ * @param max_h Maximum height in pixels
+ * @return New scaled surface (caller must SDL_FreeSurface), or src if no scaling needed
+ */
+SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h);
+
+/**
  * Blits a graphics asset to the destination surface.
  *
  * @param asset Asset ID (ASSET_* enum)
  * @param src_rect Source rectangle (NULL for full asset)
  * @param dst Destination surface
- * @param dst_rect Destination rectangle
- *
- * @note All dimensions should be pre-scaled by FIXED_SCALE
+ * @param dst_rect Destination rectangle (dimensions in physical pixels)
  */
 void GFX_blitAsset(int asset, const SDL_Rect* src_rect, SDL_Surface* dst, SDL_Rect* dst_rect);
 
@@ -489,7 +606,7 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
  * @param dst Destination surface
  * @param dst_rect Destination rectangle
  */
-void GFX_blitMessage(TTF_Font* font, char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect);
+void GFX_blitMessage(TTF_Font* font, const char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect);
 
 /**
  * Blits hardware status indicators (brightness, volume, battery).
@@ -531,6 +648,28 @@ int GFX_blitButtonGroup(char** hints, int primary, SDL_Surface* dst, int align_r
 void GFX_sizeText(TTF_Font* font, char* str, int leading, int* w, int* h);
 
 /**
+ * Calculate Y offset to visually center text in a container.
+ *
+ * Uses font metrics to center the visual "mass" of typical text (uppercase letters,
+ * lowercase without descenders) rather than the full font height which includes
+ * space for descenders that most menu text doesn't use.
+ *
+ * This gives much better visual centering than simply centering the text surface
+ * height, which would appear too low because of unused descender space.
+ *
+ * @param font TTF_Font to measure
+ * @param container_height Container height in pixels
+ * @return Y offset in pixels to use when blitting text
+ *
+ * @note Results are cached internally - first call measures, subsequent calls return cached value
+ *
+ * Example:
+ *   int y_offset = GFX_centerTextY(font.large, DP(ui.pill_height));
+ *   SDL_BlitSurface(text, NULL, screen, &(SDL_Rect){x, y_offset, 0, 0});
+ */
+int GFX_centerTextY(TTF_Font* font, int container_height);
+
+/**
  * Blits multi-line text with custom leading.
  *
  * @param font Font to use
@@ -544,16 +683,134 @@ void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_S
                   SDL_Rect* dst_rect);
 
 ///////////////////////////////
-// Sound (SND) API
+// DP-Native Wrapper Functions
 ///////////////////////////////
 
 /**
- * Stereo audio frame (left and right channels).
+ * DP-native wrappers for GFX functions.
+ *
+ * These wrappers accept DP coordinates and convert to pixels internally,
+ * following the pattern used by Android, iOS, and other cross-platform frameworks.
+ * Use these for all UI layout code.
  */
-typedef struct SND_Frame {
-	int16_t left; // Left channel sample (-32768 to 32767)
-	int16_t right; // Right channel sample (-32768 to 32767)
-} SND_Frame;
+
+/**
+ * Blits a pill-shaped background using DP coordinates.
+ *
+ * @param asset ASSET_WHITE_PILL, ASSET_BLACK_PILL, or ASSET_DARK_GRAY_PILL
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ * @param w_dp Width in DP
+ * @param h_dp Height in DP
+ */
+static inline void GFX_blitPill_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp,
+                                   int h_dp) {
+	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
+	GFX_blitPill(asset, dst, &rect);
+}
+
+/**
+ * Blits a rectangular asset using DP coordinates.
+ *
+ * @param asset Asset ID
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ * @param w_dp Width in DP
+ * @param h_dp Height in DP
+ */
+static inline void GFX_blitRect_DP(int asset, SDL_Surface* dst, int x_dp, int y_dp, int w_dp,
+                                   int h_dp) {
+	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
+	GFX_blitRect(asset, dst, &rect);
+}
+
+/**
+ * Blits an asset using DP coordinates.
+ *
+ * @param asset Asset ID
+ * @param src_rect Source rectangle (in pixels, or NULL for full asset)
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ */
+static inline void GFX_blitAsset_DP(int asset, const SDL_Rect* src_rect, SDL_Surface* dst, int x_dp,
+                                    int y_dp) {
+	SDL_Rect dst_rect = {DP(x_dp), DP(y_dp), 0, 0};
+	GFX_blitAsset(asset, src_rect, dst, &dst_rect);
+}
+
+/**
+ * Blits the battery indicator using DP coordinates.
+ *
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ */
+static inline void GFX_blitBattery_DP(SDL_Surface* dst, int x_dp, int y_dp) {
+	SDL_Rect rect = {DP(x_dp), DP(y_dp), 0, 0};
+	GFX_blitBattery(dst, &rect);
+}
+
+/**
+ * Blits centered message text using DP rectangle.
+ *
+ * @param ttf_font Font to use
+ * @param msg Message text
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ * @param w_dp Width in DP
+ * @param h_dp Height in DP
+ */
+static inline void GFX_blitMessage_DP(TTF_Font* ttf_font, char* msg, SDL_Surface* dst, int x_dp,
+                                      int y_dp, int w_dp, int h_dp) {
+	SDL_Rect rect = {DP(x_dp), DP(y_dp), DP(w_dp), DP(h_dp)};
+	GFX_blitMessage(ttf_font, msg, dst, &rect);
+}
+
+///////////////////////////////
+// SDL Helper Functions
+///////////////////////////////
+
+/**
+ * Gets text size in DP units.
+ *
+ * @param ttf_font Font to use
+ * @param text Text to measure
+ * @param w_dp Output: width in DP (may be NULL)
+ * @param h_dp Output: height in DP (may be NULL)
+ */
+static inline void TTF_SizeUTF8_DP(TTF_Font* ttf_font, const char* text, int* w_dp, int* h_dp) {
+	int w_px = 0, h_px = 0;
+	TTF_SizeUTF8(ttf_font, text, &w_px, &h_px);
+	if (w_dp)
+		*w_dp = PX_TO_DP(w_px);
+	if (h_dp)
+		*h_dp = PX_TO_DP(h_px);
+}
+
+/**
+ * Blits surface at DP coordinates.
+ *
+ * @param src Source surface
+ * @param srcrect Source rectangle (NULL for full surface)
+ * @param dst Destination surface
+ * @param x_dp X coordinate in DP
+ * @param y_dp Y coordinate in DP
+ */
+static inline void SDL_BlitSurface_DP(SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst,
+                                      int x_dp, int y_dp) {
+	SDL_Rect dstrect = {DP(x_dp), DP(y_dp), 0, 0};
+	SDL_BlitSurface(src, srcrect, dst, &dstrect);
+}
+
+///////////////////////////////
+// Sound (SND) API
+///////////////////////////////
+
+// SND_Frame defined in api_types.h
 
 /**
  * Initializes the audio subsystem.
@@ -573,21 +830,113 @@ void SND_init(double sample_rate, double frame_rate);
 size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count);
 
 /**
+ * Gets current audio buffer fill level.
+ *
+ * @return Fill level as percentage (0-100)
+ */
+unsigned SND_getBufferOccupancy(void);
+
+/**
+ * Gets count of audio buffer underruns (emergency signal for CPU scaling).
+ *
+ * @return Number of underruns since init or last reset
+ */
+unsigned SND_getUnderrunCount(void);
+
+/**
+ * Resets the underrun counter after handling the emergency.
+ */
+void SND_resetUnderrunCount(void);
+
+/**
+ * Signals start of a new video frame for audio rate control.
+ * Call once per frame before core.run() to limit integral updates.
+ */
+void SND_newFrame(void);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
+
+/**
+ * Sets minimum audio latency in milliseconds.
+ *
+ * Called by cores via RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY to request
+ * a larger audio buffer for latency-sensitive operations (e.g., audio-based
+ * frameskip). The buffer is resized only if the requested latency exceeds
+ * the current buffer size. Pass 0 to reset to default latency.
+ *
+ * @param latency_ms Minimum latency in milliseconds (0 = reset to default)
+ */
+void SND_setMinLatency(unsigned latency_ms);
+
+/**
+ * Audio diagnostic snapshot - captures all relevant state atomically.
+ * Used for debugging rate control and buffer fill issues.
+ */
+typedef struct {
+	// Timestamp for delta calculations
+	uint64_t timestamp_us; // Microseconds since epoch (for calculating actual rates)
+
+	// Buffer state
+	unsigned fill_pct; // Buffer fill level (0-100%)
+	int frame_in; // Write position
+	int frame_out; // Read position
+	int frame_count; // Buffer capacity
+
+	// Sample flow (for verifying resampler behavior)
+	uint64_t samples_in; // Total input samples fed to resampler
+	uint64_t samples_written; // Total output samples written (from resampler)
+	uint64_t samples_consumed; // Total samples consumed by audio callback
+	uint64_t samples_requested; // Total samples requested by SDL callback
+
+	// Rate control parameters (PI controller based on Arntzen algorithm)
+	float frame_rate; // Core frame rate (e.g., 60.0988)
+	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
+	float total_adjust; // Same as rate_adjust (no separate corrections)
+	float rate_integral; // PI controller integral term (drift correction)
+	float rate_control_d; // Proportional gain
+	float rate_control_ki; // Integral gain
+	float error_avg; // Smoothed error (for debugging integral behavior)
+
+	// Resampler state
+	int sample_rate_in; // Input sample rate (from core)
+	int sample_rate_out; // Output sample rate (to soundcard)
+
+	// Resampler diagnostics (for debugging ratio issues)
+	uint32_t resampler_frac_step; // Base step (fixed-point 16.16)
+	uint32_t resampler_adjusted_step; // Last adjusted step used
+	float resampler_ratio_adjust; // Last ratio_adjust passed to resampler
+	uint32_t resampler_frac_pos; // Current fractional position (0 to FRAC_ONE-1)
+
+	// Cumulative tracking (for window-averaged comparisons)
+	double cumulative_total_adjust; // Sum of total_adjust values applied
+	uint64_t total_adjust_count; // Number of total_adjust applications
+
+	// Error tracking
+	unsigned underrun_count; // Total underruns
+
+	// SDL callback timing diagnostics
+	uint64_t callback_count; // Total callbacks
+	float callback_avg_interval_ms; // Average ms between callbacks
+	unsigned callback_samples_min; // Min samples per callback
+	unsigned callback_samples_max; // Max samples per callback
+} SND_Snapshot;
+
+/**
+ * Captures an atomic snapshot of all audio state for diagnostics.
+ * Thread-safe: locks audio while reading.
+ *
+ * @return Snapshot of current audio state
+ */
+SND_Snapshot SND_getSnapshot(void);
 
 ///////////////////////////////
 // Lid sensor (LID) API
 ///////////////////////////////
 
-/**
- * Lid sensor state for devices with flip covers.
- */
-typedef struct LID_Context {
-	int has_lid; // 1 if device has a lid sensor, 0 otherwise
-	int is_open; // 1 if lid is open, 0 if closed
-} LID_Context;
+// LID_Context defined in api_types.h
 extern LID_Context lid;
 
 /**
@@ -607,13 +956,7 @@ int PLAT_lidChanged(int* state);
 // Input/Gamepad (PAD) API
 ///////////////////////////////
 
-/**
- * Analog stick axis values.
- */
-typedef struct PAD_Axis {
-	int x; // X-axis value (-32768 to 32767)
-	int y; // Y-axis value (-32768 to 32767)
-} PAD_Axis;
+// PAD_Axis defined in api_types.h
 
 /**
  * Input state tracking context.
@@ -624,16 +967,13 @@ typedef struct PAD_Context {
 	int just_released; // Bitmask of buttons released this frame
 	int just_repeated; // Bitmask of buttons auto-repeated this frame
 	uint32_t repeat_at[BTN_ID_COUNT]; // Timestamp for next repeat per button
+	uint32_t hold_start[BTN_ID_COUNT]; // Timestamp when button was first pressed (for accel)
 	PAD_Axis laxis; // Left analog stick state
 	PAD_Axis raxis; // Right analog stick state
 } PAD_Context;
 extern PAD_Context pad;
 
-/**
- * Auto-repeat timing constants.
- */
-#define PAD_REPEAT_DELAY 300 // Milliseconds before first repeat
-#define PAD_REPEAT_INTERVAL 100 // Milliseconds between repeats
+// Note: PAD_REPEAT_* and PAD_ACCEL_* constants are now defined in pad.h
 
 /**
  * Initializes the input subsystem.
@@ -886,12 +1226,18 @@ int PWR_getBattery(void);
 
 /**
  * CPU speed presets for power management.
+ *
+ * 4-level system based on % of max frequency:
+ * - IDLE: 20% (launcher, tools, settings)
+ * - POWERSAVE: 55% (light gaming - GB, NES)
+ * - NORMAL: 80% (most gaming - SNES, GBA)
+ * - PERFORMANCE: 100% (demanding - PS1, N64)
  */
 enum {
-	CPU_SPEED_MENU, // Low speed for menu navigation
-	CPU_SPEED_POWERSAVE, // Reduced speed for battery saving
-	CPU_SPEED_NORMAL, // Default speed
-	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games
+	CPU_SPEED_IDLE, // Minimum speed for non-gaming tasks (20% of max)
+	CPU_SPEED_POWERSAVE, // Light gaming (55% of max)
+	CPU_SPEED_NORMAL, // Most gaming (80% of max)
+	CPU_SPEED_PERFORMANCE, // Maximum speed for demanding games (100%)
 };
 
 /**
@@ -949,13 +1295,6 @@ void PLAT_clearVideo(SDL_Surface* screen);
  * Platform-specific clearing of all video buffers.
  */
 void PLAT_clearAll(void);
-
-/**
- * Platform-specific VSync configuration.
- *
- * @param vsync VSync mode
- */
-void PLAT_setVsync(int vsync);
 
 /**
  * Platform-specific video mode change.
@@ -1021,19 +1360,12 @@ void PLAT_vsync(int remaining);
 scaler_t PLAT_getScaler(GFX_Renderer* renderer);
 
 /**
- * Platform-specific renderer blitting.
+ * Platform-specific unified frame presentation.
  *
- * @param renderer Rendering context
+ * @param renderer If non-NULL, processes and presents game frame.
+ *                 If NULL, presents the screen surface (UI mode).
  */
-void PLAT_blitRenderer(GFX_Renderer* renderer);
-
-/**
- * Platform-specific screen flip.
- *
- * @param screen SDL surface to flip
- * @param sync 1 to wait for VSync, 0 to flip immediately
- */
-void PLAT_flip(SDL_Surface* screen, int sync);
+void PLAT_present(GFX_Renderer* renderer);
 
 /**
  * Platform-specific overscan support check.
@@ -1041,6 +1373,27 @@ void PLAT_flip(SDL_Surface* screen, int sync);
  * @return 1 if platform supports overscan adjustment, 0 otherwise
  */
 int PLAT_supportsOverscan(void);
+
+/**
+ * Platform-specific display refresh rate.
+ *
+ * Used by frame pacing to decouple emulation from display timing.
+ * Most platforms return 60.0, but some (e.g., M17 with 72Hz panel)
+ * have different refresh rates.
+ *
+ * @return Display refresh rate in Hz (e.g., 60.0, 72.0)
+ */
+double PLAT_getDisplayHz(void);
+
+/**
+ * Measures a single vsync interval.
+ *
+ * Blocks until vsync completes and returns the elapsed time.
+ * Used for adaptive display Hz measurement.
+ *
+ * @return Vsync interval in microseconds (e.g., 16667 for 60Hz), or 0 if unsupported
+ */
+uint32_t PLAT_measureVsyncInterval(void);
 
 /**
  * Platform-specific overlay initialization (for on-screen indicators).
@@ -1087,11 +1440,67 @@ void PLAT_enableBacklight(int enable);
 void PLAT_powerOff(void);
 
 /**
- * Platform-specific CPU speed control.
+ * Platform-specific CPU speed control (preset-based).
  *
  * @param speed CPU_SPEED_* enum value
  */
 void PLAT_setCPUSpeed(int speed);
+
+/**
+ * Maximum number of CPU frequencies supported.
+ * Most platforms have 6-12 discrete frequency steps.
+ */
+#define CPU_MAX_FREQUENCIES 32
+
+/**
+ * Gets available CPU frequencies from the system.
+ *
+ * Reads frequencies from sysfs (scaling_available_frequencies) and returns
+ * them sorted from lowest to highest. Used by auto CPU scaling to enable
+ * granular frequency control instead of just 3 fixed levels.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ *
+ * @note If this returns 0, caller should fall back to preset-based scaling.
+ * @note Frequencies are sorted ascending (lowest first).
+ */
+int PLAT_getAvailableCPUFrequencies(int* frequencies, int max_count);
+
+/**
+ * Sets CPU frequency directly (in kHz).
+ *
+ * Used by auto CPU scaling for granular frequency control. Falls back to
+ * PLAT_setCPUSpeed() if direct frequency control is not available.
+ *
+ * @param freq_khz Target frequency in kHz (e.g., 1200000 for 1.2GHz)
+ * @return 0 on success, -1 on failure
+ */
+int PLAT_setCPUFrequency(int freq_khz);
+
+/**
+ * Default implementation for reading CPU frequencies from sysfs.
+ *
+ * Reads from /sys/devices/system/cpu/cpufreq/policy0/scaling_available_frequencies
+ * or cpu0/cpufreq path. Platforms can call this or provide their own implementation.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ */
+int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count);
+
+/**
+ * Default implementation for setting CPU frequency via sysfs.
+ *
+ * Writes to scaling_setspeed after ensuring userspace governor is active.
+ * Platforms can call this or provide their own implementation.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUFrequency_sysfs(int freq_khz);
 
 /**
  * Platform-specific rumble/vibration control.

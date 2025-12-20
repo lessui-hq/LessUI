@@ -1,0 +1,27 @@
+{
+  "name": "Clock",
+  "type": "tool",
+  "description": "Set system date and time",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "m17",
+    "my282",
+    "magicmini"
+  ],
+
+  "build": {
+    "type": "native",
+    "binary": "clock.elf"
+  },
+
+  "launch": "launch.sh"
+}

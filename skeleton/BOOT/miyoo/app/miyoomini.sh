@@ -14,12 +14,12 @@ export LD_LIBRARY_PATH=/lib:/config/lib:/customer/lib
 
 # update bootcmd if necessary
 contains() { [ -z "${2##*$1*}" ]; }
-MIYOO_VERSION=`/etc/fw_printenv miyoo_version`
+MIYOO_VERSION=$(/etc/fw_printenv miyoo_version)
 MIYOO_VERSION=${MIYOO_VERSION#miyoo_version=}
 SUPPORTED_VERSION="202205010000" # date after latest known version
 # TODO: pretty sure this bricks a subsequent update
 if [ $MIYOO_VERSION -lt $SUPPORTED_VERSION ]; then
-	OLD_CMD=`/etc/fw_printenv bootcmd`
+	OLD_CMD=$(/etc/fw_printenv bootcmd)
 	NEW_CMD="gpio output 85 1; bootlogo 0 0 0 0 0; mw 1f001cc0 11; gpio out 8 0; sf probe 0;sf read 0x22000000 \${sf_kernel_start} \${sf_kernel_size}; gpio out 8 1; gpio output 4 1; bootm 0x22000000"
 	if contains "sleepms" "$OLD_CMD"; then
 		/etc/fw_setenv bootcmd $NEW_CMD

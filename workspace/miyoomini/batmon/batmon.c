@@ -126,7 +126,8 @@ void* inputThread(void* arg) {
 		if (event.type!=EV_KEY || event.value>1) continue;
 		if (event.type==EV_KEY) screenOn();
 		if (event.code==KEY_POWER) launch = 1;
-	}	
+	}
+	return NULL;
 }
 
 int main(void) {

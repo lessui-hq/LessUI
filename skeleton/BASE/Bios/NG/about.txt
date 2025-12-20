@@ -1,0 +1,6 @@
+Neo Geo
+
+Core: fbneo
+
+BIOS (required):
+  neogeo.zip - Neo Geo BIOS collection

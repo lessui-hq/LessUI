@@ -1,0 +1,14 @@
+{
+  "name": "Swap Menu",
+  "type": "tool",
+  "description": "Swap Menu and Select buttons on RG35XX Plus",
+  "version": "1.0.0",
+
+  "platforms": ["rg35xxplus"],
+
+  "build": {
+    "type": "shell-only"
+  },
+
+  "launch": "launch.sh"
+}

@@ -1,5 +1,7 @@
-// tg5040
+// tg5040 - Display an image on screen during boot/install/update
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -14,7 +16,7 @@ int main(int argc , char* argv[]) {
 	}
 	
 	char path[256];
-	strncpy(path,argv[1],256);
+	snprintf(path, sizeof(path), "%s", argv[1]);
 	if (access(path, F_OK)!=0) return 0; // nothing to show :(
 	
 	int delay = argc>2 ? atoi(argv[2]) : 2;
@@ -23,7 +25,6 @@ int main(int argc , char* argv[]) {
 	SDL_ShowCursor(0);
 	
 	window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 0,0, SDL_WINDOW_SHOWN);
-	puts("");
 	
 	screen = SDL_GetWindowSurface(window); 
 	SDL_FillRect(screen, NULL, 0);

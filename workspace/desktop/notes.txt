@@ -1,0 +1,39 @@
+macOS Development Platform
+=========================
+
+This is a development platform for testing LessUI launcher (launcher) on macOS.
+It allows rapid UI development without deploying to physical hardware.
+
+QUICK START
+-----------
+From project root:
+
+  make dev-run        # Build and run launcher (4:3 aspect ratio)
+  make dev-run-16x9   # Build and run launcher (16:9 widescreen)
+
+SETUP
+-----
+First time only:
+
+  brew install sdl2 sdl2_image sdl2_ttf
+
+CONTROLS
+--------
+- Arrow keys: D-pad navigation
+- A, S, W, Q: Face buttons (B, A, X, Y)
+- Enter: Start
+- 4: Select
+- Space: Menu
+- Hold Backspace/Delete: Quit
+
+TEST ROMS
+---------
+Add ROMs to workspace/macos/FAKESD/Roms/<console>/
+
+Example:
+  cp ~/Downloads/game.gb workspace/macos/FAKESD/Roms/GB/
+
+MORE INFO
+---------
+See docs/DEVELOPMENT.md for full documentation.
+See Makefile.dev for build configuration.

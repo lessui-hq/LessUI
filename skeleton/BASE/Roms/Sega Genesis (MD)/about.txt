@@ -1,0 +1,8 @@
+Sega Genesis / Mega Drive
+
+Core: picodrive
+
+Supported file types:
+  .bin, .gen, .smd, .md
+
+No BIOS required.

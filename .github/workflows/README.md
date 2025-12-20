@@ -9,7 +9,7 @@ This directory contains the continuous integration workflows for LessUI.
 Runs on every push and pull request to `main` and `develop` branches.
 
 **Jobs:**
-- **Lint** - Runs all linting checks (cppcheck, clang-format, shellcheck)
+- **Lint** - Runs all linting checks (clang-tidy, clang-format, shellcheck)
 - **Test** - Runs comprehensive test suite in Debian Buster Docker container (GCC 8.3.0)
 
 All QA jobs run on standard `ubuntu-latest` runners in parallel.
@@ -31,7 +31,7 @@ Validates compilation works (compile-only, no artifacts).
 You can run the **exact same commands** locally that run in CI:
 
 ```bash
-# Run all linting checks (cppcheck, format-check, shellcheck)
+# Run all linting checks (clang-tidy, format-check, shellcheck)
 make lint
 
 # Run all tests (uses Docker)
@@ -40,7 +40,7 @@ make test
 
 Individual targets are also available if needed:
 ```bash
-make lint-code      # Just cppcheck
+make lint-code      # Just clang-tidy
 make format-check   # Just formatting
 make lint-shell     # Just shellcheck
 ```

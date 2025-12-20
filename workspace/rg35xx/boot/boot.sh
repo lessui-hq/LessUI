@@ -7,9 +7,20 @@ TF2_PATH=/mnt/sdcard
 SDCARD_PATH=$TF1_PATH
 SYSTEM_DIR=/.system
 SYSTEM_FRAG=$SYSTEM_DIR/rg35xx
-UPDATE_FRAG=/LessUI.zip
+UPDATE_FRAG=/LessUI.7z
 SYSTEM_PATH=${SDCARD_PATH}${SYSTEM_FRAG}
 UPDATE_PATH=${SDCARD_PATH}${UPDATE_FRAG}
+LOG_FILE="${SDCARD_PATH}/lessui-install.log"
+
+# Embedded logging (simplified for early boot environment)
+# NOTE: Inlined because this script runs from internal storage during early boot,
+# before SD card is mounted and .system is accessible. Cannot source shared log.sh.
+# Keep format in sync with skeleton/SYSTEM/common/log.sh
+log_write() {
+	echo "[$1] $2" >>"$LOG_FILE"
+}
+log_info() { log_write "INFO" "$*"; }
+log_error() { log_write "ERROR" "$*"; }
 
 mkdir /mnt/sdcard
 if [ -e /dev/block/mmcblk1p1 ]; then
@@ -50,19 +61,33 @@ if [ -f $UPDATE_PATH ]; then
 	fi
 
 	# extract the zip file appended to the end of this script to tmp
-	# and display one of the two images it contains 
-	CUT=$((`busybox grep -n '^BINARY' $0 | busybox cut -d ':' -f 1 | busybox tail -1` + 1))
+	# and display one of the two images it contains
+	CUT=$(($(busybox grep -n '^BINARY' $0 | busybox cut -d ':' -f 1 | busybox tail -1) + 1))
 	busybox tail -n +$CUT "$0" | busybox uudecode -o /tmp/data
 	busybox unzip -o /tmp/data -d /tmp
 	busybox fbset -g 640 480 640 480 16
 	dd if=/tmp/$ACTION of=/dev/fb0
 	sync
-	
-	busybox unzip -o $UPDATE_PATH -d $SDCARD_PATH
+
+	log_info "Starting LessUI $ACTION..."
+	if /tmp/7z x -y -o$SDCARD_PATH $UPDATE_PATH >>"$LOG_FILE" 2>&1; then
+		log_info "Extraction complete"
+	else
+		EXIT_CODE=$?
+		log_error "7z extraction failed with exit code $EXIT_CODE"
+	fi
 	rm -f $UPDATE_PATH
-	
+
 	# the updated system finishes the install/update
-	$SYSTEM_PATH/bin/install.sh # &> $SDCARD_PATH/install.txt
+	if [ -f $SYSTEM_PATH/bin/install.sh ]; then
+		log_info "Running install.sh..."
+		if $SYSTEM_PATH/bin/install.sh >>"$LOG_FILE" 2>&1; then
+			log_info "Installation complete"
+		else
+			EXIT_CODE=$?
+			log_error "install.sh failed with exit code $EXIT_CODE"
+		fi
+	fi
 fi
 
 ROOTFS_IMAGE=$SYSTEM_PATH/rootfs.ext2
@@ -74,7 +99,7 @@ if [ ! -f $ROOTFS_IMAGE ]; then
 	while [ -f $CMD ]; do
 		if $CMD; then
 			if [ -f "$ACT" ]; then
-				if  ! sh $ACT; then
+				if ! sh $ACT; then
 					echo
 				fi
 				rm -f "$ACT"
@@ -92,19 +117,17 @@ mount -r -w -o loop -t ext4 $LOOPDEVICE $ROOTFS_MOUNTPOINT
 rm -rf $ROOTFS_MOUNTPOINT/tmp/*
 mkdir $ROOTFS_MOUNTPOINT/mnt/mmc
 mkdir $ROOTFS_MOUNTPOINT/mnt/sdcard
-for f in dev dev/pts proc sys mnt/mmc mnt/sdcard # tmp doesn't work for some reason?
-do
+for f in dev dev/pts proc sys mnt/mmc mnt/sdcard; do # tmp doesn't work for some reason?
 	mount -o bind /$f $ROOTFS_MOUNTPOINT/$f
 done
 
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 export LD_LIBRARY_PATH=/usr/lib/:/lib/
 export HOME=$SDCARD_PATH
-busybox chroot $ROOTFS_MOUNTPOINT $SYSTEM_PATH/paks/MinUI.pak/launch.sh
+busybox chroot $ROOTFS_MOUNTPOINT $SYSTEM_PATH/paks/LessUI.pak/launch.sh
 
 umount $ROOTFS_MOUNTPOINT
 busybox losetup --detach $LOOPDEVICE
 sync && reboot -p
 
 exit 0
-

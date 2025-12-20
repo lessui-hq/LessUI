@@ -1,10 +1,12 @@
 # LessUI
 
-> **Built on the shoulders of giants:** LessUI is a fork of [MinUI](https://github.com/shauninman/MinUI), the brilliant work of [Shaun Inman](https://github.com/shauninman). Shaun's vision of a distraction-free, beautifully simple retro gaming experience is what makes this project possible. This fork exists to explore new directions while honoring the elegance and philosophy of the original.
+> **Built on the shoulders of giants:** LessUI is a fork of [Launcher](https://github.com/shauninman/Launcher), the brilliant work of [Shaun Inman](https://github.com/shauninman). Shaun's vision of a distraction-free, beautifully simple retro gaming experience is what makes this project possible. This fork exists to explore new directions while honoring the elegance and philosophy of the original.
 
 LessUI is a focused, custom launcher and libretro frontend for [a variety of retro handhelds](#supported-devices).
 
-<img src="github/minui-main.png" width=320 /> <img src="github/minui-menu-gbc.png" width=320 />
+<img src="docs/images/screenshots/launcher-main.png" width=320 /> <img src="docs/images/screenshots/launcher-menu-gbc.png" width=320 />
+
+_See [all screenshots](docs/screenshots.md)_
 
 ## Features
 
@@ -29,7 +31,7 @@ LessUI is a focused, custom launcher and libretro frontend for [a variety of ret
   used save state by pressing X in
   the launcher instead of A
 - Streamlined emulator frontend
-  (minarch + libretro cores)
+  (player + libretro cores)
 - Single SD card compatible with
   multiple devices from different
   manufacturers
@@ -51,6 +53,7 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 ## Supported Consoles
 
 **Base consoles** (included with every release):
+
 - Game Boy
 - Game Boy Color
 - Game Boy Advance
@@ -60,6 +63,7 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 - PlayStation
 
 **Extra consoles** (optional download):
+
 - Neo Geo Pocket (and Color)
 - Pico-8
 - Pokémon mini
@@ -71,31 +75,31 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 
 ## Supported Devices
 
-| Manufacturer | Device | Released | Status |
-|--------------|--------|----------|--------|
-| **Anbernic** | RG35XX | December 2022 | ✓ |
-| **Anbernic** | RG35XX Plus | November 2023 | ✓ |
-| **Anbernic** | RG35XXH | January 2024 | ✓ |
-| **Anbernic** | RG28XX | April 2024 | ✓ |
-| **Anbernic** | RG35XXSP | May 2024 | ✓ |
-| **Anbernic** | RG40XXH | July 2024 | ✓ |
-| **Anbernic** | RG40XXV | August 2024 | ✓ |
-| **Anbernic** | RG CubeXX | October 2024 | ✓ |
-| **Anbernic** | RG34XX | December 2024 | ✓ |
-| **Anbernic** | RG34XXSP | May 2025 | ✓ |
-| **Miyoo** | Mini | December 2021 | ✓ |
-| **Miyoo** | Mini Plus | February 2023 | ✓ |
-| **Miyoo** | A30 | May 2024 | ✓ |
-| **Miyoo** | Mini Flip | October 2024 | ✓ |
-| **Miyoo** | Flip | January 2025 | ✓ |
-| **Trimui** | Smart | October 2022 | ✓ |
-| **Trimui** | Smart Pro | November 2023 | ✓ |
-| **Trimui** | Brick | October 2024 | ✓ |
-| **Powkiddy** | RGB30 | August 2023 | ✓ |
-| **MagicX** | Mini Zero 28 | January 2025 | ✓ |
-| **GKD** | Pixel | January 2024 | Deprecated |
-| **Generic** | M17 | October 2023 | Deprecated |
-| **MagicX** | XU Mini M | May 2024 | Deprecated |
+| Manufacturer | Device       | Released      | Status     |
+| ------------ | ------------ | ------------- | ---------- |
+| **Anbernic** | RG35XX       | December 2022 | ✓          |
+| **Anbernic** | RG35XX Plus  | November 2023 | ✓          |
+| **Anbernic** | RG35XXH      | January 2024  | ✓          |
+| **Anbernic** | RG28XX       | April 2024    | ✓          |
+| **Anbernic** | RG35XXSP     | May 2024      | ✓          |
+| **Anbernic** | RG40XXH      | July 2024     | ✓          |
+| **Anbernic** | RG40XXV      | August 2024   | ✓          |
+| **Anbernic** | RG CubeXX    | October 2024  | ✓          |
+| **Anbernic** | RG34XX       | December 2024 | ✓          |
+| **Anbernic** | RG34XXSP     | May 2025      | ✓          |
+| **Miyoo**    | Mini         | December 2021 | ✓          |
+| **Miyoo**    | Mini Plus    | February 2023 | ✓          |
+| **Miyoo**    | A30          | May 2024      | ✓          |
+| **Miyoo**    | Mini Flip    | October 2024  | ✓          |
+| **Miyoo**    | Flip         | January 2025  | ✓          |
+| **Trimui**   | Smart        | October 2022  | ✓          |
+| **Trimui**   | Smart Pro    | November 2023 | ✓          |
+| **Trimui**   | Brick        | October 2024  | ✓          |
+| **Powkiddy** | RGB30        | August 2023   | ✓          |
+| **MagicX**   | Mini Zero 28 | January 2025  | ✓          |
+| **GKD**      | Pixel        | January 2024  | Deprecated |
+| **Generic**  | M17          | October 2023  | Deprecated |
+| **MagicX**   | XU Mini M    | May 2024      | Deprecated |
 
 > [!NOTE]
 > Deprecated devices will continue to work with current LessUI releases but will not receive new features or platform-specific fixes.
@@ -106,8 +110,8 @@ For detailed installation steps and device-specific setup, see the `README.txt` 
 
 Want to build LessUI, create custom paks, or understand how it works?
 
-- **[Development Guide](docs/DEVELOPMENT.md)** - Building, testing, and contributing
-- **[Architecture Guide](docs/ARCHITECTURE.md)** - How LessUI works internally
-- **[Cores Guide](docs/CORES.md)** - How libretro cores are built and loaded
-- **[Pak Development Guide](docs/PAKS.md)** - Creating custom emulator and tool paks
+- **[Development Guide](docs/development.md)** - Building, testing, and contributing
+- **[Architecture Guide](docs/architecture.md)** - How LessUI works internally
+- **[Cores Guide](docs/cores.md)** - How libretro cores are built and loaded
+- **[Pak Development Guide](docs/creating-paks.md)** - Creating custom emulator and tool paks
 - **[Platform Documentation](workspace/)** - Technical hardware details for each device

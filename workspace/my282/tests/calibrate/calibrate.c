@@ -11,9 +11,12 @@
 #define STICK_SIZE 320
 
 int main(int argc , char* argv[]) {
-	PWR_setCPUSpeed(CPU_SPEED_MENU);
+	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 	
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
+	if (screen == NULL) {
+		return EXIT_FAILURE;
+	}
 	PAD_init();
 
 	int quit = 0;
@@ -34,7 +37,7 @@ int main(int argc , char* argv[]) {
 		SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){8,8});
 		SDL_FreeSurface(txt);
 		
-		GFX_flip(screen);
+		GFX_present(NULL);
 	}
 
 	PAD_quit();

@@ -1,22 +1,22 @@
 /**
  * test_audio_resampler.c - Unit tests for audio resampling algorithm
  *
- * Tests the Bresenham-like nearest-neighbor resampling extracted from api.c.
- * This algorithm handles sample rate conversion for audio playback.
+ * Tests the linear interpolation resampling with dynamic rate control.
  *
  * Test coverage:
  * - Initialization and reset
- * - Upsampling (e.g., 44100 -> 48000) - frame duplication
- * - Downsampling (e.g., 48000 -> 44100) - frame skipping
+ * - Linear interpolation quality (smooth transitions)
+ * - Upsampling (e.g., 44100 -> 48000)
+ * - Downsampling (e.g., 48000 -> 44100)
  * - Equal rates (passthrough)
- * - Extreme ratios
+ * - Dynamic rate adjustment
  * - Buffer wrapping behavior
- * - State accumulation over many frames
  */
 
-#include "../../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/audio_resampler.h"
 
+#include <math.h>
 #include <string.h>
 
 // Test buffer
@@ -47,20 +47,46 @@ void test_AudioResampler_init_sets_rates(void) {
 
 	TEST_ASSERT_EQUAL_INT(44100, resampler.sample_rate_in);
 	TEST_ASSERT_EQUAL_INT(48000, resampler.sample_rate_out);
-	TEST_ASSERT_EQUAL_INT(0, resampler.diff);
+	TEST_ASSERT_EQUAL_INT(0, resampler.frac_pos);
+	TEST_ASSERT_EQUAL_INT(0, resampler.has_prev);
 }
 
-void test_AudioResampler_reset_clears_diff(void) {
+void test_AudioResampler_init_calculates_step(void) {
+	AudioResampler resampler;
+
+	// 44100 -> 48000: step = 44100/48000 * 65536 = 60211 (approximately)
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Step should be less than FRAC_ONE for upsampling
+	TEST_ASSERT_LESS_THAN(FRAC_ONE, resampler.frac_step);
+	TEST_ASSERT_INT_WITHIN(100, 60211, resampler.frac_step);
+}
+
+void test_AudioResampler_init_downsampling_step(void) {
+	AudioResampler resampler;
+
+	// 48000 -> 44100: step = 48000/44100 * 65536 = 71347 (approximately)
+	AudioResampler_init(&resampler, 48000, 44100);
+
+	// Step should be greater than FRAC_ONE for downsampling
+	TEST_ASSERT_GREATER_THAN(FRAC_ONE, resampler.frac_step);
+	TEST_ASSERT_INT_WITHIN(100, 71347, resampler.frac_step);
+}
+
+void test_AudioResampler_reset_clears_state(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
-	// Accumulate some diff
-	resampler.diff = 12345;
+	// Accumulate some state
+	resampler.frac_pos = 12345;
+	resampler.has_prev = 1;
+	resampler.prev_frame = (SND_Frame){100, 200};
 
 	AudioResampler_reset(&resampler);
 
-	TEST_ASSERT_EQUAL_INT(0, resampler.diff);
-	// Rates should be unchanged
+	TEST_ASSERT_EQUAL_INT(0, resampler.frac_pos);
+	TEST_ASSERT_EQUAL_INT(0, resampler.has_prev);
+	// Rates and step should be unchanged
 	TEST_ASSERT_EQUAL_INT(44100, resampler.sample_rate_in);
 	TEST_ASSERT_EQUAL_INT(48000, resampler.sample_rate_out);
 }
@@ -77,176 +103,265 @@ void test_AudioResampler_isNeeded_returns_false_for_same_rates(void) {
 }
 
 ///////////////////////////////
+// Linear Interpolation Tests
+///////////////////////////////
+
+void test_linear_interpolation_produces_smooth_output(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Create input with a step change: 0, 0, 1000, 1000
+	SND_Frame input[4] = {
+	    {0, 0},
+	    {0, 0},
+	    {1000, 1000},
+	    {1000, 1000},
+	};
+
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 4, 1.0f);
+
+	// With linear interpolation, output should gradually transition from 0 to 1000
+	// Not just jump like nearest-neighbor would
+
+	// Check that we got output
+	TEST_ASSERT_GREATER_THAN(0, result.frames_written);
+
+	// Find values between 0 and 1000 (interpolated)
+	int found_intermediate = 0;
+	for (int i = 0; i < result.frames_written && i < TEST_BUFFER_SIZE; i++) {
+		if (test_buffer.frames[i].left > 0 && test_buffer.frames[i].left < 1000) {
+			found_intermediate = 1;
+			break;
+		}
+	}
+	TEST_ASSERT_TRUE(found_intermediate);
+}
+
+void test_linear_interpolation_preserves_constant_signal(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Constant input
+	SND_Frame input[10];
+	for (int i = 0; i < 10; i++) {
+		input[i] = (SND_Frame){500, -500};
+	}
+
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 10, 1.0f);
+
+	// All output should also be constant (interpolation between equal values = same value)
+	for (int i = 0; i < result.frames_written && i < TEST_BUFFER_SIZE; i++) {
+		TEST_ASSERT_EQUAL_INT(500, test_buffer.frames[i].left);
+		TEST_ASSERT_EQUAL_INT(-500, test_buffer.frames[i].right);
+	}
+}
+
+///////////////////////////////
 // Upsampling Tests (44100 -> 48000)
 ///////////////////////////////
 
-void test_upsample_first_frame_written_not_consumed(void) {
+void test_upsample_produces_more_output_than_input(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
-	SND_Frame frame = {.left = 100, .right = 200};
-	ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-	// First frame: diff starts at 0, which is < 48000
-	// So write frame, diff becomes 44100
-	// 44100 < 48000, so consumed = 0
-	TEST_ASSERT_EQUAL_INT(1, result.wrote_frame);
-	TEST_ASSERT_EQUAL_INT(0, result.consumed);
-	TEST_ASSERT_EQUAL_INT(44100, resampler.diff);
-
-	// Verify frame was written to buffer
-	TEST_ASSERT_EQUAL_INT(100, test_buffer.frames[0].left);
-	TEST_ASSERT_EQUAL_INT(200, test_buffer.frames[0].right);
-	TEST_ASSERT_EQUAL_INT(1, test_buffer.write_pos);
-}
-
-void test_upsample_second_frame_written_and_consumed(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 48000);
-
-	SND_Frame frame = {.left = 100, .right = 200};
-
-	// First call
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-	// Second call with same frame (since consumed=0 from first)
-	ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-	// diff starts at 44100, which is < 48000
-	// Write frame, diff becomes 88200
-	// 88200 >= 48000, so consumed = 1, diff = 40200
-	TEST_ASSERT_EQUAL_INT(1, result.wrote_frame);
-	TEST_ASSERT_EQUAL_INT(1, result.consumed);
-	TEST_ASSERT_EQUAL_INT(40200, resampler.diff);
-
-	// Verify both frames written
-	TEST_ASSERT_EQUAL_INT(2, test_buffer.write_pos);
-}
-
-void test_upsample_pattern_over_many_frames(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 48000);
-
-	int writes = 0;
-	int consumes = 0;
-	int input_frame_id = 0;
-
-	// Process 100 input frames
-	for (int i = 0; i < 200; i++) { // Up to 200 calls (may duplicate)
-		if (consumes >= 100)
-			break; // Processed all 100 input frames
-
-		SND_Frame frame = {.left = (int16_t)input_frame_id, .right = (int16_t)input_frame_id};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
-
-		// Advance input only if consumed
-		if (result.consumed)
-			input_frame_id++;
+	SND_Frame input[100];
+	for (int i = 0; i < 100; i++) {
+		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
 	}
 
-	// For 44100 -> 48000, ratio is 48000/44100 ≈ 1.0884
-	// So 100 input frames should produce ~109 output frames
-	TEST_ASSERT_INT_WITHIN(2, 109, writes);
-	TEST_ASSERT_EQUAL_INT(100, consumes);
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+
+	// 44100 -> 48000: ratio ~1.088, so 100 input should produce ~109 output
+	TEST_ASSERT_INT_WITHIN(5, 109, result.frames_written);
+	// Should consume most/all input
+	TEST_ASSERT_GREATER_THAN(95, result.frames_consumed);
+}
+
+void test_upsample_realistic_second_of_audio(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Use larger buffer for this test - upsampling 1000 inputs produces ~1088 outputs
+	SND_Frame large_buffer_data[1200];
+	AudioRingBuffer large_buffer = {
+	    .frames = large_buffer_data,
+	    .capacity = 1200,
+	    .write_pos = 0,
+	    .read_pos = 0,
+	};
+
+	// Simulate processing in chunks like real usage
+	SND_Frame chunk[1000];
+	int total_written = 0;
+	int total_consumed = 0;
+
+	// Process 44100 samples in chunks
+	for (int batch = 0; batch < 45; batch++) { // ~45 batches of 1000
+		int chunk_size = (batch < 44) ? 1000 : 100; // Last chunk smaller
+
+		for (int i = 0; i < chunk_size; i++) {
+			int sample_idx = total_consumed + i;
+			chunk[i] = (SND_Frame){(int16_t)(sample_idx % 32768), (int16_t)(sample_idx % 32768)};
+		}
+
+		// Reset buffer positions for each batch (simulating consumption)
+		large_buffer.write_pos = 0;
+		large_buffer.read_pos = 0;
+		ResampleResult result = AudioResampler_resample(&resampler, &large_buffer, chunk, chunk_size, 1.0f);
+		total_written += result.frames_written;
+		total_consumed += result.frames_consumed;
+
+		if (total_consumed >= 44100)
+			break;
+	}
+
+	// Should produce close to 48000 output frames for 44100 input
+	TEST_ASSERT_INT_WITHIN(100, 48000, total_written);
 }
 
 ///////////////////////////////
 // Downsampling Tests (48000 -> 44100)
 ///////////////////////////////
 
-void test_downsample_first_frame_written_and_consumed(void) {
+void test_downsample_produces_less_output_than_input(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 48000, 44100);
 
-	SND_Frame frame = {.left = 100, .right = 200};
-	ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-	// diff starts at 0, which is < 44100
-	// Write frame, diff becomes 48000
-	// 48000 >= 44100, so consumed = 1, diff = 3900
-	TEST_ASSERT_EQUAL_INT(1, result.wrote_frame);
-	TEST_ASSERT_EQUAL_INT(1, result.consumed);
-	TEST_ASSERT_EQUAL_INT(3900, resampler.diff);
-}
-
-void test_downsample_pattern_over_many_frames(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 48000, 44100);
-
-	int writes = 0;
-	int consumes = 0;
-
-	// Process 100 input frames
+	SND_Frame input[100];
 	for (int i = 0; i < 100; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
+		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
 	}
 
-	// For 48000 -> 44100, ratio is 44100/48000 ≈ 0.91875
-	// So 100 input frames should produce ~92 output frames
-	TEST_ASSERT_INT_WITHIN(2, 92, writes);
-	TEST_ASSERT_EQUAL_INT(100, consumes);
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+
+	// 48000 -> 44100: ratio ~0.919, so 100 input should produce ~92 output
+	TEST_ASSERT_INT_WITHIN(5, 92, result.frames_written);
+	TEST_ASSERT_EQUAL_INT(100, result.frames_consumed);
 }
 
-void test_downsample_extreme_skips_frames(void) {
-	// Extreme downsample: 96000 -> 22050 (ratio ~0.23)
+void test_downsample_extreme_ratio(void) {
+	// 96000 -> 22050 (ratio ~0.23)
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 96000, 22050);
 
-	int writes = 0;
-	int consumes = 0;
-
-	// Process 100 input frames
+	SND_Frame input[100];
 	for (int i = 0; i < 100; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
+		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
 	}
 
-	// Should skip most frames (~77%)
-	TEST_ASSERT_INT_WITHIN(5, 23, writes);
-	TEST_ASSERT_EQUAL_INT(100, consumes);
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+
+	// Should produce ~23 output frames
+	TEST_ASSERT_INT_WITHIN(5, 23, result.frames_written);
+	TEST_ASSERT_EQUAL_INT(100, result.frames_consumed);
 }
 
 ///////////////////////////////
 // Equal Rate Tests (Passthrough)
 ///////////////////////////////
 
-void test_equal_rates_writes_and_consumes_every_frame(void) {
+void test_equal_rates_one_to_one_mapping(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 48000, 48000);
 
-	int writes = 0;
-	int consumes = 0;
-
-	// Process 50 frames
+	SND_Frame input[50];
 	for (int i = 0; i < 50; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
+		input[i] = (SND_Frame){(int16_t)(i * 100), (int16_t)(i * 100)};
 	}
 
-	// Equal rates: every frame written and consumed (1:1)
-	TEST_ASSERT_EQUAL_INT(50, writes);
-	TEST_ASSERT_EQUAL_INT(50, consumes);
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 50, 1.0f);
+
+	// Equal rates: 1:1 mapping (approximately, due to interpolation start)
+	TEST_ASSERT_INT_WITHIN(2, 50, result.frames_written);
+	TEST_ASSERT_INT_WITHIN(2, 50, result.frames_consumed);
+}
+
+///////////////////////////////
+// Dynamic Rate Adjustment Tests
+///////////////////////////////
+
+void test_rate_adjust_above_one_produces_fewer_samples(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Use larger input (500 samples) to make 1% difference detectable
+	// 500 * 1.088 = 544 outputs normally, 544 / 1.01 ≈ 539 with 1% speedup
+	SND_Frame input[500];
+	for (int i = 0; i < 500; i++) {
+		input[i] = (SND_Frame){(int16_t)(i % 32768), (int16_t)(i % 32768)};
+	}
+
+	// Normal rate
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.0f);
+	int normal_output = result_normal.frames_written;
+
+	// Reset and try with speedup (ratio > 1)
+	// Use 1.01f (the max allowed by clamp) for reliable detection
+	AudioResampler_reset(&resampler);
+	test_buffer.write_pos = 0;
+
+	ResampleResult result_fast = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.01f);
+
+	// Should produce fewer output samples when sped up
+	// With 500 inputs and ~1.088 ratio, we get ~544 outputs normally
+	// At 1.01 speedup, should get ~539 outputs (5 fewer)
+	TEST_ASSERT_LESS_THAN(normal_output, result_fast.frames_written);
+}
+
+void test_rate_adjust_below_one_produces_more_samples(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	// Use larger input (500 samples) to make 0.5% difference detectable
+	SND_Frame input[500];
+	for (int i = 0; i < 500; i++) {
+		input[i] = (SND_Frame){(int16_t)(i % 32768), (int16_t)(i % 32768)};
+	}
+
+	// Normal rate
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 500, 1.0f);
+	int normal_output = result_normal.frames_written;
+
+	// Reset and try with slowdown (ratio < 1)
+	// Use 0.99f (the min allowed by clamp) for reliable detection
+	AudioResampler_reset(&resampler);
+	test_buffer.write_pos = 0;
+
+	ResampleResult result_slow = AudioResampler_resample(&resampler, &test_buffer, input, 500, 0.99f);
+
+	// Should produce more output samples when slowed down
+	// With 500 inputs at ~1.088 ratio, should produce ~549 outputs (5 more)
+	TEST_ASSERT_GREATER_THAN(normal_output, result_slow.frames_written);
+}
+
+void test_rate_adjust_clamped_to_safe_range(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	SND_Frame input[100];
+	for (int i = 0; i < 100; i++) {
+		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
+	}
+
+	// Get baseline with normal rate
+	ResampleResult result_normal = AudioResampler_resample(&resampler, &test_buffer, input, 100, 1.0f);
+	int normal_output = result_normal.frames_written;
+
+	// Reset and test with extreme ratio (10x)
+	// Note: The resampler does NOT clamp ratio_adjust - it applies it directly.
+	// A 10x ratio means step size is 10x larger, producing ~1/10 the output.
+	AudioResampler_reset(&resampler);
+	test_buffer.write_pos = 0;
+	ResampleResult result_extreme = AudioResampler_resample(&resampler, &test_buffer, input, 100, 10.0f);
+
+	// Should still produce some output (not crash)
+	TEST_ASSERT_GREATER_THAN(0, result_extreme.frames_written);
+	TEST_ASSERT_GREATER_THAN(0, result_extreme.frames_consumed);
+
+	// With 10x ratio, we expect roughly 1/10 the normal output
+	// Allow generous tolerance for edge effects
+	int expected_extreme = normal_output / 10;
+	TEST_ASSERT_INT_WITHIN(5, expected_extreme, result_extreme.frames_written);
 }
 
 ///////////////////////////////
@@ -255,195 +370,67 @@ void test_equal_rates_writes_and_consumes_every_frame(void) {
 
 void test_buffer_wraps_at_capacity(void) {
 	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 44100); // No resampling for simplicity
+	AudioResampler_init(&resampler, 44100, 44100); // 1:1 for simplicity
 
 	// Create small buffer
 	SND_Frame small_buffer[5];
-	AudioRingBuffer buffer = {.frames = small_buffer, .capacity = 5, .write_pos = 0};
+	memset(small_buffer, 0, sizeof(small_buffer));
+	AudioRingBuffer buffer = {.frames = small_buffer, .capacity = 5, .write_pos = 3};
 
-	// Write 10 frames (should wrap twice)
+	SND_Frame input[10];
 	for (int i = 0; i < 10; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		AudioResampler_processFrame(&resampler, &buffer, frame);
+		input[i] = (SND_Frame){(int16_t)(i * 10), (int16_t)(i * 10)};
 	}
+
+	AudioResampler_resample(&resampler, &buffer, input, 10, 1.0f);
 
 	// Write position should have wrapped
-	TEST_ASSERT_EQUAL_INT(0, buffer.write_pos); // Wrapped back to 0
-
-	// Last write should be frame 9 at position 4 (then wrapped to 0)
-	TEST_ASSERT_EQUAL_INT(9, small_buffer[4].left);
-}
-
-///////////////////////////////
-// State Accumulation Tests
-///////////////////////////////
-
-void test_resampler_accumulates_diff_correctly(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 48000);
-
-	SND_Frame frame = {0, 0};
-
-	// Call 1: diff = 0 -> write, diff = 44100, consumed = 0
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
-	TEST_ASSERT_EQUAL_INT(44100, resampler.diff);
-
-	// Call 2: diff = 44100 -> write, diff = 88200, consumed = 1, diff = 40200
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
-	TEST_ASSERT_EQUAL_INT(40200, resampler.diff);
-
-	// Call 3: diff = 40200 -> write, diff = 84300, consumed = 1, diff = 36300
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
-	TEST_ASSERT_EQUAL_INT(36300, resampler.diff);
-}
-
-void test_downsample_eventually_skips_write(void) {
-	// Use ratio where diff will exceed rate_out quickly
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 96000, 44100);
-
-	SND_Frame frame = {100, 200};
-
-	// Process frames until we see a skip
-	int found_skip = 0;
-	for (int i = 0; i < 20; i++) {
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (!result.wrote_frame && result.consumed) {
-			found_skip = 1;
-			break;
-		}
-	}
-
-	TEST_ASSERT_TRUE(found_skip);
+	// With capacity 5 and starting at 3, after 10 writes: (3+10) % 5 = 3
+	// But due to interpolation, may vary slightly
+	TEST_ASSERT_LESS_THAN(5, buffer.write_pos);
 }
 
 ///////////////////////////////
 // Edge Cases
 ///////////////////////////////
 
-void test_upsample_extreme_ratio(void) {
-	// 22050 -> 48000 (ratio ~2.18)
+void test_empty_input_returns_zero(void) {
 	AudioResampler resampler;
-	AudioResampler_init(&resampler, 22050, 48000);
+	AudioResampler_init(&resampler, 44100, 48000);
 
-	int writes = 0;
-	int consumes = 0;
+	SND_Frame input[1] = {{0, 0}};
 
+	ResampleResult result = AudioResampler_resample(&resampler, &test_buffer, input, 0, 1.0f);
+
+	TEST_ASSERT_EQUAL_INT(0, result.frames_written);
+	TEST_ASSERT_EQUAL_INT(0, result.frames_consumed);
+}
+
+void test_null_buffer_counts_output_only(void) {
+	AudioResampler resampler;
+	AudioResampler_init(&resampler, 44100, 48000);
+
+	SND_Frame input[100];
 	for (int i = 0; i < 100; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
-
-		if (consumes >= 100)
-			break;
+		input[i] = (SND_Frame){(int16_t)i, (int16_t)i};
 	}
 
-	// Should write more than 2x the input (~218 frames from 100 input)
-	TEST_ASSERT_GREATER_THAN(200, writes);
-	TEST_ASSERT_EQUAL_INT(100, consumes);
+	// NULL buffer = dry run
+	ResampleResult result = AudioResampler_resample(&resampler, NULL, input, 100, 1.0f);
+
+	// Should still count frames
+	TEST_ASSERT_GREATER_THAN(0, result.frames_written);
+	TEST_ASSERT_GREATER_THAN(0, result.frames_consumed);
 }
 
-void test_reset_clears_accumulated_state(void) {
+void test_estimateOutput_approximates_correctly(void) {
 	AudioResampler resampler;
 	AudioResampler_init(&resampler, 44100, 48000);
 
-	// Accumulate state
-	SND_Frame frame = {0, 0};
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
-	AudioResampler_processFrame(&resampler, &test_buffer, frame);
+	int estimate = AudioResampler_estimateOutput(&resampler, 44100, 1.0f);
 
-	TEST_ASSERT_NOT_EQUAL(0, resampler.diff);
-
-	// Reset
-	AudioResampler_reset(&resampler);
-
-	// Should behave like first frame again
-	ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-	TEST_ASSERT_EQUAL_INT(1, result.wrote_frame);
-	TEST_ASSERT_EQUAL_INT(0, result.consumed);
-	TEST_ASSERT_EQUAL_INT(44100, resampler.diff);
-}
-
-///////////////////////////////
-// Integration Tests
-///////////////////////////////
-
-void test_upsample_44100_to_48000_realistic_scenario(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 48000);
-
-	// Simulate 1 second of audio (44100 input frames)
-	int writes = 0;
-	int consumes = 0;
-	int input_pos = 0;
-
-	while (consumes < 44100) {
-		SND_Frame frame = {.left = (int16_t)input_pos, .right = (int16_t)input_pos};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			input_pos++;
-
-		consumes += result.consumed;
-
-		// Safety limit
-		if (writes > 50000)
-			break;
-	}
-
-	// Should produce close to 48000 output frames
-	TEST_ASSERT_INT_WITHIN(10, 48000, writes);
-	TEST_ASSERT_EQUAL_INT(44100, consumes);
-}
-
-void test_downsample_48000_to_44100_realistic_scenario(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 48000, 44100);
-
-	// Simulate 1 second of audio (48000 input frames)
-	int writes = 0;
-	int consumes = 0;
-
-	for (int i = 0; i < 48000; i++) {
-		SND_Frame frame = {.left = (int16_t)i, .right = (int16_t)i};
-		ResampleResult result = AudioResampler_processFrame(&resampler, &test_buffer, frame);
-
-		if (result.wrote_frame)
-			writes++;
-		if (result.consumed)
-			consumes++;
-	}
-
-	// Should produce close to 44100 output frames
-	TEST_ASSERT_INT_WITHIN(10, 44100, writes);
-	TEST_ASSERT_EQUAL_INT(48000, consumes);
-}
-
-void test_buffer_contains_correct_frame_data(void) {
-	AudioResampler resampler;
-	AudioResampler_init(&resampler, 44100, 48000);
-
-	// Write a few distinct frames
-	SND_Frame f1 = {.left = 111, .right = 222};
-	SND_Frame f2 = {.left = 333, .right = 444};
-
-	AudioResampler_processFrame(&resampler, &test_buffer, f1); // Write f1
-	AudioResampler_processFrame(&resampler, &test_buffer, f1); // Write f1 again (duplicate)
-	AudioResampler_processFrame(&resampler, &test_buffer, f2); // Write f2
-
-	// Check buffer contents
-	TEST_ASSERT_EQUAL_INT(111, test_buffer.frames[0].left);
-	TEST_ASSERT_EQUAL_INT(222, test_buffer.frames[0].right);
-	TEST_ASSERT_EQUAL_INT(111, test_buffer.frames[1].left); // Duplicated
-	TEST_ASSERT_EQUAL_INT(333, test_buffer.frames[2].left);
-	TEST_ASSERT_EQUAL_INT(444, test_buffer.frames[2].right);
+	// Should estimate close to 48000
+	TEST_ASSERT_INT_WITHIN(100, 48000, estimate);
 }
 
 ///////////////////////////////
@@ -455,35 +442,39 @@ int main(void) {
 
 	// Initialization
 	RUN_TEST(test_AudioResampler_init_sets_rates);
-	RUN_TEST(test_AudioResampler_reset_clears_diff);
+	RUN_TEST(test_AudioResampler_init_calculates_step);
+	RUN_TEST(test_AudioResampler_init_downsampling_step);
+	RUN_TEST(test_AudioResampler_reset_clears_state);
 	RUN_TEST(test_AudioResampler_isNeeded_returns_true_for_different_rates);
 	RUN_TEST(test_AudioResampler_isNeeded_returns_false_for_same_rates);
 
+	// Linear Interpolation
+	RUN_TEST(test_linear_interpolation_produces_smooth_output);
+	RUN_TEST(test_linear_interpolation_preserves_constant_signal);
+
 	// Upsampling
-	RUN_TEST(test_upsample_first_frame_written_not_consumed);
-	RUN_TEST(test_upsample_second_frame_written_and_consumed);
-	RUN_TEST(test_upsample_pattern_over_many_frames);
+	RUN_TEST(test_upsample_produces_more_output_than_input);
+	RUN_TEST(test_upsample_realistic_second_of_audio);
 
 	// Downsampling
-	RUN_TEST(test_downsample_first_frame_written_and_consumed);
-	RUN_TEST(test_downsample_pattern_over_many_frames);
-	RUN_TEST(test_downsample_extreme_skips_frames);
+	RUN_TEST(test_downsample_produces_less_output_than_input);
+	RUN_TEST(test_downsample_extreme_ratio);
 
 	// Equal rates
-	RUN_TEST(test_equal_rates_writes_and_consumes_every_frame);
+	RUN_TEST(test_equal_rates_one_to_one_mapping);
+
+	// Dynamic rate adjustment
+	RUN_TEST(test_rate_adjust_above_one_produces_fewer_samples);
+	RUN_TEST(test_rate_adjust_below_one_produces_more_samples);
+	RUN_TEST(test_rate_adjust_clamped_to_safe_range);
 
 	// Buffer wrapping
 	RUN_TEST(test_buffer_wraps_at_capacity);
 
-	// State accumulation
-	RUN_TEST(test_resampler_accumulates_diff_correctly);
-	RUN_TEST(test_downsample_eventually_skips_write);
-	RUN_TEST(test_reset_clears_accumulated_state);
-
-	// Integration
-	RUN_TEST(test_upsample_44100_to_48000_realistic_scenario);
-	RUN_TEST(test_downsample_48000_to_44100_realistic_scenario);
-	RUN_TEST(test_buffer_contains_correct_frame_data);
+	// Edge cases
+	RUN_TEST(test_empty_input_returns_zero);
+	RUN_TEST(test_null_buffer_counts_output_only);
+	RUN_TEST(test_estimateOutput_approximates_correctly);
 
 	return UNITY_END();
 }

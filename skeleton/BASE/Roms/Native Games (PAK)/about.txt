@@ -1,0 +1,8 @@
+Native Games
+
+Native applications packaged as .pak folders.
+
+Supported file types:
+  .pak (folder)
+
+No BIOS required.

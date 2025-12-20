@@ -1,0 +1,14 @@
+{
+  "name": "Apply Panel Fix",
+  "type": "tool",
+  "description": "Fix panel timing configuration",
+  "version": "1.0.0",
+
+  "platforms": ["rg35xxplus"],
+
+  "build": {
+    "type": "shell"
+  },
+
+  "launch": "launch.sh"
+}

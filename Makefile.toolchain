@@ -1,0 +1,83 @@
+# LessUI Docker Toolchain Manager
+# Manages platform-specific cross-compilation toolchains
+#
+# This makefile pulls pre-built toolchain containers from GitHub Container Registry
+# and launches them for building LessUI components.
+#
+# Container images: ghcr.io/lessui-hq/union-<platform>-toolchain:latest
+#
+# Usage (typically called from main makefile):
+#   make -f Makefile.toolchain PLATFORM=miyoomini       # Enter shell
+#   make -f Makefile.toolchain PLATFORM=miyoomini build # Build all
+#
+# Platform Architecture:
+#   The Docker platform (linux/amd64 or linux/arm64) is configured per-toolchain
+#   in toolchains.json. This allows proper emulation for toolchains that require
+#   specific architectures (e.g., trimuismart and tg5040 need amd64).
+#
+# Adding a new platform:
+#   1. Fork the union-<platform>-toolchain repo to lessui-hq org
+#   2. Add .github/workflows/build-container.yml to the fork
+#   3. Trigger the workflow to build and publish container
+#   4. Add platform entry to toolchains.json with appropriate architecture
+#
+# DO NOT call this makefile directly unless debugging toolchain issues.
+# Use the main makefile's 'shell' and 'build' targets instead.
+
+.PHONY: all build clean pull
+
+ifeq (,$(PLATFORM))
+$(error PLATFORM not specified. Use: make -f Makefile.toolchain PLATFORM=<platform>)
+endif
+
+# Verify jq is available (required for reading toolchains.json)
+JQ_CHECK := $(shell command -v jq 2>/dev/null)
+ifeq (,$(JQ_CHECK))
+$(error jq is required but not installed. Install with: brew install jq (macOS) or apt install jq (Linux))
+endif
+
+# Workspace paths (host and Docker container)
+HOST_WORKSPACE = $(shell pwd)/workspace
+GUEST_WORKSPACE = /root/workspace
+
+# Pre-built container registry
+CONTAINER_REGISTRY = ghcr.io
+CONTAINER_ORG = lessui-hq
+CONTAINER_NAME = union-$(PLATFORM)-toolchain
+CONTAINER_TAG = latest
+CONTAINER_IMAGE = $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/$(CONTAINER_NAME):$(CONTAINER_TAG)
+
+# Read platform architecture from toolchains.json (defaults to linux/arm64)
+# Uses jq --arg for safe variable interpolation (handles special chars in platform names)
+DOCKER_PLATFORM = $(shell jq -r --arg p "$(PLATFORM)" '.toolchains[$$p].platform // "linux/arm64"' toolchains.json 2>/dev/null || echo "linux/arm64")
+
+# Common docker run options
+DOCKER_RUN = docker run --rm --platform=$(DOCKER_PLATFORM) -e LOG_FLAGS="$(LOG_FLAGS)" -e OPT_FLAGS="$(OPT_FLAGS)" -e BUILD_HASH="$(BUILD_HASH)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
+
+# Default target: launch interactive shell (pulls image if missing)
+all:
+	@$(DOCKER_RUN) --pull=missing $(CONTAINER_IMAGE) /bin/bash
+
+# Build all workspace components in Docker (non-interactive)
+# Uses -j for parallel builds (nproc detects available cores in container)
+build:
+	@$(DOCKER_RUN) --pull=missing $(CONTAINER_IMAGE) /bin/bash -c '. ~/.bashrc && cd /root/workspace && make -j$$(nproc)'
+
+# Force pull latest container (useful for updates)
+pull:
+	@echo "Pulling latest $(PLATFORM) toolchain..."
+	@docker pull $(CONTAINER_IMAGE) || \
+		(echo "" && \
+		 echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
+		 echo "" && \
+		 echo "To add support for $(PLATFORM):" && \
+		 echo "  1. Fork the union-$(PLATFORM)-toolchain to lessui-hq org" && \
+		 echo "  2. Add .github/workflows/build-container.yml" && \
+		 echo "  3. Trigger workflow to build and publish container" && \
+		 echo "" && \
+		 exit 1)
+	@echo "✓ Updated to latest"
+
+# Remove cached Docker image
+clean:
+	@docker rmi $(CONTAINER_IMAGE) 2>/dev/null || true

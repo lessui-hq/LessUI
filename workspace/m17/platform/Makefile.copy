@@ -1,0 +1,6 @@
+$(PLATFORM):
+	# $@
+	rsync -a ./workspace/$@/boot/output/em_ui.sh ./build/BASE/
+	rsync -a ./workspace/$@/boot/output/em_ui.sh ./build/SYSTEM/$@/dat/
+	rsync -a ./workspace/$@/boot/output/lib* ./build/SYSTEM/$@/lib/
+	rsync -a ./workspace/$@/install/install.sh ./build/SYSTEM/$@/bin/

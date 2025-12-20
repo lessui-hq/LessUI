@@ -1,0 +1,12 @@
+# Ignore everything in FAKESD (test files, ROMs, resources copied during dev)
+*
+
+# Keep only skeleton structure
+!.gitignore
+!README.md
+!Roms/
+!Roms/.gitkeep
+!.userdata/
+!.userdata/.gitkeep
+!.system/
+!.system/.gitkeep

@@ -1,0 +1,14 @@
+{
+  "name": "Enable SSH",
+  "type": "tool",
+  "description": "Install and enable SSH server",
+  "version": "1.0.0",
+
+  "platforms": ["rg35xxplus"],
+
+  "build": {
+    "type": "shell-only"
+  },
+
+  "launch": "launch.sh"
+}

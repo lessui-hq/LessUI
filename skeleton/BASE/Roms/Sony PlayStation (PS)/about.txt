@@ -1,0 +1,13 @@
+Sony PlayStation
+
+Core: pcsx_rearmed
+
+Supported file types:
+  .bin, .cue, .chd, .pbp, .iso, .img, .m3u
+
+BIOS (required):
+  scph5501.bin - US BIOS (recommended)
+  scph5500.bin - JP BIOS (alternative)
+  scph5502.bin - EU BIOS (alternative)
+
+Place BIOS files in: /Bios/PS/

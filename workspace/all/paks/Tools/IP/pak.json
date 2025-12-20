@@ -1,0 +1,10 @@
+{
+  "name": "IP",
+  "type": "tool",
+  "description": "Display WiFi IP address",
+  "version": "1.0.0",
+
+  "platforms": ["miyoomini"],
+
+  "launch": "launch.sh"
+}

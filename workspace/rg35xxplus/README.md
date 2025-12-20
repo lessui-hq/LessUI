@@ -6,9 +6,9 @@ Platform implementation for the Anbernic RG35XX Plus series retro handheld devic
 
 ### Display
 - **Resolution**: Variable by model (runtime-detected)
-  - RG35XX Plus: 640x480 (VGA)
-  - RG35XX H (CubeXX): 720x720 (square)
-  - RG35XX SP (RG34XX): 720x480 (widescreen)
+  - 640x480 (VGA): RG28XX, RG35XX Plus, RG35XX H, RG35XX SP, RG40XX H, RG40XX V
+  - 720x720 (square): RG CubeXX
+  - 720x480 (widescreen): RG34XX, RG34XXSP
 - **HDMI Output**: 1280x720 (720p) - all variants
 - **Color Depth**: 16-bit RGB565
 - **UI Scale**: 2x (uses `assets@2x.png`)
@@ -47,24 +47,25 @@ Platform implementation for the Anbernic RG35XX Plus series retro handheld devic
 
 ## Platform Variants
 
-This platform supports **three hardware variants** detected at runtime:
+This platform supports **9 devices across 3 hardware variants** detected at runtime:
 
-### RG35XX Plus (Standard)
+### VGA Variant (640x480)
+**Devices**: RG28XX, RG35XX Plus, RG35XX H, RG35XX SP, RG40XX H, RG40XX V
 - 640x480 display
-- Standard aspect ratio
-- Base variant (`RGXX_MODEL` detection)
+- Standard 4:3 aspect ratio
+- Most common variant
 - Framebuffer: Standard or rotated (480x640)
 
-### RG35XX H (CubeXX)
+### Square Variant (720x720)
+**Devices**: RG CubeXX
 - 720x720 square display
-- Unique aspect ratio for arcade/vertical games
-- Detected via `RGcubexx` model string
+- 1:1 aspect ratio for arcade/vertical games
 - UI adjustments: 8 rows, 40px padding
 
-### RG35XX SP (RG34XX)
+### Widescreen Variant (720x480)
+**Devices**: RG34XX, RG34XXSP
 - 720x480 widescreen display
 - 3:2 aspect ratio
-- Detected via `RG34xx*` model string (wildcard for variants)
 - UI adjustments: Standard rows (6), standard padding (10px)
 
 ### HDMI Output Mode
@@ -74,7 +75,7 @@ This platform supports **three hardware variants** detected at runtime:
 - Volume forced to 100% when HDMI connected
 - Brightness control disabled during HDMI output
 
-**Detection**: Variants are auto-detected at boot by reading `/mnt/vendor/bin/dmenu.bin` for model string. The `is_cubexx`, `is_rg34xx`, and `on_hdmi` flags configure display resolution, UI layout, and input handling accordingly.
+**Detection**: Variants are auto-detected at runtime via `RGXX_MODEL` environment variable. The system detects the specific device model and applies the appropriate variant configuration (resolution, UI layout, etc.).
 
 ## Directory Structure
 
@@ -110,7 +111,6 @@ rg35xxplus/
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
     ├── sdl2/          Custom SDL2 fork (Mali framebuffer rotation)
-    ├── unzip60/       Unzip utility for update extraction
     ├── dtc/           Device Tree Compiler (for boot customization)
     └── fbset/         Framebuffer configuration utility
 ```
@@ -185,7 +185,6 @@ make
 # - libmsettings (settings library)
 # - Boot assets (bootlogo variants packaged into boot.sh)
 # - SDL2 library (Mali framebuffer with rotation support)
-# - unzip60 (update extraction)
 # - dtc (device tree compiler)
 # - fbset (framebuffer configuration)
 # - All libretro cores in cores/
@@ -194,7 +193,6 @@ make
 ### Dependencies
 The platform automatically clones required dependencies on first build:
 - **SDL2**: `github.com/JohnnyonFlame/SDL-malifbdev-rot` (Mali framebuffer with rotation)
-- **unzip60**: `github.com/shauninman/unzip60.git`
 - **dtc**: `github.com/dgibson/dtc` (Device Tree Compiler)
 - **fbset**: `github.com/shauninman/union-fbset`
 
@@ -225,11 +223,11 @@ LessUI installs across two SD cards:
 │   │       └── LessUI.pak/ Main launcher
 │   └── res/               Shared UI assets
 │       ├── assets@2x.png  UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .userdata/
 │   └── rg35xxplus/        User settings and saves
 ├── Roms/                  ROM files organized by system
-└── LessUI.zip              Update package (if present)
+└── LessUI.7z              Update package (if present)
 ```
 
 ### Boot Process
@@ -238,7 +236,7 @@ LessUI installs across two SD cards:
 2. Custom boot script runs (`boot.sh` embedded in bootloader)
 3. Script mounts TF2 (`/mnt/sdcard`) at `/dev/mmcblk1p1`
 4. If TF2 mount fails or doesn't contain LessUI: symlink `/mnt/sdcard` → `/mnt/mmc`
-5. Check for `LessUI.zip` on TF2:
+5. Check for `LessUI.7z` on TF2:
    - Detect device variant by reading `/mnt/vendor/bin/dmenu.bin`
    - Detect framebuffer orientation from `/sys/class/graphics/fb0/modes`
    - Select appropriate boot image suffix:
@@ -247,8 +245,8 @@ LessUI installs across two SD cards:
      - `-w`: Widescreen display (RG34xx)
      - (none): Standard 640x480
    - Display `installing.bmp` (first install) or `updating.bmp` (update)
-   - Extract `LessUI.zip` to `/mnt/sdcard`
-   - Delete ZIP file
+   - Extract `LessUI.7z` to `/mnt/sdcard`
+   - Delete archive
    - On first install: Replace stock bootlogo.bmp on boot partition (TF1)
    - Run `.system/rg35xxplus/bin/install.sh` to complete setup
 6. Launch LessUI via `.system/rg35xxplus/paks/LessUI.pak/launch.sh`
@@ -257,10 +255,10 @@ LessUI installs across two SD cards:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in TF2 root (`/mnt/sdcard/`)
+1. Place `LessUI.7z` in TF2 root (`/mnt/sdcard/`)
 2. Reboot device
-3. Boot script auto-detects ZIP, determines variant, and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive, determines variant, and performs update
+4. Archive is deleted after successful extraction
 5. `install.sh` finalizes update (copies dmenu.bin, migrates old configs)
 
 ### Migration from RG40XXCUBE
@@ -280,24 +278,19 @@ This ensures users can seamlessly upgrade from the older platform naming.
 
 ### Runtime Variant Detection
 
-The platform uses **runtime configuration** based on detected hardware:
+The platform uses the **platform variant system** for runtime configuration:
 
 ```c
-// Runtime flags set during initialization
-extern int is_cubexx;  // RG35XX H (720x720 square)
-extern int is_rg34xx;  // RG35XX SP (720x480 widescreen)
-extern int on_hdmi;    // HDMI output active
+// Variant checks use helper macros
+if (VARIANT_IS(VARIANT_RG35XX_SQUARE))
+    enable_overscan_support();
 
-// Display resolution adapts to variant
-#define FIXED_WIDTH  (is_cubexx?720:(is_rg34xx?720:640))
-#define FIXED_HEIGHT (is_cubexx?720:480)
-
-// UI layout adapts to variant/HDMI
-#define MAIN_ROW_COUNT (is_cubexx||on_hdmi?8:6)
-#define PADDING (is_cubexx||on_hdmi?40:10)
+// Display resolution from detected variant
+#define FIXED_WIDTH (platform_variant.screen_width)
+#define FIXED_HEIGHT (platform_variant.screen_height)
 ```
 
-This single binary supports all three hardware variants without recompilation.
+This single binary supports all 9 devices across 3 hardware variants without recompilation.
 
 ### HDMI Monitoring
 
@@ -423,7 +416,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (runtime-configurable definitions)
 

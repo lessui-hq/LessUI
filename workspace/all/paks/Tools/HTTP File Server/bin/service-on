@@ -1,0 +1,25 @@
+#!/bin/sh
+BIN_DIR="$(dirname "$0")"
+PAK_DIR="$(dirname "$BIN_DIR")"
+PAK_NAME="$(basename "$PAK_DIR")"
+PAK_NAME="${PAK_NAME%.*}"
+set -x
+
+echo "$0" "$@"
+cd "$PAK_DIR" || exit 1
+
+# dufs is in common/bin/$PLATFORM_ARCH (already in PATH from LessUI.pak)
+
+main() {
+    port=""
+    if [ -f "$USERDATA_PATH/$PAK_NAME/port" ]; then
+        port="$(cat "$USERDATA_PATH/$PAK_NAME/port")"
+    fi
+    if [ -z "$port" ]; then
+        port=80
+    fi
+
+    dufs --allow-all --bind 0.0.0.0 --port "$port" --log-file "$LOGS_PATH/$PAK_NAME.service.txt" "$SDCARD_PATH" &
+}
+
+main "$@"

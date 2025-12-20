@@ -1,0 +1,22 @@
+#!/bin/sh
+# Boot-time WiFi startup hook
+
+BIN_DIR="$(dirname "$0")"
+PAK_DIR="$(dirname "$BIN_DIR")"
+PAK_NAME="$(basename "$PAK_DIR" .pak)"
+
+export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
+export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
+
+rm -f "$LOGS_PATH/$PAK_NAME.on-boot.txt"
+exec >>"$LOGS_PATH/$PAK_NAME.on-boot.txt" 2>&1
+
+echo "$0" "$@"
+cd "$PAK_DIR" || exit 1
+
+# Regenerate configs from wifi.txt before starting service
+# (system may reset /etc configs on boot)
+"$PAK_DIR/launch.sh" --write-config
+sync
+
+"$BIN_DIR/service-on" &

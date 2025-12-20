@@ -1,0 +1,27 @@
+{
+  "name": "Input",
+  "type": "tool",
+  "description": "Configure button mappings",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "m17",
+    "my282",
+    "magicmini"
+  ],
+
+  "build": {
+    "type": "native",
+    "binary": "minput.elf"
+  },
+
+  "launch": "launch.sh"
+}

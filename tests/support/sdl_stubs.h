@@ -1,7 +1,7 @@
 /**
  * sdl_stubs.h - Minimal SDL type definitions for testing
  *
- * Provides stub SDL types needed for unit testing MinUI's api.c functions.
+ * Provides stub SDL types needed for unit testing Launcher's api.c functions.
  * Only includes the fields actually used in tests (minimal approach).
  *
  * This is NOT a complete SDL implementation - just enough type structure
@@ -67,6 +67,23 @@ typedef struct SDL_Rect {
 	int x, y;
 	int w, h;
 } SDL_Rect;
+
+///////////////////////////////
+// SDL_Color
+///////////////////////////////
+
+typedef struct SDL_Color {
+	Uint8 r, g, b, a;
+} SDL_Color;
+
+///////////////////////////////
+// SDL_RWops (opaque for testing)
+///////////////////////////////
+
+typedef struct SDL_RWops {
+	int type;
+	void* hidden;
+} SDL_RWops;
 
 ///////////////////////////////
 // SDL Event System

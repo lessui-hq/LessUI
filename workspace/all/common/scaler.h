@@ -1,5 +1,5 @@
 /**
- * scaler.h - Integer pixel scaling API for MinUI
+ * scaler.h - Integer pixel scaling API for Launcher
  *
  * Provides NEON-optimized and portable C implementations of integer scaling
  * functions for RGB565 (16bpp) and RGBA8888 (32bpp) pixel formats.
@@ -9,8 +9,9 @@
  * in both horizontal and vertical directions.
  *
  * NEON functions (scale*_n16, scale*_n32):
- *   - Available when HAS_NEON is defined
+ *   - Available on 32-bit ARM (__arm__ defined)
  *   - Use ARM NEON SIMD instructions for ~2-4x speedup
+ *   - Not available on ARM64 (use C scalers instead)
  *   - Require 32-bit aligned addresses and even pixel counts
  *   - Fall back to C scalers for odd dimensions
  *
@@ -74,7 +75,7 @@ typedef void (*scaler_t)(void* __restrict src, void* __restrict dst, uint32_t sw
  * @param dh Destination height in pixels
  * @param dp Destination pitch in bytes (0 for auto)
  */
-#ifdef HAS_NEON
+#if defined(__arm__)
 void scaler_n16(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __restrict dst,
                 uint32_t sw, uint32_t sh, uint32_t sp, uint32_t dw, uint32_t dh, uint32_t dp);
 
@@ -139,10 +140,10 @@ void scaler_c32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
                 uint32_t sw, uint32_t sh, uint32_t sp, uint32_t dw, uint32_t dh, uint32_t dp);
 
 ///////////////////////////////
-// NEON-optimized functions
+// NEON-optimized functions (32-bit ARM only)
 ///////////////////////////////
 
-#ifdef HAS_NEON
+#if defined(__arm__)
 
 /**
  * NEON-optimized memcpy.
@@ -153,7 +154,7 @@ void scaler_c32(uint32_t xmul, uint32_t ymul, void* __restrict src, void* __rest
  * @param src Source buffer
  * @param size Number of bytes to copy
  */
-void memcpy_neon(void* dst, void* src, uint32_t size);
+void memcpy_neon(void* dst, const void* src, uint32_t size);
 
 /**
  * NEON scalers with variable Y multiplier.
@@ -506,5 +507,51 @@ void scale2x_grid(void* __restrict src, void* __restrict dst, uint32_t sw, uint3
                   uint32_t dw, uint32_t dh, uint32_t dp);
 void scale3x_grid(void* __restrict src, void* __restrict dst, uint32_t sw, uint32_t sh, uint32_t sp,
                   uint32_t dw, uint32_t dh, uint32_t dp);
+
+///////////////////////////////
+// Rotation functions
+///////////////////////////////
+
+/**
+ * Rotation values matching libretro RETRO_ENVIRONMENT_SET_ROTATION.
+ */
+enum {
+	ROTATION_0 = 0, // No rotation
+	ROTATION_90 = 1, // 90° counter-clockwise
+	ROTATION_180 = 2, // 180°
+	ROTATION_270 = 3, // 270° counter-clockwise (90° clockwise)
+};
+
+/**
+ * Rotate RGB565 framebuffer by specified angle.
+ *
+ * Performs counter-clockwise rotation. For 90°/270°, dimensions are swapped.
+ * Uses separate destination buffer (not in-place).
+ *
+ * @param rotation Rotation angle (0, 1, 2, or 3)
+ * @param src Source pixel buffer (RGB565 format)
+ * @param dst Destination pixel buffer (must be pre-allocated)
+ * @param src_w Source width in pixels
+ * @param src_h Source height in pixels
+ * @param src_p Source pitch in bytes (0 for auto-calculate)
+ * @param dst_p Destination pitch in bytes (0 for auto-calculate)
+ *
+ * @note For 90°/270°: dst buffer must be h×w pixels (dimensions swapped)
+ * @note For 0°/180°: dst buffer must be w×h pixels (same dimensions)
+ * @note Pitch parameters allow for stride alignment requirements
+ */
+void rotate_c16(unsigned rotation, void* __restrict src, void* __restrict dst, uint32_t src_w,
+                uint32_t src_h, uint32_t src_p, uint32_t dst_p);
+
+#if defined(__arm__) || defined(__aarch64__)
+/**
+ * NEON-optimized RGB565 rotation using 4x4 block transpose.
+ *
+ * Same interface as rotate_c16() but uses NEON SIMD for ~3-4x speedup.
+ * Falls back to scalar code for edge pixels when dimensions not divisible by 4.
+ */
+void rotate_n16(unsigned rotation, void* __restrict src, void* __restrict dst, uint32_t src_w,
+                uint32_t src_h, uint32_t src_p, uint32_t dst_p);
+#endif
 
 #endif

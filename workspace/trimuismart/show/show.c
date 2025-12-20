@@ -1,14 +1,14 @@
-// trimuismart
+// trimuismart - Display an image on screen during boot/install/update
 #include <SDL/SDL.h>
 #include <SDL/SDL_image.h>
 
 #include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
 #include <linux/fb.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-
-// TODO: revisit
 
 int main(int argc , char* argv[]) {
 	if (argc<2) {
@@ -17,8 +17,10 @@ int main(int argc , char* argv[]) {
 	}
 	
 	char path[256];
-	if (strchr(argv[1], '/')==NULL) sprintf(path, "/mnt/SDCARD/.system/res/%s", argv[1]);
-	else strncpy(path,argv[1],256);
+	if (strchr(argv[1], '/') == NULL)
+		snprintf(path, sizeof(path), "/mnt/SDCARD/.system/res/%s", argv[1]);
+	else
+		snprintf(path, sizeof(path), "%s", argv[1]);
 	
 	if (access(path, F_OK)!=0) return 0; // nothing to show :(
 	

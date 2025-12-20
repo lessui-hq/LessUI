@@ -1,5 +1,5 @@
 /**
- * utils.c - Core utility functions for MinUI
+ * utils.c - Core utility functions for Launcher
  *
  * Provides cross-platform utilities for string manipulation, file I/O,
  * timing, and name processing. This file is shared across all platforms
@@ -9,7 +9,10 @@
 #define _GNU_SOURCE // Required for strcasestr on glibc systems
 #include "utils.h"
 #include "defines.h"
+#include "log.h"
+#include "nointro_parser.h"
 #include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +54,7 @@ uint64_t getMicroseconds(void) {
  * @param str String to search in
  * @return 1 if str starts with pre, 0 otherwise
  */
-int prefixMatch(char* pre, char* str) {
+int prefixMatch(const char* pre, const char* str) {
 	return (strncasecmp(pre, str, strlen(pre)) == 0);
 }
 
@@ -64,7 +67,7 @@ int prefixMatch(char* pre, char* str) {
  * @param str String to search in
  * @return 1 if str ends with suf, 0 otherwise
  */
-int suffixMatch(char* suf, char* str) {
+int suffixMatch(const char* suf, const char* str) {
 	int len = strlen(suf);
 	int offset = strlen(str) - len;
 	return (offset >= 0 && strncasecmp(suf, str + offset, len) == 0);
@@ -82,11 +85,8 @@ int suffixMatch(char* suf, char* str) {
  */
 int exactMatch(const char* str1, const char* str2) {
 	if (!str1 || !str2)
-		return 0; // NULL isn't safe here
-	size_t len1 = strlen(str1);
-	if (len1 != strlen(str2))
 		return 0;
-	return (strncmp(str1, str2, len1) == 0);
+	return (strcmp(str1, str2) == 0);
 }
 
 /**
@@ -98,6 +98,41 @@ int exactMatch(const char* str1, const char* str2) {
  */
 int containsString(char* haystack, char* needle) {
 	return strcasestr(haystack, needle) != NULL;
+}
+
+int strArrayContains(char** arr, const char* str) {
+	if (!arr || !str)
+		return 0;
+	for (int i = 0; arr[i]; i++) {
+		if (strcmp(arr[i], str) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+/**
+ * Safe string copy with bounds checking.
+ *
+ * Like BSD strlcpy - always null-terminates the destination buffer,
+ * never writes more than dest_size bytes, and returns the length of
+ * the source string (allowing truncation detection).
+ *
+ * @param dest Destination buffer
+ * @param src Source string (must be null-terminated)
+ * @param dest_size Size of destination buffer (must be > 0)
+ * @return Length of src. If return value >= dest_size, truncation occurred.
+ */
+size_t safe_strcpy(char* dest, const char* src, size_t dest_size) {
+	if (dest_size == 0)
+		return 0;
+
+	size_t src_len = strlen(src);
+	size_t copy_len = (src_len < dest_size - 1) ? src_len : dest_size - 1;
+
+	memcpy(dest, src, copy_len);
+	dest[copy_len] = '\0';
+
+	return src_len;
 }
 
 /**
@@ -113,7 +148,7 @@ int containsString(char* haystack, char* needle) {
  */
 int hide(char* file_name) {
 	return file_name[0] == '.' || suffixMatch(".disabled", file_name) ||
-	       exactMatch("map.txt", file_name);
+	       exactMatch("map.txt", file_name) || exactMatch("about.txt", file_name);
 }
 
 /**
@@ -220,8 +255,35 @@ int splitTextLines(char* str, char** lines, int max_lines) {
  * @param path Path to check
  * @return 1 if path exists, 0 otherwise
  */
-int exists(char* path) {
+int exists(const char* path) {
 	return access(path, F_OK) == 0;
+}
+
+/**
+ * Finds a system file with platform-specific fallback to common.
+ *
+ * Checks platform-specific location first, then shared common location.
+ */
+int findSystemFile(const char* relative_path, char* output_path) {
+	char candidate[512];
+
+	// Check platform-specific location first
+	(void)snprintf(candidate, sizeof(candidate), "%s/.system/%s/%s", SDCARD_PATH, PLATFORM,
+	               relative_path);
+	if (exists(candidate)) {
+		safe_strcpy(output_path, candidate, MAX_PATH);
+		return 1;
+	}
+
+	// Fall back to shared common location
+	(void)snprintf(candidate, sizeof(candidate), "%s/.system/common/%s", SDCARD_PATH,
+	               relative_path);
+	if (exists(candidate)) {
+		safe_strcpy(output_path, candidate, MAX_PATH);
+		return 1;
+	}
+
+	return 0;
 }
 
 /**
@@ -238,7 +300,7 @@ void touch(char* path) {
 /**
  * Writes a string to a file, overwriting existing content.
  *
- * Creates the file if it doesn't exist. Silently fails if
+ * Creates the file if it doesn't exist. Logs warning if
  * the file cannot be opened (e.g., permissions, disk full).
  *
  * @param path Path to file
@@ -246,10 +308,12 @@ void touch(char* path) {
  */
 void putFile(const char* path, const char* contents) {
 	FILE* file = fopen(path, "w");
-	if (file) {
-		fputs(contents, file);
-		fclose(file);
+	if (!file) {
+		LOG_errno_warn("Failed to write file %s", path);
+		return;
 	}
+	(void)fputs(contents, file);
+	(void)fclose(file); // File operation done
 }
 
 /**
@@ -266,16 +330,38 @@ void putFile(const char* path, const char* contents) {
  */
 void getFile(const char* path, char* buffer, size_t buffer_size) {
 	FILE* file = fopen(path, "r");
-	if (file) {
-		fseek(file, 0L, SEEK_END);
-		size_t size = ftell(file);
-		if (size > buffer_size - 1)
-			size = buffer_size - 1;
-		rewind(file);
-		fread(buffer, sizeof(char), size, file);
-		fclose(file);
-		buffer[size] = '\0';
+	if (!file) {
+		LOG_debug("Could not read file %s: %s", path, strerror(errno));
+		return;
 	}
+
+	size_t bytes_read = 0;
+	long file_size;
+
+	// Get file size
+	if (fseek(file, 0L, SEEK_END) != 0 || (file_size = ftell(file)) < 0) {
+		LOG_errno("Failed to get file size for %s", path);
+		goto cleanup;
+	}
+
+	// Read file contents
+	size_t size = (size_t)file_size;
+	if (size > buffer_size - 1)
+		size = buffer_size - 1;
+
+	if (fseek(file, 0L, SEEK_SET) != 0) {
+		LOG_errno("Failed to rewind file %s", path);
+		goto cleanup;
+	}
+
+	bytes_read = fread(buffer, sizeof(char), size, file);
+	if (bytes_read != size && ferror(file)) {
+		LOG_errno("Failed to read file %s", path);
+	}
+
+cleanup:
+	(void)fclose(file); // File operation done
+	buffer[bytes_read] = '\0';
 }
 
 /**
@@ -292,17 +378,46 @@ void getFile(const char* path, char* buffer, size_t buffer_size) {
 char* allocFile(const char* path) {
 	char* contents = NULL;
 	FILE* file = fopen(path, "r");
-	if (file) {
-		fseek(file, 0L, SEEK_END);
-		size_t size = ftell(file);
-		contents = calloc(size + 1, sizeof(char));
-		if (contents) {
-			fseek(file, 0L, SEEK_SET);
-			fread(contents, sizeof(char), size, file);
-			contents[size] = '\0';
-		}
-		fclose(file);
+	if (!file) {
+		LOG_errno("Failed to open file %s", path);
+		return NULL;
 	}
+
+	if (fseek(file, 0L, SEEK_END) != 0) {
+		LOG_errno("Failed to seek to end of %s", path);
+		(void)fclose(file);
+		return NULL;
+	}
+	long file_size = ftell(file);
+	if (file_size < 0) {
+		LOG_errno("Failed to get file size for %s", path);
+		(void)fclose(file);
+		return NULL;
+	}
+	size_t size = (size_t)file_size;
+	contents = calloc(size + 1, sizeof(char));
+	if (!contents) {
+		LOG_error("Failed to allocate %zu bytes for file %s", size + 1, path);
+		(void)fclose(file);
+		return NULL;
+	}
+
+	if (fseek(file, 0L, SEEK_SET) != 0) {
+		LOG_errno("Failed to rewind file %s", path);
+		free(contents);
+		(void)fclose(file);
+		return NULL;
+	}
+	size_t bytes_read = fread(contents, sizeof(char), size, file);
+	if (bytes_read == 0 && ferror(file)) {
+		LOG_errno("Failed to read file %s", path);
+		free(contents);
+		(void)fclose(file);
+		return NULL;
+	}
+	contents[bytes_read] = '\0'; // Null-terminate at actual read position
+	(void)fclose(file);
+
 	return contents;
 }
 
@@ -318,10 +433,12 @@ char* allocFile(const char* path) {
 int getInt(const char* path) {
 	int i = 0;
 	FILE* file = fopen(path, "r");
-	if (file != NULL) {
-		fscanf(file, "%i", &i);
-		fclose(file);
+	if (!file) {
+		LOG_debug("Could not read integer from %s: %s", path, strerror(errno));
+		return 0;
 	}
+	(void)fscanf(file, "%i", &i);
+	(void)fclose(file); // File operation done
 	return i;
 }
 
@@ -334,8 +451,8 @@ int getInt(const char* path) {
  * @param value Integer to write
  */
 void putInt(const char* path, int value) {
-	char buffer[8];
-	sprintf(buffer, "%d", value);
+	char buffer[12]; // -2147483648 + null = 12 chars max
+	(void)snprintf(buffer, sizeof(buffer), "%d", value);
 	putFile(path, buffer);
 }
 
@@ -344,26 +461,71 @@ void putInt(const char* path, int value) {
 ///////////////////////////////
 
 /**
+ * Helper to move a trailing article to the front of a name.
+ *
+ * @param name String to transform (modified in place)
+ * @param suffix The suffix to look for (e.g., ", The")
+ * @param prefix The prefix to prepend (e.g., "The ")
+ * @return 1 if transformed, 0 if no match
+ */
+static int moveArticle(char* name, const char* suffix, const char* prefix) {
+	if (!suffixMatch((char*)suffix, name))
+		return 0;
+
+	int len = strlen(name);
+	int suffix_len = strlen(suffix);
+	int prefix_len = strlen(prefix);
+	int base_len = len - suffix_len;
+
+	// Shift base name right, prepend article
+	memmove(name + prefix_len, name, base_len);
+	memcpy(name, prefix, prefix_len);
+	name[base_len + prefix_len] = '\0';
+	return 1;
+}
+
+/**
+ * Moves trailing article to the front of a name.
+ *
+ * Handles No-Intro convention where articles are moved to the end
+ * for sorting purposes: "Legend of Zelda, The" -> "The Legend of Zelda"
+ *
+ * Supported articles: The, A, An (case-insensitive matching)
+ *
+ * @param name Name to transform (modified in place, same length or shorter)
+ */
+void fixArticle(char* name) {
+	if (!name || !*name)
+		return;
+
+	// Try each article pattern (order matters: ", An" before ", A")
+	if (moveArticle(name, ", The", "The "))
+		return;
+	if (moveArticle(name, ", An", "An "))
+		return;
+	if (moveArticle(name, ", A", "A "))
+		return;
+}
+
+/**
  * Cleans a ROM or app path for display in the UI.
  *
- * Performs multiple transformations:
+ * Uses the No-Intro parser for ROM names, which handles:
  * 1. Extracts filename from full path
  * 2. Removes file extensions (including multi-part like .p8.png)
- * 3. Strips region codes and metadata in parentheses/brackets
- *    Example: "Super Mario (USA) (v1.2).nes" -> "Super Mario"
- * 4. Removes trailing whitespace
+ * 3. Strips No-Intro tags: region (USA), language (En,Ja), version (v1.2), etc.
+ * 4. Moves articles to front: "Name, The" -> "The Name"
  * 5. Special handling: strips platform suffix from Tools paths
  *
  * @param in_name Input path (may be full path or just filename)
  * @param out_name Output buffer for cleaned name (min 256 bytes)
  *
- * @note If all content is removed, the previous valid name is restored
+ * @note Uses nointro_parser for comprehensive ROM name handling
  */
 void getDisplayName(const char* in_name, char* out_name) {
-	char* tmp;
 	char work_name[256];
-	strcpy(work_name, in_name);
-	strcpy(out_name, in_name);
+	char* tmp;
+	SAFE_STRCPY(work_name, in_name);
 
 	// Special case: hide platform suffix from Tools paths
 	if (suffixMatch("/" PLATFORM, work_name)) {
@@ -372,41 +534,10 @@ void getDisplayName(const char* in_name, char* out_name) {
 			tmp[0] = '\0';
 	}
 
-	// Extract just the filename if we have a full path
-	tmp = strrchr(work_name, '/');
-	if (tmp)
-		strcpy(out_name, tmp + 1);
-
-	// Remove all file extensions (handles multi-part like .p8.png)
-	// Only removes extensions between 1-4 characters (plus dot)
-	while ((tmp = strrchr(out_name, '.')) != NULL) {
-		int len = strlen(tmp);
-		if (len > 2 && len <= 5) {
-			tmp[0] = '\0'; // Extended to 5 for .doom files
-		} else {
-			break;
-		}
-	}
-
-	// Remove trailing metadata in parentheses or brackets
-	// Example: "Game (USA) [!]" -> "Game"
-	strcpy(work_name, out_name);
-	while ((tmp = strrchr(out_name, '(')) != NULL || (tmp = strrchr(out_name, '[')) != NULL) {
-		if (tmp == out_name)
-			break; // Don't remove if name would be empty
-		tmp[0] = '\0';
-		tmp = out_name;
-	}
-
-	// Safety check: restore previous name if we removed everything
-	if (out_name[0] == '\0')
-		strcpy(out_name, work_name);
-
-	// Remove trailing whitespace
-	tmp = out_name + strlen(out_name) - 1;
-	while (tmp > out_name && isspace((unsigned char)*tmp))
-		tmp--;
-	tmp[1] = '\0';
+	// Use No-Intro parser to get clean display name
+	NoIntroName parsed;
+	parseNoIntroName(work_name, &parsed);
+	safe_strcpy(out_name, parsed.display_name, 256);
 }
 
 /**
@@ -428,7 +559,7 @@ void getDisplayName(const char* in_name, char* out_name) {
  */
 void getEmuName(const char* in_name, char* out_name) {
 	char* tmp;
-	strcpy(out_name, in_name);
+	safe_strcpy(out_name, in_name, MAX_PATH);
 	tmp = out_name;
 
 	// Extract just the Roms folder name if this is a full path
@@ -450,7 +581,9 @@ void getEmuName(const char* in_name, char* out_name) {
 		// Safe for overlapping buffers
 		memmove(out_name, tmp, strlen(tmp) + 1);
 		tmp = strchr(out_name, ')');
-		tmp[0] = '\0';
+		if (tmp) {
+			tmp[0] = '\0';
+		}
 	}
 }
 
@@ -467,15 +600,20 @@ void getEmuName(const char* in_name, char* out_name) {
  * @note pak_path is always modified, even if file doesn't exist
  */
 void getEmuPath(char* emu_name, char* pak_path) {
-	sprintf(pak_path, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM, emu_name);
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM,
+	               emu_name);
 	if (exists(pak_path))
 		return;
-	sprintf(pak_path, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
 }
 
 ///////////////////////////////
 // Date/time utilities
 ///////////////////////////////
+
+// Date validation bounds (Unix epoch to reasonable future limit)
+#define VALID_YEAR_MIN 1970
+#define VALID_YEAR_MAX 2100
 
 /**
  * Checks if a year is a leap year.
@@ -545,11 +683,11 @@ void validateDateTime(int32_t* year, int32_t* month, int32_t* day, int32_t* hour
 	else if (*month < 1)
 		*month += 12;
 
-	// Year clamping (Unix epoch to arbitrary future limit)
-	if (*year > 2100)
-		*year = 2100;
-	else if (*year < 1970)
-		*year = 1970;
+	// Year clamping
+	if (*year > VALID_YEAR_MAX)
+		*year = VALID_YEAR_MAX;
+	else if (*year < VALID_YEAR_MIN)
+		*year = VALID_YEAR_MIN;
 
 	// Day validation (depends on month and leap year)
 	int max_days = getDaysInMonth(*month, *year);
@@ -702,3 +840,65 @@ uint32_t average32(uint32_t c1, uint32_t c2) {
 	return (ret >> 1) | of;
 }
 #endif
+
+/**
+ * Sorts an array of uint64_t values in ascending order (in-place).
+ *
+ * Uses shell sort with Ciura's gap sequence, which provides O(n^1.3) average
+ * performance. For our typical 30-element arrays, this completes in ~50
+ * comparisons vs ~450 for insertion sort.
+ *
+ * @param arr Array to sort
+ * @param count Number of elements in array
+ */
+void sortUint64(uint64_t* arr, int count) {
+	if (count <= 1)
+		return;
+
+	// Ciura's gap sequence (optimal for n < 1000)
+	static const int gaps[] = {57, 23, 10, 4, 1};
+	int num_gaps = sizeof(gaps) / sizeof(gaps[0]);
+
+	for (int g = 0; g < num_gaps; g++) {
+		int gap = gaps[g];
+		if (gap >= count)
+			continue;
+
+		// Insertion sort with this gap
+		for (int i = gap; i < count; i++) {
+			uint64_t temp = arr[i];
+			int j = i;
+			while (j >= gap && arr[j - gap] > temp) {
+				arr[j] = arr[j - gap];
+				j -= gap;
+			}
+			arr[j] = temp;
+		}
+	}
+}
+
+/**
+ * Calculates a percentile value from an array of uint64_t values.
+ *
+ * Copies the array to avoid modifying the original, sorts it, and
+ * returns the value at the specified percentile position.
+ *
+ * @param arr Array of values (not modified)
+ * @param count Number of elements in array (max 64)
+ * @param percentile Percentile to calculate (0.0 to 1.0, e.g., 0.90 for 90th)
+ * @return Value at the specified percentile, or 0 if count is 0 or invalid
+ */
+uint64_t percentileUint64(const uint64_t* arr, int count, float percentile) {
+	if (count <= 0 || count > 64 || percentile < 0.0f || percentile > 1.0f)
+		return 0;
+
+	// Copy to avoid modifying original
+	uint64_t sorted[64];
+	memcpy(sorted, arr, (size_t)count * sizeof(uint64_t));
+
+	sortUint64(sorted, count);
+
+	// Calculate index (floor)
+	int idx = (int)((float)(count - 1) * percentile);
+	return sorted[idx];
+}

@@ -1,0 +1,11 @@
+Nintendo Entertainment System / Famicom
+
+Core: fceumm
+
+Supported file types:
+  .nes, .fds, .unif, .unf
+
+BIOS (optional):
+  disksys.rom - required for Famicom Disk System games
+
+Place BIOS files in: /Bios/FC/

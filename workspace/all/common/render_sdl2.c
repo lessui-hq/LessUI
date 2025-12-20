@@ -1,0 +1,426 @@
+/**
+ * render_sdl2.c - Shared SDL2 rendering backend implementation
+ *
+ * This module consolidates the video rendering code that was previously
+ * duplicated across 7 platform files: tg5040, rg35xxplus, my282, my355,
+ * zero28, rgb30, magicmini.
+ *
+ * Key features unified:
+ * - resizeVideo() with hard_scale calculation
+ * - updateEffect() with opacity tables
+ * - PLAT_present() with aspect ratio handling
+ * - Crisp scaling two-pass rendering
+ * - Display rotation support
+ */
+
+#include "render_sdl2.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "defines.h"
+#include "effect_system.h"
+#include "effect_utils.h"
+#include "render_common.h"
+#include "utils.h"
+
+// Internal helper to resize video resources
+static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
+	if (w == ctx->width && h == ctx->height && p == ctx->pitch)
+		return;
+
+	// Calculate hard scale based on source resolution
+	ctx->hard_scale = RENDER_calcHardScale(w, h, ctx->device_width, ctx->device_height);
+
+	LOG_info("resizeVideo(%i,%i,%i) hard_scale: %i crisp: %i\n", w, h, p, ctx->hard_scale,
+	         ctx->sharpness == SHARPNESS_CRISP);
+
+	// Cleanup old resources
+	SDL_FreeSurface(ctx->buffer);
+	SDL_DestroyTexture(ctx->texture);
+	if (ctx->target) {
+		SDL_DestroyTexture(ctx->target);
+		ctx->target = NULL;
+	}
+
+	// Create main texture with appropriate filtering
+	SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY,
+	                        ctx->sharpness == SHARPNESS_SOFT ? "1" : "0", SDL_HINT_OVERRIDE);
+	ctx->texture =
+	    SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
+
+	// Create intermediate target texture for crisp scaling
+	if (ctx->sharpness == SHARPNESS_CRISP) {
+		SDL_SetHintWithPriority(SDL_HINT_RENDER_SCALE_QUALITY, "1", SDL_HINT_OVERRIDE);
+		ctx->target =
+		    SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_TARGET,
+		                      w * ctx->hard_scale, h * ctx->hard_scale);
+	}
+
+	// Recreate buffer wrapper
+	ctx->buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
+
+	ctx->width = w;
+	ctx->height = h;
+	ctx->pitch = p;
+}
+
+// Internal helper to update effect texture
+static void updateEffectInternal(SDL2_RenderContext* ctx) {
+	EffectState* fx = &ctx->effect_state;
+
+	// Apply pending state
+	EFFECT_applyPending(fx);
+
+	// Check if update needed
+	if (!EFFECT_needsUpdate(fx)) {
+		return;
+	}
+
+	// Effect is disabled
+	if (fx->type == EFFECT_NONE) {
+		return;
+	}
+
+	// Target dimensions
+	int target_w = ctx->device_width;
+	int target_h = ctx->device_height;
+
+	// All effects use procedural generation (with color support for GRID)
+	int scale = fx->scale > 0 ? fx->scale : 1;
+	int opacity = EFFECT_getOpacity(scale);
+
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
+	          fx->color, opacity);
+
+	SDL_Texture* new_texture = EFFECT_createGeneratedTextureWithColor(
+	    ctx->renderer, fx->type, fx->scale, target_w, target_h, fx->color);
+	if (new_texture) {
+		SDL_SetTextureBlendMode(new_texture, SDL_BLENDMODE_BLEND);
+		SDL_SetTextureAlphaMod(new_texture, opacity);
+	}
+
+	if (new_texture) {
+		// Destroy old effect texture
+		if (ctx->effect) {
+			SDL_DestroyTexture(ctx->effect);
+		}
+		ctx->effect = new_texture;
+
+		// Mark as live
+		EFFECT_markLive(fx);
+
+		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
+	}
+}
+
+SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
+                            const SDL2_Config* config) {
+	// Initialize context
+	memset(ctx, 0, sizeof(SDL2_RenderContext));
+
+	// Copy config or use defaults
+	if (config) {
+		ctx->config = *config;
+	} else {
+		ctx->config.auto_rotate = 0;
+		ctx->config.rotate_cw = 0;
+		ctx->config.rotate_null_center = 0;
+		ctx->config.has_hdmi = 0;
+		ctx->config.default_sharpness = SHARPNESS_SOFT;
+	}
+
+	// Initialize effect state
+	EFFECT_init(&ctx->effect_state);
+
+	// Initialize SDL video
+	LOG_debug("SDL2_initVideo: Calling SDL_InitSubSystem(VIDEO)");
+	if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
+		LOG_error("SDL2_initVideo: SDL_InitSubSystem failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: SDL video subsystem initialized");
+	SDL_ShowCursor(0);
+
+	int w = width;
+	int h = height;
+	int p = w * FIXED_BPP;
+	LOG_debug("SDL2_initVideo: Creating window/renderer (size=%dx%d)", w, h);
+
+	// Create window and renderer
+	ctx->window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
+	                               SDL_WINDOW_SHOWN);
+	if (!ctx->window) {
+		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Window created successfully");
+
+	ctx->renderer =
+	    SDL_CreateRenderer(ctx->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (!ctx->renderer) {
+		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Renderer created successfully");
+
+	// Check for rotation (portrait display)
+	if (ctx->config.auto_rotate) {
+		SDL_DisplayMode mode;
+		LOG_debug("SDL2_initVideo: Checking display mode for rotation");
+		if (SDL_GetCurrentDisplayMode(0, &mode) < 0) {
+			LOG_error("SDL2_initVideo: SDL_GetCurrentDisplayMode failed: %s", SDL_GetError());
+		} else {
+			LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
+			if (mode.h > mode.w) {
+				// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
+				ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
+				LOG_debug("Rotation enabled: rotate=%d (%s)\n", ctx->rotate,
+				          ctx->config.rotate_cw ? "CW" : "CCW");
+			}
+		}
+	}
+
+	// Create initial texture
+	LOG_debug("SDL2_initVideo: Creating texture (sharpness=%s)",
+	          ctx->config.default_sharpness == SHARPNESS_SOFT ? "soft" : "sharp");
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY,
+	            ctx->config.default_sharpness == SHARPNESS_SOFT ? "1" : "0");
+	ctx->texture =
+	    SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);
+	if (!ctx->texture) {
+		LOG_error("SDL2_initVideo: SDL_CreateTexture failed: %s", SDL_GetError());
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Texture created successfully");
+	ctx->target = NULL;
+
+	// Create surfaces
+	LOG_debug("SDL2_initVideo: Creating SDL surfaces");
+	ctx->buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
+	if (!ctx->buffer) {
+		LOG_error("SDL2_initVideo: SDL_CreateRGBSurfaceFrom failed: %s", SDL_GetError());
+		SDL_DestroyTexture(ctx->texture);
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	ctx->screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH, RGBA_MASK_565);
+	if (!ctx->screen) {
+		LOG_error("SDL2_initVideo: SDL_CreateRGBSurface failed: %s", SDL_GetError());
+		SDL_FreeSurface(ctx->buffer);
+		SDL_DestroyTexture(ctx->texture);
+		SDL_DestroyRenderer(ctx->renderer);
+		SDL_DestroyWindow(ctx->window);
+		return NULL;
+	}
+	LOG_debug("SDL2_initVideo: Surfaces created successfully");
+
+	// Store dimensions
+	ctx->width = w;
+	ctx->height = h;
+	ctx->pitch = p;
+	ctx->device_width = w;
+	ctx->device_height = h;
+	ctx->device_pitch = p;
+
+	ctx->sharpness = ctx->config.default_sharpness;
+	ctx->hard_scale = 4;
+
+	LOG_debug("SDL2_initVideo: Video initialization complete (screen=%dx%d)", w, h);
+	return ctx->screen;
+}
+
+void SDL2_quitVideo(SDL2_RenderContext* ctx) {
+	// Clear screen
+	SDL_FillRect(ctx->screen, NULL, 0);
+	for (int i = 0; i < 3; i++) {
+		SDL_RenderClear(ctx->renderer);
+		SDL_RenderPresent(ctx->renderer);
+	}
+
+	// Free surfaces
+	SDL_FreeSurface(ctx->screen);
+	SDL_FreeSurface(ctx->buffer);
+
+	// Destroy textures
+	if (ctx->target)
+		SDL_DestroyTexture(ctx->target);
+	if (ctx->effect)
+		SDL_DestroyTexture(ctx->effect);
+	SDL_DestroyTexture(ctx->texture);
+
+	// Destroy renderer and window
+	SDL_DestroyRenderer(ctx->renderer);
+	SDL_DestroyWindow(ctx->window);
+
+	SDL_Quit();
+}
+
+void SDL2_clearVideo(SDL2_RenderContext* ctx) {
+	SDL_FillRect(ctx->screen, NULL, 0);
+}
+
+void SDL2_clearAll(SDL2_RenderContext* ctx) {
+	SDL2_clearVideo(ctx);
+	SDL_RenderClear(ctx->renderer);
+}
+
+SDL_Surface* SDL2_resizeVideo(SDL2_RenderContext* ctx, int width, int height, int pitch) {
+	resizeVideoInternal(ctx, width, height, pitch);
+	return ctx->screen;
+}
+
+void SDL2_setSharpness(SDL2_RenderContext* ctx, int sharpness) {
+	if (ctx->sharpness == sharpness)
+		return;
+
+	// Force resize to recreate textures with new filtering
+	int p = ctx->pitch;
+	ctx->pitch = 0;
+	ctx->sharpness = sharpness;
+	resizeVideoInternal(ctx, ctx->width, ctx->height, p);
+}
+
+void SDL2_setEffect(SDL2_RenderContext* ctx, int type) {
+	EFFECT_setType(&ctx->effect_state, type);
+}
+
+void SDL2_setEffectColor(SDL2_RenderContext* ctx, int color) {
+	EFFECT_setColor(&ctx->effect_state, color);
+}
+
+scaler_t SDL2_getScaler(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
+	EFFECT_setScale(&ctx->effect_state, renderer->visual_scale);
+	return scale1x1_c16; // Hardware does scaling
+}
+
+void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
+	// Unified presentation: handles both game and UI modes
+	// No state tracking needed - caller explicitly says what to present
+
+	SDL_RenderClear(ctx->renderer);
+
+	if (!renderer) {
+		// UI mode: present screen surface
+		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
+		SDL_UpdateTexture(ctx->texture, NULL, ctx->screen->pixels, ctx->screen->pitch);
+
+		if (ctx->rotate && !ctx->on_hdmi) {
+			int rect_x = ctx->config.rotate_cw ? ctx->device_height : 0;
+			int rect_y = ctx->config.rotate_cw ? 0 : ctx->device_width;
+			SDL_Point center_point = {0, 0};
+			SDL_Point* center = ctx->config.rotate_null_center ? NULL : &center_point;
+
+			SDL_RenderCopyEx(ctx->renderer, ctx->texture, NULL,
+			                 &(SDL_Rect){rect_x, rect_y, ctx->device_width, ctx->device_height},
+			                 ctx->rotate * 90, center, SDL_FLIP_NONE);
+		} else {
+			SDL_RenderCopy(ctx->renderer, ctx->texture, NULL, NULL);
+		}
+
+		SDL_RenderPresent(ctx->renderer);
+		return;
+	}
+
+	// Game mode: present from renderer source
+	resizeVideoInternal(ctx, renderer->true_w, renderer->true_h, renderer->src_p);
+	SDL_UpdateTexture(ctx->texture, NULL, renderer->src, renderer->src_p);
+
+	// Apply crisp scaling if enabled
+	SDL_Texture* target = ctx->texture;
+	int x = renderer->src_x;
+	int y = renderer->src_y;
+	int w = renderer->src_w;
+	int h = renderer->src_h;
+
+	if (ctx->sharpness == SHARPNESS_CRISP && ctx->target) {
+		SDL_SetRenderTarget(ctx->renderer, ctx->target);
+		SDL_RenderCopy(ctx->renderer, ctx->texture, NULL, NULL);
+		SDL_SetRenderTarget(ctx->renderer, NULL);
+		x *= ctx->hard_scale;
+		y *= ctx->hard_scale;
+		w *= ctx->hard_scale;
+		h *= ctx->hard_scale;
+		target = ctx->target;
+	}
+
+	// Calculate destination rectangle
+	SDL_Rect src_rect = {x, y, w, h};
+	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
+	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+
+	// Render main content
+	if (ctx->rotate && !ctx->on_hdmi) {
+		int ox = -(ctx->device_width - ctx->device_height) / 2;
+		int oy = -ox;
+		SDL_RenderCopyEx(ctx->renderer, target, &src_rect,
+		                 &(SDL_Rect){ox + dst_rect.x, oy + dst_rect.y, dst_rect.w, dst_rect.h},
+		                 ctx->rotate * 90, NULL, SDL_FLIP_NONE);
+	} else {
+		SDL_RenderCopy(ctx->renderer, target, &src_rect, &dst_rect);
+	}
+
+	// Update and render effect overlay
+	updateEffectInternal(ctx);
+	if (ctx->effect_state.type != EFFECT_NONE && ctx->effect) {
+		SDL_Rect effect_src = {0, 0, dst_rect.w, dst_rect.h};
+		if (ctx->rotate && !ctx->on_hdmi) {
+			int ox = -(ctx->device_width - ctx->device_height) / 2;
+			int oy = -ox;
+			SDL_RenderCopyEx(ctx->renderer, ctx->effect, &effect_src,
+			                 &(SDL_Rect){ox + dst_rect.x, oy + dst_rect.y, dst_rect.w, dst_rect.h},
+			                 ctx->rotate * 90, NULL, SDL_FLIP_NONE);
+		} else {
+			SDL_RenderCopy(ctx->renderer, ctx->effect, &effect_src, &dst_rect);
+		}
+	}
+
+	SDL_RenderPresent(ctx->renderer);
+}
+
+void SDL2_vsync(int remaining) {
+	if (remaining > 0) {
+		SDL_Delay(remaining);
+	}
+}
+
+int SDL2_hdmiChanged(SDL2_RenderContext* ctx) {
+	// Platform-specific HDMI detection should set ctx->on_hdmi
+	// This function just reports if it changed
+	// (Actual detection happens in platform code)
+	return 0;
+}
+
+double SDL2_getDisplayHz(void) {
+	SDL_DisplayMode mode;
+	if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
+		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
+		if (mode.refresh_rate > 0) {
+			return (double)mode.refresh_rate;
+		}
+	}
+	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback\n");
+	return 0.0; // Return 0 to indicate no data, caller should use PLAT_getDisplayHz
+}
+
+uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx) {
+	if (!ctx || !ctx->renderer) {
+		return 0;
+	}
+
+	// First present to sync to vsync boundary
+	SDL_RenderPresent(ctx->renderer);
+
+	// Measure time for second present (one full vsync interval)
+	uint64_t start = SDL_GetPerformanceCounter();
+	SDL_RenderPresent(ctx->renderer);
+	uint64_t end = SDL_GetPerformanceCounter();
+
+	// Convert to microseconds
+	uint64_t freq = SDL_GetPerformanceFrequency();
+	return (uint32_t)((end - start) * 1000000 / freq);
+}

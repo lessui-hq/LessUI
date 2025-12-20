@@ -1,0 +1,8 @@
+Neo Geo Pocket
+
+Core: race
+
+Supported file types:
+  .ngp
+
+No BIOS required.

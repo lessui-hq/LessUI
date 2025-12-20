@@ -1,0 +1,7 @@
+$(PLATFORM):
+	# $@
+	# copy boot assets from central location
+	rsync -a ./skeleton/SYSTEM/res/installing@2x.bmp ./workspace/$@/install/installing.bmp
+	rsync -a ./skeleton/SYSTEM/res/updating@2x.bmp ./workspace/$@/install/updating.bmp
+	# update
+	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh

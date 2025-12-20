@@ -1,0 +1,62 @@
+# Clang-Tidy Configuration for LessUI
+# This replaces cppcheck for static analysis of the C codebase
+#
+# Focus areas:
+#   - Bug detection (bugprone, clang-analyzer)
+#   - Performance issues
+#   - Security vulnerabilities
+#   - Portability issues
+#
+# Disabled categories:
+#   - modernize-* (C++ specific, not relevant for C)
+#   - cppcoreguidelines-* (C++ specific)
+#   - google-*, llvm-*, fuchsia-* (style guides not applicable)
+#   - readability-* (too opinionated for legacy codebase with mixed styles)
+#   - bugprone-suspicious-realloc-usage (false positive from khash.h macro expansion)
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-reserved-identifier,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-suspicious-string-compare,
+  -bugprone-switch-missing-default-case,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-branch-clone,
+  -bugprone-not-null-terminated-result,
+  -bugprone-suspicious-realloc-usage,
+  clang-analyzer-*,
+  -clang-analyzer-core.NonNullParamChecker,
+  -clang-analyzer-unix.Stream,
+  performance-*,
+  portability-*,
+  cert-*,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -cert-err34-c,
+  -cert-env33-c,
+
+# Treat all enabled warnings as errors to prevent regression
+# Now that the codebase is clean, enforce zero-warning policy
+WarningsAsErrors: '*'
+
+# Header filtering - analyze project headers, skip third-party (especially libretro-common)
+# Only show warnings from our own headers, not from third-party libraries
+HeaderFilterRegex: 'workspace/all/(common|launcher|player|clock|minput|say|syncsettings)/[^/]*\.(h|c)$'
+SystemHeaders: false
+
+# Check options (fine-tuning individual checks)
+CheckOptions:
+  # Performance
+  - { key: performance-move-const-arg.CheckTriviallyCopyableMove, value: 'false' }
+
+  # Bugprone
+  - { key: bugprone-suspicious-string-compare.WarnOnImplicitComparison, value: 'true' }
+  - { key: bugprone-suspicious-string-compare.WarnOnLogicalNotComparison, value: 'true' }
+
+  # Portability
+  - { key: portability-simd-intrinsics.Suggest, value: 'false' }

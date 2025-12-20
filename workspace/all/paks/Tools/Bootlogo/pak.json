@@ -1,0 +1,26 @@
+{
+  "name": "Bootlogo",
+  "type": "tool",
+  "description": "Flash custom boot logo",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "my282",
+    "my355",
+    "tg5040",
+    "zero28",
+    "m17"
+  ],
+
+  "build": {
+    "type": "native-optional",
+    "platforms": ["miyoomini"],
+    "binary": {
+      "miyoomini": ["logoread.elf", "logomake.elf", "logowrite.elf"]
+    }
+  },
+
+  "launch": "launch.sh"
+}

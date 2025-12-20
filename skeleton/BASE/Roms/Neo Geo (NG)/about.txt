@@ -1,0 +1,11 @@
+Neo Geo
+
+Core: fbneo
+
+Supported file types:
+  .zip, .7z
+
+BIOS (required):
+  neogeo.zip - Neo Geo BIOS collection
+
+Place BIOS files in: /Bios/NG/

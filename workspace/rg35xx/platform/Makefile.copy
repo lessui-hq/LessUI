@@ -1,0 +1,11 @@
+$(PLATFORM):
+	# $@
+	cp ./workspace/$@/overclock/overclock.elf ./build/SYSTEM/$@/bin/
+	mkdir -p ./build/BASE/$@
+	rsync -a ./workspace/$@/boot/output/dmenu.bin ./build/BASE/$@/
+	rsync -a ./workspace/$@/boot/output/dmenu.bin ./build/SYSTEM/$@/dat/
+	rsync -a ./workspace/$@/boot/output/boot_logo.bmp.gz ./build/SYSTEM/$@/dat/
+	rsync -a ./workspace/$@/boot/output/rootfs.ext2 ./build/SYSTEM/$@/
+	rsync -a ./workspace/$@/install/install.sh ./build/SYSTEM/$@/bin/
+	rsync -a ./workspace/$@/ramdisk/patched-ramdisk.img ./build/SYSTEM/$@/dat/ramdisk.img
+	rsync -a ./skeleton/SYSTEM/res/charging@2x.png ./build/SYSTEM/$@/dat/charging.png

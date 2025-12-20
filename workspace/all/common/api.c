@@ -1,5 +1,5 @@
 /**
- * api.c - Platform abstraction layer implementation for MinUI
+ * api.c - Platform abstraction layer implementation for Launcher
  *
  * Provides cross-platform API functions for graphics (GFX_*), sound (SND_*),
  * input (PAD_*), power management (PWR_*), and vibration (VIB_*). This file
@@ -38,53 +38,13 @@
 #include <msettings.h>
 
 #include "api.h"
+// NOLINTNEXTLINE(bugprone-suspicious-include) - Intentionally bundled to avoid makefile changes
+#include "audio_resampler.c"
+// NOLINTNEXTLINE(bugprone-suspicious-include) - Intentionally bundled to avoid makefile changes
 #include "defines.h"
 #include "gfx_text.h"
 #include "pad.h"
 #include "utils.h"
-
-///////////////////////////////
-// Logging
-///////////////////////////////
-
-/**
- * Logs a message at the specified level to stdout/stderr.
- *
- * Supports DEBUG, INFO, WARN, and ERROR levels. Debug messages
- * are only logged when DEBUG is defined at compile time.
- *
- * @param level Log level (LOG_DEBUG, LOG_INFO, LOG_WARN, LOG_ERROR)
- * @param fmt Printf-style format string
- * @param ... Variable arguments for format string
- *
- * @note Always flushes stdout to ensure messages appear immediately
- */
-void LOG_note(int level, const char* fmt, ...) {
-	char buf[1024] = {0};
-	va_list args;
-	va_start(args, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
-	switch (level) {
-#ifdef DEBUG
-	case LOG_DEBUG:
-		printf("[DEBUG] %s", buf);
-		break;
-#endif
-	case LOG_INFO:
-		printf("[INFO] %s", buf);
-		break;
-	case LOG_WARN:
-		fprintf(stderr, "[WARN] %s", buf);
-		break;
-	case LOG_ERROR:
-		fprintf(stderr, "[ERROR] %s", buf);
-		break;
-	default:
-		break;
-	}
-	fflush(stdout);
-}
 
 ///////////////////////////////
 // Graphics - Core initialization and state
@@ -98,12 +58,19 @@ uint32_t RGB_LIGHT_GRAY;
 uint32_t RGB_GRAY;
 uint32_t RGB_DARK_GRAY;
 
+///////////////////////////////
+// Display Points (DP) scaling system
+///////////////////////////////
+
+// Global display scale factor (PPI / 120)
+float gfx_dp_scale = 2.0f; // Default to 2x until UI_initLayout is called
+
+
 static struct GFX_Context {
 	SDL_Surface* screen;
 	SDL_Surface* assets;
 
 	int mode;
-	int vsync;
 } gfx;
 
 static SDL_Rect asset_rects[ASSET_COUNT];
@@ -135,20 +102,202 @@ static struct PWR_Context {
 static int _;
 
 /**
+ * Scales a surface using bilinear interpolation.
+ *
+ * Performs smooth downscaling/upscaling of RGBA8888 or RGB888 surfaces
+ * using bilinear filtering. Each output pixel samples the 4 nearest source
+ * pixels and interpolates linearly in both X and Y directions.
+ *
+ * Used for scaling UI assets (icons, pills, buttons) from @1x/@2x/@3x/@4x
+ * tiers to the exact dp_scale required by the current screen. Provides
+ * smooth edges compared to nearest-neighbor scaling.
+ *
+ * @param src Source surface to scale
+ * @param dst Destination surface (must be pre-allocated at target size)
+ *
+ * @note Both surfaces must be locked if SDL_MUSTLOCK is true
+ * @note Works with 3-byte (RGB888) and 4-byte (RGBA8888) pixel formats
+ * @note dst dimensions determine the output scale
+ */
+static void GFX_scaleBilinear(SDL_Surface* src, SDL_Surface* dst) {
+	if (!src || !dst)
+		return;
+
+	int src_w = src->w;
+	int src_h = src->h;
+	int dst_w = dst->w;
+	int dst_h = dst->h;
+
+	// Determine bytes per pixel (3 for RGB, 4 for RGBA)
+	int bpp = src->format->BytesPerPixel;
+
+	// Lock surfaces if needed
+	if (SDL_MUSTLOCK(src))
+		SDL_LockSurface(src);
+	if (SDL_MUSTLOCK(dst))
+		SDL_LockSurface(dst);
+
+	uint8_t* src_pixels = (uint8_t*)src->pixels;
+	uint8_t* dst_pixels = (uint8_t*)dst->pixels;
+
+	// Fixed-point scaling using 16.16 format for ARM optimization
+	// This avoids floating-point math in the inner loop
+	// Guard against division by zero
+	if (dst_w == 0 || dst_h == 0)
+		return;
+
+	uint32_t x_ratio = ((uint32_t)src_w << 16) / dst_w;
+	uint32_t y_ratio = ((uint32_t)src_h << 16) / dst_h;
+
+	uint32_t src_y_fixed = 0;
+	for (int y = 0; y < dst_h; y++) {
+		int y1 = src_y_fixed >> 16;
+		int y2 = (y1 + 1 < src_h) ? y1 + 1 : y1;
+		uint32_t y_frac = (src_y_fixed >> 8) & 0xFF; // 8-bit fractional part
+		uint32_t y_inv = 256 - y_frac;
+
+		uint8_t* row1 = src_pixels + (y1 * src->pitch);
+		uint8_t* row2 = src_pixels + (y2 * src->pitch);
+		uint8_t* dst_row = dst_pixels + (y * dst->pitch);
+
+		uint32_t src_x_fixed = 0;
+		for (int x = 0; x < dst_w; x++) {
+			int x1 = src_x_fixed >> 16;
+			int x2 = (x1 + 1 < src_w) ? x1 + 1 : x1;
+			uint32_t x_frac = (src_x_fixed >> 8) & 0xFF; // 8-bit fractional part
+			uint32_t x_inv = 256 - x_frac;
+
+			// Calculate bilinear weights (sum to 65536)
+			uint32_t w11 = x_inv * y_inv;
+			uint32_t w12 = x_frac * y_inv;
+			uint32_t w21 = x_inv * y_frac;
+			uint32_t w22 = x_frac * y_frac;
+
+			// Get pointers to the 4 surrounding pixels
+			uint8_t* p11 = row1 + (x1 * bpp);
+			uint8_t* p12 = row1 + (x2 * bpp);
+			uint8_t* p21 = row2 + (x1 * bpp);
+			uint8_t* p22 = row2 + (x2 * bpp);
+
+			uint8_t* dst_pixel = dst_row + (x * bpp);
+
+			// Bilinear interpolation - broken into steps for ARM Cortex-A7 compatibility
+			// The complex expressions were causing compiler issues on older ARM cores
+			if (bpp == 4) {
+				// RGBA (4 channels)
+				for (int c = 0; c < 4; c++) {
+					uint32_t p1 = p11[c] * w11;
+					uint32_t p2 = p12[c] * w12;
+					uint32_t p3 = p21[c] * w21;
+					uint32_t p4 = p22[c] * w22;
+					uint32_t sum = p1 + p2 + p3 + p4;
+					dst_pixel[c] = (uint8_t)(sum >> 16);
+				}
+			} else if (bpp == 3) {
+				// RGB (3 channels)
+				for (int c = 0; c < 3; c++) {
+					uint32_t p1 = p11[c] * w11;
+					uint32_t p2 = p12[c] * w12;
+					uint32_t p3 = p21[c] * w21;
+					uint32_t p4 = p22[c] * w22;
+					uint32_t sum = p1 + p2 + p3 + p4;
+					dst_pixel[c] = (uint8_t)(sum >> 16);
+				}
+			} else {
+				// Fallback for other formats (rare)
+				for (int c = 0; c < bpp; c++) {
+					uint32_t p1 = p11[c] * w11;
+					uint32_t p2 = p12[c] * w12;
+					uint32_t p3 = p21[c] * w21;
+					uint32_t p4 = p22[c] * w22;
+					uint32_t sum = p1 + p2 + p3 + p4;
+					dst_pixel[c] = (uint8_t)(sum >> 16);
+				}
+			}
+
+			src_x_fixed += x_ratio;
+		}
+		src_y_fixed += y_ratio;
+	}
+
+	// Unlock surfaces
+	if (SDL_MUSTLOCK(dst))
+		SDL_UnlockSurface(dst);
+	if (SDL_MUSTLOCK(src))
+		SDL_UnlockSurface(src);
+}
+
+/**
+ * Scales an image to fit within maximum dimensions while preserving aspect ratio.
+ *
+ * If the source image is larger than max_w or max_h, scales it down proportionally
+ * based on the longer side.
+ *
+ * @param src Source surface to scale
+ * @param max_w Maximum width in pixels
+ * @param max_h Maximum height in pixels
+ * @return Scaled surface, or src unchanged if already fits or on allocation failure
+ *
+ * @warning OWNERSHIP SEMANTICS: This function has conditional ownership transfer.
+ *          - If return value != src: caller owns returned surface, must SDL_FreeSurface()
+ *          - If return value == src: caller does NOT own, must NOT free
+ *          Typical usage pattern:
+ *            SDL_Surface* result = GFX_scaleToFit(src, w, h);
+ *            // ... use result ...
+ *            if (result != src) SDL_FreeSurface(result);
+ */
+SDL_Surface* GFX_scaleToFit(SDL_Surface* src, int max_w, int max_h) {
+	if (!src)
+		return NULL;
+
+	// Check if scaling is needed - return original if it already fits
+	if (src->w <= max_w && src->h <= max_h)
+		return src;
+
+	// Calculate scale factor based on longest side
+	float scale_w = (float)max_w / src->w;
+	float scale_h = (float)max_h / src->h;
+	float scale =
+	    (scale_w < scale_h) ? scale_w : scale_h; // Use smaller scale (fits both dimensions)
+
+	// Calculate new dimensions
+	int new_w = (int)(src->w * scale + 0.5f);
+	int new_h = (int)(src->h * scale + 0.5f);
+
+	// Create destination surface with same format as source
+	SDL_Surface* dst =
+	    SDL_CreateRGBSurface(0, new_w, new_h, src->format->BitsPerPixel, src->format->Rmask,
+	                         src->format->Gmask, src->format->Bmask, src->format->Amask);
+	if (!dst)
+		return src; // Allocation failed, return original
+
+	// Perform bilinear scaling
+	GFX_scaleBilinear(src, dst);
+
+	return dst;
+}
+
+/**
  * Initializes the graphics subsystem.
  *
- * Sets up SDL video, loads UI assets, initializes fonts, and prepares
- * the color palette. This must be called before any other GFX_ functions.
+ * Sets up SDL video, initializes the DP scaling system, loads and scales
+ * UI assets, initializes fonts, and prepares the color palette.
  *
- * Asset loading:
- * - Loads platform-specific asset PNG (e.g., assets@2x.png for 2x scale)
+ * Asset Loading and Scaling:
+ * - Selects asset tier (@1x, @2x, @3x, @4x) based on ceil(dp_scale)
+ * - If exact match: uses assets as-is (e.g., dp_scale=2.0 with @2x)
+ * - If fractional: extracts and individually scales each asset using bilinear filtering
+ *   - Pill caps → exactly pill_px (for pixel-perfect GFX_blitPill rendering)
+ *   - Buttons/holes → exactly button_px
+ *   - Icons (brightness, volume, wifi) → proportional with even-pixel centering
+ *   - Battery assets → proportional scaling (internal offsets handled in GFX_blitBattery)
  * - Defines rectangles for each asset sprite in the texture atlas
  * - Maps asset IDs to RGB color values for fills
  *
- * Font initialization:
+ * Font Initialization:
  * - Opens 4 font sizes (large, medium, small, tiny)
  * - Applies bold style to all fonts
- * - Font sizes are scaled based on FIXED_SCALE
+ * - Font sizes scaled based on DP() macro (resolution-independent)
  *
  * @param mode Display mode (MODE_MAIN for launcher, MODE_MENU for in-game)
  * @return Pointer to main SDL screen surface
@@ -156,13 +305,28 @@ static int _;
  * @note Also calls PLAT_initLid() to set up lid detection hardware
  */
 SDL_Surface* GFX_init(int mode) {
+	LOG_debug("GFX_init: Starting graphics initialization (mode=%d)", mode);
+
 	// TODO: this doesn't really belong here...
 	// tried adding to PWR_init() but that was no good (not sure why)
+	LOG_debug("GFX_init: Initializing lid");
 	PLAT_initLid();
 
+	LOG_debug("GFX_init: Calling PLAT_initVideo");
 	gfx.screen = PLAT_initVideo();
-	gfx.vsync = VSYNC_STRICT;
+	if (gfx.screen == NULL) {
+		LOG_error("GFX_init: PLAT_initVideo returned NULL");
+		return NULL;
+	}
+	LOG_debug("GFX_init: PLAT_initVideo succeeded (screen=%dx%d)", gfx.screen->w, gfx.screen->h);
 	gfx.mode = mode;
+
+	// Initialize DP scaling system
+#ifdef SCREEN_DIAGONAL
+	LOG_debug("GFX_init: Calling UI_initLayout (diagonal=%.2f)", SCREEN_DIAGONAL);
+	UI_initLayout(gfx.screen->w, gfx.screen->h, SCREEN_DIAGONAL);
+	LOG_debug("GFX_init: UI_initLayout completed (dp_scale=%.2f)", gfx_dp_scale);
+#endif
 
 	RGB_WHITE = SDL_MapRGB(gfx.screen->format, TRIAD_WHITE);
 	RGB_BLACK = SDL_MapRGB(gfx.screen->format, TRIAD_BLACK);
@@ -174,6 +338,7 @@ SDL_Surface* GFX_init(int mode) {
 	asset_rgbs[ASSET_BLACK_PILL] = RGB_BLACK;
 	asset_rgbs[ASSET_DARK_GRAY_PILL] = RGB_DARK_GRAY;
 	asset_rgbs[ASSET_OPTION] = RGB_DARK_GRAY;
+	asset_rgbs[ASSET_OPTION_WHITE] = RGB_WHITE;
 	asset_rgbs[ASSET_BUTTON] = RGB_WHITE;
 	asset_rgbs[ASSET_PAGE_BG] = RGB_WHITE;
 	asset_rgbs[ASSET_STATE_BG] = RGB_WHITE;
@@ -185,49 +350,267 @@ SDL_Surface* GFX_init(int mode) {
 	asset_rgbs[ASSET_DOT] = RGB_LIGHT_GRAY;
 	asset_rgbs[ASSET_HOLE] = RGB_BLACK;
 
-	asset_rects[ASSET_WHITE_PILL] = (SDL_Rect){SCALE4(1, 1, 30, 30)};
-	asset_rects[ASSET_BLACK_PILL] = (SDL_Rect){SCALE4(33, 1, 30, 30)};
-	asset_rects[ASSET_DARK_GRAY_PILL] = (SDL_Rect){SCALE4(65, 1, 30, 30)};
-	asset_rects[ASSET_OPTION] = (SDL_Rect){SCALE4(97, 1, 20, 20)};
-	asset_rects[ASSET_BUTTON] = (SDL_Rect){SCALE4(1, 33, 20, 20)};
-	asset_rects[ASSET_PAGE_BG] = (SDL_Rect){SCALE4(64, 33, 15, 15)};
-	asset_rects[ASSET_STATE_BG] = (SDL_Rect){SCALE4(23, 54, 8, 8)};
-	asset_rects[ASSET_PAGE] = (SDL_Rect){SCALE4(39, 54, 6, 6)};
-	asset_rects[ASSET_BAR] = (SDL_Rect){SCALE4(33, 58, 4, 4)};
-	asset_rects[ASSET_BAR_BG] = (SDL_Rect){SCALE4(15, 55, 4, 4)};
-	asset_rects[ASSET_BAR_BG_MENU] = (SDL_Rect){SCALE4(85, 56, 4, 4)};
-	asset_rects[ASSET_UNDERLINE] = (SDL_Rect){SCALE4(85, 51, 3, 3)};
-	asset_rects[ASSET_DOT] = (SDL_Rect){SCALE4(33, 54, 2, 2)};
-	asset_rects[ASSET_BRIGHTNESS] = (SDL_Rect){SCALE4(23, 33, 19, 19)};
-	asset_rects[ASSET_VOLUME_MUTE] = (SDL_Rect){SCALE4(44, 33, 10, 16)};
-	asset_rects[ASSET_VOLUME] = (SDL_Rect){SCALE4(44, 33, 18, 16)};
-	asset_rects[ASSET_BATTERY] = (SDL_Rect){SCALE4(47, 51, 17, 10)};
-	asset_rects[ASSET_BATTERY_LOW] = (SDL_Rect){SCALE4(66, 51, 17, 10)};
-	asset_rects[ASSET_BATTERY_FILL] = (SDL_Rect){SCALE4(81, 33, 12, 6)};
-	asset_rects[ASSET_BATTERY_FILL_LOW] = (SDL_Rect){SCALE4(1, 55, 12, 6)};
-	asset_rects[ASSET_BATTERY_BOLT] = (SDL_Rect){SCALE4(81, 41, 12, 6)};
-	asset_rects[ASSET_SCROLL_UP] = (SDL_Rect){SCALE4(97, 23, 24, 6)};
-	asset_rects[ASSET_SCROLL_DOWN] = (SDL_Rect){SCALE4(97, 31, 24, 6)};
-	asset_rects[ASSET_WIFI] = (SDL_Rect){SCALE4(95, 39, 14, 10)};
-	asset_rects[ASSET_HOLE] = (SDL_Rect){SCALE4(1, 63, 20, 20)};
+	// Select asset tier based on dp_scale (use one tier higher for better quality)
+	// Available tiers: @1x, @2x, @3x, @4x
+	// Always downscale from a higher resolution for smoother antialiasing
+	LOG_debug("GFX_init: Selecting asset tier (dp_scale=%.2f)", gfx_dp_scale);
+	int asset_scale = (int)ceilf(gfx_dp_scale) + 1;
+	LOG_debug("GFX_init: Calculated asset_scale from dp_scale: %d", asset_scale);
+	if (asset_scale < 1)
+		asset_scale = 1;
+	if (asset_scale > 4)
+		asset_scale = 4;
+	LOG_debug("GFX_init: Selected asset_scale=%dx", asset_scale);
 
+	// Load asset sprite sheet at selected tier
 	char asset_path[MAX_PATH];
-	sprintf(asset_path, RES_PATH "/assets@%ix.png", FIXED_SCALE);
+	(void)snprintf(asset_path, sizeof(asset_path), RES_PATH "/assets@%ix.png", asset_scale);
+	LOG_debug("GFX_init: Loading assets from: %s", asset_path);
 	if (!exists(asset_path))
-		LOG_info("missing assets, you're about to segfault dummy!\n");
-	gfx.assets = IMG_Load(asset_path);
+		LOG_error("GFX_init: Missing assets at %s, about to segfault!", asset_path);
+	SDL_Surface* loaded_assets = IMG_Load(asset_path);
+	if (!loaded_assets) {
+		LOG_error("GFX_init: IMG_Load failed for %s: %s", asset_path, SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("GFX_init: Assets loaded successfully (%dx%d)", loaded_assets->w, loaded_assets->h);
 
-	TTF_Init();
-	font.large = TTF_OpenFont(FONT_PATH, SCALE1(FONT_LARGE));
-	font.medium = TTF_OpenFont(FONT_PATH, SCALE1(FONT_MEDIUM));
-	font.small = TTF_OpenFont(FONT_PATH, SCALE1(FONT_SMALL));
-	font.tiny = TTF_OpenFont(FONT_PATH, SCALE1(FONT_TINY));
+	// Define asset rectangles in the loaded sprite sheet (at asset_scale)
+	// Base coordinates are @1x, multiply by asset_scale for actual position
+#define ASSET_SCALE4(x, y, w, h)                                                                   \
+	((x) * asset_scale), ((y) * asset_scale), ((w) * asset_scale), ((h) * asset_scale)
 
-	TTF_SetFontStyle(font.large, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.medium, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.small, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.tiny, TTF_STYLE_BOLD);
+	asset_rects[ASSET_WHITE_PILL] = (SDL_Rect){ASSET_SCALE4(1, 1, 30, 30)};
+	asset_rects[ASSET_BLACK_PILL] = (SDL_Rect){ASSET_SCALE4(33, 1, 30, 30)};
+	asset_rects[ASSET_DARK_GRAY_PILL] = (SDL_Rect){ASSET_SCALE4(65, 1, 30, 30)};
+	asset_rects[ASSET_OPTION] = (SDL_Rect){ASSET_SCALE4(97, 1, 20, 20)};
+	asset_rects[ASSET_OPTION_WHITE] = (SDL_Rect){ASSET_SCALE4(1, 33, 20, 20)}; // Same as BUTTON src
+	asset_rects[ASSET_BUTTON] = (SDL_Rect){ASSET_SCALE4(1, 33, 20, 20)};
+	asset_rects[ASSET_PAGE_BG] = (SDL_Rect){ASSET_SCALE4(64, 33, 15, 15)};
+	asset_rects[ASSET_STATE_BG] = (SDL_Rect){ASSET_SCALE4(23, 54, 8, 8)};
+	asset_rects[ASSET_PAGE] = (SDL_Rect){ASSET_SCALE4(39, 54, 6, 6)};
+	asset_rects[ASSET_BAR] = (SDL_Rect){ASSET_SCALE4(33, 58, 4, 4)};
+	asset_rects[ASSET_BAR_BG] = (SDL_Rect){ASSET_SCALE4(15, 55, 4, 4)};
+	asset_rects[ASSET_BAR_BG_MENU] = (SDL_Rect){ASSET_SCALE4(85, 56, 4, 4)};
+	asset_rects[ASSET_UNDERLINE] = (SDL_Rect){ASSET_SCALE4(85, 51, 3, 3)};
+	asset_rects[ASSET_DOT] = (SDL_Rect){ASSET_SCALE4(33, 54, 2, 2)};
+	asset_rects[ASSET_BRIGHTNESS] = (SDL_Rect){ASSET_SCALE4(23, 33, 19, 19)};
+	asset_rects[ASSET_VOLUME_MUTE] = (SDL_Rect){ASSET_SCALE4(44, 33, 10, 16)};
+	asset_rects[ASSET_VOLUME] = (SDL_Rect){ASSET_SCALE4(44, 33, 18, 16)};
+	asset_rects[ASSET_BATTERY] = (SDL_Rect){ASSET_SCALE4(47, 51, 17, 10)};
+	asset_rects[ASSET_BATTERY_LOW] = (SDL_Rect){ASSET_SCALE4(66, 51, 17, 10)};
+	asset_rects[ASSET_BATTERY_FILL] = (SDL_Rect){ASSET_SCALE4(81, 33, 12, 6)};
+	asset_rects[ASSET_BATTERY_FILL_LOW] = (SDL_Rect){ASSET_SCALE4(1, 55, 12, 6)};
+	asset_rects[ASSET_BATTERY_BOLT] = (SDL_Rect){ASSET_SCALE4(81, 41, 12, 6)};
+	asset_rects[ASSET_SCROLL_UP] = (SDL_Rect){ASSET_SCALE4(97, 23, 24, 6)};
+	asset_rects[ASSET_SCROLL_DOWN] = (SDL_Rect){ASSET_SCALE4(97, 31, 24, 6)};
+	asset_rects[ASSET_WIFI] = (SDL_Rect){ASSET_SCALE4(95, 39, 14, 10)};
+	asset_rects[ASSET_HOLE] = (SDL_Rect){ASSET_SCALE4(1, 63, 20, 20)};
 
+	// ============================================================================
+	// ASSET SCALING SETUP
+	// ============================================================================
+	// Calculate target pixel sizes for scaling UI element assets.
+	// IMPORTANT: Use pre-calculated *_px values to avoid DP rounding drift.
+	// ============================================================================
+	float scale_ratio = gfx_dp_scale / (float)asset_scale;
+	int pill_px = ui.pill_height_px; // Use EXACT pixel value (not DP(ui.pill_height))
+	int button_px = DP(ui.button_size);
+	int option_px = ui.option_size_px; // Use EXACT pixel value (not DP(ui.option_size))
+
+	// Asset scaling categories:
+	// - SCALE_PILL: Scale to pill_px (main menu pills)
+	// - SCALE_BUTTON: Scale to button_px (button icons)
+	// - SCALE_OPTION: Scale to option_px, placed in virtual area (submenu option rows)
+	// - SCALE_PROPORTIONAL: Scale proportionally with dp_scale
+	// - SCALE_CENTERED: Scale proportionally, ensure even offset from pill_px for centering
+	// - SCALE_EVEN: Scale proportionally but ensure even pixel dimensions (for GFX_blitRect)
+	enum { SCALE_PROPORTIONAL, SCALE_PILL, SCALE_BUTTON, SCALE_OPTION, SCALE_CENTERED, SCALE_EVEN };
+
+	// Define scaling behavior for each asset
+	// Assets with SCALE_OPTION need virtual area (they're scaled differently than source)
+	int asset_scale_type[ASSET_COUNT];
+	for (int i = 0; i < ASSET_COUNT; i++)
+		asset_scale_type[i] = SCALE_PROPORTIONAL; // Default
+
+	// Pills scale to pill_px
+	asset_scale_type[ASSET_WHITE_PILL] = SCALE_PILL;
+	asset_scale_type[ASSET_BLACK_PILL] = SCALE_PILL;
+	asset_scale_type[ASSET_DARK_GRAY_PILL] = SCALE_PILL;
+
+	// Button icons scale to button_px
+	asset_scale_type[ASSET_BUTTON] = SCALE_BUTTON;
+	asset_scale_type[ASSET_HOLE] = SCALE_BUTTON;
+
+	// Option pills scale to option_px (virtual assets - need their own space)
+	asset_scale_type[ASSET_OPTION] = SCALE_OPTION;
+	asset_scale_type[ASSET_OPTION_WHITE] = SCALE_OPTION;
+
+	// Icons that get centered in pills need even pixel difference
+	asset_scale_type[ASSET_BRIGHTNESS] = SCALE_CENTERED;
+	asset_scale_type[ASSET_VOLUME_MUTE] = SCALE_CENTERED;
+	asset_scale_type[ASSET_VOLUME] = SCALE_CENTERED;
+	asset_scale_type[ASSET_WIFI] = SCALE_CENTERED;
+
+	// Assets used by GFX_blitRect need even dimensions (d/2 must divide evenly)
+	asset_scale_type[ASSET_STATE_BG] = SCALE_EVEN;
+
+	// Count virtual assets to calculate extra space needed
+	int virtual_asset_count = 0;
+	for (int i = 0; i < ASSET_COUNT; i++) {
+		if (asset_scale_type[i] == SCALE_OPTION)
+			virtual_asset_count++;
+	}
+
+	// Always scale if we have virtual assets or dp_scale doesn't match asset tier
+	int needs_scaling =
+	    (fabsf(gfx_dp_scale - (float)asset_scale) > 0.01f) || (virtual_asset_count > 0);
+
+	if (needs_scaling) {
+		// Calculate destination sheet dimensions
+		// Add extra row for virtual assets (those scaled to custom sizes)
+		int sheet_w = (int)(loaded_assets->w * scale_ratio + 0.5f);
+		int base_h = (int)(loaded_assets->h * scale_ratio + 0.5f);
+		int virtual_row_h = (virtual_asset_count > 0) ? option_px : 0;
+		int sheet_h = base_h + virtual_row_h;
+
+		// Create destination surface in RGBA8888 format
+		gfx.assets = SDL_CreateRGBSurface(0, sheet_w, sheet_h, 32, RGBA_MASK_8888);
+
+		// Track position for virtual assets
+		int virtual_x = 0;
+		int virtual_y = base_h;
+
+		// Process each asset individually
+		for (int i = 0; i < ASSET_COUNT; i++) {
+			// Source rectangle in the @Nx sheet
+			SDL_Rect src_rect = {asset_rects[i].x, asset_rects[i].y, asset_rects[i].w,
+			                     asset_rects[i].h};
+
+			// Destination position (scaled proportionally by default)
+			SDL_Rect dst_rect = {(int)(src_rect.x * scale_ratio + 0.5f),
+			                     (int)(src_rect.y * scale_ratio + 0.5f), 0, 0};
+
+			int target_w, target_h;
+
+			// Determine target dimensions based on scale type
+			switch (asset_scale_type[i]) {
+			case SCALE_PILL:
+				target_w = target_h = pill_px;
+				break;
+
+			case SCALE_BUTTON:
+				target_w = target_h = button_px;
+				break;
+
+			case SCALE_OPTION:
+				// Virtual asset - place in dedicated area at bottom of sheet
+				target_w = target_h = option_px;
+				dst_rect.x = virtual_x;
+				dst_rect.y = virtual_y;
+				virtual_x += option_px;
+				break;
+
+			case SCALE_CENTERED:
+				// Proportional but ensure even offset from pill for centering
+				target_w = (int)(src_rect.w * scale_ratio + 0.5f);
+				target_h = (int)(src_rect.h * scale_ratio + 0.5f);
+				if ((pill_px - target_w) % 2 != 0)
+					target_w++;
+				if ((pill_px - target_h) % 2 != 0)
+					target_h++;
+				break;
+
+			case SCALE_EVEN:
+				// Proportional but ensure even pixel dimensions (for GFX_blitRect)
+				target_w = (int)(src_rect.w * scale_ratio + 0.5f);
+				target_h = (int)(src_rect.h * scale_ratio + 0.5f);
+				if (target_w % 2 != 0)
+					target_w++;
+				if (target_h % 2 != 0)
+					target_h++;
+				break;
+
+			case SCALE_PROPORTIONAL:
+			default:
+				target_w = (int)(src_rect.w * scale_ratio + 0.5f);
+				target_h = (int)(src_rect.h * scale_ratio + 0.5f);
+				break;
+			}
+
+			// Extract this asset region from source sheet into RGBA8888 surface
+			SDL_Surface* extracted =
+			    SDL_CreateRGBSurface(0, src_rect.w, src_rect.h, 32, RGBA_MASK_8888);
+			// Disable alpha-blending to copy RGBA data directly (not blend with dst)
+			SDLX_SetAlpha(loaded_assets, 0, 0);
+			SDL_BlitSurface(loaded_assets, &src_rect, extracted, &(SDL_Rect){0, 0});
+			SDLX_SetAlpha(loaded_assets, SDL_SRCALPHA, 0); // Re-enable for later
+
+			// Scale this specific asset to its target size (keep in RGBA8888)
+			SDL_Surface* scaled = SDL_CreateRGBSurface(0, target_w, target_h, 32, RGBA_MASK_8888);
+			GFX_scaleBilinear(extracted, scaled); // Direct pixel copy preserves alpha
+
+			// Place the scaled asset into the destination sheet
+			// Disable alpha-blending to copy RGBA data directly
+			SDLX_SetAlpha(scaled, 0, 0);
+			SDL_BlitSurface(scaled, NULL, gfx.assets, &dst_rect);
+
+			// Update asset rectangle with new position and dimensions
+			asset_rects[i] = (SDL_Rect){dst_rect.x, dst_rect.y, target_w, target_h};
+
+			// Clean up temporary surfaces for this asset
+			SDL_FreeSurface(extracted);
+			SDL_FreeSurface(scaled);
+		}
+
+		// Done with source sheet
+		SDL_FreeSurface(loaded_assets);
+
+		LOG_info("GFX_init: Scaled %d assets from @%dx to dp_scale=%.2f (bilinear)\n", ASSET_COUNT,
+		         asset_scale, gfx_dp_scale);
+	} else {
+		// Perfect match, use assets as-is
+		gfx.assets = loaded_assets;
+		LOG_info("GFX_init: Using assets@%dx (exact match for dp_scale=%.2f)\n", asset_scale,
+		         gfx_dp_scale);
+	}
+
+#undef ASSET_SCALE4
+
+	LOG_debug("GFX_init: Initializing TTF");
+	if (TTF_Init() < 0) {
+		LOG_error("GFX_init: TTF_Init failed: %s", SDL_GetError());
+		return NULL;
+	}
+	LOG_debug("GFX_init: Loading fonts from %s", FONT_PATH);
+	font.large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
+	if (!font.large)
+		LOG_error("GFX_init: Failed to load large font: %s", SDL_GetError());
+	font.medium = TTF_OpenFont(FONT_PATH, DP(FONT_MEDIUM));
+	if (!font.medium)
+		LOG_error("GFX_init: Failed to load medium font: %s", SDL_GetError());
+	font.small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
+	if (!font.small)
+		LOG_error("GFX_init: Failed to load small font: %s", SDL_GetError());
+	font.tiny = TTF_OpenFont(FONT_PATH, DP(FONT_TINY));
+	if (!font.tiny)
+		LOG_error("GFX_init: Failed to load tiny font: %s", SDL_GetError());
+	LOG_debug("GFX_init: Fonts loaded successfully");
+
+	// ============================================================================
+	// PIXEL-PERFECT TEXT CENTERING
+	// ============================================================================
+	// Pre-calculate text centering offsets using actual font metrics.
+	// IMPORTANT: Use pre-calculated *_px container heights (not DP conversions)
+	// to ensure text centers perfectly in the exact pixel-accurate containers.
+	// ============================================================================
+	ui.text_offset_px = GFX_centerTextY(font.large, ui.pill_height_px);
+	ui.option_offset_px = GFX_centerTextY(font.medium, ui.option_size_px);
+	ui.option_value_offset_px = GFX_centerTextY(font.small, ui.option_size_px);
+	ui.button_text_offset_px = GFX_centerTextY(font.small, DP(ui.button_size));
+	ui.button_label_offset_px = GFX_centerTextY(font.tiny, DP(ui.button_size));
+
+	LOG_debug("GFX_init: Graphics initialization complete");
 	return gfx.screen;
 }
 
@@ -266,30 +649,6 @@ void GFX_setMode(int mode) {
 }
 
 /**
- * Gets the current vsync setting.
- *
- * @return VSYNC_OFF, VSYNC_LENIENT, or VSYNC_STRICT
- */
-int GFX_getVsync(void) {
-	return gfx.vsync;
-}
-
-/**
- * Sets the vsync behavior for frame synchronization.
- *
- * Vsync modes:
- * - VSYNC_OFF: No frame limiting (uses SDL_Delay fallback)
- * - VSYNC_LENIENT: Skip vsync if frame took too long (default)
- * - VSYNC_STRICT: Always vsync, even if it causes slowdown
- *
- * @param vsync Vsync mode (VSYNC_OFF, VSYNC_LENIENT, VSYNC_STRICT)
- */
-void GFX_setVsync(int vsync) {
-	PLAT_setVsync(vsync);
-	gfx.vsync = vsync;
-}
-
-/**
  * Detects if HDMI connection state has changed.
  *
  * Tracks whether HDMI was connected/disconnected since last check.
@@ -325,44 +684,41 @@ void GFX_startFrame(void) {
 }
 
 /**
- * Presents the rendered frame to the display.
+ * Presents a frame to the display.
  *
- * Decides whether to use vsync based on the current vsync mode
- * and frame timing. With VSYNC_LENIENT, skips vsync if the frame
- * took longer than FRAME_BUDGET to avoid slowdown.
+ * Unified rendering API that handles both game and UI presentation.
  *
- * @param screen SDL surface to flip to the display
- *
- * @note Call GFX_startFrame() before rendering for proper timing
+ * @param renderer If non-NULL, scales/processes game frame and presents it.
+ *                 If NULL, presents the screen surface (UI mode).
  */
-void GFX_flip(SDL_Surface* screen) {
-	int should_vsync = (gfx.vsync != VSYNC_OFF && (gfx.vsync == VSYNC_STRICT || frame_start == 0 ||
-	                                               SDL_GetTicks() - frame_start < FRAME_BUDGET));
-	PLAT_flip(screen, should_vsync);
+void GFX_present(GFX_Renderer* renderer) {
+	PLAT_present(renderer);
+}
+
+/**
+ * Waits for vsync without presenting new content.
+ *
+ * Use this for frame pacing when the core didn't produce a new frame.
+ * The display continues showing the previous frame.
+ */
+void GFX_vsync(void) {
+	PLAT_vsync(0);
 }
 
 /**
  * Synchronizes to maintain 60fps when not flipping this frame.
  *
  * Call this if you skip rendering a frame but still want to maintain
- * consistent timing. Waits for the remainder of the frame budget using
- * vsync or SDL_Delay depending on settings.
+ * consistent timing. Waits for the remainder of the frame budget.
  *
  * This helps SuperFX games run smoother by maintaining frame timing
  * even when frames are dropped.
+ *
+ * @deprecated Use GFX_vsync() instead
  */
 void GFX_sync(void) {
 	uint32_t frame_duration = SDL_GetTicks() - frame_start;
-	if (gfx.vsync != VSYNC_OFF) {
-		// this limiting condition helps SuperFX chip games
-		if (gfx.vsync == VSYNC_STRICT || frame_start == 0 ||
-		    frame_duration < FRAME_BUDGET) { // only wait if we're under frame budget
-			PLAT_vsync(FRAME_BUDGET - frame_duration);
-		}
-	} else {
-		if (frame_duration < FRAME_BUDGET)
-			SDL_Delay(FRAME_BUDGET - frame_duration);
-	}
+	PLAT_vsync(FRAME_BUDGET - frame_duration);
 }
 
 /**
@@ -671,18 +1027,23 @@ void GFX_blitPill(int asset, SDL_Surface* dst, const SDL_Rect* dst_rect) {
 	if (h == 0)
 		h = asset_rects[asset].h;
 
-	int r = h / 2;
+	// Asset is a square (pill_px × pill_px), split into left and right halves
+	// For odd heights, left cap gets the extra pixel to avoid clipping
+	int asset_w = asset_rects[asset].w;
+	int left_cap = (asset_w + 1) / 2; // rounds up for odd widths
+	int right_cap = asset_w / 2; // rounds down for odd widths
+
 	if (w < h)
 		w = h;
-	w -= h;
+	int middle = w - h;
 
-	GFX_blitAsset(asset, &(SDL_Rect){0, 0, r, h}, dst, &(SDL_Rect){x, y});
-	x += r;
-	if (w > 0) {
-		SDL_FillRect(dst, &(SDL_Rect){x, y, w, h}, asset_rgbs[asset]);
-		x += w;
+	GFX_blitAsset(asset, &(SDL_Rect){0, 0, left_cap, h}, dst, &(SDL_Rect){x, y});
+	x += left_cap;
+	if (middle > 0) {
+		SDL_FillRect(dst, &(SDL_Rect){x, y, middle, h}, asset_rgbs[asset]);
+		x += middle;
 	}
-	GFX_blitAsset(asset, &(SDL_Rect){r, 0, r, h}, dst, &(SDL_Rect){x, y});
+	GFX_blitAsset(asset, &(SDL_Rect){left_cap, 0, right_cap, h}, dst, &(SDL_Rect){x, y});
 }
 
 /**
@@ -739,18 +1100,45 @@ void GFX_blitBattery(SDL_Surface* dst, const SDL_Rect* dst_rect) {
 		y = dst_rect->y;
 	}
 	SDL_Rect rect = asset_rects[ASSET_BATTERY];
-	x += (SCALE1(PILL_SIZE) - (rect.w + FIXED_SCALE)) / 2;
-	y += (SCALE1(PILL_SIZE) - rect.h) / 2;
+	int x_off = (ui.pill_height_px - rect.w) / 2;
+	int y_off = (ui.pill_height_px - rect.h) / 2;
+
+	static int logged = 0;
+	if (!logged) {
+		LOG_info("GFX_blitBattery: pill=%dpx, battery=%dx%d, offset=(%d,%d)\n", ui.pill_height_px,
+		         rect.w, rect.h, x_off, y_off);
+		logged = 1;
+	}
+
+	x += x_off;
+	y += y_off;
+
+	// Battery fill/bolt offsets must scale with the actual battery asset size
+	// At @1x design: fill is 3px right, 2px down from battery top-left
+	// Scale this based on actual battery width: rect.w / 17 (17 = @1x battery width)
+	int fill_x_offset = (rect.w * 3 + 8) / 17; // (rect.w * 3/17), rounded
+	int fill_y_offset = (rect.h * 2 + 5) / 10; // (rect.h * 2/10), rounded
 
 	if (pwr.is_charging) {
+		if (!logged) {
+			LOG_info("Battery bolt: offset=(%d,%d) from battery corner\n", fill_x_offset,
+			         fill_y_offset);
+		}
 		GFX_blitAsset(ASSET_BATTERY, NULL, dst, &(SDL_Rect){x, y});
-		GFX_blitAsset(ASSET_BATTERY_BOLT, NULL, dst, &(SDL_Rect){x + SCALE1(3), y + SCALE1(2)});
+		GFX_blitAsset(ASSET_BATTERY_BOLT, NULL, dst,
+		              &(SDL_Rect){x + fill_x_offset, y + fill_y_offset});
 	} else {
 		int percent = pwr.charge;
 		GFX_blitAsset(percent <= 10 ? ASSET_BATTERY_LOW : ASSET_BATTERY, NULL, dst,
 		              &(SDL_Rect){x, y});
 
 		rect = asset_rects[ASSET_BATTERY_FILL];
+
+		if (!logged) {
+			LOG_info("Battery fill: %dx%d, offset=(%d,%d)\n", rect.w, rect.h, fill_x_offset,
+			         fill_y_offset);
+		}
+
 		SDL_Rect clip = rect;
 		clip.w *= percent;
 		clip.w /= 100;
@@ -760,7 +1148,7 @@ void GFX_blitBattery(SDL_Surface* dst, const SDL_Rect* dst_rect) {
 		clip.y = 0;
 
 		GFX_blitAsset(percent <= 20 ? ASSET_BATTERY_FILL_LOW : ASSET_BATTERY_FILL, &clip, dst,
-		              &(SDL_Rect){x + SCALE1(3) + clip.x, y + SCALE1(2)});
+		              &(SDL_Rect){x + fill_x_offset + clip.x, y + fill_y_offset});
 	}
 }
 
@@ -785,16 +1173,16 @@ int GFX_getButtonWidth(char* hint, char* button) {
 	int special_case = !strcmp(button, BRIGHTNESS_BUTTON_LABEL); // TODO: oof
 
 	if (strlen(button) == 1) {
-		button_width += SCALE1(BUTTON_SIZE);
+		button_width += DP(ui.button_size);
 	} else {
-		button_width += SCALE1(BUTTON_SIZE) / 2;
+		button_width += DP(ui.button_size) / 2;
 		TTF_SizeUTF8(special_case ? font.large : font.tiny, button, &width, NULL);
 		button_width += width;
 	}
-	button_width += SCALE1(BUTTON_MARGIN);
+	button_width += DP(ui.button_margin);
 
 	TTF_SizeUTF8(font.small, hint, &width, NULL);
-	button_width += width + SCALE1(BUTTON_MARGIN);
+	button_width += width + DP(ui.button_margin);
 	return button_width;
 }
 
@@ -821,39 +1209,118 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
 	if (strlen(button) == 1) {
 		GFX_blitAsset(ASSET_BUTTON, NULL, dst, dst_rect);
 
-		// label
+		// label - center glyph in button using precise glyph metrics
 		text = TTF_RenderUTF8_Blended(font.medium, button, COLOR_BUTTON_TEXT);
+		int offset_x, offset_y;
+		GFX_centerGlyph(DP(ui.button_size), DP(ui.button_size), font.medium, (Uint16)button[0],
+		                &offset_x, &offset_y);
 		SDL_BlitSurface(text, NULL, dst,
-		                &(SDL_Rect){dst_rect->x + (SCALE1(BUTTON_SIZE) - text->w) / 2,
-		                            dst_rect->y + (SCALE1(BUTTON_SIZE) - text->h) / 2});
-		ox += SCALE1(BUTTON_SIZE);
+		                &(SDL_Rect){dst_rect->x + offset_x, dst_rect->y + offset_y});
+		ox += DP(ui.button_size);
 		SDL_FreeSurface(text);
 	} else {
-		text = TTF_RenderUTF8_Blended(special_case ? font.large : font.tiny, button,
-		                              COLOR_BUTTON_TEXT);
+		// Multi-char button labels: font.tiny for normal (MENU, POWER), font.large for brightness icon
+		int label_offset;
+		if (special_case) {
+			text = TTF_RenderUTF8_Blended(font.large, button, COLOR_BUTTON_TEXT);
+			label_offset = GFX_centerTextY(font.large, DP(ui.button_size)); // Rare case, use cached
+		} else {
+			text = TTF_RenderUTF8_Blended(font.tiny, button, COLOR_BUTTON_TEXT);
+			label_offset = ui.button_label_offset_px; // Pre-computed
+		}
 		GFX_blitPill(ASSET_BUTTON, dst,
-		             &(SDL_Rect){dst_rect->x, dst_rect->y, SCALE1(BUTTON_SIZE) / 2 + text->w,
-		                         SCALE1(BUTTON_SIZE)});
-		ox += SCALE1(BUTTON_SIZE) / 4;
+		             &(SDL_Rect){dst_rect->x, dst_rect->y, DP(ui.button_size) / 2 + text->w,
+		                         DP(ui.button_size)});
+		ox += DP(ui.button_size) / 4;
 
-		int oy = special_case ? SCALE1(-2) : 0;
-		SDL_BlitSurface(text, NULL, dst,
-		                &(SDL_Rect){ox + dst_rect->x,
-		                            oy + dst_rect->y + (SCALE1(BUTTON_SIZE) - text->h) / 2, text->w,
-		                            text->h});
+		SDL_BlitSurface(
+		    text, NULL, dst,
+		    &(SDL_Rect){ox + dst_rect->x, dst_rect->y + label_offset, text->w, text->h});
 		ox += text->w;
-		ox += SCALE1(BUTTON_SIZE) / 4;
+		ox += DP(ui.button_size) / 4;
 		SDL_FreeSurface(text);
 	}
 
-	ox += SCALE1(BUTTON_MARGIN);
+	ox += DP(ui.button_margin);
 
-	// hint text
+	// hint text - use pre-computed offset for proper vertical centering
 	text = TTF_RenderUTF8_Blended(font.small, hint, COLOR_WHITE);
-	SDL_BlitSurface(text, NULL, dst,
-	                &(SDL_Rect){ox + dst_rect->x, dst_rect->y + (SCALE1(BUTTON_SIZE) - text->h) / 2,
-	                            text->w, text->h});
+	SDL_BlitSurface(
+	    text, NULL, dst,
+	    &(SDL_Rect){ox + dst_rect->x, dst_rect->y + ui.button_text_offset_px, text->w, text->h});
 	SDL_FreeSurface(text);
+}
+
+// Cache for text centering calculations
+// Key: (font pointer, container_height) -> Y offset
+// Simple fixed-size cache - we only use ~6 combinations max
+#define TEXT_CENTER_CACHE_SIZE 8
+static struct {
+	TTF_Font* font;
+	int container_height;
+	int y_offset;
+} text_center_cache[TEXT_CENTER_CACHE_SIZE];
+static int text_center_cache_count = 0;
+
+/**
+ * Calculate Y offset to visually center text in a container.
+ *
+ * Uses font metrics to center the visual "mass" of typical text (uppercase letters,
+ * lowercase without descenders) rather than the full font height which includes
+ * descender space that most menu text doesn't use.
+ *
+ * The algorithm:
+ * 1. Get metrics for a representative uppercase character ('X')
+ * 2. Calculate where that glyph's visual bounds sit in the rendered surface
+ * 3. Center those bounds in the container
+ *
+ * This matches how GFX_centerGlyph works for button labels, giving consistent
+ * visual centering across all text in the UI.
+ *
+ * @param ttf_font TTF_Font to measure (must not be NULL)
+ * @param container_height Container height in pixels
+ * @return Y offset in pixels to use when blitting text
+ */
+int GFX_centerTextY(TTF_Font* ttf_font, int container_height) {
+	if (!ttf_font || container_height <= 0)
+		return 0;
+
+	// Check cache first
+	for (int i = 0; i < text_center_cache_count; i++) {
+		if (text_center_cache[i].font == ttf_font &&
+		    text_center_cache[i].container_height == container_height) {
+			return text_center_cache[i].y_offset;
+		}
+	}
+
+	// Get metrics for representative character 'X' (uppercase, no descenders)
+	// This represents the typical visual bounds of menu text
+	int minx, maxx, miny, maxy, advance;
+	if (TTF_GlyphMetrics(ttf_font, (Uint16)'X', &minx, &maxx, &miny, &maxy, &advance) != 0) {
+		// Fallback: center based on font height if glyph metrics unavailable
+		int font_height = TTF_FontHeight(ttf_font);
+		return (container_height - font_height + 1) / 2;
+	}
+
+	// Calculate visual bounds
+	int glyph_h = maxy - miny; // Actual visible height of 'X'
+
+	// In the rendered surface, the glyph starts at (ascent - maxy) from top
+	int ascent = TTF_FontAscent(ttf_font);
+	int glyph_top_in_surface = ascent - maxy;
+
+	// Calculate Y offset to center the glyph's visual bounds in the container
+	int y_offset = (container_height - glyph_h + 1) / 2 - glyph_top_in_surface;
+
+	// Cache the result
+	if (text_center_cache_count < TEXT_CENTER_CACHE_SIZE) {
+		text_center_cache[text_center_cache_count].font = ttf_font;
+		text_center_cache[text_center_cache_count].container_height = container_height;
+		text_center_cache[text_center_cache_count].y_offset = y_offset;
+		text_center_cache_count++;
+	}
+
+	return y_offset;
 }
 
 /**
@@ -869,7 +1336,8 @@ void GFX_blitButton(char* hint, char* button, SDL_Surface* dst, SDL_Rect* dst_re
  *
  * @note Maximum 16 lines supported, line height is fixed at 24 (scaled)
  */
-void GFX_blitMessage(TTF_Font* font, char* msg, SDL_Surface* dst, const SDL_Rect* dst_rect) {
+void GFX_blitMessage(TTF_Font* ttf_font, const char* msg, SDL_Surface* dst,
+                     const SDL_Rect* dst_rect) {
 	if (!dst_rect)
 		dst_rect = &(SDL_Rect){0, 0, dst->w, dst->h};
 
@@ -879,11 +1347,11 @@ void GFX_blitMessage(TTF_Font* font, char* msg, SDL_Surface* dst, const SDL_Rect
 #define TEXT_BOX_MAX_ROWS 16
 #define LINE_HEIGHT 24
 	char* rows[TEXT_BOX_MAX_ROWS];
-	int row_count = splitTextLines(msg, rows, TEXT_BOX_MAX_ROWS);
+	int row_count = splitTextLines((char*)msg, rows, TEXT_BOX_MAX_ROWS);
 	if (row_count == 0)
 		return;
 
-	int rendered_height = SCALE1(LINE_HEIGHT) * row_count;
+	int rendered_height = DP(LINE_HEIGHT) * row_count;
 	int y = dst_rect->y;
 	y += (dst_rect->h - rendered_height) / 2;
 
@@ -897,18 +1365,18 @@ void GFX_blitMessage(TTF_Font* font, char* msg, SDL_Surface* dst, const SDL_Rect
 			line[len] = '\0';
 		} else {
 			len = strlen(rows[i]);
-			strcpy(line, rows[i]);
+			SAFE_STRCPY(line, rows[i]);
 		}
 
 
 		if (len) {
-			text = TTF_RenderUTF8_Blended(font, line, COLOR_WHITE);
+			text = TTF_RenderUTF8_Blended(ttf_font, line, COLOR_WHITE);
 			int x = dst_rect->x;
 			x += (dst_rect->w - text->w) / 2;
 			SDL_BlitSurface(text, NULL, dst, &(SDL_Rect){x, y});
 			SDL_FreeSurface(text);
 		}
-		y += SCALE1(LINE_HEIGHT);
+		y += DP(LINE_HEIGHT);
 	}
 }
 
@@ -931,11 +1399,11 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 	int ow = 0;
 
 	if (show_setting && !GetHDMI()) {
-		ow = SCALE1(PILL_SIZE + SETTINGS_WIDTH + 10 + 4);
-		ox = dst->w - SCALE1(PADDING) - ow;
-		oy = SCALE1(PADDING);
+		ow = DP(ui.pill_height + ui.settings_width + ui.padding + 4);
+		ox = ui.screen_width_px - ui.edge_padding_px - ow;
+		oy = ui.edge_padding_px;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-		             &(SDL_Rect){ox, oy, ow, SCALE1(PILL_SIZE)});
+		             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 
 		int setting_value;
 		int setting_min;
@@ -952,40 +1420,40 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 
 		int asset = show_setting == 1 ? ASSET_BRIGHTNESS
 		                              : (setting_value > 0 ? ASSET_VOLUME : ASSET_VOLUME_MUTE);
-		int ax = ox + (show_setting == 1 ? SCALE1(6) : SCALE1(8));
-		int ay = oy + (show_setting == 1 ? SCALE1(5) : SCALE1(7));
+		int ax = ox + (show_setting == 1 ? DP(6) : DP(8));
+		int ay = oy + (show_setting == 1 ? DP(5) : DP(7));
 		GFX_blitAsset(asset, NULL, dst, &(SDL_Rect){ax, ay});
 
-		ox += SCALE1(PILL_SIZE);
-		oy += SCALE1((PILL_SIZE - SETTINGS_SIZE) / 2);
+		ox += ui.pill_height_px;
+		oy += (ui.pill_height_px - DP(ui.settings_size)) / 2;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_BAR_BG : ASSET_BAR_BG_MENU, dst,
-		             &(SDL_Rect){ox, oy, SCALE1(SETTINGS_WIDTH), SCALE1(SETTINGS_SIZE)});
+		             &(SDL_Rect){ox, oy, DP(ui.settings_width), DP(ui.settings_size)});
 
 		float percent = ((float)(setting_value - setting_min) / (setting_max - setting_min));
 		if (show_setting == 1 || setting_value > 0) {
 			GFX_blitPill(
 			    ASSET_BAR, dst,
-			    &(SDL_Rect){ox, oy, SCALE1(SETTINGS_WIDTH) * percent, SCALE1(SETTINGS_SIZE)});
+			    &(SDL_Rect){ox, oy, DP(ui.settings_width) * percent, DP(ui.settings_size)});
 		}
 	} else {
 		// TODO: handle wifi
 		int show_wifi = PLAT_isOnline(); // NOOOOO! not every frame!
 
-		int ww = SCALE1(PILL_SIZE - 3);
-		ow = SCALE1(PILL_SIZE);
+		int ww = ui.pill_height_px - DP(3);
+		ow = ui.pill_height_px;
 		if (show_wifi)
 			ow += ww;
 
-		ox = dst->w - SCALE1(PADDING) - ow;
-		oy = SCALE1(PADDING);
+		ox = ui.screen_width_px - ui.edge_padding_px - ow;
+		oy = ui.edge_padding_px;
 		GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-		             &(SDL_Rect){ox, oy, ow, SCALE1(PILL_SIZE)});
+		             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 		if (show_wifi) {
 			SDL_Rect rect = asset_rects[ASSET_WIFI];
 			int x = ox;
 			int y = oy;
-			x += (SCALE1(PILL_SIZE) - rect.w) / 2;
-			y += (SCALE1(PILL_SIZE) - rect.h) / 2;
+			x += (ui.pill_height_px - rect.w) / 2;
+			y += (ui.pill_height_px - rect.h) / 2;
 
 			GFX_blitAsset(ASSET_WIFI, NULL, dst, &(SDL_Rect){x, y});
 			ox += ww;
@@ -1008,9 +1476,9 @@ int GFX_blitHardwareGroup(SDL_Surface* dst, int show_setting) {
 void GFX_blitHardwareHints(SDL_Surface* dst, int show_setting) {
 	if (BTN_MOD_VOLUME == BTN_SELECT && BTN_MOD_BRIGHTNESS == BTN_START) {
 		if (show_setting == 1)
-			GFX_blitButtonGroup((char*[]){"SELECT", "VOLUME", NULL}, 0, dst, 0);
-		else
 			GFX_blitButtonGroup((char*[]){"START", "BRIGHTNESS", NULL}, 0, dst, 0);
+		else
+			GFX_blitButtonGroup((char*[]){"SELECT", "VOLUME", NULL}, 0, dst, 0);
 	} else {
 		if (show_setting == 1)
 			GFX_blitButtonGroup((char*[]){BRIGHTNESS_BUTTON_LABEL, "BRIGHTNESS", NULL}, 0, dst, 0);
@@ -1046,8 +1514,8 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
 	int w = 0; // individual button dimension
 	int h = 0; // hints index
 	ow = 0; // full pill width
-	ox = align_right ? dst->w - SCALE1(PADDING) : SCALE1(PADDING);
-	oy = dst->h - SCALE1(PADDING + PILL_SIZE);
+	ox = align_right ? dst->w - ui.edge_padding_px : ui.edge_padding_px;
+	oy = dst->h - ui.edge_padding_px - ui.pill_height_px;
 
 	for (int i = 0; i < 2; i++) {
 		if (!pairs[i * 2])
@@ -1062,20 +1530,20 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
 		hints[h].button = button;
 		hints[h].ow = w;
 		h += 1;
-		ow += SCALE1(BUTTON_MARGIN) + w;
+		ow += DP(ui.button_margin) + w;
 	}
 
-	ow += SCALE1(BUTTON_MARGIN);
+	ow += DP(ui.button_margin);
 	if (align_right)
 		ox -= ow;
 	GFX_blitPill(gfx.mode == MODE_MAIN ? ASSET_DARK_GRAY_PILL : ASSET_BLACK_PILL, dst,
-	             &(SDL_Rect){ox, oy, ow, SCALE1(PILL_SIZE)});
+	             &(SDL_Rect){ox, oy, ow, ui.pill_height_px});
 
-	ox += SCALE1(BUTTON_MARGIN);
-	oy += SCALE1(BUTTON_MARGIN);
+	ox += DP(ui.button_margin);
+	oy += DP(ui.button_margin);
 	for (int i = 0; i < h; i++) {
 		GFX_blitButton(hints[i].hint, hints[i].button, dst, &(SDL_Rect){ox, oy});
-		ox += hints[i].ow + SCALE1(BUTTON_MARGIN);
+		ox += hints[i].ow + DP(ui.button_margin);
 	}
 	return ow;
 }
@@ -1111,7 +1579,7 @@ int GFX_blitButtonGroup(char** pairs, int primary, SDL_Surface* dst, int align_r
  *
  * @note Maximum 16 lines supported
  */
-void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_Surface* dst,
+void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, SDL_Surface* dst,
                   SDL_Rect* dst_rect) {
 	if (dst_rect == NULL)
 		dst_rect = &(SDL_Rect){0, 0, dst->w, dst->h};
@@ -1132,11 +1600,11 @@ void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_S
 			line[len] = '\0';
 		} else {
 			len = strlen(lines[i]);
-			strcpy(line, lines[i]);
+			SAFE_STRCPY(line, lines[i]);
 		}
 
 		if (len) {
-			text = TTF_RenderUTF8_Blended(font, line, color);
+			text = TTF_RenderUTF8_Blended(ttf_font, line, color);
 			SDL_BlitSurface(text, NULL, dst,
 			                &(SDL_Rect){x + ((dst_rect->w - text->w) / 2), y + (i * leading)});
 			SDL_FreeSurface(text);
@@ -1151,13 +1619,22 @@ void GFX_blitText(TTF_Font* font, char* str, int leading, SDL_Color color, SDL_S
 
 #define MAX_SAMPLE_RATE 48000
 #define BATCH_SIZE 100 // Max frames to batch per write
-#ifndef SAMPLES
-#define SAMPLES 512 // SDL audio buffer size (default)
-#endif
+// SND_CHUNK_SAMPLES defined in defines.h (default 512)
 
 #define ms SDL_GetTicks // Shorthand for timestamp
 
-typedef int (*SND_Resampler)(const SND_Frame frame);
+// SND_RATE_CONTROL_D is defined in defines.h (platforms can override)
+// See docs/audio-rate-control.md for tuning guidance.
+
+// Dual-timescale PI controller: integral operates on smoothed error to avoid fighting proportional
+// ki: Integral gain - very slow accumulation for persistent drift only
+// alpha: Error smoothing factor (~300 frame average, ~5 seconds at 60fps)
+// clamp: Max integral magnitude (handles up to ±2% persistent clock mismatch)
+#define SND_RATE_CONTROL_KI 0.00005f
+#define SND_ERROR_AVG_ALPHA 0.003f
+#define SND_INTEGRAL_CLAMP 0.02f
+
+// SND_BUFFER_SAMPLES is defined in defines.h (platforms can override)
 
 // Sound context manages the ring buffer and resampling
 static struct SND_Context {
@@ -1167,15 +1644,40 @@ static struct SND_Context {
 	int sample_rate_in;
 	int sample_rate_out;
 
-	int buffer_seconds; // current_audio_buffer_size
-	SND_Frame* buffer; // buf
-	size_t frame_count; // buf_len
+	SND_Frame* buffer; // Ring buffer
+	size_t frame_count; // Buffer capacity in samples
 
-	int frame_in; // buf_w
-	int frame_out; // buf_r
-	int frame_filled; // max_buf_w
+	int frame_in; // Write position
+	int frame_out; // Read position
+	int frame_filled; // Last consumed position
 
-	SND_Resampler resample; // Selected resampler function
+	// Linear interpolation resampler with dynamic rate control
+	AudioResampler resampler;
+
+	// Underrun tracking (for auto CPU scaling)
+	unsigned underrun_count; // Number of audio underruns (buffer ran dry)
+
+	// Sample flow tracking (for diagnostics)
+	uint64_t samples_in; // Total input samples fed to resampler
+	uint64_t samples_written; // Total samples written to buffer (output side of resampler)
+	uint64_t samples_consumed; // Total samples consumed by audio callback
+	uint64_t samples_requested; // Total samples requested by SDL callback
+
+	// Cumulative tracking for window-averaged comparisons
+	double cumulative_total_adjust; // Sum of total_adjust values applied
+	uint64_t total_adjust_count; // Number of total_adjust applications
+
+	// Rate control state (persistent across frames)
+	float rate_integral; // PI integral term (accumulates from smoothed error)
+	float error_avg; // Smoothed error for slow integral timescale
+	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
+
+	// SDL callback timing diagnostics
+	uint64_t callback_count; // Total callbacks
+	uint64_t callback_last_time_us; // Timestamp of last callback
+	uint64_t callback_interval_sum; // Sum of intervals (for average)
+	unsigned callback_samples_min; // Min samples requested
+	unsigned callback_samples_max; // Max samples requested
 } snd = {0};
 
 /**
@@ -1200,9 +1702,7 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 
 	int16_t* out = (int16_t*)stream;
 	len /= (sizeof(int16_t) * 2);
-	// int full_len = len;
-
-	// if (snd.frame_out!=snd.frame_in) LOG_info("%8i consuming samples (%i frames)\n", ms(), len);
+	int requested = len; // Track for sample flow diagnostics
 
 	while (snd.frame_out != snd.frame_in && len > 0) {
 		*out++ = snd.buffer[snd.frame_out].left;
@@ -1213,43 +1713,75 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 		snd.frame_out += 1;
 		len -= 1;
 
-		if (snd.frame_out >= snd.frame_count)
+		if (snd.frame_out >= (int)snd.frame_count)
 			snd.frame_out = 0;
 	}
 
-	int zero = len > 0 && len == SAMPLES;
-	if (zero)
-		return (void)memset(out, 0, len * (sizeof(int16_t) * 2));
-	// else if (len>=5) LOG_info("%8i BUFFER UNDERRUN (%i/%i frames)\n", ms(), len,full_len);
+	// Track sample flow for diagnostics
+	snd.samples_requested += requested; // What SDL asked for
+	snd.samples_consumed += (requested - len); // What we actually provided
 
-	int16_t* in = out - 1;
-	while (len > 0) {
-		*out++ = (void*)in > (void*)stream ? *--in : 0;
-		*out++ = (void*)in > (void*)stream ? *--in : 0;
-		len -= 1;
+	// Track callback timing
+	uint64_t now = getMicroseconds();
+	if (snd.callback_last_time_us > 0) {
+		snd.callback_interval_sum += (now - snd.callback_last_time_us);
+	}
+	snd.callback_last_time_us = now;
+	snd.callback_count++;
+
+	// Track min/max samples per callback
+	if (snd.callback_samples_min == 0 || (unsigned)requested < snd.callback_samples_min)
+		snd.callback_samples_min = requested;
+	if ((unsigned)requested > snd.callback_samples_max)
+		snd.callback_samples_max = requested;
+
+	// Handle underrun: repeat last frame or output silence
+	if (len > 0) {
+		snd.underrun_count++; // Track for auto CPU scaling panic path
+
+		// Log underrun with context (every occurrence - these are critical events)
+		float fill_before = (float)(requested - len) / (float)snd.frame_count * 100.0f;
+		LOG_warn("Audio underrun #%u: needed %d more samples (had %d/%d, fill was %.0f%%)\n",
+		         snd.underrun_count, len, requested - len, requested, fill_before);
+
+		if (snd.frame_filled >= 0 && snd.frame_filled < (int)snd.frame_count) {
+			// Repeat last consumed frame to avoid click
+			SND_Frame last = snd.buffer[snd.frame_filled];
+			while (len > 0) {
+				*out++ = last.left;
+				*out++ = last.right;
+				len--;
+			}
+		} else {
+			// No valid last frame - output silence
+			memset(out, 0, len * sizeof(int16_t) * 2);
+		}
 	}
 }
 
 /**
- * Resizes the audio ring buffer based on sample rate and frame rate.
+ * Allocates the audio ring buffer.
  *
- * Calculates buffer size to hold buffer_seconds worth of audio.
+ * Buffer size is SND_BUFFER_SAMPLES (~83ms at 48kHz with 4000 samples).
  * Locks audio thread during resize to prevent corruption.
  *
- * @note Called during init and when audio parameters change
+ * @note Called during init
  */
-static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
-	snd.frame_count = snd.buffer_seconds * snd.sample_rate_in / snd.frame_rate;
+static void SND_resizeBuffer(void) {
+	snd.frame_count = SND_BUFFER_SAMPLES;
 	if (snd.frame_count == 0)
 		return;
-
-	// LOG_info("frame_count: %i (%i * %i / %f)\n", snd.frame_count, snd.buffer_seconds, snd.sample_rate_in, snd.frame_rate);
-	// snd.frame_count *= 2; // no help
 
 	SDL_LockAudio();
 
 	int buffer_bytes = snd.frame_count * sizeof(SND_Frame);
-	snd.buffer = realloc(snd.buffer, buffer_bytes);
+	void* new_buffer = realloc(snd.buffer, buffer_bytes);
+	if (!new_buffer) {
+		LOG_error("Failed to allocate audio buffer (%d bytes)\n", buffer_bytes);
+		SDL_UnlockAudio();
+		return;
+	}
+	snd.buffer = new_buffer;
 
 	memset(snd.buffer, 0, buffer_bytes);
 
@@ -1261,113 +1793,203 @@ static void SND_resizeBuffer(void) { // plat_sound_resize_buffer
 }
 
 /**
- * Passthrough resampler - no conversion needed.
+ * Calculates buffer fill level as a fraction (0.0 to 1.0).
  *
- * Used when input and output sample rates match.
- * Simply copies frames directly to the ring buffer.
- *
- * @param frame Audio frame to write
- * @return Number of frames consumed (always 1)
+ * @return Fill level where 0.0 = empty, 1.0 = full
  */
-static int SND_resampleNone(SND_Frame frame) { // audio_resample_passthrough
-	snd.buffer[snd.frame_in++] = frame;
-	if (snd.frame_in >= snd.frame_count)
-		snd.frame_in = 0;
-	return 1;
-}
+static float SND_getBufferFillLevel(void) {
+	if (snd.frame_count == 0)
+		return 0.0f;
 
-/**
- * Nearest-neighbor resampler for sample rate conversion.
- *
- * Uses Bresenham-like algorithm to determine when to drop/duplicate
- * samples. Accumulates difference between input and output rates.
- *
- * @param frame Audio frame to resample
- * @return Number of frames consumed (0 or 1)
- */
-static int SND_resampleNear(SND_Frame frame) { // audio_resample_nearest
-	static int diff = 0;
-	int consumed = 0;
-
-	if (diff < snd.sample_rate_out) {
-		snd.buffer[snd.frame_in++] = frame;
-		if (snd.frame_in >= snd.frame_count)
-			snd.frame_in = 0;
-		diff += snd.sample_rate_in;
-	}
-
-	if (diff >= snd.sample_rate_out) {
-		consumed++;
-		diff -= snd.sample_rate_out;
-	}
-
-	return consumed;
-}
-
-/**
- * Selects the appropriate resampler based on sample rates.
- *
- * Chooses passthrough if rates match, otherwise uses nearest-neighbor.
- */
-static void SND_selectResampler(void) { // plat_sound_select_resampler
-	if (snd.sample_rate_in == snd.sample_rate_out) {
-		snd.resample = SND_resampleNone;
+	int filled;
+	if (snd.frame_in >= snd.frame_out) {
+		filled = snd.frame_in - snd.frame_out;
 	} else {
-		snd.resample = SND_resampleNear;
+		filled = snd.frame_count - snd.frame_out + snd.frame_in;
 	}
+
+	return (float)filled / (float)snd.frame_count;
+}
+
+/**
+ * Calculates dynamic rate adjustment using a dual-timescale PI controller.
+ *
+ * Extends the Arntzen algorithm with an integral term on a separate (slower)
+ * timescale to correct persistent hardware drift without fighting proportional.
+ *
+ * Dual-timescale PI:
+ *   error = (1 - 2*fill)
+ *   p_term = error * d                              // Fast: frame-to-frame jitter
+ *   error_avg = α*error + (1-α)*error_avg           // Smooth error (~100 frames)
+ *   integral += error_avg * ki                      // Slow: learns persistent offset
+ *   adjustment = p_term + integral
+ *
+ * Key insight: Original PI failed because both terms operated on same timescale,
+ * causing them to fight. By smoothing error before integrating, the integral
+ * only sees persistent trends, not per-frame noise.
+ *
+ * Tuning guide:
+ *   d: Higher = faster jitter response, more pitch variation (0.005-0.025)
+ *   ki: Integral gain, 100× slower than error averaging (0.00005)
+ *   α: Error smoothing factor, ~100 frame average (0.01)
+ *
+ * Our resampler divides by ratio_adjust (larger = fewer outputs), so:
+ *   ratio_adjust = 1 - adjustment
+ *
+ * @return Rate adjustment factor for resampler step size
+ */
+static float SND_calculateRateAdjust(void) {
+	float fill = SND_getBufferFillLevel();
+
+	// Arntzen error formula: positive when buffer low, negative when high
+	// Buffer low (fill<0.5) → produce more samples (adjustment > 0)
+	// Buffer high (fill>0.5) → produce fewer samples (adjustment < 0)
+	float error = 1.0f - 2.0f * fill;
+
+	// Fast timescale (proportional): immediate response to buffer level changes
+	float p_term = error * SND_RATE_CONTROL_D;
+
+	// Slow timescale (integral): persistent offset learned in SND_newFrame()
+	// Integral is updated once per frame, not here (avoids N updates for N audio batches)
+	float adjustment = p_term + snd.rate_integral;
+
+	// Invert for our resampler convention (larger ratio = fewer outputs)
+	snd.last_rate_adjust = 1.0f - adjustment;
+	return snd.last_rate_adjust;
 }
 
 /**
  * Writes a batch of audio samples to the ring buffer.
  *
- * Pushes frames through the resampler into the ring buffer.
- * Waits if buffer is full, batching writes for efficiency.
- * This is the main entry point for emulators to submit audio.
+ * Two implementations based on sync mode:
+ *
+ * SYNC_MODE_AUDIOCLOCK (audio-driven timing):
+ * - Blocks when buffer is full (up to 10ms)
+ * - Audio hardware clock drives emulation timing
+ * - Fixed 1.0 resampling ratio (no dynamic rate control)
+ * - For devices with unstable vsync
+ *
+ * Default (vsync-driven timing):
+ * - Non-blocking with dynamic rate control
+ * - Adjusts pitch ±0.5% to maintain buffer at 50% full
+ * - For devices with stable vsync
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
- * @return Number of frames consumed (may be resampled)
- *
- * @note May block briefly if ring buffer is full
+ * @return Number of frames consumed
  */
 size_t SND_batchSamples(const SND_Frame* frames,
                         size_t frame_count) { // plat_sound_write / plat_sound_write_resample
 
-	// return frame_count; // TODO: tmp, silent
-
 	if (snd.frame_count == 0)
 		return 0;
 
-	// LOG_info("%8i batching samples (%i frames)\n", ms(), frame_count);
+#ifdef SYNC_MODE_AUDIOCLOCK
+	// ========================================================================
+	// AUDIOCLOCK MODE: Blocking writes with audio hardware timing
+	// ========================================================================
 
 	SDL_LockAudio();
 
-	int consumed = 0;
-	int consumed_frames;
+	size_t consumed = 0;
 	while (frame_count > 0) {
 		int tries = 0;
-		int amount = MIN(BATCH_SIZE, frame_count);
 
+		// Wait for audio callback to drain buffer (up to 10ms)
 		while (tries < 10 && snd.frame_in == snd.frame_filled) {
 			tries++;
 			SDL_UnlockAudio();
 			SDL_Delay(1);
 			SDL_LockAudio();
 		}
-		// if (tries) LOG_info("%8i waited %ims for buffer to get low...\n", ms(), tries);
 
-		while (amount && snd.frame_in != snd.frame_filled) {
-			consumed_frames = snd.resample(*frames);
+		// Write samples with fixed 1.0 ratio (no rate control)
+		AudioRingBuffer ring = {
+		    .frames = snd.buffer,
+		    .capacity = snd.frame_count,
+		    .write_pos = snd.frame_in,
+		    .read_pos = snd.frame_out,
+		};
 
-			frames += consumed_frames;
-			amount -= consumed_frames;
-			frame_count -= consumed_frames;
-			consumed += consumed_frames;
-		}
+		ResampleResult result =
+		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, 1.0f);
+
+		snd.frame_in = ring.write_pos;
+		snd.samples_in += result.frames_consumed;
+		snd.samples_written += result.frames_written;
+
+		frames += result.frames_consumed;
+		frame_count -= result.frames_consumed;
+		consumed += result.frames_consumed;
 	}
+
+	SDL_UnlockAudio();
+	return consumed;
+
+#else
+	// ========================================================================
+	// VSYNC MODE: Non-blocking with dynamic rate control
+	// ========================================================================
+
+	SDL_LockAudio();
+
+	// Dynamic rate control per Arntzen paper: adjust resampling ratio based on buffer fill
+	// Buffer empty → produce more samples (fill up), buffer full → produce fewer (drain)
+	// The system naturally converges to a stable equilibrium point
+	float total_adjust = SND_calculateRateAdjust();
+
+	// Note: Debug logging moved to player's unified snapshot logging (SND_getSnapshot)
+
+	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
+	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
+
+	// Calculate how much space is available in the ring buffer (for diagnostics)
+	int available;
+	if (snd.frame_in >= snd.frame_out) {
+		available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
+	} else {
+		available = snd.frame_out - snd.frame_in - 1;
+	}
+
+	// Warn if buffer is nearly full (indicates rate control failure)
+	// The resampler will handle buffer full gracefully (partial write + save state)
+	if (available < estimated_output) {
+		LOG_warn(
+		    "Audio buffer nearly full: %d available, %d needed (fill=%.0f%%) - rate control may "
+		    "be failing\n",
+		    available, estimated_output, SND_getBufferFillLevel() * 100.0f);
+	}
+
+	// Set up ring buffer wrapper for the resampler
+	AudioRingBuffer ring = {
+	    .frames = snd.buffer,
+	    .capacity = snd.frame_count,
+	    .write_pos = snd.frame_in,
+	    .read_pos = snd.frame_out,
+	};
+
+	// Resample with combined adjustment (base correction + dynamic rate control)
+	ResampleResult result =
+	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
+
+	// Update ring buffer write position
+	snd.frame_in = ring.write_pos;
+
+	// Track sample flow for diagnostics
+	snd.samples_in += result.frames_consumed; // Input samples consumed by resampler
+	snd.samples_written += result.frames_written; // Output samples written to buffer
+
+	// Track cumulative total_adjust for window-averaged comparisons
+	snd.cumulative_total_adjust += total_adjust;
+	snd.total_adjust_count++;
+
+	// Note: frame_filled is managed by the audio callback (SND_audioCallback)
+	// to track what has been consumed. We don't update it here.
+
 	SDL_UnlockAudio();
 
-	return consumed;
+	return result.frames_consumed;
+#endif
 }
 
 /**
@@ -1387,11 +2009,11 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	SDL_InitSubSystem(SDL_INIT_AUDIO);
 
 #if defined(USE_SDL2)
-	LOG_info("Available audio drivers:\n");
+	LOG_debug("Available audio drivers:\n");
 	for (int i = 0; i < SDL_GetNumAudioDrivers(); i++) {
-		LOG_info("- %s\n", SDL_GetAudioDriver(i));
+		LOG_debug("- %s\n", SDL_GetAudioDriver(i));
 	}
-	LOG_info("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
+	LOG_debug("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
 #endif
 
 	memset(&snd, 0, sizeof(struct SND_Context));
@@ -1403,24 +2025,171 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	spec_in.freq = PLAT_pickSampleRate(sample_rate, MAX_SAMPLE_RATE);
 	spec_in.format = AUDIO_S16;
 	spec_in.channels = 2;
-	spec_in.samples = SAMPLES;
+	spec_in.samples = SND_CHUNK_SAMPLES;
 	spec_in.callback = SND_audioCallback;
 
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
-		LOG_info("SDL_OpenAudio error: %s\n", SDL_GetError());
+		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
 
-	snd.buffer_seconds = 5;
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
 
-	SND_selectResampler();
+	// Initialize the linear interpolation resampler
+	AudioResampler_init(&snd.resampler, snd.sample_rate_in, snd.sample_rate_out);
 	SND_resizeBuffer();
 
 	SDL_PauseAudio(0);
 
-	LOG_info("sample rate: %i (req) %i (rec) [samples %i]\n", snd.sample_rate_in,
-	         snd.sample_rate_out, SAMPLES);
+	LOG_info("sample rate: %i (req) %i (rec) [chunk %i]\n", snd.sample_rate_in, snd.sample_rate_out,
+	         SND_CHUNK_SAMPLES);
 	snd.initialized = 1;
+}
+
+/**
+ * Gets current audio buffer fill level as a percentage.
+ *
+ * Used by libretro cores for audio-based frameskip decisions.
+ * Thread-safe: locks audio to read consistent buffer state.
+ *
+ * @return Fill level 0-100 (0 = empty, 100 = full)
+ */
+unsigned SND_getBufferOccupancy(void) {
+	SDL_LockAudio();
+	float fill = SND_getBufferFillLevel();
+	SDL_UnlockAudio();
+	return (unsigned)(fill * 100.0f);
+}
+
+/**
+ * Gets the count of audio buffer underruns since initialization.
+ *
+ * An underrun occurs when the audio callback needs samples but the buffer
+ * is empty. This causes audible glitches (crackling/popping).
+ *
+ * For auto CPU scaling, underruns are an emergency signal - if rate control
+ * stress is high AND underruns are occurring, immediate CPU boost is needed.
+ *
+ * @return Number of underruns since SND_init() or last SND_resetUnderrunCount()
+ */
+unsigned SND_getUnderrunCount(void) {
+	return snd.underrun_count;
+}
+
+/**
+ * Resets the underrun counter to zero.
+ *
+ * Call after handling an underrun event (e.g., after boosting CPU)
+ * to track new underruns going forward.
+ */
+void SND_resetUnderrunCount(void) {
+	snd.underrun_count = 0;
+}
+
+/**
+ * Signals start of a new video frame for audio rate control.
+ *
+ * Updates the PI integral term once per frame based on current buffer fill.
+ * Call once per frame before core.run() produces audio.
+ *
+ * This prevents the integral from accumulating N times when cores use
+ * per-sample audio callbacks (audio_sample_callback instead of batch).
+ * Some cores (e.g., 64-bit snes9x) call audio ~535 times per frame.
+ */
+void SND_newFrame(void) {
+#ifdef SYNC_MODE_AUDIOCLOCK
+	// No-op in audioclock mode - no rate control needed
+	return;
+#else
+	if (!snd.initialized)
+		return;
+
+	SDL_LockAudio();
+
+	float fill = SND_getBufferFillLevel();
+	float error = 1.0f - 2.0f * fill;
+
+	// Update smoothed error and integral (once per frame)
+	snd.error_avg = SND_ERROR_AVG_ALPHA * error + (1.0f - SND_ERROR_AVG_ALPHA) * snd.error_avg;
+	snd.rate_integral += snd.error_avg * SND_RATE_CONTROL_KI;
+
+	// Clamp integral to prevent windup (handles up to ±2% clock mismatch)
+	if (snd.rate_integral > SND_INTEGRAL_CLAMP)
+		snd.rate_integral = SND_INTEGRAL_CLAMP;
+	if (snd.rate_integral < -SND_INTEGRAL_CLAMP)
+		snd.rate_integral = -SND_INTEGRAL_CLAMP;
+
+	SDL_UnlockAudio();
+#endif
+}
+
+/**
+ * Captures an atomic snapshot of all audio state for diagnostics.
+ *
+ * All values are read while holding the audio lock to ensure consistency.
+ * Includes buffer state, sample flow counters, and rate control parameters.
+ *
+ * @return Snapshot of current audio state
+ */
+SND_Snapshot SND_getSnapshot(void) {
+	SND_Snapshot snap = {0};
+
+	SDL_LockAudio();
+
+	// Timestamp for delta calculations
+	snap.timestamp_us = getMicroseconds();
+
+	// Buffer state
+	snap.fill_pct = (unsigned)(SND_getBufferFillLevel() * 100.0f);
+	snap.frame_in = snd.frame_in;
+	snap.frame_out = snd.frame_out;
+	snap.frame_count = snd.frame_count;
+
+	// Sample flow counters
+	snap.samples_in = snd.samples_in;
+	snap.samples_written = snd.samples_written;
+	snap.samples_consumed = snd.samples_consumed;
+	snap.samples_requested = snd.samples_requested;
+
+	// Rate control parameters (PI controller - read last computed values to avoid side effects)
+	snap.frame_rate = snd.frame_rate;
+	snap.rate_adjust = snd.last_rate_adjust;
+	snap.total_adjust = snd.last_rate_adjust;
+	snap.rate_integral = snd.rate_integral;
+	snap.rate_control_d = SND_RATE_CONTROL_D;
+	snap.rate_control_ki = SND_RATE_CONTROL_KI;
+	snap.error_avg = snd.error_avg;
+
+	// Resampler state
+	snap.sample_rate_in = snd.sample_rate_in;
+	snap.sample_rate_out = snd.sample_rate_out;
+
+	// Resampler diagnostics
+	snap.resampler_frac_step = snd.resampler.frac_step;
+	snap.resampler_adjusted_step = snd.resampler.diag_last_adjusted_step;
+	snap.resampler_ratio_adjust = snd.resampler.diag_last_ratio_adjust;
+	snap.resampler_frac_pos = snd.resampler.frac_pos;
+
+	// Cumulative tracking for window-averaged comparisons
+	snap.cumulative_total_adjust = snd.cumulative_total_adjust;
+	snap.total_adjust_count = snd.total_adjust_count;
+
+	// Underrun tracking
+	snap.underrun_count = snd.underrun_count;
+
+	// SDL callback timing
+	snap.callback_count = snd.callback_count;
+	snap.callback_samples_min = snd.callback_samples_min;
+	snap.callback_samples_max = snd.callback_samples_max;
+	if (snd.callback_count > 1) {
+		snap.callback_avg_interval_ms =
+		    (float)snd.callback_interval_sum / (snd.callback_count - 1) / 1000.0f;
+	} else {
+		snap.callback_avg_interval_ms = 0;
+	}
+
+	SDL_UnlockAudio();
+
+	return snap;
 }
 
 /**
@@ -1440,6 +2209,71 @@ void SND_quit(void) { // plat_sound_finish
 		free(snd.buffer);
 		snd.buffer = NULL;
 	}
+}
+
+/**
+ * Sets minimum audio latency in milliseconds.
+ *
+ * Called by cores via RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY to request
+ * a larger audio buffer for latency-sensitive operations. The buffer is
+ * resized only if the requested latency exceeds the current buffer size.
+ * Per libretro spec, this is a hint - we honor requests up to 512ms.
+ *
+ * @param latency_ms Minimum latency in milliseconds (0 = reset to default)
+ */
+void SND_setMinLatency(unsigned latency_ms) {
+	if (!snd.initialized)
+		return;
+
+	// Clamp to 512ms max per libretro spec
+	if (latency_ms > 512) {
+		LOG_warn("SET_MINIMUM_AUDIO_LATENCY: %ums exceeds max, clamping to 512ms", latency_ms);
+		latency_ms = 512;
+	}
+
+	// Calculate required samples for requested latency
+	// Use 64-bit arithmetic to prevent overflow with high sample rates
+	size_t required_samples = (size_t)((uint64_t)latency_ms * snd.sample_rate_out / 1000);
+
+	// Default is the floor - any request at or below default resets to default
+	// (matches RetroArch behavior)
+	if (required_samples < SND_BUFFER_SAMPLES) {
+		if (latency_ms != 0) {
+			LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums (%zu samples) below default, using default",
+			          latency_ms, required_samples);
+		}
+		required_samples = SND_BUFFER_SAMPLES;
+	}
+
+	// No change needed
+	if (required_samples == snd.frame_count) {
+		LOG_debug("SET_MINIMUM_AUDIO_LATENCY: %ums - no change needed (already at %zu samples)",
+		          latency_ms, snd.frame_count);
+		return;
+	}
+
+	LOG_info("SET_MINIMUM_AUDIO_LATENCY: %ums - resizing buffer from %zu to %zu samples",
+	         latency_ms, snd.frame_count, required_samples);
+
+	SDL_LockAudio();
+
+	size_t buffer_bytes = required_samples * sizeof(SND_Frame);
+	void* new_buffer = realloc(snd.buffer, buffer_bytes);
+	if (!new_buffer) {
+		LOG_error("Failed to allocate audio buffer (%zu bytes)", buffer_bytes);
+		SDL_UnlockAudio();
+		return;
+	}
+	snd.buffer = new_buffer;
+
+	// Clear and reset buffer state
+	memset(snd.buffer, 0, buffer_bytes);
+	snd.frame_count = required_samples;
+	snd.frame_in = 0;
+	snd.frame_out = 0;
+	snd.frame_filled = snd.frame_count - 1;
+
+	SDL_UnlockAudio();
 }
 
 ///////////////////////////////
@@ -1501,167 +2335,112 @@ FALLBACK_IMPLEMENTATION int PLAT_lidChanged(int* state) {
  * @note Platforms can override this to handle custom input hardware
  */
 FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
-	// reset transient state
-	pad.just_pressed = BTN_NONE;
-	pad.just_released = BTN_NONE;
-	pad.just_repeated = BTN_NONE;
-
 	uint32_t tick = SDL_GetTicks();
-	for (int i = 0; i < BTN_ID_COUNT; i++) {
-		int btn = 1 << i;
-		if ((pad.is_pressed & btn) && (tick >= pad.repeat_at[i])) {
-			pad.just_repeated |= btn; // set
-			pad.repeat_at[i] += PAD_REPEAT_INTERVAL;
-		}
-	}
+	PAD_beginPolling();
+	PAD_handleRepeat(tick);
 
-	// the actual poll
+	// Poll SDL events
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		int btn = BTN_NONE;
 		int pressed = 0; // 0=up,1=down
-		int id = -1;
 		if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
-			uint8_t code = event.key.keysym.scancode;
+			int code = event.key.keysym.scancode;
 			pressed = event.type == SDL_KEYDOWN;
 			// LOG_info("key event: %i (%i)\n", code,pressed);
 			if (code == CODE_UP) {
 				btn = BTN_DPAD_UP;
-				id = BTN_ID_DPAD_UP;
 			} else if (code == CODE_DOWN) {
 				btn = BTN_DPAD_DOWN;
-				id = BTN_ID_DPAD_DOWN;
 			} else if (code == CODE_LEFT) {
 				btn = BTN_DPAD_LEFT;
-				id = BTN_ID_DPAD_LEFT;
 			} else if (code == CODE_RIGHT) {
 				btn = BTN_DPAD_RIGHT;
-				id = BTN_ID_DPAD_RIGHT;
 			} else if (code == CODE_A) {
 				btn = BTN_A;
-				id = BTN_ID_A;
 			} else if (code == CODE_B) {
 				btn = BTN_B;
-				id = BTN_ID_B;
 			} else if (code == CODE_X) {
 				btn = BTN_X;
-				id = BTN_ID_X;
 			} else if (code == CODE_Y) {
 				btn = BTN_Y;
-				id = BTN_ID_Y;
 			} else if (code == CODE_START) {
 				btn = BTN_START;
-				id = BTN_ID_START;
 			} else if (code == CODE_SELECT) {
 				btn = BTN_SELECT;
-				id = BTN_ID_SELECT;
 			} else if (code == CODE_MENU) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (code == CODE_MENU_ALT) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (code == CODE_L1) {
 				btn = BTN_L1;
-				id = BTN_ID_L1;
 			} else if (code == CODE_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 			} else if (code == CODE_L3) {
 				btn = BTN_L3;
-				id = BTN_ID_L3;
 			} else if (code == CODE_R1) {
 				btn = BTN_R1;
-				id = BTN_ID_R1;
 			} else if (code == CODE_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 			} else if (code == CODE_R3) {
 				btn = BTN_R3;
-				id = BTN_ID_R3;
 			} else if (code == CODE_PLUS) {
 				btn = BTN_PLUS;
-				id = BTN_ID_PLUS;
 			} else if (code == CODE_MINUS) {
 				btn = BTN_MINUS;
-				id = BTN_ID_MINUS;
 			} else if (code == CODE_POWER) {
 				btn = BTN_POWER;
-				id = BTN_ID_POWER;
 			} else if (code == CODE_POWEROFF) {
 				btn = BTN_POWEROFF;
-				id = BTN_ID_POWEROFF;
 			} // nano-only
 		} else if (event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP) {
-			uint8_t joy = event.jbutton.button;
+			int joy = event.jbutton.button;
 			pressed = event.type == SDL_JOYBUTTONDOWN;
 			// LOG_info("joy event: %i (%i)\n", joy,pressed);
 			if (joy == JOY_UP) {
 				btn = BTN_DPAD_UP;
-				id = BTN_ID_DPAD_UP;
 			} else if (joy == JOY_DOWN) {
 				btn = BTN_DPAD_DOWN;
-				id = BTN_ID_DPAD_DOWN;
 			} else if (joy == JOY_LEFT) {
 				btn = BTN_DPAD_LEFT;
-				id = BTN_ID_DPAD_LEFT;
 			} else if (joy == JOY_RIGHT) {
 				btn = BTN_DPAD_RIGHT;
-				id = BTN_ID_DPAD_RIGHT;
 			} else if (joy == JOY_A) {
 				btn = BTN_A;
-				id = BTN_ID_A;
 			} else if (joy == JOY_B) {
 				btn = BTN_B;
-				id = BTN_ID_B;
 			} else if (joy == JOY_X) {
 				btn = BTN_X;
-				id = BTN_ID_X;
 			} else if (joy == JOY_Y) {
 				btn = BTN_Y;
-				id = BTN_ID_Y;
 			} else if (joy == JOY_START) {
 				btn = BTN_START;
-				id = BTN_ID_START;
 			} else if (joy == JOY_SELECT) {
 				btn = BTN_SELECT;
-				id = BTN_ID_SELECT;
 			} else if (joy == JOY_MENU) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_MENU_ALT) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_MENU_ALT2) {
 				btn = BTN_MENU;
-				id = BTN_ID_MENU;
 			} else if (joy == JOY_L1) {
 				btn = BTN_L1;
-				id = BTN_ID_L1;
 			} else if (joy == JOY_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 			} else if (joy == JOY_L3) {
 				btn = BTN_L3;
-				id = BTN_ID_L3;
 			} else if (joy == JOY_R1) {
 				btn = BTN_R1;
-				id = BTN_ID_R1;
 			} else if (joy == JOY_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 			} else if (joy == JOY_R3) {
 				btn = BTN_R3;
-				id = BTN_ID_R3;
 			} else if (joy == JOY_PLUS) {
 				btn = BTN_PLUS;
-				id = BTN_ID_PLUS;
 			} else if (joy == JOY_MINUS) {
 				btn = BTN_MINUS;
-				id = BTN_ID_MINUS;
 			} else if (joy == JOY_POWER) {
 				btn = BTN_POWER;
-				id = BTN_ID_POWER;
 			}
 		} else if (event.type == SDL_JOYHATMOTION) {
 			int hats[4] = {-1, -1, -1, -1}; // -1=no change,0=up,1=down,2=left,3=right btn_ids
@@ -1728,18 +2507,11 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 				break;
 			}
 
-			for (id = 0; id < 4; id++) {
+			for (int id = 0; id < 4; id++) {
 				int state = hats[id];
-				btn = 1 << id;
-				if (state == 0) {
-					pad.is_pressed &= ~btn; // unset
-					pad.just_repeated &= ~btn; // unset
-					pad.just_released |= btn; // set
-				} else if (state == 1 && (pad.is_pressed & btn) == BTN_NONE) {
-					pad.just_pressed |= btn; // set
-					pad.just_repeated |= btn; // set
-					pad.is_pressed |= btn; // set
-					pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
+				if (state >= 0) { // -1 means no change
+					btn = 1 << id;
+					PAD_updateButton(btn, state, tick);
 				}
 			}
 			btn = BTN_NONE; // already handled, force continue
@@ -1751,11 +2523,9 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 			// triggers on tg5040
 			if (axis == AXIS_L2) {
 				btn = BTN_L2;
-				id = BTN_ID_L2;
 				pressed = val > 0;
 			} else if (axis == AXIS_R2) {
 				btn = BTN_R2;
-				id = BTN_ID_R2;
 				pressed = val > 0;
 			}
 
@@ -1781,19 +2551,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 		}
 		// else if (event.type==SDL_QUIT) PWR_powerOff(); // added for macOS debug
 
-		if (btn == BTN_NONE)
-			continue;
-
-		if (!pressed) {
-			pad.is_pressed &= ~btn; // unset
-			pad.just_repeated &= ~btn; // unset
-			pad.just_released |= btn; // set
-		} else if ((pad.is_pressed & btn) == BTN_NONE) {
-			pad.just_pressed |= btn; // set
-			pad.just_repeated |= btn; // set
-			pad.is_pressed |= btn; // set
-			pad.repeat_at[id] = tick + PAD_REPEAT_DELAY;
-		}
+		PAD_updateButton(btn, pressed, tick);
 	}
 
 	if (lid.has_lid && PLAT_lidChanged(NULL))
@@ -1819,7 +2577,7 @@ FALLBACK_IMPLEMENTATION int PLAT_shouldWake(void) {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		if (event.type == SDL_KEYUP) {
-			uint8_t code = event.key.keysym.scancode;
+			int code = event.key.keysym.scancode;
 			if ((BTN_WAKE == BTN_POWER && code == CODE_POWER) ||
 			    (BTN_WAKE == BTN_MENU && (code == CODE_MENU || code == CODE_MENU_ALT))) {
 				// ignore input while lid is closed
@@ -1828,7 +2586,7 @@ FALLBACK_IMPLEMENTATION int PLAT_shouldWake(void) {
 				return 1;
 			}
 		} else if (event.type == SDL_JOYBUTTONUP) {
-			uint8_t joy = event.jbutton.button;
+			int joy = event.jbutton.button;
 			if ((BTN_WAKE == BTN_POWER && joy == JOY_POWER) ||
 			    (BTN_WAKE == BTN_MENU && (joy == JOY_MENU || joy == JOY_MENU_ALT))) {
 				// ignore input while lid is closed
@@ -1935,6 +2693,43 @@ int VIB_getStrength(void) {
 ///////////////////////////////
 // Power management - Battery, sleep, brightness, volume
 ///////////////////////////////
+
+// Overlay surface for fallback implementation (used if platform doesn't provide its own)
+static SDL_Surface* fallback_overlay = NULL;
+
+/**
+ * Fallback overlay initialization for simple platforms.
+ *
+ * Creates a standard SDL surface for the battery warning overlay.
+ * Platforms with hardware overlays (e.g., rg35xx) provide their own implementation.
+ *
+ * @return SDL surface for overlay
+ */
+FALLBACK_IMPLEMENTATION SDL_Surface* PLAT_initOverlay(void) {
+	int overlay_size = ui.pill_height_px;
+	fallback_overlay = SDL_CreateRGBSurface(SDL_SWSURFACE, overlay_size, overlay_size, 16,
+	                                        0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000); // ARGB
+	return fallback_overlay;
+}
+
+/**
+ * Fallback overlay cleanup.
+ */
+FALLBACK_IMPLEMENTATION void PLAT_quitOverlay(void) {
+	if (fallback_overlay) {
+		SDL_FreeSurface(fallback_overlay);
+		fallback_overlay = NULL;
+	}
+}
+
+/**
+ * Fallback overlay enable/disable (no-op for software compositing).
+ *
+ * @param enable Unused - software overlays are always composited
+ */
+FALLBACK_IMPLEMENTATION void PLAT_enableOverlay(int enable) {
+	(void)enable; // Overlay composited in software, no hardware control needed
+}
 
 /**
  * Initializes the low battery warning overlay.
@@ -2077,8 +2872,8 @@ void PWR_update(int* _dirty, int* _show_setting, PWR_callback_t before_sleep,
 	static uint32_t power_pressed_at = 0; // timestamp when power button was just pressed
 	static uint32_t mod_unpressed_at =
 	    0; // timestamp of last time settings modifier key was NOT down
-	static uint32_t was_muted = -1;
-	if (was_muted == -1)
+	static uint32_t was_muted = (uint32_t)-1;
+	if (was_muted == (uint32_t)-1)
 		was_muted = GetMute();
 
 	static int was_charging = -1;
@@ -2159,7 +2954,7 @@ void PWR_update(int* _dirty, int* _show_setting, PWR_callback_t before_sleep,
 	}
 
 	int muted = GetMute();
-	if (muted != was_muted) {
+	if ((uint32_t)muted != was_muted) {
 		was_muted = muted;
 		show_setting = 2;
 		setting_shown_at = now;
@@ -2228,11 +3023,9 @@ void PWR_powerOff(void) {
 
 		// LOG_info("PWR_powerOff %s (%ix%i)\n", gfx.screen, gfx.screen->w, gfx.screen->h);
 
-		// TODO: for some reason screen's dimensions end up being 0x0 in GFX_blitMessage...
 		PLAT_clearVideo(gfx.screen);
-		GFX_blitMessage(font.large, msg, gfx.screen,
-		                &(SDL_Rect){0, 0, gfx.screen->w, gfx.screen->h}); //, NULL);
-		GFX_flip(gfx.screen);
+		GFX_blitMessage_DP(font.large, msg, gfx.screen, 0, 0, ui.screen_width, ui.screen_height);
+		GFX_present(NULL);
 		PLAT_powerOff();
 	}
 }
@@ -2248,7 +3041,7 @@ static void PWR_enterSleep(void) {
 	SDL_PauseAudio(1);
 	if (GetHDMI()) {
 		PLAT_clearVideo(gfx.screen);
-		PLAT_flip(gfx.screen, 0);
+		GFX_present(NULL);
 	} else {
 		SetRawVolume(MUTE_VOLUME_RAW);
 		PLAT_enableBacklight(0);
@@ -2369,6 +3162,139 @@ int PWR_getBattery(void) { // 10-100 in 10-20% fragments
 }
 
 ///////////////////////////////
+// CPU Frequency Control - Common sysfs implementation
+///////////////////////////////
+
+// Common sysfs paths for CPU frequency control
+#define CPUFREQ_POLICY0_PATH "/sys/devices/system/cpu/cpufreq/policy0"
+#define CPUFREQ_CPU0_PATH "/sys/devices/system/cpu/cpu0/cpufreq"
+
+/**
+ * Comparison function for sorting integers in ascending order.
+ */
+static int compare_int_asc(const void* a, const void* b) {
+	return (*(const int*)a) - (*(const int*)b);
+}
+
+/**
+ * Default implementation for reading available CPU frequencies from sysfs.
+ *
+ * Reads from scaling_available_frequencies and returns sorted list.
+ * Tries policy0 path first, then cpu0/cpufreq fallback.
+ *
+ * @param frequencies Output array to fill with frequencies (in kHz)
+ * @param max_count Maximum number of frequencies to return
+ * @return Number of frequencies found (0 if detection failed)
+ */
+int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count) {
+	if (!frequencies || max_count <= 0) {
+		return 0;
+	}
+
+	// Try both common sysfs paths
+	const char* paths[] = {CPUFREQ_POLICY0_PATH "/scaling_available_frequencies",
+	                       CPUFREQ_CPU0_PATH "/scaling_available_frequencies", NULL};
+
+	char buffer[512];
+	int count = 0;
+
+	for (int i = 0; paths[i] != NULL; i++) {
+		FILE* fp = fopen(paths[i], "r");
+		if (!fp) {
+			continue;
+		}
+
+		if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+			// Parse space-separated frequency values
+			char* token = strtok(buffer, " \t\n");
+			while (token != NULL && count < max_count) {
+				int freq = atoi(token);
+				if (freq > 0) {
+					frequencies[count++] = freq;
+				}
+				token = strtok(NULL, " \t\n");
+			}
+		}
+		(void)fclose(fp); // sysfs file opened for reading
+
+		if (count > 0) {
+			break; // Found frequencies, don't try other paths
+		}
+	}
+
+	// Sort frequencies ascending (lowest to highest)
+	if (count > 1) {
+		qsort(frequencies, count, sizeof(int), compare_int_asc);
+	}
+
+	LOG_info("PWR_getAvailableCPUFrequencies_sysfs: found %d frequencies\n", count);
+	if (count > 0) {
+		LOG_info("  Range: %d - %d kHz\n", frequencies[0], frequencies[count - 1]);
+	}
+
+	return count;
+}
+
+/**
+ * Default implementation for setting CPU frequency via sysfs.
+ *
+ * Ensures userspace governor is set, then writes to scaling_setspeed.
+ *
+ * @param freq_khz Target frequency in kHz
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUFrequency_sysfs(int freq_khz) {
+	// Try both common sysfs paths
+	const char* setspeed_paths[] = {CPUFREQ_POLICY0_PATH "/scaling_setspeed",
+	                                CPUFREQ_CPU0_PATH "/scaling_setspeed", NULL};
+
+	const char* governor_paths[] = {CPUFREQ_POLICY0_PATH "/scaling_governor",
+	                                CPUFREQ_CPU0_PATH "/scaling_governor", NULL};
+
+	// First, ensure userspace governor is set
+	for (int i = 0; governor_paths[i] != NULL; i++) {
+		FILE* fp = fopen(governor_paths[i], "r");
+		if (fp) {
+			char governor[32] = {0};
+			if (fgets(governor, sizeof(governor), fp)) {
+				// Remove newline
+				char* nl = strchr(governor, '\n');
+				if (nl)
+					*nl = '\0';
+
+				// If not already userspace, set it
+				if (strcmp(governor, "userspace") != 0) {
+					(void)fclose(fp); // sysfs file opened for reading
+					fp = fopen(governor_paths[i], "w");
+					if (fp) {
+						(void)fprintf(fp, "userspace\n");
+						(void)fclose(fp); // sysfs file opened for reading
+						fp = NULL;
+						usleep(10000); // 10ms delay for governor switch
+					}
+				}
+			}
+			if (fp)
+				(void)fclose(fp); // sysfs file opened for reading
+			break;
+		}
+	}
+
+	// Now set the frequency
+	for (int i = 0; setspeed_paths[i] != NULL; i++) {
+		FILE* fp = fopen(setspeed_paths[i], "w");
+		if (fp) {
+			(void)fprintf(fp, "%d\n", freq_khz);
+			(void)fclose(fp); // sysfs file opened for reading
+			return 0;
+		}
+	}
+
+	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz\n", freq_khz);
+	return -1;
+}
+
+///////////////////////////////
 // Platform utility functions
 ///////////////////////////////
 
@@ -2388,7 +3314,8 @@ int PWR_getBattery(void) { // 10-100 in 10-20% fragments
  */
 int PLAT_setDateTime(int y, int m, int d, int h, int i, int s) {
 	char cmd[512];
-	sprintf(cmd, "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i, s);
+	(void)snprintf(cmd, sizeof(cmd), "date -s '%d-%d-%d %d:%d:%d'; hwclock --utc -w", y, m, d, h, i,
+	               s);
 	system(cmd);
 	return 0; // why does this return an int?
 }

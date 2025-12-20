@@ -2,7 +2,8 @@
 // Tests all utility functions organized by category
 
 #include "../../../../workspace/all/common/utils.h"
-#include "../../../support/unity/unity.h"
+#include "../../../../workspace/all/common/defines.h"
+#include "unity.h"
 #include "../../../support/platform.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -110,6 +111,87 @@ void test_containsString_not_found(void) {
 void test_containsString_case_insensitive(void) {
 	TEST_ASSERT_TRUE(containsString("Hello World", "WORLD"));
 	TEST_ASSERT_TRUE(containsString("Hello World", "world"));
+}
+
+// strArrayContains tests
+void test_strArrayContains_found(void) {
+	char* arr[] = {"zip", "7z", "nes", NULL};
+	TEST_ASSERT_TRUE(strArrayContains(arr, "zip"));
+	TEST_ASSERT_TRUE(strArrayContains(arr, "7z"));
+	TEST_ASSERT_TRUE(strArrayContains(arr, "nes"));
+}
+
+void test_strArrayContains_not_found(void) {
+	char* arr[] = {"zip", "7z", "nes", NULL};
+	TEST_ASSERT_FALSE(strArrayContains(arr, "gz"));
+	TEST_ASSERT_FALSE(strArrayContains(arr, "ZIP")); // case-sensitive
+}
+
+void test_strArrayContains_empty_array(void) {
+	char* arr[] = {NULL};
+	TEST_ASSERT_FALSE(strArrayContains(arr, "zip"));
+}
+
+void test_strArrayContains_null_inputs(void) {
+	char* arr[] = {"zip", NULL};
+	TEST_ASSERT_FALSE(strArrayContains(NULL, "zip"));
+	TEST_ASSERT_FALSE(strArrayContains(arr, NULL));
+}
+
+// safe_strcpy tests
+void test_safe_strcpy_normal(void) {
+	char buf[32];
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hello", buf);
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_exact_fit(void) {
+	char buf[6]; // exactly fits "hello" + null
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hello", buf);
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_truncation(void) {
+	char buf[4]; // will truncate "hello" to "hel"
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("hel", buf);
+	TEST_ASSERT_EQUAL(5, len); // returns full source length for truncation detection
+}
+
+void test_safe_strcpy_empty_src(void) {
+	char buf[32] = "garbage";
+	size_t len = safe_strcpy(buf, "", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("", buf);
+	TEST_ASSERT_EQUAL(0, len);
+}
+
+void test_safe_strcpy_single_byte_buffer(void) {
+	char buf[1];
+	size_t len = safe_strcpy(buf, "hello", sizeof(buf));
+	TEST_ASSERT_EQUAL_STRING("", buf); // only null terminator fits
+	TEST_ASSERT_EQUAL(5, len);
+}
+
+void test_safe_strcpy_zero_size(void) {
+	char buf[32] = "unchanged";
+	size_t len = safe_strcpy(buf, "hello", 0);
+	TEST_ASSERT_EQUAL_STRING("unchanged", buf); // buffer unchanged
+	TEST_ASSERT_EQUAL(0, len);
+}
+
+void test_SAFE_STRCPY_macro(void) {
+	char buf[32];
+	SAFE_STRCPY(buf, "macro test");
+	TEST_ASSERT_EQUAL_STRING("macro test", buf);
+}
+
+void test_SAFE_STRCPY_macro_truncation(void) {
+	char buf[8];
+	SAFE_STRCPY(buf, "long string that gets truncated");
+	TEST_ASSERT_EQUAL_STRING("long st", buf);
+	TEST_ASSERT_EQUAL(7, strlen(buf)); // 8 - 1 for null
 }
 
 void test_hide_hidden_file(void) {
@@ -344,6 +426,69 @@ void test_allocFile_nonexistent(void) {
 	TEST_ASSERT_NULL(content);
 }
 
+void test_getEmuPath_platform_specific_exists(void) {
+	// Create platform-specific pak directory structure
+	char platform_dir[512];
+	char platform_file[512];
+	sprintf(platform_dir, "%s/Emus/%s/fceux.pak", SDCARD_PATH, PLATFORM);
+	sprintf(platform_file, "%s/launch.sh", platform_dir);
+
+	// Create directory and file
+	char mkdir_cmd[1024];
+	sprintf(mkdir_cmd, "mkdir -p \"%s\"", platform_dir);
+	system(mkdir_cmd);
+	touch(platform_file);
+
+	char result[512];
+	getEmuPath("fceux", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/%s/fceux.pak/launch.sh", SDCARD_PATH, PLATFORM);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
+
+	// Cleanup
+	unlink(platform_file);
+	char rmdir_cmd[1024];
+	sprintf(rmdir_cmd, "rm -rf \"%s/Emus\"", SDCARD_PATH);
+	system(rmdir_cmd);
+}
+
+void test_getEmuPath_shared_only(void) {
+	// Create shared pak only (no platform-specific)
+	char shared_dir[512];
+	char shared_file[512];
+	sprintf(shared_dir, "%s/Emus/gambatte.pak", PAKS_PATH);
+	sprintf(shared_file, "%s/launch.sh", shared_dir);
+
+	// Create directory and file
+	char mkdir_cmd[1024];
+	sprintf(mkdir_cmd, "mkdir -p \"%s\"", shared_dir);
+	system(mkdir_cmd);
+	touch(shared_file);
+
+	char result[512];
+	getEmuPath("gambatte", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/gambatte.pak/launch.sh", PAKS_PATH);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
+
+	// Cleanup
+	unlink(shared_file);
+	char rmdir_cmd[1024];
+	sprintf(rmdir_cmd, "rm -rf \"%s/Emus\"", PAKS_PATH);
+	system(rmdir_cmd);
+}
+
+void test_getEmuPath_neither_exists_returns_shared(void) {
+	char result[512];
+	getEmuPath("nonexistent_core", result);
+
+	char expected[512];
+	sprintf(expected, "%s/Emus/nonexistent_core.pak/launch.sh", PAKS_PATH);
+	TEST_ASSERT_EQUAL_STRING(expected, result);
+}
+
 ///////////////////////////////
 // Name Processing Tests
 ///////////////////////////////
@@ -406,6 +551,137 @@ void test_getEmuName_with_parens(void) {
 	char out[512];
 	getEmuName("test (GB).gb", out);
 	TEST_ASSERT_EQUAL_STRING("GB", out);
+}
+
+// No-Intro article tests
+void test_fixArticle_the(void) {
+	char name[256] = "Legend of Zelda, The";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", name);
+}
+
+void test_fixArticle_a(void) {
+	char name[256] = "Link to the Past, A";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("A Link to the Past", name);
+}
+
+void test_fixArticle_an(void) {
+	char name[256] = "American Tail, An";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("An American Tail", name);
+}
+
+void test_fixArticle_no_article(void) {
+	char name[256] = "Super Mario Bros";
+	fixArticle(name);
+	TEST_ASSERT_EQUAL_STRING("Super Mario Bros", name);
+}
+
+void test_getDisplayName_nointro_article(void) {
+	char out[256];
+	getDisplayName("Legend of Zelda, The (USA).nes", out);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", out);
+}
+
+// No-Intro: Region tags
+void test_getDisplayName_nointro_single_region(void) {
+	char out[256];
+	getDisplayName("Super Metroid (USA).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("Super Metroid", out);
+}
+
+void test_getDisplayName_nointro_multi_region(void) {
+	char out[256];
+	getDisplayName("Test Rom Name, The (Japan, USA).gb", out);
+	TEST_ASSERT_EQUAL_STRING("The Test Rom Name", out);
+}
+
+void test_getDisplayName_nointro_world_region(void) {
+	char out[256];
+	getDisplayName("Tetris (World).gb", out);
+	TEST_ASSERT_EQUAL_STRING("Tetris", out);
+}
+
+// No-Intro: Language tags
+void test_getDisplayName_nointro_languages(void) {
+	char out[256];
+	getDisplayName("Super Metroid (Japan, USA) (En,Ja).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("Super Metroid", out);
+}
+
+void test_getDisplayName_nointro_single_language(void) {
+	char out[256];
+	getDisplayName("Game (Europe) (En).nes", out);
+	TEST_ASSERT_EQUAL_STRING("Game", out);
+}
+
+// No-Intro: Version tags
+void test_getDisplayName_nointro_version(void) {
+	char out[256];
+	getDisplayName("Mario Kart (USA) (v1.2).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("Mario Kart", out);
+}
+
+void test_getDisplayName_nointro_revision(void) {
+	char out[256];
+	getDisplayName("Pokemon Red (USA) (Rev A).gb", out);
+	TEST_ASSERT_EQUAL_STRING("Pokemon Red", out);
+}
+
+// No-Intro: Development status tags
+void test_getDisplayName_nointro_beta(void) {
+	char out[256];
+	getDisplayName("StarFox (USA) (Beta).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("StarFox", out);
+}
+
+void test_getDisplayName_nointro_proto(void) {
+	char out[256];
+	getDisplayName("Resident Evil (USA) (Proto).psx", out);
+	TEST_ASSERT_EQUAL_STRING("Resident Evil", out);
+}
+
+// No-Intro: Multiple tags combined
+void test_getDisplayName_nointro_all_tags(void) {
+	char out[256];
+	getDisplayName("Final Fantasy, The (Japan, USA) (En,Ja) (v1.1) (Proto).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("The Final Fantasy", out);
+}
+
+void test_getDisplayName_nointro_complex_article(void) {
+	char out[256];
+	getDisplayName("Legend of Dragoon, The (USA) (Disc 1).bin", out);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Dragoon", out);
+}
+
+// No-Intro: Square brackets (status flags)
+void test_getDisplayName_nointro_bad_dump(void) {
+	char out[256];
+	getDisplayName("Rare Game (USA) [b].nes", out);
+	TEST_ASSERT_EQUAL_STRING("Rare Game", out);
+}
+
+void test_getDisplayName_nointro_square_and_round(void) {
+	char out[256];
+	getDisplayName("Adventure (USA) (v1.0) [!].nes", out);
+	TEST_ASSERT_EQUAL_STRING("Adventure", out);
+}
+
+// No-Intro: Edge cases
+void test_getDisplayName_nointro_title_with_parens(void) {
+	char out[256];
+	// Game title itself contains parentheses - should preserve them
+	// This is a known limitation - we'll strip all tags for now
+	getDisplayName("Kirby's Fun Pak (Kirby Super Star) (USA).sfc", out);
+	TEST_ASSERT_EQUAL_STRING("Kirby's Fun Pak", out);
+}
+
+void test_getDisplayName_nointro_article_no_comma(void) {
+	char out[256];
+	// Article is already at the beginning
+	getDisplayName("The Legend of Zelda (USA).nes", out);
+	TEST_ASSERT_EQUAL_STRING("The Legend of Zelda", out);
 }
 
 ///////////////////////////////
@@ -711,6 +987,18 @@ int main(void) {
 	RUN_TEST(test_containsString_found);
 	RUN_TEST(test_containsString_not_found);
 	RUN_TEST(test_containsString_case_insensitive);
+	RUN_TEST(test_strArrayContains_found);
+	RUN_TEST(test_strArrayContains_not_found);
+	RUN_TEST(test_strArrayContains_empty_array);
+	RUN_TEST(test_strArrayContains_null_inputs);
+	RUN_TEST(test_safe_strcpy_normal);
+	RUN_TEST(test_safe_strcpy_exact_fit);
+	RUN_TEST(test_safe_strcpy_truncation);
+	RUN_TEST(test_safe_strcpy_empty_src);
+	RUN_TEST(test_safe_strcpy_single_byte_buffer);
+	RUN_TEST(test_safe_strcpy_zero_size);
+	RUN_TEST(test_SAFE_STRCPY_macro);
+	RUN_TEST(test_SAFE_STRCPY_macro_truncation);
 	RUN_TEST(test_hide_hidden_file);
 	RUN_TEST(test_hide_disabled_file);
 	RUN_TEST(test_hide_map_txt);
@@ -745,6 +1033,9 @@ int main(void) {
 	RUN_TEST(test_getInt_nonexistent_file);
 	RUN_TEST(test_putInt_negative);
 	RUN_TEST(test_allocFile_nonexistent);
+	RUN_TEST(test_getEmuPath_platform_specific_exists);
+	RUN_TEST(test_getEmuPath_shared_only);
+	RUN_TEST(test_getEmuPath_neither_exists_returns_shared);
 
 	// Name processing
 	RUN_TEST(test_getDisplayName_simple);
@@ -757,6 +1048,28 @@ int main(void) {
 	RUN_TEST(test_getDisplayName_doom_extension);
 	RUN_TEST(test_getEmuName_simple);
 	RUN_TEST(test_getEmuName_with_parens);
+	RUN_TEST(test_fixArticle_the);
+	RUN_TEST(test_fixArticle_a);
+	RUN_TEST(test_fixArticle_an);
+	RUN_TEST(test_fixArticle_no_article);
+	RUN_TEST(test_getDisplayName_nointro_article);
+
+	// No-Intro naming convention tests
+	RUN_TEST(test_getDisplayName_nointro_single_region);
+	RUN_TEST(test_getDisplayName_nointro_multi_region);
+	RUN_TEST(test_getDisplayName_nointro_world_region);
+	RUN_TEST(test_getDisplayName_nointro_languages);
+	RUN_TEST(test_getDisplayName_nointro_single_language);
+	RUN_TEST(test_getDisplayName_nointro_version);
+	RUN_TEST(test_getDisplayName_nointro_revision);
+	RUN_TEST(test_getDisplayName_nointro_beta);
+	RUN_TEST(test_getDisplayName_nointro_proto);
+	RUN_TEST(test_getDisplayName_nointro_all_tags);
+	RUN_TEST(test_getDisplayName_nointro_complex_article);
+	RUN_TEST(test_getDisplayName_nointro_bad_dump);
+	RUN_TEST(test_getDisplayName_nointro_square_and_round);
+	RUN_TEST(test_getDisplayName_nointro_title_with_parens);
+	RUN_TEST(test_getDisplayName_nointro_article_no_comma);
 
 	// Leap year
 	RUN_TEST(test_isLeapYear_divisible_by_4);

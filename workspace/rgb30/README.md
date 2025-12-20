@@ -22,9 +22,9 @@ Platform implementation for the Anbernic RGB30 retro handheld device.
   - SELECT and START buttons
 
 ### Input Method
-- **Primary**: SDL Joystick API (gamepad input)
-- **Secondary**: Evdev codes for volume, power, and menu modifier buttons
-- **Hybrid Design**: Minimal SDL keyboard (power button only), most input via joystick
+- **Primary**: Evdev input events (direct reading from `/dev/input/event*`)
+- **Implementation**: Reads raw `input_event` structures for all input
+- **Notable**: Bypasses SDL input APIs entirely
 
 ### CPU & Performance
 - ARM processor with NEON SIMD support
@@ -68,8 +68,8 @@ rgb30/
 │   └── makefile       Build configuration
 ├── cores/             Libretro cores (submodules + builds)
 └── other/             Third-party dependencies
-    ├── DinguxCommander/  File manager (branch: minui-rgb30)
-    └── sdl12-compat/     SDL 1.2 compatibility layer (branch: minui-rgb30)
+    ├── DinguxCommander/  File manager (branch: launcher-rgb30)
+    └── sdl12-compat/     SDL 1.2 compatibility layer (branch: launcher-rgb30)
 ```
 
 ## Input System
@@ -144,8 +144,8 @@ make
 ### Dependencies
 
 The platform automatically clones required dependencies on first build:
-- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `minui-rgb30`)
-- **sdl12-compat**: `github.com/shauninman/sdl12-compat.git` (branch: `minui-rgb30`)
+- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `launcher-rgb30`)
+- **sdl12-compat**: `github.com/shauninman/sdl12-compat.git` (branch: `launcher-rgb30`)
 
 Both dependencies use custom toolchain configurations for the RGB30 hardware.
 
@@ -164,12 +164,12 @@ LessUI installs to the SD card with the following structure:
 │   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .userdata/              User settings and save data
 │   └── rgb30/              Platform-specific settings
 │       └── msettings.bin   Volume/brightness preferences
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Settings Management
@@ -321,7 +321,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 

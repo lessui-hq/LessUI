@@ -72,7 +72,7 @@ my355/
 ├── platform/          Platform-specific hardware definitions
 │   ├── platform.h     Button mappings, display specs, HDMI config
 │   ├── platform.c     Platform implementation (lid, HDMI, rumble, scaling)
-│   └── makefile.*     Build configuration files
+│   └── Makefile.*     Build configuration files
 ├── keymon/            Hardware button monitoring daemon
 │   └── keymon.c       Volume/brightness control, headphone/HDMI detection
 ├── libmsettings/      Settings library (shared memory based)
@@ -197,14 +197,14 @@ LessUI installs to the SD card with the following structure:
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       ├── line-*.png      Scanline overlay effects (various scales)
 │       ├── grid-*.png      Grid overlay effects (various scales)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/            Update staging area
 │   └── my355/              Platform boot components
 │       ├── show.elf        Splash screen display
 │       ├── installing.png  Initial install splash
 │       └── updating.png    Update splash
 ├── Roms/                   ROM files organized by system
-└── LessUI.zip               Update package (if present)
+└── LessUI.7z               Update package (if present)
 ```
 
 ### Initial Installation
@@ -228,10 +228,10 @@ After initialization, device boots as follows:
 
 1. Stock system runs modified `runmiyoo.sh` boot script
 2. Script sets CPU governor to "performance" mode
-3. If `LessUI.zip` exists on SD card:
+3. If `LessUI.7z` exists on SD card:
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract ZIP to SD card root
-   - Delete ZIP file
+   - Extract archive to SD card root
+   - Delete archive
    - Run `.system/my355/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/my355/paks/LessUI.pak/launch.sh`
 5. Loop: if launcher exits, relaunch (prevents stock firmware access)
@@ -240,10 +240,10 @@ After initialization, device boots as follows:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root (`/mnt/SDCARD/`)
+1. Place `LessUI.7z` in SD card root (`/mnt/SDCARD/`)
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 
 ## Platform-Specific Features
 
@@ -446,7 +446,7 @@ DinguxCommander-SDL2 based file manager with:
 3. **HDMI Hotplug**: While supported, frequent cable swapping may cause brief visual glitches
 4. **Rotation Overhead**: 270-degree rotation adds minimal overhead but is always active on built-in screen
 5. **Rumble Quality**: Vibration motor feels low quality (subjective)
-6. **HDMI Performance**: Minarch runs at 30fps over HDMI instead of 60fps; UI padding reverts to 640x480 layout after first dirty frame
+6. **HDMI Performance**: Player runs at 30fps over HDMI instead of 60fps; UI padding reverts to 640x480 layout after first dirty frame
 
 ### Development Notes
 1. **Go Dependency**: Build system requires Go compiler for rsce-go tool
@@ -489,7 +489,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Platform implementation: `./platform/platform.c` (advanced features)

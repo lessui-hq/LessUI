@@ -1,0 +1,10 @@
+{
+  "name": "ADBD",
+  "type": "tool",
+  "description": "Enable ADB over WiFi",
+  "version": "1.0.0",
+
+  "platforms": ["miyoomini"],
+
+  "launch": "launch.sh"
+}

@@ -1,0 +1,8 @@
+Sony PlayStation
+
+Core: pcsx_rearmed
+
+BIOS (required):
+  scph5501.bin - US BIOS (recommended)
+  scph5500.bin - JP BIOS (alternative)
+  scph5502.bin - EU BIOS (alternative)

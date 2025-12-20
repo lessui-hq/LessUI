@@ -1,0 +1,22 @@
+{
+  "name": "Files",
+  "type": "tool",
+  "description": "File manager for browsing and managing files",
+  "version": "1.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "my282",
+    "magicmini",
+    "m17"
+  ],
+
+  "launch": "launch.sh"
+}

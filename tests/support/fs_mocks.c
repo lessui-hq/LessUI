@@ -101,6 +101,15 @@ static MockFileHandle* find_handle(FILE* stream) {
 ///////////////////////////////
 
 /**
+ * Wrapped access() - checks mock file system
+ * Used by exists() function in utils.c
+ */
+int __wrap_access(const char* pathname, int mode) {
+	(void)mode; // Ignore mode parameter
+	return mock_fs_exists(pathname) ? 0 : -1;
+}
+
+/**
  * Wrapped exists() - checks mock file system
  */
 int __wrap_exists(char* path) {

@@ -35,6 +35,11 @@
 #ifndef __ION_SUNXI_H
 #define __ION_SUNXI_H
 
+#include <stdbool.h>
+#include <linux/types.h>
+
+typedef __u32 u32;
+
 // Sunxi custom heap types start after standard ION heap types
 #define ION_HEAP_TYPE_SUNXI_START (ION_HEAP_TYPE_CUSTOM + 1)
 #define ION_HEAP_TYPE_SECURE	  (ION_HEAP_TYPE_SUNXI_START)  // Secure memory (DRM)

@@ -6,31 +6,25 @@ TARGET=em_ui.sh
 
 # Boot assets are copied to this directory during HOST setup phase
 # (see Makefile setup target - copies from skeleton/SYSTEM/res/)
-# Rename from @Nx format to standard names
+# Rename from @1x-wide format to platform-specific names
 cp installing@1x-wide.bmp installing.bmp
 cp updating@1x-wide.bmp updating.bmp
 
-# remove header from bitmaps
+# Skip standard 54-byte BMP header (now using 24-bit BMPs)
 mkdir -p output
-if [ ! -f output/installing ]; then
-	dd bs=54 skip=1 if=installing.bmp of=output/installing
-fi
-if [ ! -f output/updating ]; then
-	dd bs=54 skip=1 if=updating.bmp of=output/updating
-fi
+dd skip=54 iflag=skip_bytes if=installing.bmp of=output/installing
+dd skip=54 iflag=skip_bytes if=updating.bmp of=output/updating
 
 cd output
 
-# zip headerless bitmaps
-if [ ! -f data ]; then
-	zip -r data.zip installing updating
-	mv data.zip data
-fi
+# Zip headerless bitmaps (always regenerate to pick up asset changes)
+zip -r data.zip installing updating
+mv data.zip data
 
 # encode and add to end of boot.sh
-cat ../boot.sh > $TARGET
-echo BINARY >> $TARGET
-uuencode data data >> $TARGET
+cat ../boot.sh >$TARGET
+echo BINARY >>$TARGET
+uuencode data data >>$TARGET
 
 # tar missing libs from toolchain
 if [ ! -f libpng16.so.16 ] || [ ! -f libSDL2_ttf-2.0.so.0 ]; then

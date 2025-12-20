@@ -7,13 +7,21 @@
 
 build
 releases
-toolchains
-libretro-common
 
+# Old per-platform cores (no longer used - migrated to shared cores)
 **/cores/src
 **/cores/output
+workspace/shared/*/cores/
+
+# New shared cores architecture
+build/.system/cores/
 **/boot/output
 **/squashfs/output
+
+# Generated paks (from workspace/all/paks/)
+# Paks are now generated during build from templates - see docs/PAK-TEMPLATES.md
+build/SYSTEM/*/paks/Emus/*.pak
+build/Tools/*/*.pak
 
 **/other/evtest
 **/other/jstest
@@ -33,7 +41,6 @@ bl_disable
 
 **/tmp
 
-workspace/hash.txt
 workspace/readmes
 
 # Test artifacts
@@ -43,4 +50,11 @@ tests/**/*_test
 tests/*.dSYM
 tests/**/*.dSYM
 
-FAKESD
+# Coverage artifacts
+coverage/
+*.gcno
+*.gcda
+*.gcov
+
+# Emus pak cache (cores/ directory contains downloaded and override cores)
+workspace/all/paks/Emus/cores/

@@ -1,0 +1,105 @@
+/**
+ * directory_index.h - Directory indexing for Launcher file browser
+ *
+ * Provides functions to index directory entries:
+ * - Apply map.txt aliases
+ * - Filter hidden entries
+ * - Detect and mark duplicate names
+ * - Build alphabetical navigation index
+ */
+
+#ifndef DIRECTORY_INDEX_H
+#define DIRECTORY_INDEX_H
+
+#include "launcher_entry.h"
+#include "launcher_map.h"
+
+/**
+ * Gets the alphabetical index for a sort key.
+ *
+ * Used to group entries by first letter for L1/R1 shoulder button navigation.
+ *
+ * @param sort_key Sort key string (articles already stripped)
+ * @return 0 for non-alphabetic, 1-26 for A-Z (case-insensitive)
+ */
+int DirectoryIndex_getAlphaChar(const char* sort_key);
+
+/**
+ * Generates a unique disambiguation string for an entry.
+ *
+ * Appends the emulator name in parentheses to disambiguate entries
+ * with identical display names but from different systems.
+ *
+ * Example: "Tetris" with path "/Roms/GB/Tetris.gb" -> "Tetris (GB)"
+ *
+ * @param entry_name Entry's display name
+ * @param entry_path Entry's full path
+ * @param out_name Output buffer for unique name (min 256 bytes)
+ */
+void DirectoryIndex_getUniqueName(const char* entry_name, const char* entry_path, char* out_name);
+
+/**
+ * Applies map.txt aliases to entries.
+ *
+ * For each entry, looks up its filename in the map. If found,
+ * updates the entry's name to the alias value.
+ *
+ * @param entries Entry** dynamic array (stb_ds)
+ * @param map MapEntry* hash map from launcher_map.h (use shget to query)
+ * @return 1 if any aliases were applied (entries need resorting), 0 otherwise
+ */
+int DirectoryIndex_applyAliases(Entry** entries, MapEntry* map);
+
+/**
+ * Removes hidden entries from an array.
+ *
+ * An entry is hidden if its name starts with '.' or ends with ".disabled".
+ * Hidden entries are freed and removed from the array.
+ *
+ * @param entries Entry** dynamic array (stb_ds)
+ * @return New Entry** with hidden entries removed, or NULL on error
+ *
+ * @note Caller must free returned array with arrfree() (not EntryArray_free
+ *       since entries were moved, not copied)
+ * @note Original array should be freed with arrfree() after this call
+ */
+Entry** DirectoryIndex_filterHidden(Entry** entries);
+
+/**
+ * Marks entries with duplicate display names for disambiguation.
+ *
+ * When two consecutive entries (after sorting) have the same display name:
+ * - If their filenames differ, sets unique to the filename
+ * - If filenames are identical (cross-platform ROM), sets unique to emulator name
+ *
+ * @param entries Sorted Entry** dynamic array (stb_ds)
+ */
+void DirectoryIndex_markDuplicates(Entry** entries);
+
+/**
+ * Builds alphabetical navigation index.
+ *
+ * Creates an index mapping letter groups to entry positions for L1/R1
+ * shoulder button navigation. Also sets each entry's alpha field.
+ *
+ * @param entries Entry** dynamic array (stb_ds, modified in place to set alpha)
+ * @param alphas IntArray to populate with letter group positions
+ */
+void DirectoryIndex_buildAlphaIndex(Entry** entries, IntArray* alphas);
+
+/**
+ * Performs full directory indexing.
+ *
+ * Convenience function that applies aliases, filters hidden entries,
+ * marks duplicates, and builds the alpha index.
+ *
+ * @param entries Entry** dynamic array (may be replaced with new array)
+ * @param alphas IntArray to populate with letter group positions
+ * @param map Optional MapEntry* hash map of filename->alias mappings (NULL to skip aliasing)
+ * @param skip_alpha_index If true, skip building alphabetical index
+ * @return Updated Entry** array (may be different from input if filtering occurred)
+ */
+Entry** DirectoryIndex_index(Entry** entries, IntArray* alphas, MapEntry* map,
+                             int skip_alpha_index);
+
+#endif // DIRECTORY_INDEX_H

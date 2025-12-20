@@ -1,5 +1,5 @@
 /**
- * utils.h - Core utility function declarations for MinUI
+ * utils.h - Core utility function declarations for Launcher
  *
  * Provides cross-platform utilities for string manipulation, file I/O,
  * timing, name processing, date/time, and math operations. All functions
@@ -36,7 +36,7 @@ uint64_t getMicroseconds(void);
  * @param str String to search in
  * @return 1 if str starts with pre, 0 otherwise
  */
-int prefixMatch(char* pre, char* str);
+int prefixMatch(const char* pre, const char* str);
 
 /**
  * Checks if a string ends with a given suffix (case-insensitive).
@@ -47,7 +47,7 @@ int prefixMatch(char* pre, char* str);
  * @param str String to search in
  * @return 1 if str ends with suf, 0 otherwise
  */
-int suffixMatch(char* suf, char* str);
+int suffixMatch(const char* suf, const char* str);
 
 /**
  * Checks if two strings are exactly equal (case-sensitive).
@@ -69,6 +69,51 @@ int exactMatch(const char* str1, const char* str2);
  * @return 1 if needle is found in haystack, 0 otherwise
  */
 int containsString(char* haystack, char* needle);
+
+/**
+ * Checks if a NULL-terminated string array contains a specific string.
+ *
+ * @param arr NULL-terminated array of string pointers
+ * @param str String to search for (exact match, case-sensitive)
+ * @return 1 if string is found, 0 otherwise
+ *
+ * @example
+ *   char* exts[] = {"zip", "7z", "nes", NULL};
+ *   strArrayContains(exts, "zip");  // returns 1
+ *   strArrayContains(exts, "gz");   // returns 0
+ */
+int strArrayContains(char** arr, const char* str);
+
+/**
+ * Safe string copy with bounds checking.
+ *
+ * Like BSD strlcpy - always null-terminates the destination buffer,
+ * never writes more than dest_size bytes, and returns the length of
+ * the source string (allowing truncation detection).
+ *
+ * @param dest Destination buffer
+ * @param src Source string (must be null-terminated)
+ * @param dest_size Size of destination buffer (must be > 0)
+ * @return Length of src. If return value >= dest_size, truncation occurred.
+ *
+ * @example
+ *   char buf[32];
+ *   safe_strcpy(buf, "hello", sizeof(buf));  // buf = "hello", returns 5
+ *   safe_strcpy(buf, long_string, sizeof(buf));  // truncates safely
+ */
+size_t safe_strcpy(char* dest, const char* src, size_t dest_size);
+
+/**
+ * Convenience macro for safe_strcpy when destination is an array.
+ *
+ * Automatically uses sizeof(dest) for the size parameter.
+ * Only works when dest is a fixed-size array, not a pointer.
+ *
+ * @example
+ *   char path[MAX_PATH];
+ *   SAFE_STRCPY(path, some_string);  // Equivalent to safe_strcpy(path, some_string, sizeof(path))
+ */
+#define SAFE_STRCPY(dest, src) safe_strcpy((dest), (src), sizeof(dest))
 
 /**
  * Determines if a file should be hidden in the UI.
@@ -148,7 +193,32 @@ int splitTextLines(char* str, char** lines, int max_lines);
  * @param path Path to check
  * @return 1 if path exists, 0 otherwise
  */
-int exists(char* path);
+int exists(const char* path);
+
+/**
+ * Finds a system file with platform-specific fallback to common.
+ *
+ * Provides a generic way to share resources across platforms while
+ * allowing platform-specific overrides. Mirrors the .system/{platform}/
+ * directory structure in .system/common/ for shared resources.
+ *
+ * Search order:
+ * 1. /.system/{PLATFORM}/{relative_path}  (platform-specific)
+ * 2. /.system/common/{relative_path}      (shared fallback)
+ *
+ * Example: findSystemFile("paks/Emus/MAME.pak/map.txt", output)
+ * Checks:
+ *   - /.system/miyoomini/paks/Emus/MAME.pak/map.txt
+ *   - /.system/common/paks/Emus/MAME.pak/map.txt
+ *
+ * @param relative_path Path relative to system directory
+ * @param output_path   Output buffer for resolved absolute path (min 512 bytes)
+ * @return 1 if found, 0 if not found
+ *
+ * @note If found, output_path contains the full absolute path
+ * @note If not found, output_path is unchanged
+ */
+int findSystemFile(const char* relative_path, char* output_path);
 
 /**
  * Creates an empty file or updates its timestamp.
@@ -223,6 +293,18 @@ int getInt(const char* path);
 ///////////////////////////////
 
 /**
+ * Moves trailing article to the front of a name.
+ *
+ * Handles No-Intro convention where articles are moved to the end
+ * for sorting purposes: "Legend of Zelda, The" -> "The Legend of Zelda"
+ *
+ * Supported articles: The, A, An (case-insensitive matching)
+ *
+ * @param name Name to transform (modified in place)
+ */
+void fixArticle(char* name);
+
+/**
  * Cleans a ROM or app path for display in the UI.
  *
  * Performs multiple transformations:
@@ -231,7 +313,9 @@ int getInt(const char* path);
  * 3. Strips region codes and metadata in parentheses/brackets
  *    Example: "Super Mario (USA) (v1.2).nes" -> "Super Mario"
  * 4. Removes trailing whitespace
- * 5. Special handling: strips platform suffix from Tools paths
+ * 5. Moves trailing articles to front (No-Intro convention)
+ *    Example: "Legend of Zelda, The" -> "The Legend of Zelda"
+ * 6. Special handling: strips platform suffix from Tools paths
  *
  * @param in_name Input path (may be full path or just filename)
  * @param out_name Output buffer for cleaned name (min 256 bytes)
@@ -376,5 +460,32 @@ uint32_t average16(uint32_t c1, uint32_t c2);
  * @return Average of both pixel pairs
  */
 uint32_t average32(uint32_t c1, uint32_t c2);
+
+/**
+ * Sorts an array of uint64_t values in ascending order (in-place).
+ *
+ * Uses insertion sort for small arrays (<=16 elements) and shell sort
+ * for larger arrays. Optimized for the typical use case of 30-60 element
+ * arrays used in frame timing analysis.
+ *
+ * @param arr Array to sort
+ * @param count Number of elements in array
+ */
+void sortUint64(uint64_t* arr, int count);
+
+/**
+ * Calculates a percentile value from an array of uint64_t values.
+ *
+ * Copies the array to avoid modifying the original, sorts it, and
+ * returns the value at the specified percentile position.
+ *
+ * @param arr Array of values (not modified)
+ * @param count Number of elements in array (max 64)
+ * @param percentile Percentile to calculate (0.0 to 1.0, e.g., 0.90 for 90th)
+ * @return Value at the specified percentile, or 0 if count is 0 or invalid
+ *
+ * @note For frame timing: use 0.90 to get 90th percentile (ignores outliers)
+ */
+uint64_t percentileUint64(const uint64_t* arr, int count, float percentile);
 
 #endif

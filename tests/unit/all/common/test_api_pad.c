@@ -11,9 +11,12 @@
  * - PAD_anyJustPressed/anyPressed/anyJustReleased() - Query functions
  * - PAD_justPressed/isPressed/justReleased/justRepeated() - Button-specific queries
  * - PAD_tappedMenu() - Menu tap detection with timing
+ * - PAD_beginPolling() - Resetting transient state at poll start
+ * - PAD_handleRepeat() - Button repeat timing with acceleration
+ * - PAD_updateButton() - Button state updates for press/release events
  */
 
-#include "../../support/unity/unity.h"
+#include "unity.h"
 #include "../../../../workspace/all/common/pad.h"
 #include <string.h>
 
@@ -24,6 +27,7 @@ static void resetPadState(void) {
 	pad.just_released = BTN_NONE;
 	pad.just_repeated = BTN_NONE;
 	memset(pad.repeat_at, 0, sizeof(pad.repeat_at));
+	memset(pad.hold_start, 0, sizeof(pad.hold_start));
 }
 
 void setUp(void) {
@@ -344,6 +348,170 @@ void test_PAD_tappedMenu_returns_false_when_menu_still_held(void) {
 }
 
 ///////////////////////////////
+// PAD_beginPolling tests
+///////////////////////////////
+
+void test_PAD_beginPolling_clears_transient_state(void) {
+	pad.just_pressed = BTN_A | BTN_B;
+	pad.just_released = BTN_X | BTN_Y;
+	pad.just_repeated = BTN_DPAD_UP | BTN_DPAD_DOWN;
+	pad.is_pressed = BTN_START; // Should NOT be cleared
+
+	PAD_beginPolling();
+
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.just_pressed);
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.just_released);
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.just_repeated);
+	TEST_ASSERT_EQUAL_INT(BTN_START, pad.is_pressed); // Preserved
+}
+
+///////////////////////////////
+// PAD_handleRepeat tests
+///////////////////////////////
+
+void test_PAD_handleRepeat_sets_just_repeated_when_time_elapsed(void) {
+	// Button pressed, repeat scheduled at tick 1000
+	pad.is_pressed = BTN_DPAD_UP;
+	pad.repeat_at[BTN_ID_DPAD_UP] = 1000;
+	pad.hold_start[BTN_ID_DPAD_UP] = 700; // Pressed 300ms ago
+
+	PAD_handleRepeat(1000);
+
+	TEST_ASSERT_TRUE(pad.just_repeated & BTN_DPAD_UP);
+}
+
+void test_PAD_handleRepeat_does_not_repeat_before_time(void) {
+	pad.is_pressed = BTN_DPAD_UP;
+	pad.repeat_at[BTN_ID_DPAD_UP] = 1000;
+	pad.hold_start[BTN_ID_DPAD_UP] = 700;
+
+	PAD_handleRepeat(999); // Just before repeat time
+
+	TEST_ASSERT_FALSE(pad.just_repeated & BTN_DPAD_UP);
+}
+
+void test_PAD_handleRepeat_uses_normal_interval_before_acceleration(void) {
+	pad.is_pressed = BTN_DPAD_DOWN;
+	pad.repeat_at[BTN_ID_DPAD_DOWN] = 1000;
+	pad.hold_start[BTN_ID_DPAD_DOWN] = 700; // Held for 300ms (< 1500ms threshold)
+
+	PAD_handleRepeat(1000);
+
+	// Next repeat should be at 1000 + PAD_REPEAT_INTERVAL (100ms)
+	TEST_ASSERT_EQUAL_UINT32(1100, pad.repeat_at[BTN_ID_DPAD_DOWN]);
+}
+
+void test_PAD_handleRepeat_uses_fast_interval_after_acceleration(void) {
+	pad.is_pressed = BTN_DPAD_DOWN;
+	pad.repeat_at[BTN_ID_DPAD_DOWN] = 2000;
+	pad.hold_start[BTN_ID_DPAD_DOWN] = 0; // Held for 2000ms (> 1500ms threshold)
+
+	PAD_handleRepeat(2000);
+
+	// Next repeat should be at 2000 + PAD_REPEAT_FAST_INTERVAL (50ms)
+	TEST_ASSERT_EQUAL_UINT32(2050, pad.repeat_at[BTN_ID_DPAD_DOWN]);
+}
+
+void test_PAD_handleRepeat_ignores_unpressed_buttons(void) {
+	pad.is_pressed = BTN_NONE;
+	pad.repeat_at[BTN_ID_DPAD_UP] = 1000;
+
+	PAD_handleRepeat(1000);
+
+	TEST_ASSERT_FALSE(pad.just_repeated & BTN_DPAD_UP);
+}
+
+void test_PAD_handleRepeat_handles_multiple_buttons(void) {
+	pad.is_pressed = BTN_DPAD_UP | BTN_DPAD_DOWN;
+	pad.repeat_at[BTN_ID_DPAD_UP] = 1000;
+	pad.repeat_at[BTN_ID_DPAD_DOWN] = 1000;
+	pad.hold_start[BTN_ID_DPAD_UP] = 700;
+	pad.hold_start[BTN_ID_DPAD_DOWN] = 700;
+
+	PAD_handleRepeat(1000);
+
+	TEST_ASSERT_TRUE(pad.just_repeated & BTN_DPAD_UP);
+	TEST_ASSERT_TRUE(pad.just_repeated & BTN_DPAD_DOWN);
+}
+
+///////////////////////////////
+// PAD_updateButton tests
+///////////////////////////////
+
+void test_PAD_updateButton_press_sets_all_flags(void) {
+	uint32_t tick = 1000;
+
+	PAD_updateButton(BTN_A, 1, tick);
+
+	TEST_ASSERT_TRUE(pad.is_pressed & BTN_A);
+	TEST_ASSERT_TRUE(pad.just_pressed & BTN_A);
+	TEST_ASSERT_TRUE(pad.just_repeated & BTN_A);
+	TEST_ASSERT_EQUAL_UINT32(tick + PAD_REPEAT_DELAY, pad.repeat_at[BTN_ID_A]);
+	TEST_ASSERT_EQUAL_UINT32(tick, pad.hold_start[BTN_ID_A]);
+}
+
+void test_PAD_updateButton_release_clears_flags(void) {
+	// First press the button
+	pad.is_pressed = BTN_B;
+	pad.just_repeated = BTN_B;
+	pad.hold_start[BTN_ID_B] = 500;
+
+	PAD_updateButton(BTN_B, 0, 1000);
+
+	TEST_ASSERT_FALSE(pad.is_pressed & BTN_B);
+	TEST_ASSERT_FALSE(pad.just_repeated & BTN_B);
+	TEST_ASSERT_TRUE(pad.just_released & BTN_B);
+	TEST_ASSERT_EQUAL_UINT32(0, pad.hold_start[BTN_ID_B]);
+}
+
+void test_PAD_updateButton_ignores_BTN_NONE(void) {
+	pad.is_pressed = BTN_NONE;
+	pad.just_pressed = BTN_NONE;
+
+	PAD_updateButton(BTN_NONE, 1, 1000);
+
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.is_pressed);
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.just_pressed);
+}
+
+void test_PAD_updateButton_ignores_already_pressed(void) {
+	pad.is_pressed = BTN_X;
+	pad.just_pressed = BTN_NONE;
+	pad.repeat_at[BTN_ID_X] = 500; // Original repeat time
+
+	PAD_updateButton(BTN_X, 1, 1000);
+
+	// Should not update just_pressed or repeat_at
+	TEST_ASSERT_EQUAL_INT(BTN_NONE, pad.just_pressed);
+	TEST_ASSERT_EQUAL_UINT32(500, pad.repeat_at[BTN_ID_X]);
+}
+
+void test_PAD_updateButton_handles_dpad_buttons(void) {
+	uint32_t tick = 2000;
+
+	PAD_updateButton(BTN_DPAD_LEFT, 1, tick);
+
+	TEST_ASSERT_TRUE(pad.is_pressed & BTN_DPAD_LEFT);
+	TEST_ASSERT_EQUAL_UINT32(tick + PAD_REPEAT_DELAY, pad.repeat_at[BTN_ID_DPAD_LEFT]);
+	TEST_ASSERT_EQUAL_UINT32(tick, pad.hold_start[BTN_ID_DPAD_LEFT]);
+}
+
+void test_PAD_updateButton_release_preserves_other_buttons(void) {
+	// Multiple buttons pressed
+	pad.is_pressed = BTN_A | BTN_B | BTN_X;
+	pad.just_repeated = BTN_A | BTN_B;
+
+	// Release only BTN_B
+	PAD_updateButton(BTN_B, 0, 1000);
+
+	TEST_ASSERT_TRUE(pad.is_pressed & BTN_A);
+	TEST_ASSERT_FALSE(pad.is_pressed & BTN_B);
+	TEST_ASSERT_TRUE(pad.is_pressed & BTN_X);
+	TEST_ASSERT_TRUE(pad.just_repeated & BTN_A);
+	TEST_ASSERT_FALSE(pad.just_repeated & BTN_B);
+}
+
+///////////////////////////////
 // Test runner
 ///////////////////////////////
 
@@ -380,6 +548,25 @@ int main(void) {
 	RUN_TEST(test_PAD_tappedMenu_ignores_held_menu_button);
 	RUN_TEST(test_PAD_tappedMenu_ignores_brightness_adjustment);
 	RUN_TEST(test_PAD_tappedMenu_returns_false_when_menu_still_held);
+
+	// PAD_beginPolling tests
+	RUN_TEST(test_PAD_beginPolling_clears_transient_state);
+
+	// PAD_handleRepeat tests
+	RUN_TEST(test_PAD_handleRepeat_sets_just_repeated_when_time_elapsed);
+	RUN_TEST(test_PAD_handleRepeat_does_not_repeat_before_time);
+	RUN_TEST(test_PAD_handleRepeat_uses_normal_interval_before_acceleration);
+	RUN_TEST(test_PAD_handleRepeat_uses_fast_interval_after_acceleration);
+	RUN_TEST(test_PAD_handleRepeat_ignores_unpressed_buttons);
+	RUN_TEST(test_PAD_handleRepeat_handles_multiple_buttons);
+
+	// PAD_updateButton tests
+	RUN_TEST(test_PAD_updateButton_press_sets_all_flags);
+	RUN_TEST(test_PAD_updateButton_release_clears_flags);
+	RUN_TEST(test_PAD_updateButton_ignores_BTN_NONE);
+	RUN_TEST(test_PAD_updateButton_ignores_already_pressed);
+	RUN_TEST(test_PAD_updateButton_handles_dpad_buttons);
+	RUN_TEST(test_PAD_updateButton_release_preserves_other_buttons);
 
 	return UNITY_END();
 }

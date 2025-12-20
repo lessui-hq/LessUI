@@ -1,0 +1,98 @@
+#!/bin/sh
+# Disable WiFi service
+
+BIN_DIR="$(dirname "$0")"
+PAK_DIR="$(dirname "$BIN_DIR")"
+
+export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
+export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
+
+main() {
+	# Handle platform alias
+	if [ "$PLATFORM" = "tg3040" ] && [ -z "$DEVICE" ]; then
+		export DEVICE="brick"
+		export PLATFORM="tg5040"
+	fi
+
+	echo "Preparing to disable wifi..."
+
+	# Update system.json for platforms that use it
+	case "$PLATFORM" in
+		miyoomini | my282 | my355 | tg5040)
+			case "$PLATFORM" in
+				miyoomini) SYSTEM_JSON_PATH="/appconfigs/system.json" ;;
+				my282) SYSTEM_JSON_PATH="/config/system.json" ;;
+				my355) SYSTEM_JSON_PATH="/userdata/system.json" ;;
+				*) SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
+			esac
+
+			[ ! -f "$SYSTEM_JSON_PATH" ] && echo '{"wifi": 0}' >"$SYSTEM_JSON_PATH"
+			[ ! -s "$SYSTEM_JSON_PATH" ] && echo '{"wifi": 0}' >"$SYSTEM_JSON_PATH"
+
+			if [ -x /usr/trimui/bin/systemval ]; then
+				/usr/trimui/bin/systemval wifi 0
+			else
+				jq '.wifi = 0' "$SYSTEM_JSON_PATH" >"/tmp/system.json.tmp"
+				mv "/tmp/system.json.tmp" "$SYSTEM_JSON_PATH"
+			fi
+			;;
+	esac
+
+	# Stop wpa_supplicant
+	if pgrep wpa_supplicant >/dev/null 2>&1; then
+		echo "Stopping wpa_supplicant..."
+		/etc/init.d/wpa_supplicant stop 2>/dev/null || true
+		systemctl stop wpa_supplicant 2>/dev/null || true
+		killall -9 wpa_supplicant 2>/dev/null || true
+	fi
+
+	# Stop DHCP client on miyoomini
+	if [ "$PLATFORM" = "miyoomini" ]; then
+		killall udhcpc 2>/dev/null || true
+	fi
+
+	# Mark interface down if it's not already down
+	if [ -d /sys/class/net/wlan0 ]; then
+		operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+		if [ "$operstate" != "down" ]; then
+			echo "Marking wlan0 interface down..."
+			if [ "$PLATFORM" = "rg35xxplus" ]; then
+				ip link set wlan0 down 2>/dev/null || true
+			else
+				ifconfig wlan0 down 2>/dev/null || true
+			fi
+		fi
+	fi
+
+	# Block wireless if rfkill available
+	if command -v rfkill >/dev/null 2>&1; then
+		current_state="$(rfkill list wifi 2>/dev/null | grep 'blocked:' | head -1)"
+		if ! echo "$current_state" | grep -q "blocked: yes"; then
+			echo "Blocking wireless..."
+			rfkill block wifi 2>/dev/null || true
+		fi
+	fi
+
+	# Turn off WiFi power on miyoomini
+	if [ -f /customer/app/axp_test ]; then
+		/customer/app/axp_test wifioff
+	fi
+
+	# Reset wpa_supplicant config to template
+	template_file="$PAK_DIR/res/wpa_supplicant.conf.tmpl"
+	if [ -f "$PAK_DIR/res/wpa_supplicant.conf.$PLATFORM.tmpl" ]; then
+		template_file="$PAK_DIR/res/wpa_supplicant.conf.$PLATFORM.tmpl"
+	fi
+	cp "$template_file" "$PAK_DIR/res/wpa_supplicant.conf"
+
+	# Clean up rg35xxplus netplan
+	if [ "$PLATFORM" = "rg35xxplus" ]; then
+		rm -f /etc/netplan/01-netcfg.yaml
+		netplan apply 2>/dev/null || true
+		systemctl stop systemd-networkd 2>/dev/null || true
+	fi
+
+	return 0
+}
+
+main "$@"

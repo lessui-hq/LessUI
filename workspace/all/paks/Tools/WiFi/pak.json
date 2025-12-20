@@ -1,0 +1,10 @@
+{
+  "name": "WiFi",
+  "type": "tool",
+  "description": "Manage WiFi settings",
+  "version": "1.0.0",
+
+  "platforms": ["miyoomini", "my282", "my355", "rg35xxplus", "tg5040"],
+
+  "launch": "launch.sh"
+}

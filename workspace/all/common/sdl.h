@@ -66,6 +66,25 @@
 		}                                                                                          \
 	} while (0);
 
+/**
+ * Set surface alpha modulation for fade effects.
+ * Always sets alpha mod even for surfaces with alpha channels (PNGs).
+ * Use this for fade-in/fade-out effects on loaded images.
+ *
+ * @param surface SDL surface to modify
+ * @param value Alpha value (0-255)
+ */
+#define SDLX_SetAlphaMod(surface, value)                                                           \
+	do {                                                                                           \
+		SDL_SetSurfaceAlphaMod(surface, value);                                                    \
+		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_BLEND);                                     \
+	} while (0);
+
+/**
+ * Check if surface alpha modulation is supported on this SDL version.
+ */
+#define SDLX_SupportsSurfaceAlphaMod() 1
+
 ///////////////////////////////
 // SDL 1.2 configuration
 ///////////////////////////////
@@ -85,6 +104,19 @@
  * SDL 1.2 uses SDL_SetAlpha() directly.
  */
 #define SDLX_SetAlpha SDL_SetAlpha
+
+/**
+ * SDL 1.2 version of SDLX_SetAlphaMod.
+ * SDL 1.2 does not support surface-level alpha modulation for RGBA surfaces.
+ * This is a no-op - fade effects are not supported on SDL 1.2.
+ */
+#define SDLX_SetAlphaMod(surface, value) ((void)(surface), (void)(value))
+
+/**
+ * Check if surface alpha modulation is supported on this SDL version.
+ * SDL 1.2 does not support surface alpha modulation for RGBA surfaces.
+ */
+#define SDLX_SupportsSurfaceAlphaMod() 0
 
 #endif
 

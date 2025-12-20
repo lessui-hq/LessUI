@@ -14,10 +14,10 @@ Platform implementation for the Trimui Smart retro handheld device.
 
 ### SoC & Architecture
 - **SoC**: Allwinner F1C100s
-- **CPU**: ARM926EJ-S (single core)
+- **CPU**: ARM926EJ-S (ARMv5 single core)
 - **Memory Allocator**: ION (In-kernel Out-of-Nexus) for contiguous DMA buffers
 - **Display Layers**: Multi-channel composition (video scaling + UI overlay)
-- **NEON**: Supported (ARM NEON SIMD optimizations available)
+- **NEON**: Not supported (ARM926EJ-S lacks NEON SIMD - requires ARMv7-A or later)
 
 ### Input
 - **D-Pad**: Up, Down, Left, Right
@@ -63,8 +63,8 @@ trimuismart/
 │   ├── sunxi_display2.h  Allwinner DE2 ioctl definitions
 │   ├── ion.h          ION memory allocator interface
 │   ├── ion_sunxi.h    Allwinner-specific ION extensions
-│   ├── makefile.env   Environment variables for build
-│   └── makefile.copy  File installation rules
+│   ├── Makefile.env   Environment variables for build
+│   └── Makefile.copy  File installation rules
 ├── keymon/            Hardware button monitoring daemon
 │   └── keymon.c       Volume/brightness control via button combos
 ├── libmsettings/      Settings library (volume, brightness, jack detection)
@@ -80,8 +80,7 @@ trimuismart/
 ├── cores/             Libretro cores (submodules + builds)
 │   └── makefile       12 cores: NES, GB/GBC, GBA, PSX, Genesis, SNES, etc.
 └── other/             Third-party dependencies
-    ├── DinguxCommander/  File manager (trimui-smart branch)
-    └── unzip60/          Unzip utility for update extraction
+    └── DinguxCommander/  File manager (trimui-smart branch)
 ```
 
 ## Input System
@@ -145,14 +144,12 @@ make
 # - keymon (button monitoring daemon)
 # - libmsettings (settings library with DE2 brightness control)
 # - DinguxCommander (file manager)
-# - unzip60 (update extraction utility)
 # - All libretro cores in cores/
 ```
 
 ### Dependencies
 The platform automatically clones required dependencies on first build:
 - **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `trimui-smart`)
-- **unzip60**: `github.com/shauninman/unzip60.git` (custom makefile for Trimui Smart)
 
 Note: Unlike most platforms, Trimui Smart has no SDL dependency in its platform makefile (SDL is pre-installed in stock firmware).
 
@@ -169,30 +166,29 @@ LessUI installs to the SD card with the following structure:
 │   │   ├── bin/              Utilities (keymon, etc.)
 │   │   │   └── install.sh    Post-update installation script
 │   │   └── paks/             Applications and emulators
-│   │       └── LessUI.pak/    Main launcher
+│   │       └── LessUI.pak/     Main launcher
 │   └── res/                  Shared UI assets
 │       ├── assets.png        UI sprite sheet (1x scale, 320x240)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── .tmp_update/              Update staging area
 │   └── trimuismart/          Platform boot components
 │       ├── show.elf          Splash screen display
 │       ├── installing.png    Initial install splash
 │       ├── updating.png      Update splash
-│       ├── unzip             Update extraction utility
 │       └── leds_off          LED control utility
 ├── Roms/                     ROM files organized by system
-└── LessUI.zip                 Update package (if present)
+└── LessUI.7z                 Update package (if present)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `trimuismart.sh` from `.tmp_update/`
 2. Script sets CPU governor to "performance" mode
-3. If `LessUI.zip` exists:
+3. If `LessUI.7z` exists:
    - Turn off LEDs (`leds_off`)
    - Display `installing.png` (first install) or `updating.png` (update)
-   - Extract `LessUI.zip` to SD card using custom `unzip` utility
-   - Delete `LessUI.zip` after successful extraction
+   - Extract `LessUI.7z` to SD card
+   - Delete `LessUI.7z` after successful extraction
    - Run `.system/trimuismart/bin/install.sh` to complete setup
 4. Launch LessUI via `.system/trimuismart/paks/LessUI.pak/launch.sh`
 5. If launcher exits, poweroff device (prevents stock firmware from accessing card)
@@ -200,10 +196,10 @@ LessUI installs to the SD card with the following structure:
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in SD card root
+1. Place `LessUI.7z` in SD card root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 
 ## Platform-Specific Features
 
@@ -341,7 +337,7 @@ The Trimui Smart supports 12 libretro cores:
 | pokemini | Pokemon Mini | Pokemon Mini handheld |
 | race | Neo Geo Pocket | Neo Geo Pocket / Pocket Color |
 
-**Note**: fake-08 (PICO-8) is commented out in the cores makefile.
+**Note**: fake-08 (PICO-8) is commented out in the cores Makefile.
 
 ## Known Issues / Quirks
 
@@ -361,7 +357,7 @@ The Trimui Smart supports 12 libretro cores:
 
 ### Development Notes
 1. **No L3/R3**: Platform lacks clickable analog sticks
-2. **NEON Optimizations**: Platform supports ARM NEON SIMD - use `HAS_NEON` define
+2. **No NEON**: ARM926EJ-S does not support NEON SIMD (requires ARMv7-A+) - avoid NEON-specific optimizations
 3. **Simple Keymon**: Simpler than other platforms (no jack detection, no HDMI, no power monitoring)
 4. **Shutdown on Exit**: Boot script forces poweroff if LessUI exits (prevents stock firmware access)
 5. **SDL Pre-installed**: Stock firmware provides SDL libraries (no SDL build needed)
@@ -393,7 +389,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Display engine: `./platform/platform.c` (DE2 implementation details)

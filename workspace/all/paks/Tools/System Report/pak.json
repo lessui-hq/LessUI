@@ -1,0 +1,27 @@
+{
+  "name": "System Report",
+  "type": "tool",
+  "description": "Comprehensive system report with hardware discovery and CPU performance benchmarking",
+  "version": "2.0.0",
+
+  "platforms": [
+    "miyoomini",
+    "trimuismart",
+    "rg35xx",
+    "rg35xxplus",
+    "my355",
+    "tg5040",
+    "zero28",
+    "rgb30",
+    "m17",
+    "my282",
+    "magicmini"
+  ],
+
+  "build": {
+    "type": "native",
+    "binary": "benchmark.elf"
+  },
+
+  "launch": "launch.sh"
+}

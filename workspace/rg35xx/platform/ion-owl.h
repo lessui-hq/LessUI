@@ -35,6 +35,8 @@
 
 #include <linux/types.h>
 
+typedef int ion_user_handle_t;
+
 /**
  * struct owl_ion_phys_data - Physical address query for ION buffer
  *

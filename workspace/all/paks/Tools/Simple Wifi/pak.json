@@ -1,0 +1,14 @@
+{
+  "name": "Simple Wifi",
+  "type": "tool",
+  "description": "Simple WiFi toggle using stock firmware utilities",
+  "version": "1.0.0",
+
+  "platforms": ["rgb30"],
+
+  "build": {
+    "type": "shell-only"
+  },
+
+  "launch": "launch.sh"
+}

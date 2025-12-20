@@ -12,7 +12,8 @@ Platform implementation for the M17 retro handheld device.
 ## Hardware Specifications
 
 ### Display
-- **Resolution**: 480x273 (16:9 widescreen)
+- **Resolution**: 480x272 (16:9 widescreen)
+- **Diagonal**: 4.3 inches
 - **Color Depth**: 16-bit RGB565
 - **UI Scale**: 1x (uses `assets.png`)
 - **Aspect Ratio**: 16:9 widescreen format
@@ -27,15 +28,19 @@ Platform implementation for the M17 retro handheld device.
   - Two MENU buttons (primary + alternate)
 
 ### Input Method
-- **Primary**: Hybrid input (SDL keyboard + joystick)
-- **SDL Keyboard**: Face/shoulder buttons and D-pad
-- **Joystick**: All buttons duplicated as joystick indices
-- **Evdev Codes**: Not used (all CODE_* values are CODE_NA)
+- **Primary**: Evdev input events (direct reading from `/dev/input/event*`)
+- **Implementation**: Reads raw `input_event` structures, not SDL APIs
+- **Notable**: SDL keyboard/joystick constants in platform.h are unused
+- **Analog Sticks**: Supported via EV_ABS events
 
 ### CPU & Performance
-- ARM processor with potential NEON SIMD support (HAS_NEON defined)
+- **SoC**: Rockchip RK3126C
+- **CPU**: 4x Cortex-A7 @ 1.2 GHz (fixed frequency, no scaling)
+- **GPU**: Mali 400 @ 480 MHz (fixed frequency, no scaling)
+- **RAM**: ~240 MB
+- ARM NEON SIMD support (HAS_NEON defined)
 - Supports CPU affinity pinning (taskset 8 for core 3)
-- No overclocking utilities included
+- **Note**: CPU/GPU frequency scaling is not available on this device
 
 ### Power Management
 - Headphone jack detection via sysfs (`/sys/devices/virtual/switch/h2w/state`)
@@ -44,6 +49,7 @@ Platform implementation for the M17 retro handheld device.
 
 ### Storage
 - SD card mounted at `/sdcard`
+- **Important:** SD card must be formatted as **exFAT** (FAT32 will not work)
 
 ## Directory Structure
 
@@ -165,23 +171,23 @@ LessUI installs to the SD card with the following structure:
 │   │       └── LessUI.pak/  Main launcher
 │   └── res/                Shared UI assets
 │       ├── assets.png      UI sprite sheet (1x scale)
-│       └── BPreplayBold-unhinted.otf
+│       └── InterTight-Bold.ttf
 ├── em_ui.sh                Boot script (LessUI entry point)
 ├── Roms/                   ROM files organized by system
-├── LessUI.zip               Update package (if present)
+├── LessUI.7z               Update package (if present)
 └── log.txt                 Installation/update log (optional)
 ```
 
 ### Boot Process
 
 1. Device boots and runs `/sdcard/em_ui.sh` (LessUI's boot.sh)
-2. Script checks for `LessUI.zip` on SD card root
-3. If ZIP found:
+2. Script checks for `LessUI.7z` on SD card root
+3. If archive found:
    - Initialize framebuffer (`/dev/fb0`)
    - Extract embedded splash images from boot script using `uudecode`
    - Display `installing` (first install) or `updating` (update) to framebuffer
-   - Extract `LessUI.zip` to `/sdcard`
-   - Delete ZIP file
+   - Extract `LessUI.7z` to `/sdcard`
+   - Delete archive
    - Run `.system/m17/bin/install.sh` to complete setup:
      - Extract `extra-libs.tar` to `.system/m17/lib/`
      - Copy updated boot script to `/sdcard/em_ui.sh`
@@ -203,10 +209,10 @@ This allows splash images to be embedded directly in the boot script without req
 ### Update Process
 
 To update LessUI on device:
-1. Place `LessUI.zip` in `/sdcard/` root
+1. Place `LessUI.7z` in `/sdcard/` root
 2. Reboot device
-3. Boot script auto-detects ZIP and performs update
-4. ZIP is deleted after successful extraction
+3. Boot script auto-detects archive and performs update
+4. Archive is deleted after successful extraction
 5. Updated boot script replaces `/sdcard/em_ui.sh`
 
 ## Platform-Specific Features
@@ -376,7 +382,7 @@ When testing changes:
 
 - Main project docs: `../../README.md`
 - Platform abstraction: `../../all/common/defines.h`
-- Shared code: `../../all/minui/minui.c` (launcher), `../../all/minarch/minarch.c` (libretro frontend)
+- Shared code: `../../all/launcher/launcher.c` (launcher), `../../all/player/player.c` (libretro frontend)
 - Build system: `../../Makefile` (host), `./makefile` (platform)
 - Platform header: `./platform/platform.h` (all hardware definitions)
 - Boot image notes: `./boot/notes.txt` (framebuffer and boot logo details)

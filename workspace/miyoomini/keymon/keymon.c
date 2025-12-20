@@ -36,6 +36,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <signal.h>
 #include <linux/input.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
@@ -46,6 +47,8 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <pthread.h>
+
+#include "../../all/common/log.h"
 
 // Button code definitions (from Linux input.h)
 #define	BUTTON_MENU		KEY_ESC
@@ -77,12 +80,23 @@
 #define START		(1<<START_BIT)
 
 // Debug error handling
-//#define	DEBUG
-#ifdef	DEBUG
-#define ERROR(str)	fprintf(stderr,str"\n"); quit(EXIT_FAILURE)
+// #define DEBUG  // Replaced with LOG system
+#if 0  // Replaced with LOG system
+#define ERROR(str) do { LOG_error(str); quit(EXIT_FAILURE); } while(0)
 #else
-#define ERROR(str)	quit(EXIT_FAILURE)
+#define ERROR(str) do { LOG_error(str); quit(EXIT_FAILURE); } while(0)
 #endif
+
+// Shutdown flag for clean exit
+static volatile sig_atomic_t running = 1;
+
+/**
+ * Signal handler for clean shutdown.
+ */
+static void handle_signal(int sig) {
+	(void)sig;
+	running = 0;
+}
 
 // Miyoo Mini Plus AXP223 PMIC I2C configuration (via eggs)
 #define	AXPDEV	"/dev/i2c-1"
@@ -106,6 +120,8 @@ int axp_write(unsigned char address, unsigned char val) {
 	unsigned char buf[2];
 	int ret;
 	int fd = open(AXPDEV, O_RDWR);
+	if (fd < 0)
+		return -1;
 	ioctl(fd, I2C_TIMEOUT, 5);
 	ioctl(fd, I2C_RETRIES, 1);
 
@@ -150,6 +166,8 @@ int axp_read(unsigned char address) {
 	unsigned char val;
 	int ret;
 	int fd = open(AXPDEV, O_RDWR);
+	if (fd < 0)
+		return -1;
 	ioctl(fd, I2C_TIMEOUT, 5);
 	ioctl(fd, I2C_RETRIES, 1);
 
@@ -188,7 +206,7 @@ static int eased_charge = 0;          // Smoothed battery percentage
 static int sar_fd = 0;                // SAR ADC file descriptor
 static struct input_event	ev;
 static int	input_fd = 0;
-static pthread_t adc_pt;              // Battery monitoring thread
+static pthread_t check_pt;            // Background monitoring thread
 
 /**
  * Clean shutdown handler.
@@ -198,12 +216,13 @@ static pthread_t adc_pt;              // Battery monitoring thread
  * @param exitcode Exit status code
  */
 void quit(int exitcode) {
-	pthread_cancel(adc_pt);
-	pthread_join(adc_pt, NULL);
+	pthread_cancel(check_pt);
+	pthread_join(check_pt, NULL);
 	QuitSettings();
 
 	if (input_fd > 0) close(input_fd);
 	if (sar_fd > 0) close(sar_fd);
+	log_close();
 	exit(exitcode);
 }
 
@@ -243,23 +262,40 @@ static int getADCValue(void) {
 }
 
 /**
- * Checks if device is currently charging.
+ * Reads an integer from a sysfs path.
  *
- * On Miyoo Mini Plus: Reads AXP223 register 0x00 bit2 (charging status).
- * On standard Miyoo Mini: Reads GPIO59 value.
- *
- * @return 1 if charging, 0 if not charging
+ * @param path Path to sysfs file
+ * @return Integer value read, or 0 on failure
  */
+static int getInt(const char* path) {
+	int i = 0;
+	FILE *file = fopen(path, "r");
+	if (file != NULL) {
+		fscanf(file, "%i", &i);
+		fclose(file);
+	}
+	return i;
+}
+
+/**
+ * Writes an integer to a sysfs path.
+ *
+ * @param path Path to sysfs file
+ * @param i Integer value to write
+ */
+static void putInt(const char* path, int i) {
+	int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC);
+	if (fd < 0) return;
+
+	char buffer[16];
+	int len = snprintf(buffer, sizeof(buffer), "%d", i);
+	if (len > 0) write(fd, buffer, len);
+	close(fd);
+}
+
 static int isCharging(void) {
 	if (is_plus) return (axp_read(0x00) & 0x4) > 0;
-
-    int i = 0;
-    FILE *file = fopen("/sys/devices/gpiochip0/gpio/gpio59/value", "r");
-    if (file!=NULL) {
-        fscanf(file, "%i", &i);
-        fclose(file);
-    }
-	return i;
+	return getInt("/sys/devices/gpiochip0/gpio/gpio59/value");
 }
 
 /**
@@ -279,7 +315,7 @@ static void initADC(void) {
  *
  * Reads current battery percentage and charging state, applies easing
  * to smooth out fluctuations (1% per call), and writes the result to
- * /tmp/battery for use by MinUI.
+ * /tmp/battery for use by Launcher.
  *
  * Easing is reset on first run or when transitioning from charging to
  * not charging (to quickly reflect fully charged state).
@@ -289,6 +325,22 @@ static void checkADC(void) {
 	is_charging = isCharging();
 
 	int current_charge = getADCValue();
+
+	// Log battery warnings
+	static int last_warn = 100;  // Initialize to high value, shared across calls
+	if (!is_charging) {
+		if (current_charge <= 5) {
+			LOG_warn("Battery critically low: %d%%", current_charge);
+		} else if (current_charge <= 10) {
+			if (current_charge < last_warn) {  // Only warn when dropping
+				LOG_warn("Battery low: %d%%", current_charge);
+				last_warn = current_charge;
+			}
+		}
+	} else {
+		// Reset warning threshold when charging
+		last_warn = 100;
+	}
 
 	static int first_run = 1;
 	if (first_run || (was_charging && !is_charging)) {
@@ -307,28 +359,61 @@ static void checkADC(void) {
 		if (eased_charge<0) eased_charge = 0;
 	}
 
-	// Write battery percentage to file for MinUI to read
-	int bat_fd = open("/tmp/battery", O_CREAT | O_WRONLY | O_TRUNC);
-	if (bat_fd>0) {
-		char value[3];
-		sprintf(value, "%d", eased_charge);
-		write(bat_fd, value, strlen(value));
-		close(bat_fd);
+	// Write battery percentage to file for Launcher to read
+	putInt("/tmp/battery", eased_charge);
+}
+
+/**
+ * Checks USB audio state on Mini Flip.
+ *
+ * On Mini Flip, GPIO45 indicates speaker (1) or USB audio (0) mode.
+ * GPIO44 controls speaker mute (0=mute, 1=on).
+ * Updates headphone jack state in settings when audio output changes.
+ */
+#define LID_PATH "/sys/devices/soc0/soc/soc:hall-mh248/hallvalue"
+static void checkUSB(void) {
+	static int init = 0;
+	static int is_flip;
+	if (!init) {
+		is_flip = access(LID_PATH, F_OK) == 0;
+		int has_gpio = access("/sys/class/gpio/gpio45/value", F_OK) == 0;
+		if (!has_gpio) putInt("/sys/class/gpio/export", 45);
+		init = 1;
+	}
+	if (!is_flip) return;
+
+	static int last_state = -1;
+	int current_state = getInt("/sys/class/gpio/gpio45/value");
+	if (last_state == -1 || current_state != last_state) {
+		last_state = current_state;
+		putInt("/sys/class/gpio/gpio44/value", current_state);
+		SetJack(!current_state);
 	}
 }
 
 /**
- * Background thread for battery monitoring.
+ * Background thread for periodic hardware checks.
  *
- * Updates battery status every 5 seconds.
+ * Runs checkUSB every 500ms (USB audio detection) and checkADC every 5 seconds
+ * (battery monitoring).
  *
  * @param arg Thread argument (unused)
  * @return Never returns (runs infinite loop)
  */
-static void* runADC(void *arg) {
-	while(1) {
-		sleep(5);
-		checkADC();
+static void* runChecks(void *arg) {
+	static int ticks = 0;
+	while (1) {
+		usleep(500000);
+
+		// every half second
+		checkUSB();
+		ticks += 1;
+
+		// every 5 seconds
+		if (ticks == 10) {
+			checkADC();
+			ticks = 0;
+		}
 	}
 	return 0;
 }
@@ -356,13 +441,21 @@ static void* runADC(void *arg) {
  * @return Never returns (runs infinite loop)
  */
 int main (int argc, char *argv[]) {
-	// Initialize battery monitoring
+	// Initialize logging (reads LOG_FILE environment variable)
+	log_open(NULL);
+
+	// Register signal handlers for clean shutdown
+	signal(SIGTERM, handle_signal);
+	signal(SIGINT, handle_signal);
+
+	// Initialize settings first (needed for checkUSB to call SetJack)
+	InitSettings();
+
+	// Initialize battery and USB audio monitoring
 	initADC();
 	checkADC();
-	pthread_create(&adc_pt, NULL, &runADC, NULL);
-
-	// Initialize settings (volume/brightness)
-	InitSettings();
+	checkUSB();
+	pthread_create(&check_pt, NULL, &runChecks, NULL);
 
 	input_fd = open("/dev/input/event0", O_RDONLY);
 
@@ -391,7 +484,7 @@ int main (int argc, char *argv[]) {
 			break;
 		case BUTTON_SELECT:
 			// Update SELECT bit in button_flag (ignore REPEAT)
-			if ( val != REPEAT ) button_flag = button_flag & (~SELECT) | (val<<SELECT_BIT);
+			if ( val != REPEAT ) button_flag = (button_flag & (~SELECT)) | (val<<SELECT_BIT);
 			// if (val) {
 			// 	static int tick = 0;
 			// 	char cmd[256];
@@ -405,7 +498,7 @@ int main (int argc, char *argv[]) {
 			break;
 		case BUTTON_START:
 			// Update START bit in button_flag (ignore REPEAT)
-			if ( val != REPEAT ) button_flag = button_flag & (~START) | (val<<START_BIT);
+			if ( val != REPEAT ) button_flag = (button_flag & (~START)) | (val<<START_BIT);
 			break;
 		case BUTTON_L1:
 		case BUTTON_L2:
@@ -472,5 +565,11 @@ int main (int argc, char *argv[]) {
 			while (1) pause();  // Wait for shutdown to complete
 		}
 	}
+
+	// Check if we exited due to signal (clean shutdown)
+	if (!running) {
+		quit(EXIT_SUCCESS);
+	}
+
 	ERROR("Failed to read input event");
 }

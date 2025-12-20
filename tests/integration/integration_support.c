@@ -39,7 +39,7 @@ static int mkdir_recursive(const char* path) {
 	return 1;
 }
 
-char* create_test_minui_structure(char* template) {
+char* create_test_launcher_structure(char* template) {
 	// Create temp directory
 	if (!mkdtemp(template))
 		return NULL;
@@ -52,8 +52,8 @@ char* create_test_minui_structure(char* template) {
 	if (!mkdir_recursive(path))
 		return NULL;
 
-	// .userdata/.minui directory
-	snprintf(path, sizeof(path), "%s/.userdata/.minui", template);
+	// .userdata/.launcher directory
+	snprintf(path, sizeof(path), "%s/.userdata/.launcher", template);
 	if (!mkdir_recursive(path))
 		return NULL;
 
