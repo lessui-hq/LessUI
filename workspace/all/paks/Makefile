@@ -1,4 +1,4 @@
-# workspace/all/paks/makefile
+# workspace/all/paks/Makefile
 # Orchestrates all pak builds using a standard hook interface
 #
 # Directory structure:
@@ -13,8 +13,8 @@
 #   clean   - Clean build artifacts
 #
 # Paks implement hooks either:
-#   - In pak root makefile (e.g., HTTP File Server/makefile)
-#   - In src/makefile (e.g., Clock/src/makefile)
+#   - In pak root Makefile (e.g., HTTP File Server/Makefile)
+#   - In src/Makefile (e.g., Clock/src/Makefile)
 
 # Suppress "Entering/Leaving directory" messages
 MAKEFLAGS += --no-print-directory
@@ -30,7 +30,7 @@ BUILD_DIR := $(realpath $(DESTDIR)/../../..)
 
 .PHONY: setup build install clean all
 
-# Default target when called from workspace/makefile (per-platform build)
+# Default target when called from workspace/Makefile (per-platform build)
 all: build
 
 # Setup hook - runs once before any platform builds
@@ -42,9 +42,9 @@ setup:
 	@# Run tool pak setup hooks
 	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
-		if [ -f "$$pak/makefile" ]; then \
+		if [ -f "$$pak/Makefile" ]; then \
 			$(MAKE) -C "$$pak" setup "DESTDIR=$(DESTDIR)"; \
-		elif [ -f "$$pak/src/makefile" ]; then \
+		elif [ -f "$$pak/src/Makefile" ]; then \
 			$(MAKE) -C "$$pak/src" setup "DESTDIR=$(DESTDIR)"; \
 		fi; \
 	done
@@ -54,7 +54,7 @@ setup:
 build:
 	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
-		if [ -f "$$pak/src/makefile" ]; then \
+		if [ -f "$$pak/src/Makefile" ]; then \
 			$(MAKE) -C "$$pak/src" build "PLATFORM=$(PLATFORM)"; \
 		fi; \
 	done
@@ -63,9 +63,9 @@ build:
 install:
 	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
-		if [ -f "$$pak/makefile" ]; then \
+		if [ -f "$$pak/Makefile" ]; then \
 			$(MAKE) -C "$$pak" install "PLATFORM=$(PLATFORM)" "DESTDIR=$(DESTDIR)"; \
-		elif [ -f "$$pak/src/makefile" ]; then \
+		elif [ -f "$$pak/src/Makefile" ]; then \
 			$(MAKE) -C "$$pak/src" install "PLATFORM=$(PLATFORM)" "DESTDIR=$(DESTDIR)"; \
 		fi; \
 	done
@@ -74,10 +74,10 @@ install:
 clean:
 	@for pak_dir in Tools/*/; do \
 		pak=$${pak_dir%/}; \
-		if [ -f "$$pak/makefile" ]; then \
+		if [ -f "$$pak/Makefile" ]; then \
 			$(MAKE) -C "$$pak" clean; \
 		fi; \
-		if [ -f "$$pak/src/makefile" ]; then \
+		if [ -f "$$pak/src/Makefile" ]; then \
 			$(MAKE) -C "$$pak/src" clean; \
 		fi; \
 	done

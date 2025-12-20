@@ -1,7 +1,7 @@
 # workspace/all/paks/pak.mk
 # Shared build configuration for native paks
 #
-# Usage in pak's src/makefile:
+# Usage in pak's src/Makefile:
 #   TARGET = clock
 #   include ../../../pak.mk
 
