@@ -1,4 +1,4 @@
-# Wifi.pak
+# WiFi.pak
 
 Manage WiFi settings on supported devices.
 
@@ -20,7 +20,7 @@ Manage WiFi settings on supported devices.
 
 ## Usage
 
-1. Launch Wifi.pak from Tools menu
+1. Launch WiFi.pak from Tools menu
 2. Enable WiFi toggle
 3. Select "Connect to network"
 4. Choose a network and enter password

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wifi.pak - Manage WiFi settings
+# WiFi.pak - Manage WiFi settings
 # Based on Jose Gonzalez's launcher-wifi-pak, adapted for LessUI cross-platform paks
 
 PAK_DIR="$(dirname "$0")"
@@ -38,9 +38,10 @@ show_message_wait() {
 }
 
 get_ssid_and_ip() {
-	# Check if wlan0 is up
-	enabled="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
-	[ "$enabled" != "up" ] && return
+	# Check if wlan0 interface exists and is not down
+	operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+	[ "$operstate" = "down" ] && return
+	[ -z "$operstate" ] && return
 
 	ssid=""
 	ip_address=""
@@ -49,8 +50,12 @@ get_ssid_and_ip() {
 		if [ "$PLATFORM" = "my355" ]; then
 			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
 			ip_address="$(wpa_cli -i wlan0 status 2>/dev/null | grep ip_address= | cut -d'=' -f2)"
-		else
+		elif command -v iw >/dev/null 2>&1; then
 			ssid="$(iw dev wlan0 link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')"
+			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+		else
+			# Fallback to wpa_cli if iw is not available
+			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
 			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
 		fi
 
@@ -136,6 +141,7 @@ write_config() {
 	fi
 
 	touch "$SDCARD_PATH/wifi.txt"
+	chmod 600 "$SDCARD_PATH/wifi.txt"
 	sed -i '/^$/d' "$SDCARD_PATH/wifi.txt" 2>/dev/null
 
 	if [ ! -s "$SDCARD_PATH/wifi.txt" ]; then
@@ -175,9 +181,12 @@ write_config() {
 			} >>"$PAK_DIR/res/wpa_supplicant.conf"
 
 			if [ "$PLATFORM" = "rg35xxplus" ]; then
+				# Escape quotes for YAML
+				escaped_ssid="$(echo "$ssid" | sed 's/"/\\"/g')"
+				escaped_psk="$(echo "$psk" | sed 's/"/\\"/g')"
 				{
-					echo "                \"$ssid\":"
-					echo "                    password: \"$psk\""
+					echo "                \"$escaped_ssid\":"
+					echo "                    password: \"$escaped_psk\""
 				} >>"$PAK_DIR/res/netplan.yaml"
 			fi
 		done <"$SDCARD_PATH/wifi.txt"
@@ -220,6 +229,9 @@ write_config() {
 wifi_on() {
 	echo "Preparing to toggle wifi on"
 
+	# Show progress immediately for better UX
+	shui progress "Connecting..." --indeterminate
+
 	if ! write_config "true"; then
 		return 1
 	fi
@@ -229,19 +241,21 @@ wifi_on() {
 	fi
 
 	if ! has_credentials; then
-		show_message_wait "No credentials found in wifi.txt"
+		show_message_wait "No networks configured"
 		return 0
 	fi
 
 	# Wait for connection (up to 30 seconds)
-	shui progress "Connecting..." --indeterminate
 	for _ in $(seq 1 30); do
 		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
 		sleep 1
 	done
 
-	[ "$STATUS" != "up" ] && return 1
+	if [ "$STATUS" != "up" ]; then
+		show_message_wait "Connection timed out. WiFi is enabled but not connected."
+		return 1
+	fi
 	return 0
 }
 
@@ -267,7 +281,7 @@ main_screen() {
 	rm -f "$launcher_list_file" "/tmp/launcher-output"
 	touch "$launcher_list_file"
 
-	template_file="$PAK_DIR/res/settings.json"
+	template_file="$PAK_DIR/res/settings.json.tmpl"
 
 	start_on_boot=false
 	will_start_on_boot && start_on_boot=true
@@ -275,16 +289,16 @@ main_screen() {
 	enabled=false
 	if "$PAK_DIR/bin/wifi-enabled"; then
 		enabled=true
-		template_file="$PAK_DIR/res/settings.enabled.json"
+		template_file="$PAK_DIR/res/settings.enabled.json.tmpl"
 	fi
 
 	ssid_and_ip="$(get_ssid_and_ip)"
 	if [ -n "$ssid_and_ip" ]; then
 		ssid="$(echo "$ssid_and_ip" | cut -f1)"
 		ip_address="$(echo "$ssid_and_ip" | cut -f2)"
-		template_file="$PAK_DIR/res/settings.connected.json"
+		template_file="$PAK_DIR/res/settings.connected.json.tmpl"
 		if [ "$ip_address" = "N/A" ]; then
-			template_file="$PAK_DIR/res/settings.no-ip.json"
+			template_file="$PAK_DIR/res/settings.no-ip.json.tmpl"
 		fi
 	fi
 
@@ -305,7 +319,7 @@ main_screen() {
 	sed -i "s/NETWORK_SSID/$ssid/" "$launcher_list_file"
 	sed -i "s/NETWORK_IP_ADDRESS/$ip_address/" "$launcher_list_file"
 
-	shui list --item-key settings --file "$launcher_list_file" --format json --confirm "Save" --cancel "Exit" --title "Wifi Configuration" --write-location /tmp/launcher-output --write-value state
+	shui list --item-key settings --file "$launcher_list_file" --format json --confirm "Save" --cancel "Exit" --title "WiFi Configuration" --write-location /tmp/launcher-output --write-value state
 }
 
 networks_screen() {
@@ -315,24 +329,36 @@ networks_screen() {
 
 	DELAY=30
 
+	# my355 uses wpa_cli, others use iw (with wpa_cli fallback)
+	scan_temp="/tmp/wifi-scan-results"
 	if [ "$PLATFORM" = "my355" ]; then
-		wpa_cli -i wlan0 scan
+		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
 		for _ in $(seq 1 "$DELAY"); do
 			shui progress "Scanning for networks..." --indeterminate
-			wpa_cli -i wlan0 scan_results | grep -v "ssid" | cut -f 5 | sort -u >>"$launcher_list_file"
-			[ -s "$launcher_list_file" ] && break
+			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+			[ -s "$scan_temp" ] && break
+			sleep 1
+		done
+	elif command -v iw >/dev/null 2>&1; then
+		for _ in $(seq 1 "$DELAY"); do
+			shui progress "Scanning for networks..." --indeterminate
+			timeout 10 iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >"$scan_temp"
+			[ -s "$scan_temp" ] && break
 			sleep 1
 		done
 	else
+		# Fallback to wpa_cli if iw is not available
+		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
 		for _ in $(seq 1 "$DELAY"); do
 			shui progress "Scanning for networks..." --indeterminate
-			iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >>"$launcher_list_file"
-			[ -s "$launcher_list_file" ] && break
+			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+			[ -s "$scan_temp" ] && break
 			sleep 1
 		done
 	fi
+	mv "$scan_temp" "$launcher_list_file" 2>/dev/null || touch "$launcher_list_file"
 
-	shui list --file "$launcher_list_file" --format text --confirm "Connect" --title "Wifi Networks" --write-location /tmp/launcher-output
+	shui list --file "$launcher_list_file" --format text --confirm "Connect" --title "WiFi Networks" --write-location /tmp/launcher-output
 }
 
 saved_networks_screen() {
@@ -341,7 +367,7 @@ saved_networks_screen() {
 	touch "$launcher_list_file"
 
 	if [ ! -f "$SDCARD_PATH/wifi.txt" ]; then
-		show_message_wait "No wifi.txt file found"
+		show_message_wait "No saved networks found"
 		return 1
 	fi
 
@@ -360,6 +386,7 @@ password_screen() {
 
 	rm -f "/tmp/launcher-output"
 	touch "$SDCARD_PATH/wifi.txt"
+	chmod 600 "$SDCARD_PATH/wifi.txt"
 
 	initial_password=""
 	if grep -q "^$SSID:" "$SDCARD_PATH/wifi.txt" 2>/dev/null; then
@@ -381,12 +408,14 @@ password_screen() {
 	# Allow empty passwords for open networks
 
 	touch "$SDCARD_PATH/wifi.txt"
+	chmod 600 "$SDCARD_PATH/wifi.txt"
 
 	if grep -q "^$SSID:" "$SDCARD_PATH/wifi.txt" 2>/dev/null; then
 		sed -i "/^$SSID:/d" "$SDCARD_PATH/wifi.txt"
 	fi
 
 	echo "$SSID:$password" >"$SDCARD_PATH/wifi.txt.tmp"
+	chmod 600 "$SDCARD_PATH/wifi.txt.tmp"
 	cat "$SDCARD_PATH/wifi.txt" >>"$SDCARD_PATH/wifi.txt.tmp"
 	mv "$SDCARD_PATH/wifi.txt.tmp" "$SDCARD_PATH/wifi.txt"
 	return 0
@@ -425,13 +454,13 @@ forget_network_loop() {
 
 		shui progress "Disconnecting..." --indeterminate
 		if ! wifi_off; then
-			show_message_wait "Failed to disable wifi"
+			show_message_wait "Failed to disable WiFi"
 			break
 		fi
 
 		# wifi_on shows its own connection progress
 		if ! wifi_on; then
-			show_message_wait "Failed to enable wifi"
+			show_message_wait "Failed to enable WiFi"
 			break
 		fi
 		break
@@ -442,9 +471,9 @@ forget_network_loop() {
 
 network_loop() {
 	if ! "$PAK_DIR/bin/wifi-enabled"; then
-		shui progress "Enabling wifi..." --indeterminate
+		shui progress "Enabling WiFi..." --indeterminate
 		if ! "$PAK_DIR/bin/service-on"; then
-			show_message_wait "Failed to enable wifi"
+			show_message_wait "Failed to enable WiFi"
 			return 1
 		fi
 	fi
@@ -478,7 +507,7 @@ network_loop() {
 
 		# wifi_on shows connection progress
 		if ! wifi_on; then
-			show_message_wait "Failed to start wifi"
+			show_message_wait "Failed to start WiFi"
 			break
 		fi
 
@@ -536,7 +565,7 @@ main() {
 	# Platform-specific checks
 	if [ "$PLATFORM" = "miyoomini" ]; then
 		if [ ! -f /customer/app/axp_test ]; then
-			show_message_wait "Wifi not supported on non-Plus version"
+			show_message_wait "WiFi not supported on non-Plus version"
 			return 1
 		fi
 
@@ -549,13 +578,37 @@ main() {
 	if [ "$PLATFORM" = "rg35xxplus" ]; then
 		RGXX_MODEL="$(strings /mnt/vendor/bin/dmenu.bin 2>/dev/null | grep ^RG)"
 		if [ "$RGXX_MODEL" = "RG28xx" ]; then
-			show_message_wait "Wifi not supported on RG28XX"
+			show_message_wait "WiFi not supported on RG28XX"
 			return 1
 		fi
 	fi
 
-	# Main UI loop
+	# Main UI loop with clean startup and auto-refresh when connecting
+	initial_load=true
 	while true; do
+		# On first load only: show brief status check indicator
+		if [ "$initial_load" = true ]; then
+			shui progress "Checking status..." --indeterminate
+			sleep 0.3
+			initial_load=false
+		fi
+
+		# Detect connecting state: WiFi enabled, interface active, but no IP yet
+		if "$PAK_DIR/bin/wifi-enabled"; then
+			ssid_and_ip="$(get_ssid_and_ip)"
+			if [ -n "$ssid_and_ip" ]; then
+				ip_address="$(echo "$ssid_and_ip" | cut -f2)"
+				if [ "$ip_address" = "N/A" ]; then
+					# Connecting - show progress and auto-refresh every 3 seconds
+					shui progress "Connecting to network..." --indeterminate
+					sleep 3
+					# Loop back to check state again (auto-refresh)
+					continue
+				fi
+			fi
+		fi
+
+		# Show main settings screen (disconnected or connected state)
 		main_screen
 		exit_code=$?
 
@@ -567,31 +620,31 @@ main() {
 		selection="$(echo "$output" | jq -r ".settings[$selected_index].name")"
 
 		if [ "$selection" = "Enable" ] || [ "$selection" = "Start on boot" ]; then
-			# Handle Enable toggle
-			selected_option_index="$(echo "$output" | jq -r ".settings[0].selected")"
-			selected_option="$(echo "$output" | jq -r ".settings[0].options[$selected_option_index]")"
+			# Handle Enable toggle (index 1, after Status at index 0)
+			selected_option_index="$(echo "$output" | jq -r ".settings[1].selected")"
+			selected_option="$(echo "$output" | jq -r ".settings[1].options[$selected_option_index]")"
 
 			if [ "$selected_option" = "On" ]; then
 				if ! "$PAK_DIR/bin/wifi-enabled"; then
 					# wifi_on shows connection progress
 					if ! wifi_on; then
-						show_message_wait "Failed to enable wifi"
+						show_message_wait "Failed to enable WiFi"
 						continue
 					fi
 				fi
 			else
 				if "$PAK_DIR/bin/wifi-enabled"; then
-					shui progress "Disabling wifi..." --indeterminate
+					shui progress "Disabling WiFi..." --indeterminate
 					if ! wifi_off; then
-						show_message_wait "Failed to disable wifi"
+						show_message_wait "Failed to disable WiFi"
 						continue
 					fi
 				fi
 			fi
 
-			# Handle Start on boot toggle
-			selected_option_index="$(echo "$output" | jq -r ".settings[1].selected")"
-			selected_option="$(echo "$output" | jq -r ".settings[1].options[$selected_option_index]")"
+			# Handle Start on boot toggle (index 2)
+			selected_option_index="$(echo "$output" | jq -r ".settings[2].selected")"
+			selected_option="$(echo "$output" | jq -r ".settings[2].options[$selected_option_index]")"
 
 			if [ "$selected_option" = "On" ]; then
 				if ! will_start_on_boot; then
@@ -621,7 +674,7 @@ main() {
 		elif echo "$selection" | grep -q "^Refresh connection$"; then
 			shui progress "Disconnecting..." --indeterminate
 			if ! wifi_off; then
-				show_message_wait "Failed to stop wifi"
+				show_message_wait "Failed to stop WiFi"
 				return 1
 			fi
 
@@ -630,13 +683,23 @@ main() {
 				show_message_wait "Failed to write config"
 			fi
 
-			shui progress "Reconnecting..." --indeterminate
-			if ! "$PAK_DIR/bin/service-on"; then
-				show_message_wait "Failed to enable wifi"
+			# Use wifi_on for consistent connection handling and progress feedback
+			if ! wifi_on; then
+				show_message_wait "Failed to reconnect"
 				continue
 			fi
 		fi
 	done
 }
+
+# Command-line mode: allow calling write_config without running UI
+if [ "$1" = "--write-config" ]; then
+	# Need to setup paths like main() does
+	mkdir -p "$USERDATA_PATH/$PAK_NAME"
+	export HOME="$USERDATA_PATH/$PAK_NAME"
+
+	write_config "true"
+	exit $?
+fi
 
 main "$@"

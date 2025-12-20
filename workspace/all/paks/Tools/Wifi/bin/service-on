@@ -65,6 +65,20 @@ main() {
 			sleep 2
 			ifconfig wlan0 up
 			/customer/app/wpa_supplicant -B -D nl80211 -iwlan0 -c /appconfigs/wpa_supplicant.conf
+
+			# Wait for wpa_supplicant to start (max 3 seconds)
+			timeout=0
+			while [ $timeout -lt 30 ]; do
+				pgrep wpa_supplicant >/dev/null 2>&1 && break
+				sleep 0.1
+				timeout=$((timeout + 1))
+			done
+
+			if ! pgrep wpa_supplicant >/dev/null 2>&1; then
+				echo "Failed to start wpa_supplicant"
+				return 1
+			fi
+
 			ln -sf /dev/null /tmp/udhcpc.log
 			udhcpc -i wlan0 -s /etc/init.d/udhcpc.script &
 
@@ -87,6 +101,14 @@ main() {
 			fi
 			rm -f /tmp/wpa_supplicant.log
 
+			# Wait for wpa_supplicant to start (max 3 seconds)
+			timeout=0
+			while [ $timeout -lt 30 ]; do
+				pgrep wpa_supplicant >/dev/null 2>&1 && break
+				sleep 0.1
+				timeout=$((timeout + 1))
+			done
+
 			if ! pgrep wpa_supplicant >/dev/null 2>&1; then
 				echo "Failed to start wpa_supplicant"
 				return 1
@@ -103,6 +125,14 @@ main() {
 				echo "Failed to start wpa_supplicant via init.d"
 			fi
 
+			# Wait for wpa_supplicant to start (max 3 seconds)
+			timeout=0
+			while [ $timeout -lt 30 ]; do
+				pgrep wpa_supplicant >/dev/null 2>&1 && break
+				sleep 0.1
+				timeout=$((timeout + 1))
+			done
+
 			if ! pgrep wpa_supplicant >/dev/null 2>&1; then
 				echo "Failed to start wpa_supplicant"
 				return 1
@@ -117,6 +147,14 @@ main() {
 
 			wpa_supplicant -B -D nl80211 -iwlan0 -c /userdata/cfg/wpa_supplicant.conf
 
+			# Wait for wpa_supplicant to start (max 3 seconds)
+			timeout=0
+			while [ $timeout -lt 30 ]; do
+				pgrep wpa_supplicant >/dev/null 2>&1 && break
+				sleep 0.1
+				timeout=$((timeout + 1))
+			done
+
 			if ! pgrep wpa_supplicant >/dev/null 2>&1; then
 				echo "Failed to start wpa_supplicant"
 				return 1
@@ -126,16 +164,48 @@ main() {
 
 		rg35xxplus)
 			ip link set wlan0 up
-			iw dev wlan0 set power_save off
 
-			systemctl start wpa_supplicant 2>/dev/null || true
-			systemctl start systemd-networkd 2>/dev/null || true
-			# Run netplan in background to avoid blocking boot if network is slow/unavailable
-			netplan apply &
+			# Disable power save if iw is available
+			if command -v iw >/dev/null 2>&1; then
+				iw dev wlan0 set power_save off 2>/dev/null || true
+			fi
+
+			# Stop services for clean state
+			systemctl stop systemd-networkd 2>/dev/null || true
+			systemctl stop wpa_supplicant 2>/dev/null || true
+			sleep 1
+
+			# Start wpa_supplicant and wait for it to be active
+			systemctl start wpa_supplicant
+
+			# Wait for wpa_supplicant to reach active state (max 5 seconds, longer than other platforms due to systemd overhead)
+			timeout=0
+			while [ $timeout -lt 50 ]; do
+				if systemctl is-active --quiet wpa_supplicant; then
+					break
+				fi
+				sleep 0.1
+				timeout=$((timeout + 1))
+			done
+
+			if ! systemctl is-active --quiet wpa_supplicant; then
+				echo "Failed to start wpa_supplicant"
+				systemctl status wpa_supplicant --no-pager 2>&1 || true
+				return 1
+			fi
+
+			# Only start systemd-networkd after wpa_supplicant is ready
+			systemctl start systemd-networkd
+
+			# Apply netplan with timeout to avoid hanging on slow/unavailable networks
+			if ! timeout 15 netplan apply 2>/dev/null; then
+				echo "Warning: netplan apply timed out or failed (continuing anyway)"
+				# Don't return 1 - WiFi might still work, just slower to connect
+			fi
 			;;
 
 		*)
-			echo "$PLATFORM is not a supported platform for Wifi.pak"
+			echo "$PLATFORM is not a supported platform for WiFi.pak"
 			return 1
 			;;
 	esac

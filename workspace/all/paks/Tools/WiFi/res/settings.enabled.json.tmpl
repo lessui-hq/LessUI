@@ -1,6 +1,14 @@
 {
     "settings": [
         {
+            "name": "Status",
+            "options": ["Disconnected"],
+            "selected": 0,
+            "features": {
+                "unselectable": true
+            }
+        },
+        {
             "name": "Enable",
             "options": ["Off", "On"],
             "selected": IS_ENABLED,
@@ -26,20 +34,6 @@
             "name": "Connect to network",
             "features": {
                 "confirm_text": "CONNECT"
-            }
-        },
-        {
-            "name": "Refresh connection",
-            "features": {
-                "confirm_text": "REFRESH"
-            }
-        },
-        {
-            "name": "SSID",
-            "options": ["NETWORK_SSID"],
-            "selected": 0,
-            "features": {
-                "unselectable": true
             }
         }
     ]

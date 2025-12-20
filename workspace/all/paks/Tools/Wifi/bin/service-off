@@ -51,16 +51,23 @@ main() {
 		killall udhcpc 2>/dev/null || true
 	fi
 
-	# Mark interface down if it's up
-	status="$(cat /sys/class/net/wlan0/flags 2>/dev/null)"
-	if [ "$status" = "0x1003" ]; then
-		echo "Marking wlan0 interface down..."
-		ifconfig wlan0 down 2>/dev/null || true
+	# Mark interface down if it's not already down
+	if [ -d /sys/class/net/wlan0 ]; then
+		operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+		if [ "$operstate" != "down" ]; then
+			echo "Marking wlan0 interface down..."
+			if [ "$PLATFORM" = "rg35xxplus" ]; then
+				ip link set wlan0 down 2>/dev/null || true
+			else
+				ifconfig wlan0 down 2>/dev/null || true
+			fi
+		fi
 	fi
 
-	# Block wireless if rfkill available and no rfkill state file
+	# Block wireless if rfkill available
 	if command -v rfkill >/dev/null 2>&1; then
-		if [ ! -f /sys/class/rfkill/rfkill0/state ]; then
+		current_state="$(rfkill list wifi 2>/dev/null | grep 'blocked:' | head -1)"
+		if ! echo "$current_state" | grep -q "blocked: yes"; then
 			echo "Blocking wireless..."
 			rfkill block wifi 2>/dev/null || true
 		fi
