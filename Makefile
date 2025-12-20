@@ -336,6 +336,7 @@ stage: tidy
 	@if [ -d ./build/BOOT/.tmp_update ]; then \
 		rsync -a ./build/BOOT/.tmp_update/ ./build/PAYLOAD/.tmp_update/; \
 	fi
+	@if [ -d ./build/Tools ]; then rsync -a ./build/Tools/ ./build/BASE/Tools/; fi
 	@cd ./build && find . -type f -name '.DS_Store' -delete
 
 # Compress: create archives for release distribution
@@ -354,7 +355,6 @@ compress:
 		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
 	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@if [ -d ./build/Tools ]; then mv ./build/Tools ./build/BASE/; fi
 	@cd ./build/BASE && 7zz a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
 
