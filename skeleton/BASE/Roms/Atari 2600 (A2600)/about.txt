@@ -1,0 +1,8 @@
+Atari 2600
+
+Core: stella
+
+Supported file types:
+  .a26, .bin, .zip
+
+No BIOS required.

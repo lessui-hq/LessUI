@@ -1,0 +1,8 @@
+Game & Watch
+
+Core: gw
+
+Supported file types:
+  .mgw
+
+No BIOS required.

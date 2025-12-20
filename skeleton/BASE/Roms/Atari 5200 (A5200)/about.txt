@@ -1,0 +1,11 @@
+Atari 5200
+
+Core: atari800
+
+Supported file types:
+  .a52, .bin, .car, .rom
+
+BIOS (required):
+  5200.rom - Atari 5200 BIOS
+
+Place BIOS files in: /Bios/A5200/

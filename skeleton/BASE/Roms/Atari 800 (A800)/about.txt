@@ -1,0 +1,12 @@
+Atari 800
+
+Core: atari800
+
+Supported file types:
+  .xfd, .atr, .cdm, .cas, .bin, .xex, .atx, .car, .rom, .com
+
+BIOS (required):
+  ATARIXL.ROM - 800XL OS
+  ATARIBAS.ROM - BASIC Rev C (optional)
+
+Place BIOS files in: /Bios/A800/

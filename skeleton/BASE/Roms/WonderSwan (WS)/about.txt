@@ -1,0 +1,8 @@
+WonderSwan
+
+Core: mednafen_wswan
+
+Supported file types:
+  .ws, .pc2
+
+No BIOS required.

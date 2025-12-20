@@ -261,6 +261,194 @@
       "resolution": "320x224",
       "extensions": ["zip", "7z"],
       "bios": [{ "name": "neogeo.zip", "md5": null, "required": true }]
+    },
+    "A2600": {
+      "name": "Atari 2600",
+      "core": "stella_libretro",
+      "resolution": "160x192",
+      "extensions": ["a26", "bin", "zip"],
+      "bios": []
+    },
+    "A5200": {
+      "name": "Atari 5200",
+      "core": "atari800_libretro",
+      "resolution": "336x240",
+      "extensions": ["a52", "bin", "car", "rom"],
+      "bios": [
+        {
+          "name": "5200.rom",
+          "md5": "281f20ea4320404ec820fb7ec0693b38",
+          "required": true
+        }
+      ]
+    },
+    "A800": {
+      "name": "Atari 800",
+      "core": "atari800_libretro",
+      "resolution": "336x240",
+      "extensions": [
+        "xfd",
+        "atr",
+        "cdm",
+        "cas",
+        "bin",
+        "xex",
+        "atx",
+        "car",
+        "rom",
+        "com"
+      ],
+      "bios": [
+        {
+          "name": "ATARIXL.ROM",
+          "md5": "06daac977823773a3eea3422fd26a703",
+          "required": true
+        },
+        {
+          "name": "ATARIBAS.ROM",
+          "md5": "0bac0c6a50104045d902df4503a4c30b",
+          "required": false
+        },
+        {
+          "name": "ATARIOSA.ROM",
+          "md5": "eb1f32f5d9f382db1bbfb8d7f9cb343a",
+          "required": false
+        },
+        {
+          "name": "ATARIOSB.ROM",
+          "md5": "a3e8d617c95d08031fe1b20d541434b2",
+          "required": false
+        }
+      ]
+    },
+    "A7800": {
+      "name": "Atari 7800",
+      "core": "prosystem_libretro",
+      "resolution": "320x240",
+      "extensions": ["a78", "bin"],
+      "bios": [
+        {
+          "name": "7800 BIOS (U).rom",
+          "md5": null,
+          "required": false
+        }
+      ]
+    },
+    "LYNX": {
+      "name": "Atari Lynx",
+      "core": "mednafen_lynx_libretro",
+      "resolution": "160x102",
+      "extensions": ["lnx", "o"],
+      "bios": [
+        {
+          "name": "lynxboot.img",
+          "md5": "fcd403db69f54290b51035d82f835e7b",
+          "required": true
+        }
+      ]
+    },
+    "WS": {
+      "name": "WonderSwan",
+      "core": "mednafen_wswan_libretro",
+      "resolution": "224x144",
+      "extensions": ["ws", "pc2"],
+      "bios": []
+    },
+    "WSC": {
+      "name": "WonderSwan Color",
+      "core": "mednafen_wswan_libretro",
+      "resolution": "224x144",
+      "extensions": ["wsc", "ws", "pc2"],
+      "bios": []
+    },
+    "SGX": {
+      "name": "SuperGrafx",
+      "core": "mednafen_supergrafx_libretro",
+      "resolution": "512x243",
+      "extensions": ["pce", "sgx", "cue", "ccd", "chd"],
+      "bios": [
+        {
+          "name": "syscard3.pce",
+          "md5": "38179df8f4ac870017db21ebcbf53114",
+          "required": false
+        }
+      ]
+    },
+    "VEC": {
+      "name": "Vectrex",
+      "core": "vecx_libretro",
+      "resolution": "330x410",
+      "extensions": ["bin", "vec"],
+      "bios": []
+    },
+    "GW": {
+      "name": "Game & Watch",
+      "core": "gw_libretro",
+      "resolution": "varies",
+      "extensions": ["mgw"],
+      "bios": []
+    },
+    "NEOCD": {
+      "name": "Neo Geo CD",
+      "core": "neocd_libretro",
+      "resolution": "320x224",
+      "extensions": ["cue", "chd"],
+      "bios": [
+        {
+          "name": "neocd_z.rom",
+          "md5": "11526d58d4c524daef7d5d677dc6b004",
+          "required": true
+        },
+        {
+          "name": "neocd_f.rom",
+          "md5": "8834880c33164ccbe6476b559f3e37de",
+          "required": false
+        }
+      ]
+    },
+    "N64": {
+      "name": "Nintendo 64",
+      "core": "mupen64plus_next_libretro",
+      "resolution": "320x240",
+      "extensions": ["z64", "n64", "v64", "zip", "7z"],
+      "bios": []
+    },
+    "PSP": {
+      "name": "PlayStation Portable",
+      "core": "ppsspp_libretro",
+      "resolution": "480x272",
+      "extensions": ["elf", "iso", "cso", "prx", "pbp"],
+      "bios": []
+    },
+    "DC": {
+      "name": "Sega Dreamcast",
+      "core": "flycast_libretro",
+      "resolution": "640x480",
+      "extensions": [
+        "chd",
+        "cdi",
+        "iso",
+        "elf",
+        "bin",
+        "cue",
+        "gdi",
+        "lst",
+        "zip",
+        "7z",
+        "dat"
+      ],
+      "bios": [
+        {
+          "name": "dc/dc_boot.bin",
+          "md5": null,
+          "required": true
+        },
+        {
+          "name": "dc/dc_flash.bin",
+          "md5": null,
+          "required": false
+        }
+      ]
     }
   }
 }

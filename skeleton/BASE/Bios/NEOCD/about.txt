@@ -1,0 +1,11 @@
+Neo Geo CD
+
+Core: neocd
+
+BIOS (required - at least one):
+  neocd_z.rom - CDZ BIOS (recommended)
+    MD5: 11526d58d4c524daef7d5d677dc6b004
+  neocd_f.rom - Front Loader BIOS
+    MD5: 8834880c33164ccbe6476b559f3e37de
+  neocd_t.rom - Top Loader BIOS (alternative)
+  uni-bioscd.rom - Universe BIOS CD (alternative)

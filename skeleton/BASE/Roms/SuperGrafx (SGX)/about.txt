@@ -1,0 +1,11 @@
+SuperGrafx
+
+Core: mednafen_supergrafx
+
+Supported file types:
+  .pce, .sgx, .cue, .ccd, .chd
+
+BIOS (optional for CD games):
+  syscard3.pce - Super CD-ROM2 System Card
+
+Place BIOS files in: /Bios/SGX/

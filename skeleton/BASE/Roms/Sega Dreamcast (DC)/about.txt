@@ -1,0 +1,12 @@
+Sega Dreamcast
+
+Core: flycast
+
+Supported file types:
+  .chd, .cdi, .gdi, .cue, .iso, .bin, .elf, .zip, .7z
+
+BIOS (required):
+  dc/dc_boot.bin - Dreamcast BIOS
+  dc/dc_flash.bin - Flash memory (optional)
+
+Place BIOS files in: /Bios/DC/dc/

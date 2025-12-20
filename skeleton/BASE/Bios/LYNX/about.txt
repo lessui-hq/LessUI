@@ -1,0 +1,7 @@
+Atari Lynx
+
+Core: mednafen_lynx
+
+BIOS (required):
+  lynxboot.img - Lynx boot ROM
+    MD5: fcd403db69f54290b51035d82f835e7b
