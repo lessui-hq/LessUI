@@ -20,5 +20,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build miyoomini (verification)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Build miyoomini (arm64 native)
         run: make PLATFORM=miyoomini build
+
+      - name: Build trimuismart (amd64 emulation verification)
+        run: make PLATFORM=trimuismart build

@@ -1,0 +1,10 @@
+{
+  "toolchains": {
+    "trimuismart": {
+      "platform": "linux/amd64"
+    },
+    "tg5040": {
+      "platform": "linux/amd64"
+    }
+  }
+}
