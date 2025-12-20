@@ -538,7 +538,8 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 	// Only flip page when we actually drew a new frame (frame pacing support).
 	// When frame pacing repeats a frame (no core.run()), we keep the same page
 	// so the next blit goes to the same buffer.
-	if (vid.in_game) {
+	// In UI mode, always flip to maintain proper double-buffering (we always draw).
+	if (!vid.renderer || vid.in_game) {
 		vid.page ^= 1;
 		vid.buffer->pixels = vid.buffer_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
 	}
