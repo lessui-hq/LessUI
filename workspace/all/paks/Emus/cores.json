@@ -177,13 +177,6 @@
       "extensions": ["p8", "p8.png", "png"],
       "bios": []
     },
-    "TIC": {
-      "name": "TIC-80",
-      "core": "tic80_libretro",
-      "resolution": "240x136",
-      "extensions": ["tic"],
-      "bios": []
-    },
     "SGB": {
       "name": "Super Game Boy",
       "core": "mgba_libretro",
