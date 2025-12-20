@@ -3992,40 +3992,46 @@ static int MenuList_freeItems(MenuList* list, int i) {
 }
 
 ///////////////////////////////
-// Generic option menu helper (reduces duplication)
+// Generic option menu helpers
 ///////////////////////////////
 
 /**
- * Build and display an options menu from an PlayerOptionList.
- *
- * Handles the common pattern of:
- * 1. Lazy initialization of enabled_options (filtering locked options)
- * 2. Creating/updating MenuItems from options
- * 3. Displaying Menu_options() or showing "no options" message
- *
- * This consolidates the identical code in OptionFrontend_openMenu
- * and OptionEmulator_openMenu.
- *
- * @param source PlayerOptionList to build menu from (config.frontend or config.core)
- * @param menu MenuList to populate/update
- * @param no_options_msg Message to show if no options available (NULL to skip check)
- * @return MENU_CALLBACK_NOP
- */
-/**
- * Marks the enabled options list as needing rebuild on next show.
+ * Marks the enabled options list as needing rebuild.
  * Call this when option visibility changes (e.g., from update_visibility_callback).
  *
- * Note: We don't free items immediately because this may be called while
- * the menu is still active. The actual free and rebuild happens in
- * OptionsMenu_buildAndShow on next open.
+ * The actual rebuild happens in OptionsMenu_rebuild() which can be called:
+ * - From OptionsMenu_buildAndShow() when opening the menu
+ * - Directly from callbacks when visibility changes while menu is open
  */
-static void OptionsMenu_invalidateList(PlayerOptionList* source, MenuList* menu) {
-	(void)menu; // menu->items freed in OptionsMenu_buildAndShow when source->dirty processed
+static void OptionsMenu_invalidate(PlayerOptionList* source) {
 	source->dirty = 1;
 }
 
-static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
-                                    const char* no_options_msg) {
+/**
+ * Rebuilds menu items from option list if needed.
+ *
+ * This function handles the libretro core options visibility callback pattern:
+ * when a core reports that option visibility has changed, the menu items need
+ * to be rebuilt to reflect which options are now visible.
+ *
+ * Key behaviors:
+ * - If source->dirty is set, frees and rebuilds enabled_options and menu->items
+ * - If menu->items is NULL, creates them from enabled_options
+ * - If menu->items exists and not dirty, just syncs current values
+ * - Sets menu->dirty when items are rebuilt so Menu_refreshItems can update selection
+ *
+ * IMPORTANT: This function does NOT call Menu_options(). It only rebuilds the
+ * items array. This allows it to be safely called from within an on_change
+ * callback while the menu is already running - the existing Menu_options loop
+ * will see menu->dirty and call Menu_refreshItems to update selection by key.
+ *
+ * @param source PlayerOptionList containing the core options
+ * @param menu MenuList to populate with visible options
+ * @return 1 if menu has items, 0 if empty
+ */
+static int OptionsMenu_rebuild(PlayerOptionList* source, MenuList* menu) {
+	int did_rebuild = 0;
+
 	// Check if visibility changed - need full rebuild
 	if (source->dirty) {
 		if (source->enabled_options) {
@@ -4038,6 +4044,7 @@ static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
 		}
 		source->enabled_count = 0;
 		source->dirty = 0;
+		did_rebuild = 1;
 	}
 
 	// Build enabled_options list if not already built
@@ -4058,13 +4065,14 @@ static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
 			source->enabled_options[j] = item;
 			j += 1;
 		}
+		did_rebuild = 1;
 	}
 
-	// Create MenuItems on first call
+	// Create MenuItems if needed
 	if (menu->items == NULL) {
 		menu->items = calloc(source->enabled_count + 1, sizeof(MenuItem));
 		if (!menu->items)
-			return MENU_CALLBACK_NOP;
+			return 0;
 
 		for (int j = 0; j < source->enabled_count; j++) {
 			PlayerOption* option = source->enabled_options[j];
@@ -4075,8 +4083,9 @@ static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
 			item->value = option->value;
 			item->values = option->labels;
 		}
+		did_rebuild = 1;
 	} else {
-		// Update values on subsequent calls
+		// Update values on subsequent calls (sync menu state with option state)
 		for (int j = 0; j < source->enabled_count; j++) {
 			PlayerOption* option = source->enabled_options[j];
 			MenuItem* item = &menu->items[j];
@@ -4084,10 +4093,31 @@ static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
 		}
 	}
 
-	// Show menu or "no options" message
-	if (no_options_msg && menu->items[0].name == NULL) {
-		Menu_message(no_options_msg, (char*[]){"B", "BACK", NULL});
-	} else if (menu->items[0].name) {
+	// Signal menu loop to refresh selection when items were rebuilt
+	if (did_rebuild) {
+		menu->dirty = 1;
+	}
+
+	return menu->items && menu->items[0].name != NULL;
+}
+
+/**
+ * Builds menu items and shows the menu.
+ *
+ * This is the entry point for opening an options menu. It:
+ * 1. Calls OptionsMenu_rebuild() to ensure items are current
+ * 2. Shows the menu via Menu_options() or displays a "no options" message
+ *
+ * @param source PlayerOptionList to build menu from
+ * @param menu MenuList to populate and show
+ * @param no_options_msg Message to show if no options available (NULL to skip)
+ * @return MENU_CALLBACK_NOP
+ */
+static int OptionsMenu_buildAndShow(PlayerOptionList* source, MenuList* menu,
+                                    const char* no_options_msg) {
+	int has_items = OptionsMenu_rebuild(source, menu);
+
+	if (has_items) {
 		Menu_options(menu);
 	} else if (no_options_msg) {
 		Menu_message(no_options_msg, (char*[]){"B", "BACK", NULL});
@@ -4131,10 +4161,11 @@ static int OptionEmulator_optionChanged(MenuList* list, int i) {
 
 	// Ask core if visibility changed (per libretro spec)
 	if (core.update_visibility_callback && core.update_visibility_callback()) {
-		// Visibility changed - rebuild items and tell menu to refresh
-		OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
-		OptionsMenu_buildAndShow(&config.core, &OptionEmulator_menu, NULL);
-		OptionEmulator_menu.dirty = 1; // Menu will reload items/count next frame
+		// Visibility changed - rebuild items only (don't re-enter Menu_options!)
+		// The existing menu loop will see dirty flag and call Menu_refreshItems
+		// which restores selection by key
+		OptionsMenu_invalidate(&config.core);
+		OptionsMenu_rebuild(&config.core, &OptionEmulator_menu);
 	}
 	return MENU_CALLBACK_NOP;
 }
@@ -4161,7 +4192,7 @@ static int OptionEmulator_openMenu(MenuList* list, int i) {
 	if (core.update_visibility_callback) {
 		if (core.update_visibility_callback()) {
 			// Visibility changed - invalidate cached list so it rebuilds
-			OptionsMenu_invalidateList(&config.core, &OptionEmulator_menu);
+			OptionsMenu_invalidate(&config.core);
 		}
 	}
 	return OptionsMenu_buildAndShow(&config.core, &OptionEmulator_menu,
@@ -4628,11 +4659,6 @@ static inline void Menu_refreshItems(MenuList* list, MenuItem** items, int* coun
 		nav->start = 0;
 	}
 
-	if ((*items)[nav->selected].name != NULL)
-		*current_key = (*items)[nav->selected].key;
-	else
-		*current_key = NULL;
-
 	list->dirty = 0;
 	nav->dirty = 1;
 }
@@ -4696,7 +4722,7 @@ int Menu_options(MenuList* list) {
 				if (PAD_justRepeated(BTN_LEFT)) {
 					if (PlayerMenuNav_cycleValue(item, -1)) {
 						if (items[nav.selected].key)
-							current_key = items[nav.selected].key; // Track before on_change
+							current_key = items[nav.selected].key;
 						if (item->on_change)
 							item->on_change(list, nav.selected);
 						else if (list->on_change)
@@ -4706,7 +4732,7 @@ int Menu_options(MenuList* list) {
 				} else if (PAD_justRepeated(BTN_RIGHT)) {
 					if (PlayerMenuNav_cycleValue(item, +1)) {
 						if (items[nav.selected].key)
-							current_key = items[nav.selected].key; // Track before on_change
+							current_key = items[nav.selected].key;
 						if (item->on_change)
 							item->on_change(list, nav.selected);
 						else if (list->on_change)
