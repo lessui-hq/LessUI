@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -130,7 +130,9 @@ help:
 	@echo "  make dev-build-deploy Build and deploy (no compression)"
 	@echo ""
 	@echo "Release:"
-	@echo "  make release TYPE=X   Create release (patch/minor/major)"
+	@echo "  make release-patch    Create patch release (v1.0.0 → v1.0.1)"
+	@echo "  make release-minor    Create minor release (v1.0.1 → v1.1.0)"
+	@echo "  make release-major    Create major release (v1.1.0 → v2.0.0)"
 	@echo ""
 	@echo "Housekeeping:"
 	@echo "  make clean            Remove all build artifacts"
@@ -150,7 +152,17 @@ name:
 	@echo $(RELEASE_NAME)
 
 # Create a release using git-flow
-# Usage: make release TYPE=patch (or minor/major)
+# Usage: make release-patch (or release-minor/release-major)
+release-patch:
+	@./scripts/release.sh patch
+
+release-minor:
+	@./scripts/release.sh minor
+
+release-major:
+	@./scripts/release.sh major
+
+# Legacy alias (deprecated)
 release:
 	@./scripts/release.sh $(TYPE)
 
