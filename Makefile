@@ -34,15 +34,27 @@ endif
 
 ###########################################################
 # Release versioning
+#
+# CI builds (GitHub Actions): Use VERSION file (e.g., v0.0.1)
+# Local dev builds: Use dev-YYYYMMDD format
+#
+# Output:
+#   - ZIP: LessUI-<version>.zip
+#   - version.txt: <version>\n<git-hash>
 
 BUILD_HASH := $(shell git rev-parse --short HEAD)
 export BUILD_HASH
 RELEASE_TIME := $(shell TZ=GMT date +%Y%m%d)
-RELEASE_BETA =
-RELEASE_BASE = LessUI-$(RELEASE_TIME)$(RELEASE_BETA)
+
+# Determine release name based on environment
+ifeq ($(CI_RELEASE),true)
+# CI release build (tag push): use VERSION file (semver)
+RELEASE_VERSION := $(shell cat VERSION 2>/dev/null || echo "v0.0.0")
+RELEASE_NAME = LessUI-$(RELEASE_VERSION)
+else
+# Local dev build: use dev-DATE format with collision detection
+RELEASE_BASE = LessUI-dev-$(RELEASE_TIME)
 RELEASE_DOT := $(shell find ./releases/. -name "${RELEASE_BASE}-*.zip" 2>/dev/null | wc -l | sed 's/ //g')
-# First build has no suffix, subsequent builds use -1, -2, etc.
-# Check if unnumbered release exists, if so start numbering from RELEASE_DOT+1
 RELEASE_SUFFIX := $(shell \
 	if [ "$(RELEASE_DOT)" = "0" ] && [ ! -f "./releases/${RELEASE_BASE}.zip" ]; then \
 		echo ""; \
@@ -52,6 +64,8 @@ RELEASE_SUFFIX := $(shell \
 		echo "-$$(($(RELEASE_DOT) + 1))"; \
 	fi)
 RELEASE_NAME = $(RELEASE_BASE)$(RELEASE_SUFFIX)
+RELEASE_VERSION = dev-$(RELEASE_TIME)$(RELEASE_SUFFIX)
+endif
 
 ###########################################################
 # Build configuration
@@ -333,7 +347,7 @@ stage: tidy
 	@echo "# ----------------------------------------------------"
 	@mkdir -p ./build/PAYLOAD/.system
 	@rsync -a ./build/SYSTEM/ ./build/PAYLOAD/.system/
-	@cd ./build/PAYLOAD/.system && printf '%s\n%s\n' "$(RELEASE_NAME)" "$(BUILD_HASH)" > version.txt
+	@cd ./build/PAYLOAD/.system && printf '%s\n%s\n' "$(RELEASE_VERSION)" "$(BUILD_HASH)" > version.txt
 	@./commits.sh > ./build/PAYLOAD/.system/commits.txt
 	@mkdir -p ./build/PAYLOAD/.system/common/cores/arm32 ./build/PAYLOAD/.system/common/cores/arm64
 	@jq -r '.cores[].core' ./workspace/all/paks/Emus/cores.json | sort -u | while read core; do \
