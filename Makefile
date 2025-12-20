@@ -78,7 +78,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release
 
 export MAKEFLAGS=--no-print-directory
 
@@ -115,6 +115,9 @@ help:
 	@echo "  make dev-deploy       Deploy to SD card (requires LESSUI_DEV volume)"
 	@echo "  make dev-build-deploy Build and deploy (no compression)"
 	@echo ""
+	@echo "Release:"
+	@echo "  make release TYPE=X   Create release (patch/minor/major)"
+	@echo ""
 	@echo "Housekeeping:"
 	@echo "  make clean            Remove all build artifacts"
 	@echo "  make name             Print release name"
@@ -131,6 +134,11 @@ shell:
 # Print release name (useful for CI/scripts)
 name:
 	@echo $(RELEASE_NAME)
+
+# Create a release using git-flow
+# Usage: make release TYPE=patch (or minor/major)
+release:
+	@./scripts/release.sh $(TYPE)
 
 # QA convenience targets (forward to Makefile.qa)
 test:

@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (build but skip release)"
+        type: boolean
+        default: true
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: sprinters:aws:ubuntu-24.04-arm:c7gd.xlarge
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq rsync
+          # Install 7-Zip standalone (7zz)
+          wget -q https://www.7-zip.org/a/7z2408-linux-arm64.tar.xz
+          tar -xf 7z2408-linux-arm64.tar.xz
+          sudo mv 7zz /usr/local/bin/
+          rm -f 7z2408-linux-arm64.tar.xz
+
+      - name: Build all platforms
+        run: make all
+
+      - name: Verify build artifacts
+        run: |
+          if ! ls releases/*.zip 1>/dev/null 2>&1; then
+            echo "Error: No release artifacts found in releases/"
+            exit 1
+          fi
+          echo "Found artifacts:"
+          ls -la releases/*.zip
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attest build provenance
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: releases/*.zip
+
+      - name: Upload build artifacts
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.version }}
+          path: releases/*.zip
+          retention-days: 7
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          name: LessUI ${{ steps.version.outputs.version }}
+          files: releases/*.zip
+          generate_release_notes: true
+          make_latest: "true"
