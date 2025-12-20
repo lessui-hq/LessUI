@@ -14,7 +14,7 @@ REQUIRES_SDL = other/sdl
 REQUIRES_COMMANDER = other/DinguxCommander
 
 # Platform-specific binaries (can run in parallel)
-PLATFORM_TARGETS = blank batmon lumon overclock show
+PLATFORM_TARGETS = blank batmon lumon overclock show keymon
 
 .PHONY: $(PLATFORM_TARGETS)
 
@@ -32,9 +32,11 @@ lumon:
 overclock:
 	@$(MAKE) -C overclock
 
-.PHONY: show
 show:
 	@$(MAKE) -C show
+
+keymon:
+	@$(MAKE) -C keymon
 
 early: $(REQUIRES_SDL) $(REQUIRES_COMMANDER)
 	@cd other/sdl && MAKEFLAGS=--no-print-directory ./make.sh
@@ -46,6 +48,7 @@ clean:
 	@cd blank && $(MAKE) -s clean
 	@cd batmon && $(MAKE) -s clean
 	@cd lumon && $(MAKE) -s clean
+	@cd keymon && $(MAKE) -s clean
 	@cd other/sdl && $(MAKE) -s distclean
 	@cd other/latency_reduction && $(MAKE) -s clean
 	@cd other/DinguxCommander && $(MAKE) -s clean
