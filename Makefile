@@ -372,12 +372,12 @@ compress:
 		rm -rf ./workspace/readmes; \
 	fi
 	@if [ -d ./build/PAYLOAD/.tmp_update ]; then \
-		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update; \
+		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system .tmp_update; \
 	else \
-		cd ./build/PAYLOAD && 7zz a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
+		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
 	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@cd ./build/BASE && 7zz a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
+	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
 
 # Package: full release build (stage + compress)

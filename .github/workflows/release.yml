@@ -38,12 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq rsync
-          # Install 7-Zip standalone (7zz)
-          wget -q https://www.7-zip.org/a/7z2408-linux-arm64.tar.xz
-          tar -xf 7z2408-linux-arm64.tar.xz
-          sudo mv 7zz /usr/local/bin/
-          rm -f 7z2408-linux-arm64.tar.xz
+          sudo apt-get install -y jq rsync 7zip
 
       - name: Build all platforms
         run: make all
