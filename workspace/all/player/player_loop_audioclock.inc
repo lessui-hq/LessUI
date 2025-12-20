@@ -84,16 +84,16 @@ static void run_main_loop(void) {
 
 		// Present frame
 		// During FF: throttle vsync to avoid blocking (limitFF controls speed instead)
-		// Normal: flip every frame (may or may not wait for vsync depending on platform)
+		// Normal: present every frame (may or may not wait for vsync depending on platform)
 		if (fast_forward) {
 			uint32_t now = SDL_GetTicks();
 			if (now - last_ff_flip >= 30) { // Visual update every 30ms
-				GFX_flip(screen);
+				GFX_present(&renderer);
 				frame_ready_for_flip = 0;
 				last_ff_flip = now;
 			}
 		} else {
-			GFX_flip(screen);
+			GFX_present(&renderer);
 			frame_ready_for_flip = 0;
 		}
 
@@ -108,7 +108,6 @@ static void run_main_loop(void) {
 
 		if (show_menu) {
 			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
-			GFX_clearBlit(); // Switch to UI mode for menu rendering
 			Menu_loop();
 			LOG_debug("Main loop: returned from Menu_loop");
 		}

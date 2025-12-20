@@ -2394,7 +2394,7 @@ int main(int argc, char* argv[]) {
 				}
 			}
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			dirty = 0;
 		} else
 			GFX_sync();

@@ -358,7 +358,7 @@ KeyboardResult ui_keyboard_show(SDL_Surface* screen, const KeyboardOptions* opts
 			char* hints[] = {"Y", "CANCEL", "B", "DELETE", "A", "SELECT", NULL};
 			GFX_blitButtonGroup(hints, 2, screen, 1);
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			redraw = 0;
 		} else {
 			GFX_sync();

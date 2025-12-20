@@ -754,7 +754,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 				}
 			}
 
-			GFX_flip(*scr);
+			GFX_present(NULL);
 			dirty = 0;
 		} else
 			GFX_sync();
@@ -776,7 +776,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 		GFX_clear(*scr);
 		cb->video_refresh(r->src, r->true_w, r->true_h, r->src_p);
 		if (*cb->frame_ready_for_flip) {
-			GFX_flip(*scr);
+			GFX_present(r);
 			*cb->frame_ready_for_flip = 0;
 		}
 

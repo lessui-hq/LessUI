@@ -4,7 +4,7 @@
  * This loop is included by player.c when SYNC_MODE_AUDIOCLOCK is not defined.
  *
  * Timing approach:
- * - Display vsync is the timing source (GFX_flip blocks until vsync)
+ * - Display vsync is the timing source (GFX_present blocks until vsync)
  * - Frame pacer uses Bresenham accumulator to decide when to step emulation
  * - Audio rate control maintains buffer at 50% using dual-timescale PI controller
  * - Works with any display Hz / game fps mismatch
@@ -32,7 +32,7 @@ static void run_main_loop(void) {
 	// force a vsync immediately before loop
 	// for better frame pacing?
 	GFX_clearAll();
-	GFX_flip(screen);
+	GFX_present(NULL);
 
 	LOG_debug("Special_init");
 	Special_init(); // after config
@@ -44,7 +44,7 @@ static void run_main_loop(void) {
 		input_polled_this_frame = 0; // Reset at start of frame
 
 		// Frame pacing: Bresenham accumulator decides whether to run core this vsync.
-		// Vsync (from GFX_flip) is the timing source - each loop iteration = one display refresh.
+		// Vsync (from GFX_present) is the timing source - each loop iteration = one display refresh.
 		// Core runs at its natural rate (e.g., 60fps), display refreshes at panel Hz (e.g., 72Hz).
 		// When display Hz > game fps: some frames are repeated (re-presented).
 		//
@@ -108,8 +108,8 @@ static void run_main_loop(void) {
 			}
 		}
 
-		// Always flip for vsync timing - when !should_run_core, re-presents previous frame
-		GFX_flip(screen);
+		// Always present for vsync timing - when !should_run_core, re-presents previous frame
+		GFX_present(&renderer);
 		frame_ready_for_flip = 0;
 
 		// Track performance (only once per vsync, not per FF run)
@@ -124,7 +124,6 @@ static void run_main_loop(void) {
 
 		if (show_menu) {
 			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
-			GFX_clearBlit(); // Switch to UI mode for menu rendering
 			Menu_loop();
 			LOG_debug("Main loop: returned from Menu_loop");
 		}

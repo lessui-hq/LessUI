@@ -497,7 +497,7 @@ ListResult ui_list_show(SDL_Surface* screen, const ListOptions* opts) {
 				GFX_blitButtonGroup(hints, 0, screen, 1);
 			}
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			redraw = 0;
 		} else {
 			GFX_sync();

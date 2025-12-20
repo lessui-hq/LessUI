@@ -360,7 +360,7 @@ int main(int argc, char* argv[]) {
 				blitButton("R3", screen, PAD_isPressed(BTN_R3), x + o, y + o, 0);
 			}
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			dirty = 0;
 		} else
 			GFX_sync();

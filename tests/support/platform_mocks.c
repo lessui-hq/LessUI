@@ -100,10 +100,10 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 }
 
 // Minimal no-op implementations for other PLAT functions
-void PLAT_initVideo(void) {}
+SDL_Surface* PLAT_initVideo(void) { return NULL; }
 void PLAT_quitVideo(void) {}
 void PLAT_clearVideo(SDL_Surface* screen) {}
-void PLAT_flip(SDL_Surface* screen, int sync) {}
+void PLAT_present(GFX_Renderer* renderer) {}
 void PLAT_vsync(int remaining) {}
 void PLAT_setCPUSpeed(int speed) {}
 void PLAT_setRumble(int strength) {}
