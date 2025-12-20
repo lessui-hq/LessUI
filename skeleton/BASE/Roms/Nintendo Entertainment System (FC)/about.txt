@@ -1,4 +1,4 @@
-Nintendo Entertainment System
+Nintendo Entertainment System / Famicom
 
 Core: fceumm
 
