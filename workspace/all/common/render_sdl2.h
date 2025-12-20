@@ -73,9 +73,6 @@ typedef struct SDL2_RenderContext {
 	SDL_Surface* buffer; // Wrapper for texture lock (unused pixels pointer)
 	SDL_Surface* screen; // Main screen surface for UI rendering
 
-	// Current renderer (set during blitRenderer)
-	GFX_Renderer* blit;
-
 	// Video dimensions
 	int width; // Current source width
 	int height; // Current source height
@@ -190,36 +187,16 @@ void SDL2_setEffectColor(SDL2_RenderContext* ctx, int color);
 scaler_t SDL2_getScaler(SDL2_RenderContext* ctx, GFX_Renderer* renderer);
 
 /**
- * Prepares for frame rendering.
+ * Unified frame presentation.
  *
- * Stores renderer reference and resizes video if needed.
- * Call before PLAT_flip().
+ * Presents either game content (from renderer) or UI content (from screen surface).
+ * This replaces the separate blitRenderer+flip pattern.
  *
  * @param ctx      Render context
- * @param renderer GFX_Renderer with source buffer and dimensions
+ * @param renderer If non-NULL, presents game frame from renderer source.
+ *                 If NULL, presents UI from screen surface.
  */
-void SDL2_blitRenderer(SDL2_RenderContext* ctx, GFX_Renderer* renderer);
-
-/**
- * Clears the blit renderer to switch to UI mode.
- *
- * After calling this, SDL2_flip will render from the screen surface
- * instead of the game renderer. Used when entering menus.
- *
- * @param ctx Render context
- */
-void SDL2_clearBlit(SDL2_RenderContext* ctx);
-
-/**
- * Presents rendered frame to display.
- *
- * Updates texture from source, applies scaling and effects,
- * handles rotation if needed, and presents to screen.
- *
- * @param ctx  Render context
- * @param sync Unused (vsync always enabled via SDL_RENDERER_PRESENTVSYNC)
- */
-void SDL2_flip(SDL2_RenderContext* ctx, int sync);
+void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer);
 
 /**
  * Delays to maintain frame timing.

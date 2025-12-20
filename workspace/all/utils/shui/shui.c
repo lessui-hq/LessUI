@@ -629,7 +629,7 @@ static void render_status_message(const char* text) {
 		SDL_FreeSurface(msg);
 	}
 
-	GFX_flip(screen);
+	GFX_present(NULL);
 }
 
 // Handle message command using ui_message module

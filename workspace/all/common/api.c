@@ -684,12 +684,25 @@ void GFX_startFrame(void) {
 }
 
 /**
- * Presents the rendered frame to the display with vsync.
+ * Presents a frame to the display.
  *
- * @param screen SDL surface to flip to the display
+ * Unified rendering API that handles both game and UI presentation.
+ *
+ * @param renderer If non-NULL, scales/processes game frame and presents it.
+ *                 If NULL, presents the screen surface (UI mode).
  */
-void GFX_flip(SDL_Surface* screen) {
-	PLAT_flip(screen, 1);
+void GFX_present(GFX_Renderer* renderer) {
+	PLAT_present(renderer);
+}
+
+/**
+ * Waits for vsync without presenting new content.
+ *
+ * Use this for frame pacing when the core didn't produce a new frame.
+ * The display continues showing the previous frame.
+ */
+void GFX_vsync(void) {
+	PLAT_vsync(0);
 }
 
 /**
@@ -700,6 +713,8 @@ void GFX_flip(SDL_Surface* screen) {
  *
  * This helps SuperFX games run smoother by maintaining frame timing
  * even when frames are dropped.
+ *
+ * @deprecated Use GFX_vsync() instead
  */
 void GFX_sync(void) {
 	uint32_t frame_duration = SDL_GetTicks() - frame_start;
@@ -3010,7 +3025,7 @@ void PWR_powerOff(void) {
 
 		PLAT_clearVideo(gfx.screen);
 		GFX_blitMessage_DP(font.large, msg, gfx.screen, 0, 0, ui.screen_width, ui.screen_height);
-		GFX_flip(gfx.screen);
+		GFX_present(NULL);
 		PLAT_powerOff();
 	}
 }
@@ -3026,7 +3041,7 @@ static void PWR_enterSleep(void) {
 	SDL_PauseAudio(1);
 	if (GetHDMI()) {
 		PLAT_clearVideo(gfx.screen);
-		PLAT_flip(gfx.screen, 0);
+		GFX_present(NULL);
 	} else {
 		SetRawVolume(MUTE_VOLUME_RAW);
 		PLAT_enableBacklight(0);

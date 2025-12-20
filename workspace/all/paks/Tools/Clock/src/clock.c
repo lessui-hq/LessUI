@@ -357,7 +357,7 @@ int main(int argc, char* argv[]) {
 			             ? DP(40)
 			             : (select_cursor == CURSOR_AMPM ? ampm_w : DP(20))));
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			dirty = 0;
 		} else
 			GFX_sync();

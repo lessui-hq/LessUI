@@ -326,12 +326,6 @@ static struct VID_Context {
 	int height;
 	int pitch;
 	int cleared;
-
-	// Game mode tracking (like SDL2's ctx->blit)
-	// - renderer: set by PLAT_blitRenderer, cleared by PLAT_clearBlit - indicates game mode
-	// - in_game: set by PLAT_blitRenderer, cleared by PLAT_flip - indicates new frame this vsync
-	GFX_Renderer* renderer;
-	int in_game;
 } vid;
 
 // Use shared EffectState from effect_system.h
@@ -589,86 +583,58 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	}
 }
 
-void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.renderer = renderer; // Track game mode (persists until PLAT_clearBlit)
-	vid.in_game = 1; // Track new frame this vsync (cleared each flip)
+void PLAT_present(GFX_Renderer* renderer) {
+	// Unified presentation: handles both game and UI modes
 
-	if (effect_type != next_effect) {
-		effect_type = next_effect;
-		renderer->blit = PLAT_getScaler(renderer);
-	}
+	if (renderer) {
+		// Game mode: refresh renderer->dst to match current page (may have flipped since last frame)
+		renderer->dst = vid.screen->pixels;
 
-	void* dst = renderer->dst + (renderer->dst_y * renderer->dst_p) + (renderer->dst_x * FIXED_BPP);
+		// Clear to black when effects enabled to ensure clean black borders
+		if (effect_state.next_type != EFFECT_NONE) {
+			memset(renderer->dst, 0, renderer->dst_p * FIXED_HEIGHT);
+		}
 
-	((scaler_t)renderer->blit)(renderer->src, dst, renderer->src_w, renderer->src_h,
-	                           renderer->src_p, renderer->dst_w, renderer->dst_h, renderer->dst_p);
-}
+		// Update scaler if effect changed
+		if (effect_type != next_effect) {
+			effect_type = next_effect;
+			renderer->blit = PLAT_getScaler(renderer);
+		}
 
-void PLAT_clearBlit(void) {
-	vid.renderer = NULL; // Exit game mode, return to UI rendering
-}
+		void* dst =
+		    renderer->dst + (renderer->dst_y * renderer->dst_p) + (renderer->dst_x * FIXED_BPP);
+		((scaler_t)renderer->blit)(renderer->src, dst, renderer->src_w, renderer->src_h,
+		                           renderer->src_p, renderer->dst_w, renderer->dst_h,
+		                           renderer->dst_p);
 
-void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	// Frame pacing support: distinguish between game mode and UI mode.
-	// - Game mode (vid.renderer set): core produces frames, may repeat for frame pacing
-	// - UI mode (vid.renderer NULL): menu draws every frame
-	//
-	// NOTE: trimuismart/rg35xx use a "display_page" approach - we select which
-	// hardware page to display based on whether a new frame was produced. This
-	// differs from miyoomini which uses a "skip blit" approach, because here we
-	// write directly to the display engine's memory (DE2/Actions) rather than
-	// through SDL's video surface which retains content between flips.
-
-	// Update and composite effect overlay (only in game mode with new frame)
-	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
-		updateEffectOverlay();
-		if (vid.effect && vid.renderer) {
-			// Calculate content area to align effect with scaled content pixels.
-			// Sample from (0,0) of effect and render to content position.
-			// This ensures the effect pattern aligns correctly regardless of
-			// screen resolution (fixes misalignment where dst_y % scale != 0).
-			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.width, vid.height);
-			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
-			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
-			SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
+		// Apply effect overlay if enabled
+		if (effect_state.next_type != EFFECT_NONE) {
+			updateEffectOverlay();
+			if (vid.effect) {
+				RenderDestRect dest = RENDER_calcDestRect(renderer, vid.width, vid.height);
+				SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+				SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+				SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
+			}
 		}
 	}
+	// UI mode: screen already has content, just present it
 
-	// Determine which page to display:
-	// - vid.page points to the NEXT blit target
-	// - On new frame: display vid.page (just blitted), then flip for next
-	// - On repeated frame: display (vid.page ^ 1) (previous valid frame)
-	int display_page;
-	if (vid.renderer && !vid.in_game) {
-		// Game mode, repeated frame: show previous page (has valid data)
-		display_page = vid.page ^ 1;
-	} else {
-		// New frame or UI mode: show current page
-		display_page = vid.page;
-	}
-
+	// Present: set display address to current page
 	vid.de_mem[DE_OVL_BA0(0) / 4] = vid.de_mem[DE_OVL_BA0(2) / 4] =
-	    (uintptr_t)(vid.fb_info.padd + display_page * VIDEO_BUFFER_SIZE);
+	    (uintptr_t)(vid.fb_info.padd + vid.page * VIDEO_BUFFER_SIZE);
 	DE_enableLayer(vid.de_mem);
 
-	if (sync)
-		PLAT_vsync(0);
+	PLAT_vsync(0);
 
-	// Only flip page when we actually drew a new frame (frame pacing support).
-	// When frame pacing repeats a frame (no core.run()), we keep the same page
-	// so the next blit goes to the same buffer.
-	// In UI mode, always flip to maintain proper double-buffering (we always draw).
-	if (!vid.renderer || vid.in_game) {
-		vid.page ^= 1;
-		vid.screen->pixels = vid.fb_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
-	}
+	// Always flip page
+	vid.page ^= 1;
+	vid.screen->pixels = vid.fb_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
 
 	if (vid.cleared) {
 		PLAT_clearVideo(vid.screen);
 		vid.cleared = 0;
 	}
-
-	vid.in_game = 0; // Clear per-frame flag (vid.renderer persists for game mode)
 }
 
 ///////////////////////////////

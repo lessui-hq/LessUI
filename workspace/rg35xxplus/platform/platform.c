@@ -256,18 +256,9 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	return SDL2_getScaler(&vid_ctx, renderer);
 }
 
-void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	SDL2_blitRenderer(&vid_ctx, renderer);
-}
-
-void PLAT_clearBlit(void) {
-	SDL2_clearBlit(&vid_ctx);
-}
-
-void PLAT_flip(SDL_Surface* screen, int sync) {
-	// Update HDMI state from settings
+void PLAT_present(GFX_Renderer* renderer) {
 	vid_ctx.on_hdmi = GetHDMI();
-	SDL2_flip(&vid_ctx, sync);
+	SDL2_present(&vid_ctx, renderer);
 }
 
 int PLAT_supportsOverscan(void) {

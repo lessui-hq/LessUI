@@ -37,7 +37,7 @@ int main(int argc , char* argv[]) {
 		SDL_BlitSurface(txt, NULL, screen, &(SDL_Rect){8,8});
 		SDL_FreeSurface(txt);
 		
-		GFX_flip(screen);
+		GFX_present(NULL);
 	}
 
 	PAD_quit();

@@ -77,8 +77,7 @@ uint32_t frame_time_us = (SDL_GetTicks() - frame_start) * 1000;
 while (!quit) {
     core.run()
       └─> video_refresh_callback()
-            └─> GFX_blitRenderer()
-            └─> GFX_flip()  ← VSYNC BLOCKS HERE (inside core.run!)
+            └─> GFX_present(&renderer)  ← VSYNC BLOCKS HERE (inside core.run!)
 }
 ```
 
@@ -95,11 +94,10 @@ while (!quit) {
 while (!quit) {
     core.run()
       └─> video_refresh_callback()
-            └─> GFX_blitRenderer()
-            └─> frame_ready_for_flip = 1
+            └─> frame_ready = 1
 
-    if (frame_ready_for_flip)
-        GFX_flip()  ← VSYNC BLOCKS HERE (after core.run)
+    if (frame_ready)
+        GFX_present(&renderer)  ← VSYNC BLOCKS HERE (after core.run)
 }
 ```
 
@@ -128,11 +126,11 @@ Buffer CANNOT settle at 50% when display ≠ core rate, no matter the buffer siz
 
 ```c
 while (!quit) {
-    core.run()           // Run as fast as CPU allows
-    push_audio()         // Non-blocking
+    core.run()                   // Run as fast as CPU allows
+    push_audio()                 // Non-blocking
 
-    if (should_flip)     // Throttle separately
-        GFX_flip()       // ~60Hz vsync
+    if (should_present)          // Throttle separately
+        GFX_present(&renderer)   // ~60Hz vsync
 }
 ```
 

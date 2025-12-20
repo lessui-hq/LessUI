@@ -50,7 +50,7 @@ DEFINE_FAKE_VOID_FUNC(GFX_setEffect, int);
 DEFINE_FAKE_VOID_FUNC(GFX_startFrame);
 DEFINE_FAKE_VOID_FUNC(GFX_clear, SDL_Surface*);
 DEFINE_FAKE_VOID_FUNC(GFX_clearAll);
-DEFINE_FAKE_VOID_FUNC(GFX_flip, SDL_Surface*);
+DEFINE_FAKE_VOID_FUNC(GFX_present, GFX_Renderer*);
 DEFINE_FAKE_VOID_FUNC(GFX_sync);
 
 DEFINE_FAKE_VALUE_FUNC(int, GFX_blitHardwareGroup, SDL_Surface*, int);
@@ -102,7 +102,7 @@ void reset_all_api_fakes(void) {
 	RESET_FAKE(GFX_startFrame);
 	RESET_FAKE(GFX_clear);
 	RESET_FAKE(GFX_clearAll);
-	RESET_FAKE(GFX_flip);
+	RESET_FAKE(GFX_present);
 	RESET_FAKE(GFX_sync);
 	RESET_FAKE(GFX_blitHardwareGroup);
 	RESET_FAKE(GFX_truncateText);

@@ -3606,10 +3606,8 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	renderer.dst = screen->pixels;
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
-	GFX_blitRenderer(&renderer);
 	last_blit_time = SDL_GetTicks();
-	frame_ready_for_flip = 1; // Signal main loop to flip
-	// NOTE: GFX_flip moved to main loop - see "Decouple vsync from core.run()" change
+	frame_ready_for_flip = 1; // Signal main loop to present
 }
 
 /**
@@ -3971,7 +3969,7 @@ int Menu_message(const char* message, char** pairs) {
 			                &(SDL_Rect){0, DP(ui.edge_padding), DP(ui.screen_width),
 			                            DP(ui.screen_height - ui.pill_height - ui.edge_padding)});
 			GFX_blitButtonGroup(pairs, 0, screen, 1);
-			GFX_flip(screen);
+			GFX_present(NULL);
 			dirty = 0;
 		} else
 			GFX_sync();
@@ -5046,15 +5044,12 @@ int Menu_options(MenuList* list) {
 				                         DP(ui.screen_height) - DP(ui.edge_padding) - h, w, h});
 			}
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			nav.dirty = 0;
 		} else
 			GFX_sync();
 		hdmimon();
 	}
-
-	// GFX_clearAll();
-	// GFX_flip(screen);
 
 	return 0;
 }
@@ -5342,7 +5337,7 @@ static void showFatalError(void) {
 			             &(SDL_Rect){ui.edge_padding_px, y, text_width, detail_h});
 
 			GFX_blitButtonGroup(pairs, 0, screen, 1);
-			GFX_flip(screen);
+			GFX_present(NULL);
 			dirty = 0;
 		} else {
 			GFX_sync();
@@ -5479,7 +5474,6 @@ int main(int argc, char* argv[]) {
 		LOG_debug("Game_open failed, game.is_open=0");
 		if (fatal_error_detail[0] != '\0') {
 			LOG_info("Showing fatal error: %s", fatal_error_detail);
-			GFX_clearBlit(); // Ensure UI rendering mode
 			showFatalError();
 		}
 		goto finish;
@@ -5508,7 +5502,6 @@ int main(int argc, char* argv[]) {
 
 	if (!Core_load()) {
 		LOG_info("Showing fatal error: %s", fatal_error_detail);
-		GFX_clearBlit(); // Ensure UI rendering mode (core may have set game mode)
 		showFatalError();
 		goto finish;
 	}

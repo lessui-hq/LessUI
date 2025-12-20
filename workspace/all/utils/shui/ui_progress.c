@@ -191,5 +191,5 @@ void ui_progress_render(SDL_Surface* screen, ProgressState* state, const Progres
 		}
 	}
 
-	GFX_flip(screen);
+	GFX_present(NULL);
 }

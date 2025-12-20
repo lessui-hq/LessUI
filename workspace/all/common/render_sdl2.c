@@ -8,7 +8,7 @@
  * Key features unified:
  * - resizeVideo() with hard_scale calculation
  * - updateEffect() with opacity tables
- * - PLAT_flip() with aspect ratio handling
+ * - PLAT_present() with aspect ratio handling
  * - Crisp scaling two-pass rendering
  * - Display rotation support
  */
@@ -298,25 +298,18 @@ scaler_t SDL2_getScaler(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	return scale1x1_c16; // Hardware does scaling
 }
 
-void SDL2_blitRenderer(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
-	ctx->blit = renderer;
+void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
+	// Unified presentation: handles both game and UI modes
+	// No state tracking needed - caller explicitly says what to present
+
 	SDL_RenderClear(ctx->renderer);
-	resizeVideoInternal(ctx, renderer->true_w, renderer->true_h, renderer->src_p);
-}
 
-void SDL2_clearBlit(SDL2_RenderContext* ctx) {
-	ctx->blit = NULL;
-}
-
-void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
-	// UI mode (no blit renderer)
-	if (!ctx->blit) {
+	if (!renderer) {
+		// UI mode: present screen surface
 		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
 		SDL_UpdateTexture(ctx->texture, NULL, ctx->screen->pixels, ctx->screen->pitch);
 
 		if (ctx->rotate && !ctx->on_hdmi) {
-			// Rotated render - rect position derived from rotation direction
-			// CW (90°): rect at {dh, 0}  |  CCW (270°): rect at {0, dw}
 			int rect_x = ctx->config.rotate_cw ? ctx->device_height : 0;
 			int rect_y = ctx->config.rotate_cw ? 0 : ctx->device_width;
 			SDL_Point center_point = {0, 0};
@@ -333,15 +326,16 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 		return;
 	}
 
-	// Game mode - update texture from renderer source
-	SDL_UpdateTexture(ctx->texture, NULL, ctx->blit->src, ctx->blit->src_p);
+	// Game mode: present from renderer source
+	resizeVideoInternal(ctx, renderer->true_w, renderer->true_h, renderer->src_p);
+	SDL_UpdateTexture(ctx->texture, NULL, renderer->src, renderer->src_p);
 
 	// Apply crisp scaling if enabled
 	SDL_Texture* target = ctx->texture;
-	int x = ctx->blit->src_x;
-	int y = ctx->blit->src_y;
-	int w = ctx->blit->src_w;
-	int h = ctx->blit->src_h;
+	int x = renderer->src_x;
+	int y = renderer->src_y;
+	int w = renderer->src_w;
+	int h = renderer->src_h;
 
 	if (ctx->sharpness == SHARPNESS_CRISP && ctx->target) {
 		SDL_SetRenderTarget(ctx->renderer, ctx->target);
@@ -356,12 +350,11 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 
 	// Calculate destination rectangle
 	SDL_Rect src_rect = {x, y, w, h};
-	RenderDestRect dest = RENDER_calcDestRect(ctx->blit, ctx->device_width, ctx->device_height);
+	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
 	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
 
 	// Render main content
 	if (ctx->rotate && !ctx->on_hdmi) {
-		// Calculate rotation offsets
 		int ox = -(ctx->device_width - ctx->device_height) / 2;
 		int oy = -ox;
 		SDL_RenderCopyEx(ctx->renderer, target, &src_rect,
@@ -373,7 +366,7 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 
 	// Update and render effect overlay
 	updateEffectInternal(ctx);
-	if (ctx->blit && ctx->effect_state.type != EFFECT_NONE && ctx->effect) {
+	if (ctx->effect_state.type != EFFECT_NONE && ctx->effect) {
 		SDL_Rect effect_src = {0, 0, dst_rect.w, dst_rect.h};
 		if (ctx->rotate && !ctx->on_hdmi) {
 			int ox = -(ctx->device_width - ctx->device_height) / 2;
@@ -386,12 +379,7 @@ void SDL2_flip(SDL2_RenderContext* ctx, int sync) {
 		}
 	}
 
-	// Present
 	SDL_RenderPresent(ctx->renderer);
-	// NOTE: Don't clear ctx->blit here - it needs to persist for frame pacing.
-	// When frame pacing repeats a frame (no core.run()), we still need the
-	// blit info to re-render the previous frame. The blit pointer stays valid
-	// until explicitly changed by SDL2_blitRenderer().
 }
 
 void SDL2_vsync(int remaining) {

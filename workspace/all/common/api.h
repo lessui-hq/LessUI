@@ -333,7 +333,7 @@ enum {
 typedef struct GFX_Renderer {
 	void* src; // Source surface pixel data
 	void* dst; // Destination surface pixel data
-	void* blit; // Blit surface for intermediate operations
+	void* blit; // Scaler function pointer (cast to scaler_t)
 	double aspect; // 0=integer scale, -1=fullscreen, >0=aspect ratio for SDL2 accelerated scaling
 	int scale; // Integer scale factor (intermediate buffer scale)
 	int visual_scale; // Visual scale for effects (accounts for GPU downscaling)
@@ -450,11 +450,26 @@ int GFX_hdmiChanged(void);
 void GFX_startFrame(void);
 
 /**
- * Flips the back buffer to the screen.
+ * Presents a frame to the display.
  *
- * @param screen SDL surface to flip
+ * @param renderer If non-NULL, scales/processes game frame and presents it.
+ *                 If NULL, presents the screen surface (UI mode).
+ *
+ * Internally handles:
+ * - Scaling and rotation (platform-specific)
+ * - Effect overlays (if enabled)
+ * - Double-buffer management
+ * - VSync
  */
-void GFX_flip(SDL_Surface* screen);
+void GFX_present(GFX_Renderer* renderer);
+
+/**
+ * Waits for vsync without presenting new content.
+ *
+ * Use this for frame pacing when the core didn't produce a new frame.
+ * The display continues showing the previous frame.
+ */
+void GFX_vsync(void);
 
 /**
  * Checks if platform supports overscan adjustment.
@@ -463,7 +478,7 @@ void GFX_flip(SDL_Surface* screen);
 #define GFX_supportsOverscan PLAT_supportsOverscan
 
 /**
- * Maintains 60fps timing when not calling GFX_flip() this frame.
+ * Maintains 60fps timing when not calling GFX_present() this frame.
  *
  * Use this to keep consistent frame timing during pause/sleep.
  */
@@ -504,18 +519,6 @@ int GFX_wrapText(TTF_Font* font, char* str, int max_width, int max_lines);
  * @return Scaler function pointer
  */
 #define GFX_getScaler PLAT_getScaler
-
-/**
- * Blits a renderer's output to the screen.
- * @param renderer Rendering context
- */
-#define GFX_blitRenderer PLAT_blitRenderer
-
-/**
- * Clears the blit renderer to switch to UI mode.
- * After calling this, GFX_flip renders from screen surface instead of game renderer.
- */
-#define GFX_clearBlit PLAT_clearBlit
 
 /**
  * Gets anti-aliased scaler for smooth scaling operations.
@@ -1357,25 +1360,12 @@ void PLAT_vsync(int remaining);
 scaler_t PLAT_getScaler(GFX_Renderer* renderer);
 
 /**
- * Platform-specific renderer blitting.
+ * Platform-specific unified frame presentation.
  *
- * @param renderer Rendering context
+ * @param renderer If non-NULL, processes and presents game frame.
+ *                 If NULL, presents the screen surface (UI mode).
  */
-void PLAT_blitRenderer(GFX_Renderer* renderer);
-
-/**
- * Platform-specific blit clearing.
- * Switches from game mode to UI mode rendering.
- */
-void PLAT_clearBlit(void);
-
-/**
- * Platform-specific screen flip.
- *
- * @param screen SDL surface to flip
- * @param sync 1 to wait for VSync, 0 to flip immediately
- */
-void PLAT_flip(SDL_Surface* screen, int sync);
+void PLAT_present(GFX_Renderer* renderer);
 
 /**
  * Platform-specific overscan support check.

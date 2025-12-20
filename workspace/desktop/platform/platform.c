@@ -98,8 +98,6 @@ static struct VID_Context {
 	SDL_Surface* buffer;
 	SDL_Surface* screen;
 
-	GFX_Renderer* blit; // yeesh
-
 	int width;
 	int height;
 	int pitch;
@@ -313,76 +311,41 @@ void PLAT_setEffectColor(int next_color) {
 	// Desktop platform doesn't support DMG color tinting
 }
 
-void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.blit = renderer;
-	SDL_RenderClear(vid.renderer);
-	resizeVideo(vid.blit->true_w, vid.blit->true_h, vid.blit->src_p);
-	scale1x1_c16(renderer->src, renderer->dst, renderer->true_w, renderer->true_h, renderer->src_p,
-	             vid.screen->w, vid.screen->h, vid.screen->pitch // fixed in this implementation
-	             // renderer->dst_w,renderer->dst_h,renderer->dst_p
-	);
-}
-
-void PLAT_clearBlit(void) {
-	vid.blit = NULL;
-}
-
 /**
- * Presents rendered frame to the display.
+ * Presents a frame to the display.
  *
- * Handles two rendering paths:
- * 1. Direct screen rendering (no blit): Updates texture from screen surface
- * 2. Renderer blitting: Processes aspect ratio and scaling from GFX_Renderer
- *
- * Applies 90-degree rotation when rotate flag is set (portrait orientation).
- *
- * @param IGNORED Unused SDL_Surface parameter
- * @param ignored Unused integer parameter
+ * @param renderer If non-NULL, processes game frame with aspect ratio/scaling.
+ *                 If NULL, presents the screen surface (UI mode).
  */
-void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
+void PLAT_present(GFX_Renderer* renderer) {
 	updateEffect();
 
-	if (!vid.blit) {
-		resizeVideo(device_width, device_height, FIXED_PITCH); // !!!???
-		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
-		if (rotate) {
-			SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
-			                 &(SDL_Rect){device_height, 0, device_width, device_height},
-			                 rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
-		} else {
-			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
-		}
+	if (renderer) {
+		// Game mode: blit renderer content and present with aspect ratio
+		SDL_RenderClear(vid.renderer);
+		resizeVideo(renderer->true_w, renderer->true_h, renderer->src_p);
+		scale1x1_c16(renderer->src, renderer->dst, renderer->true_w, renderer->true_h,
+		             renderer->src_p, vid.screen->w, vid.screen->h, vid.screen->pitch);
 
-		if (vid.effect && effect.type != EFFECT_NONE) {
-			SDL_RenderCopy(vid.renderer, vid.effect, NULL, NULL);
-		}
+		SDL_LockTexture(vid.texture, NULL, &vid.buffer->pixels, &vid.buffer->pitch);
+		SDL_BlitSurface(vid.screen, NULL, vid.buffer, NULL);
+		SDL_UnlockTexture(vid.texture);
 
-		SDL_RenderPresent(vid.renderer);
-		return;
-	}
+		SDL_Rect src_r = {0};
+		SDL_Rect dst_r = {0};
+		SDL_Rect* src_rect = NULL;
+		SDL_Rect* dst_rect = NULL;
 
-	if (!vid.blit)
-		resizeVideo(FIXED_WIDTH, FIXED_HEIGHT, FIXED_PITCH); // !!!???
-
-	SDL_LockTexture(vid.texture, NULL, &vid.buffer->pixels, &vid.buffer->pitch);
-	SDL_BlitSurface(vid.screen, NULL, vid.buffer, NULL);
-	SDL_UnlockTexture(vid.texture);
-
-	SDL_Rect* src_rect = NULL;
-	SDL_Rect* dst_rect = NULL;
-	SDL_Rect src_r = {0};
-	SDL_Rect dst_r = {0};
-	if (vid.blit) {
-		src_r.x = vid.blit->src_x;
-		src_r.y = vid.blit->src_y;
-		src_r.w = vid.blit->src_w;
-		src_r.h = vid.blit->src_h;
+		src_r.x = renderer->src_x;
+		src_r.y = renderer->src_y;
+		src_r.w = renderer->src_w;
+		src_r.h = renderer->src_h;
 		src_rect = &src_r;
 
 		// Calculate destination rectangle based on aspect ratio mode
-		if (vid.blit->aspect == 0) { // native (or cropped?)
-			int w = vid.blit->src_w * vid.blit->scale;
-			int h = vid.blit->src_h * vid.blit->scale;
+		if (renderer->aspect == 0) { // native (or cropped?)
+			int w = renderer->src_w * renderer->scale;
+			int h = renderer->src_h * renderer->scale;
 			int x = (FIXED_WIDTH - w) / 2;
 			int y = (FIXED_HEIGHT - h) / 2;
 
@@ -391,11 +354,11 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 			dst_r.w = w;
 			dst_r.h = h;
 			dst_rect = &dst_r;
-		} else if (vid.blit->aspect > 0) { // aspect
+		} else if (renderer->aspect > 0) { // aspect
 			int h = FIXED_HEIGHT;
-			int w = h * vid.blit->aspect;
+			int w = h * renderer->aspect;
 			if (w > FIXED_WIDTH) {
-				double ratio = 1 / vid.blit->aspect;
+				double ratio = 1 / renderer->aspect;
 				w = FIXED_WIDTH;
 				h = w * ratio;
 			}
@@ -408,15 +371,29 @@ void PLAT_flip(SDL_Surface* IGNORED, int ignored) {
 			dst_r.h = h;
 			dst_rect = &dst_r;
 		}
-	}
-	SDL_RenderCopy(vid.renderer, vid.texture, src_rect, dst_rect);
+		SDL_RenderCopy(vid.renderer, vid.texture, src_rect, dst_rect);
 
-	if (vid.effect && effect.type != EFFECT_NONE && dst_rect) {
-		SDL_RenderCopy(vid.renderer, vid.effect, NULL, dst_rect);
+		if (vid.effect && effect.type != EFFECT_NONE && dst_rect) {
+			SDL_RenderCopy(vid.renderer, vid.effect, NULL, dst_rect);
+		}
+	} else {
+		// UI mode: present screen surface directly
+		resizeVideo(device_width, device_height, FIXED_PITCH);
+		SDL_UpdateTexture(vid.texture, NULL, vid.screen->pixels, vid.screen->pitch);
+		if (rotate) {
+			SDL_RenderCopyEx(vid.renderer, vid.texture, NULL,
+			                 &(SDL_Rect){device_height, 0, device_width, device_height},
+			                 rotate * 90, &(SDL_Point){0, 0}, SDL_FLIP_NONE);
+		} else {
+			SDL_RenderCopy(vid.renderer, vid.texture, NULL, NULL);
+		}
+
+		if (vid.effect && effect.type != EFFECT_NONE) {
+			SDL_RenderCopy(vid.renderer, vid.effect, NULL, NULL);
+		}
 	}
 
 	SDL_RenderPresent(vid.renderer);
-	vid.blit = NULL;
 }
 
 ///////////////////////////////

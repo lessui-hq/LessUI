@@ -431,7 +431,7 @@ ExitCode ui_message_show(SDL_Surface* screen, const MessageOptions* opts) {
 				GFX_blitButtonGroup(hints, (opts->confirm_text ? 1 : 0), screen, 1);
 			}
 
-			GFX_flip(screen);
+			GFX_present(NULL);
 			redraw = 0;
 		} else {
 			GFX_sync();

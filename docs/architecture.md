@@ -242,7 +242,7 @@ LessUI uses double-buffering:
 ```c
 GFX_clear(screen);              // Clear back buffer
 GFX_blitText(...);              // Draw UI elements
-GFX_flip(screen);               // Show back buffer
+GFX_present(NULL);              // Present (NULL = UI mode)
 ```
 
 ### Asset System

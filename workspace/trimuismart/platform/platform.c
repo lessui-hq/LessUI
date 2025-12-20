@@ -157,9 +157,6 @@ static struct VID_Context {
 	SDL_Surface* effect;
 	SDL_Surface* special;
 
-	// Game mode tracking (like SDL2's ctx->blit) - set by PLAT_blitRenderer, cleared by PLAT_clearBlit
-	GFX_Renderer* renderer;
-
 	int disp_fd;
 	int fb_fd;
 	int ion_fd;
@@ -183,7 +180,6 @@ static struct VID_Context {
 
 	int cleared;
 	int resized;
-	int in_game; // New frame this vsync (cleared each flip) - works with renderer for frame pacing
 } vid;
 
 // Use shared EffectState from effect_system.h
@@ -360,8 +356,6 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int pitch) {
 	vid.resized = 1;
 
 	vid.rotated_pitch = 0;
-	if (vid.renderer)
-		vid.renderer->src_w = 0;
 	return vid.screen;
 }
 
@@ -439,91 +433,58 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	}
 }
 
-void PLAT_blitRenderer(GFX_Renderer* renderer) {
-	vid.renderer = renderer; // Track game mode (persists until PLAT_clearBlit)
-	vid.in_game = 1; // Track new frame this vsync (cleared each flip)
-	int p = ((renderer->src_h + 7) / 8) * 8 * FIXED_BPP;
+void PLAT_present(GFX_Renderer* renderer) {
+	// Unified presentation: handles both game and UI modes
 
-	if (!vid.special || vid.special->w != renderer->src_h || vid.special->h != renderer->src_w ||
-	    vid.special->pitch != p || !vid.rotated_pitch) {
-		if (vid.special)
-			SDL_FreeSurface(vid.special);
+	if (renderer) {
+		// Game mode: rotate and scale from renderer source to buffer
+		int p = ((renderer->src_h + 7) / 8) * 8 * FIXED_BPP;
 
-		vid.special = SDL_CreateRGBSurface(SDL_SWSURFACE, renderer->src_h, renderer->src_w,
-		                                   FIXED_DEPTH, RGBA_MASK_565);
-		vid.rotated_pitch = vid.height * FIXED_BPP;
-		vid.rotated_offset = (renderer->dst_x * vid.rotated_pitch) + (renderer->dst_y * FIXED_BPP);
-		vid.source_offset = (renderer->src_x * vid.special->pitch) + (renderer->src_y * FIXED_BPP);
+		if (!vid.special || vid.special->w != renderer->src_h ||
+		    vid.special->h != renderer->src_w || vid.special->pitch != p || !vid.rotated_pitch) {
+			if (vid.special)
+				SDL_FreeSurface(vid.special);
 
-		LOG_debug("PLAT_blitRenderer >> src:%p dst:%p blit:%p src:%ix%i (%i) dst:%i,%i %ix%i (%i) "
-		          "vid: %ix%i (%i) (%i)\n",
-		          vid.renderer->src, vid.renderer->dst, vid.renderer->blit, vid.renderer->src_w,
-		          vid.renderer->src_h, vid.renderer->src_p, vid.renderer->dst_x,
-		          vid.renderer->dst_y, vid.renderer->dst_w, vid.renderer->dst_h,
-		          vid.renderer->dst_p, vid.width, vid.height, vid.pitch, vid.rotated_pitch);
-	}
-
-	rotate_16bpp(renderer->src, vid.special->pixels, renderer->src_w, renderer->src_h,
-	             renderer->src_p, vid.special->pitch);
-
-	((scaler_t)renderer->blit)(vid.special->pixels + vid.source_offset,
-	                           vid.buffer->pixels + vid.rotated_offset, vid.special->w,
-	                           vid.special->h, vid.special->pitch, vid.renderer->dst_h,
-	                           vid.renderer->dst_w, vid.rotated_pitch);
-}
-
-void PLAT_clearBlit(void) {
-	vid.renderer = NULL; // Exit game mode, return to UI rendering
-}
-
-void PLAT_flip(SDL_Surface* IGNORED, int sync) {
-	// Frame pacing support: distinguish between game mode and UI mode.
-	// - Game mode (vid.renderer set): core produces frames, may repeat for frame pacing
-	// - UI mode (vid.renderer NULL): menu draws every frame
-	//
-	// NOTE: trimuismart/rg35xx use a "display_page" approach - we select which
-	// hardware page to display based on whether a new frame was produced. This
-	// differs from miyoomini which uses a "skip blit" approach, because here we
-	// write directly to the display engine's memory (DE2/sunxi) rather than
-	// through SDL's video surface which retains content between flips.
-
-	// Update and composite effect overlay (only in game mode with new frame)
-	if (vid.in_game && effect_state.next_type != EFFECT_NONE) {
-		updateEffectOverlay();
-		if (vid.effect && vid.renderer) {
-			// Calculate content area to align effect with scaled content pixels.
-			// Sample from (0,0) of effect and render to content position.
-			// This ensures the effect pattern aligns correctly regardless of
-			// screen resolution (fixes misalignment where dst_y % scale != 0).
-			RenderDestRect dest = RENDER_calcDestRect(vid.renderer, vid.width, vid.height);
-			SDL_Rect src_rect = {0, 0, dest.w, dest.h};
-			SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
-			SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
+			vid.special = SDL_CreateRGBSurface(SDL_SWSURFACE, renderer->src_h, renderer->src_w,
+			                                   FIXED_DEPTH, RGBA_MASK_565);
+			vid.rotated_pitch = vid.height * FIXED_BPP;
+			vid.rotated_offset =
+			    (renderer->dst_x * vid.rotated_pitch) + (renderer->dst_y * FIXED_BPP);
+			vid.source_offset =
+			    (renderer->src_x * vid.special->pitch) + (renderer->src_y * FIXED_BPP);
 		}
-	}
 
-	// UI mode: rotate screen to buffer every frame
-	if (!vid.renderer)
+		// Rotate source to intermediate surface
+		rotate_16bpp(renderer->src, vid.special->pixels, renderer->src_w, renderer->src_h,
+		             renderer->src_p, vid.special->pitch);
+
+		// Scale to display buffer
+		((scaler_t)renderer->blit)(vid.special->pixels + vid.source_offset,
+		                           vid.buffer->pixels + vid.rotated_offset, vid.special->w,
+		                           vid.special->h, vid.special->pitch, renderer->dst_h,
+		                           renderer->dst_w, vid.rotated_pitch);
+
+		// Apply effect overlay if enabled
+		if (effect_state.next_type != EFFECT_NONE) {
+			updateEffectOverlay();
+			if (vid.effect) {
+				RenderDestRect dest = RENDER_calcDestRect(renderer, vid.width, vid.height);
+				SDL_Rect src_rect = {0, 0, dest.w, dest.h};
+				SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+				SDL_BlitSurface(vid.effect, &src_rect, vid.screen, &dst_rect);
+			}
+		}
+	} else {
+		// UI mode: rotate screen surface to buffer
 		rotate_16bpp(vid.screen->pixels, vid.buffer->pixels, vid.width, vid.height, vid.pitch,
 		             vid.height * FIXED_BPP);
-
-	// Determine which page to display:
-	// - vid.page points to the NEXT blit target
-	// - On new frame: display vid.page (just blitted), then flip for next
-	// - On repeated frame: display (vid.page ^ 1) (previous valid frame)
-	int display_page;
-	if (vid.renderer && !vid.in_game) {
-		// Game mode, repeated frame: show previous page (has valid data)
-		display_page = vid.page ^ 1;
-	} else {
-		// New frame or UI mode: show current page
-		display_page = vid.page;
 	}
 
+	// Present: set display address to current page
 	vid.buffer_config.info.fb.addr[0] =
-	    (uintptr_t)vid.buffer_info.padd + display_page * VIDEO_BUFFER_SIZE;
+	    (uintptr_t)vid.buffer_info.padd + vid.page * VIDEO_BUFFER_SIZE;
 	vid.mem_map[OVL_V_TOP_LADD0 / 4] =
-	    (uintptr_t)vid.buffer_info.padd + display_page * VIDEO_BUFFER_SIZE;
+	    (uintptr_t)vid.buffer_info.padd + vid.page * VIDEO_BUFFER_SIZE;
 
 	if (vid.resized) {
 		vid.buffer_config.info.fb.size[0].width = vid.height;
@@ -535,24 +496,16 @@ void PLAT_flip(SDL_Surface* IGNORED, int sync) {
 		vid.resized = 0;
 	}
 
-	// Only flip page when we actually drew a new frame (frame pacing support).
-	// When frame pacing repeats a frame (no core.run()), we keep the same page
-	// so the next blit goes to the same buffer.
-	// In UI mode, always flip to maintain proper double-buffering (we always draw).
-	if (!vid.renderer || vid.in_game) {
-		vid.page ^= 1;
-		vid.buffer->pixels = vid.buffer_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
-	}
+	// Always flip page
+	vid.page ^= 1;
+	vid.buffer->pixels = vid.buffer_info.vadd + vid.page * VIDEO_BUFFER_SIZE;
 
-	if (sync)
-		PLAT_vsync(0);
+	PLAT_vsync(0);
 
 	if (vid.cleared) {
 		PLAT_clearVideo(vid.buffer);
 		vid.cleared = 0;
 	}
-
-	vid.in_game = 0; // Clear per-frame flag (vid.renderer persists for game mode)
 }
 
 ///////////////////////////////

@@ -336,7 +336,7 @@ while (!quit) {
         core.run();  // Core calls input_poll internally
     }
 
-    GFX_flip(screen);  // Vsync
+    GFX_present(&renderer);  // Vsync + present frame
 
     // Fallback input poll (for misbehaving cores)
     input_poll_callback();
