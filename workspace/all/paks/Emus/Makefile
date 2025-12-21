@@ -9,7 +9,7 @@
 #   clean   - Remove downloaded cores
 ###########################################################
 
-PLAYER_CORES_VERSION ?= 20251220-0
+PLAYER_CORES_VERSION ?= 20251220-2
 CORES_BASE = https://github.com/lessui-hq/LessUI-Cores/releases/download/$(PLAYER_CORES_VERSION)
 
 # All core management happens in cores/ directory
