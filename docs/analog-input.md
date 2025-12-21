@@ -42,6 +42,7 @@ bind <core_button> = <device_button>
 ```
 
 Available device buttons:
+
 ```
 UP, DOWN, LEFT, RIGHT, A, B, X, Y, START, SELECT, L1, R1, L2, R2, L3, R3
 ```
@@ -58,13 +59,13 @@ There is no config syntax for analog stick mapping (e.g., no `L_STICK_UP`).
 
 These devices have no hardware analog sticks. The `pad.laxis` and `pad.raxis` values remain at zero, meaning cores receive no analog input.
 
-| System | Impact |
-|--------|--------|
-| N64 | Unplayable - analog stick required for 3D games |
-| PSP | Unplayable - analog nub required for many games |
-| Dreamcast | Degraded - d-pad works but analog preferred |
+| System     | Impact                                          |
+| ---------- | ----------------------------------------------- |
+| N64        | Unplayable - analog stick required for 3D games |
+| PSP        | Unplayable - analog nub required for many games |
+| Dreamcast  | Degraded - d-pad works but analog preferred     |
 | Atari 5200 | May have issues - original used analog joystick |
-| All others | Fine - d-pad based systems |
+| All others | Fine - d-pad based systems                      |
 
 ### One Analog Stick
 
@@ -72,12 +73,12 @@ These devices have no hardware analog sticks. The `pad.laxis` and `pad.raxis` va
 
 These devices have a single (left) analog stick. The left stick works automatically for cores that need it.
 
-| System | Impact |
-|--------|--------|
-| N64 | Works - left stick maps to N64 analog |
-| PSP | Works - left stick maps to PSP nub |
-| Dreamcast | Partial - left stick works, no right stick |
-| PS (DualShock) | Partial - only left stick available |
+| System         | Impact                                     |
+| -------------- | ------------------------------------------ |
+| N64            | Works - left stick maps to N64 analog      |
+| PSP            | Works - left stick maps to PSP nub         |
+| Dreamcast      | Partial - left stick works, no right stick |
+| PS (DualShock) | Partial - only left stick available        |
 
 ### Two Analog Sticks
 
@@ -85,11 +86,11 @@ These devices have a single (left) analog stick. The left stick works automatica
 
 These devices have full analog capability. Both sticks pass through to cores automatically.
 
-| System | Impact |
-|--------|--------|
-| N64 | Full support |
-| PSP | Full support |
-| Dreamcast | Full support |
+| System         | Impact       |
+| -------------- | ------------ |
+| N64            | Full support |
+| PSP            | Full support |
+| Dreamcast      | Full support |
 | PS (DualShock) | Full support |
 
 ## The Problem
@@ -123,18 +124,18 @@ The change would be in `workspace/all/player/player.c` in the `input_state_callb
 
 Platforms define analog axes in their `platform.h`:
 
-| Platform | AXIS_LX/LY | AXIS_RX/RY | Analog Support |
-|----------|------------|------------|----------------|
-| miyoomini | AXIS_NA | AXIS_NA | None |
-| trimuismart | AXIS_NA | AXIS_NA | None |
-| rg35xx | AXIS_NA | AXIS_NA | None |
-| rg35xxplus | Defined | Defined | 2 sticks |
-| my355 | Defined | Defined | Hardware present but not wired |
-| tg5040 | Defined | Defined | Hardware present but not wired |
-| zero28 | Defined | Defined | Hardware present but not wired |
-| rgb30 | Defined | Defined | 1 stick (left only in practice) |
-| m17 | Defined | Defined | 2 sticks (currently commented out) |
-| my282 | Defined | AXIS_NA | 1 stick |
-| magicmini | Defined | Defined | 2 sticks |
+| Platform    | AXIS_LX/LY | AXIS_RX/RY | Analog Support                     |
+| ----------- | ---------- | ---------- | ---------------------------------- |
+| miyoomini   | AXIS_NA    | AXIS_NA    | None                               |
+| trimuismart | AXIS_NA    | AXIS_NA    | None                               |
+| rg35xx      | AXIS_NA    | AXIS_NA    | None                               |
+| rg35xxplus  | Defined    | Defined    | 2 sticks                           |
+| my355       | Defined    | Defined    | Hardware present but not wired     |
+| tg5040      | Defined    | Defined    | Hardware present but not wired     |
+| zero28      | Defined    | Defined    | Hardware present but not wired     |
+| rgb30       | Defined    | Defined    | 1 stick (left only in practice)    |
+| m17         | Defined    | Defined    | 2 sticks (currently commented out) |
+| my282       | Defined    | AXIS_NA    | 1 stick                            |
+| magicmini   | Defined    | Defined    | 2 sticks                           |
 
 `AXIS_NA = -1` means the axis is not available. When an axis equals `AXIS_NA`, the comparison in `api.c` never matches, so `pad.laxis`/`pad.raxis` stay at zero.

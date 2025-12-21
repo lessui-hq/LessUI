@@ -1,8 +1,0 @@
-Nintendo 64
-
-Core: mupen64plus_next
-
-Supported file types:
-  .z64, .n64, .v64, .zip, .7z
-
-No BIOS required.
