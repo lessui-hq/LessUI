@@ -164,6 +164,26 @@ void test_Launcher_hasNonHiddenFiles_with_dotfiles(void) {
 	rmdir(temp_dir);
 }
 
+void test_Launcher_hasNonHiddenFiles_only_about_txt(void) {
+	char temp_dir[] = "/tmp/dirtest_XXXXXX";
+	TEST_ASSERT_NOT_NULL(mkdtemp(temp_dir));
+
+	// Create only about.txt (should be hidden per hide() function)
+	char file_path[512];
+	sprintf(file_path, "%s/about.txt", temp_dir);
+	FILE* f = fopen(file_path, "w");
+	fputs("This directory contains BIOS files.", f);
+	fclose(f);
+
+	// Should return 0 (about.txt is hidden, so directory is "empty")
+	int result = Launcher_hasNonHiddenFiles(temp_dir);
+	TEST_ASSERT_FALSE(result);
+
+	// Cleanup
+	unlink(file_path);
+	rmdir(temp_dir);
+}
+
 ///////////////////////////////
 // Test Runner
 ///////////////////////////////
@@ -178,6 +198,7 @@ int main(void) {
 	RUN_TEST(test_Launcher_hasNonHiddenFiles_nonexistent_directory);
 	RUN_TEST(test_Launcher_hasNonHiddenFiles_with_subdirectories);
 	RUN_TEST(test_Launcher_hasNonHiddenFiles_with_dotfiles);
+	RUN_TEST(test_Launcher_hasNonHiddenFiles_only_about_txt);
 
 	return UNITY_END();
 }

@@ -21,7 +21,7 @@ from pathlib import Path
 # =============================================================================
 
 # Minimum fill percentage to recommend Native scaling
-FILL_THRESHOLD_LARGE_SCREEN = 90  # Screens >= 3"
+FILL_THRESHOLD_LARGE_SCREEN = 94  # Screens >= 3"
 FILL_THRESHOLD_SMALL_SCREEN = 100  # Screens < 3" (must be perfect fit)
 
 # Screen size threshold (inches)
@@ -33,7 +33,7 @@ MIN_SCREEN_INCHES = 3.0
 
 # Format: (width, height, diagonal_inches)
 PLATFORMS = {
-    "miyoomini":    (640, 480, 2.8),    # Under 3" - strict threshold
+    # miyoomini excluded: has 480p/560p and 2.8"/3.5" variants we can't detect yet
     "rg35xxplus":   (640, 480, 3.5),
     "rgb30":        (720, 720, 4.0),    # Square
     "m17":          (480, 272, 4.3),    # Miyoo A30 / similar
@@ -60,32 +60,45 @@ SQUARE_SCREENS = {"cube", "rgb30"}
 # =============================================================================
 
 # From workspace/all/paks/Emus/cores.json
-# Skip MAME/FBN which have "varies" resolution
+# Skip MAME/FBN/GW which have "varies" resolution
 # Skip PS - always uses aspect scaling (many games use non-native resolutions)
 CORES = {
+    # Nintendo
     "GB":    (160, 144),
     "GBC":   (160, 144),
     "GBA":   (240, 160),
+    "MGBA":  (240, 160),
+    "SGB":   (256, 224),
     "FC":    (256, 240),
     "SFC":   (256, 224),
+    "SUPA":  (256, 224),
+    "VB":    (384, 224),
+    # Sega
     "MD":    (320, 224),
     "GG":    (160, 144),
     "SMS":   (256, 192),
+    # NEC
     "PCE":   (512, 243),
     "PCECD": (512, 243),
-    "VB":    (384, 224),
+    # SNK
     "NGP":   (160, 152),
     "NGPC":  (160, 152),
-    "PKM":   (96, 64),
-    "PICO":  (128, 128),
-    "TIC":   (240, 136),
-    "SGB":   (256, 224),
-    "MGBA":  (240, 160),
-    "SUPA":  (256, 224),
+    "NG":    (320, 224),
+    "NEOCD": (320, 224),
     "CPS1":  (384, 224),
     "CPS2":  (384, 224),
     "CPS3":  (384, 224),
-    "NG":    (320, 224),
+    # Atari
+    "A2600": (160, 192),
+    "A5200": (336, 240),
+    "A7800": (320, 240),
+    "LYNX":  (160, 102),
+    # Bandai
+    "WS":    (224, 144),
+    "WSC":   (224, 144),
+    # Other
+    "PKM":   (96, 64),
+    "PICO":  (128, 128),
 }
 
 # =============================================================================

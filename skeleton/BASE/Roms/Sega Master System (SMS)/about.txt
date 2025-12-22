@@ -3,6 +3,6 @@ Sega Master System
 Core: picodrive
 
 Supported file types:
-  .sms
+  .sms, .zip, .7z
 
 No BIOS required.

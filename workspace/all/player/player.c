@@ -3889,8 +3889,10 @@ bool Core_load(void) {
 	core.sample_rate = info.sample_rate;
 	core.aspect_ratio = info.aspect_ratio;
 
-	LOG_info("aspect_ratio: %f (%ix%i) fps: %f", info.aspect_ratio, av_info.geometry.base_width,
-	         av_info.geometry.base_height, core.fps);
+	LOG_info("Core AV info: base=%ux%u max=%ux%u aspect=%.4f fps=%.2f sample_rate=%.0f",
+	         av_info.geometry.base_width, av_info.geometry.base_height, av_info.geometry.max_width,
+	         av_info.geometry.max_height, av_info.geometry.aspect_ratio, av_info.timing.fps,
+	         av_info.timing.sample_rate);
 	return true;
 }
 void Core_reset(void) {

@@ -3,6 +3,6 @@ TurboGrafx-16 / PC Engine
 Core: mednafen_pce_fast
 
 Supported file types:
-  .pce
+  .pce, .zip, .7z
 
 No BIOS required.

@@ -658,8 +658,10 @@ void PLAT_present(GFX_Renderer* renderer) {
 	// Unified presentation: handles both game and UI modes
 
 	if (renderer) {
-		// Game mode: refresh renderer->dst to match current page (may have flipped since last frame)
-		renderer->dst = vid.screen->pixels;
+		// Game mode: use correct buffer based on direct mode
+		// - Direct mode (native res): render straight to vid.video
+		// - Scaled mode: render to vid.screen, then blit to vid.video
+		renderer->dst = vid.direct ? vid.video->pixels : vid.screen->pixels;
 
 		// Clear to black when effects enabled to ensure clean black borders
 		if (effect_state.next_type != EFFECT_NONE) {

@@ -3,7 +3,7 @@ Nintendo Entertainment System / Famicom
 Core: fceumm
 
 Supported file types:
-  .nes, .fds, .unif, .unf
+  .nes, .fds, .unif, .unf, .zip, .7z
 
 BIOS (optional):
   disksys.rom - required for Famicom Disk System games

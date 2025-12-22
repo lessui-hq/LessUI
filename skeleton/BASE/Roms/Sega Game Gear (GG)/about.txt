@@ -3,6 +3,6 @@ Sega Game Gear
 Core: picodrive
 
 Supported file types:
-  .gg
+  .gg, .zip, .7z
 
 No BIOS required.

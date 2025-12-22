@@ -163,6 +163,12 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
+
+	// Log renderer info
+	SDL_RendererInfo renderer_info;
+	if (SDL_GetRendererInfo(ctx->renderer, &renderer_info) == 0) {
+		LOG_info("SDL2: Using renderer: %s", renderer_info.name);
+	}
 	LOG_debug("SDL2_initVideo: Renderer created successfully");
 
 	// Check for rotation (portrait display)

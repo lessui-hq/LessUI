@@ -1,0 +1,8 @@
+WonderSwan Color
+
+Core: mednafen_wswan
+
+Supported file types:
+  .wsc, .ws, .pc2, .zip, .7z
+
+No BIOS required.

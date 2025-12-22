@@ -3,7 +3,7 @@ Game Boy
 Core: gambatte
 
 Supported file types:
-  .gb, .gbc, .dmg
+  .gb, .gbc, .dmg, .zip, .7z
 
 BIOS (optional):
   gb_bios.bin - enables boot animation
