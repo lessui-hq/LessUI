@@ -3,7 +3,7 @@ Atari Lynx
 Core: mednafen_lynx
 
 Supported file types:
-  .lnx, .o
+  .lnx, .o, .zip, .7z
 
 BIOS (required):
   lynxboot.img - Lynx boot ROM

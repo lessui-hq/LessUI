@@ -3,7 +3,7 @@ Atari 5200
 Core: a5200
 
 Supported file types:
-  .a52, .bin
+  .a52, .bin, .zip, .7z
 
 BIOS (required):
   5200.rom - Atari 5200 BIOS

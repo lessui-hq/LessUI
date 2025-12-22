@@ -3,7 +3,7 @@ Atari 7800
 Core: prosystem
 
 Supported file types:
-  .a78, .bin
+  .a78, .bin, .zip, .7z
 
 BIOS (optional):
   7800 BIOS (U).rom - NTSC BIOS

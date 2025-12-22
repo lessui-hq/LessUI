@@ -3,6 +3,6 @@ WonderSwan
 Core: mednafen_wswan
 
 Supported file types:
-  .ws, .pc2
+  .ws, .pc2, .zip, .7z
 
 No BIOS required.
