@@ -3,7 +3,7 @@ Pokemon mini
 Core: pokemini
 
 Supported file types:
-  .min
+  .min, .zip, .7z
 
 BIOS (optional):
   bios.min - enables boot animation

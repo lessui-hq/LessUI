@@ -3,7 +3,7 @@ Game Boy Color
 Core: gambatte
 
 Supported file types:
-  .gbc, .gb
+  .gbc, .gb, .zip, .7z
 
 BIOS (optional):
   gbc_bios.bin - enables boot animation

@@ -3,7 +3,7 @@ Game Boy Advance
 Core: gpsp
 
 Supported file types:
-  .gba, .bin
+  .gba, .bin, .zip, .7z
 
 BIOS (optional):
   gba_bios.bin - improves compatibility

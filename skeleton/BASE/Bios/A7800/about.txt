@@ -1,0 +1,7 @@
+Atari 7800
+
+Core: prosystem
+
+BIOS (optional but recommended):
+  7800 BIOS (U).rom - NTSC/US BIOS
+  7800 BIOS (E).rom - PAL/EU BIOS

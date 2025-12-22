@@ -3,6 +3,6 @@ Neo Geo Pocket
 Core: race
 
 Supported file types:
-  .ngp
+  .ngp, .zip, .7z
 
 No BIOS required.

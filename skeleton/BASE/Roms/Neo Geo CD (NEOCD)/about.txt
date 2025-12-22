@@ -1,0 +1,12 @@
+Neo Geo CD
+
+Core: neocd
+
+Supported file types:
+  .cue, .chd
+
+BIOS (required):
+  neocd_z.rom - CDZ BIOS (recommended)
+  neocd_f.rom - Front Loader BIOS (alternative)
+
+Place BIOS files in: /Bios/NEOCD/

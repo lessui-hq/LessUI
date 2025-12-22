@@ -261,6 +261,84 @@
       "resolution": "320x224",
       "extensions": ["zip", "7z"],
       "bios": [{ "name": "neogeo.zip", "md5": null, "required": true }]
+    },
+    "A2600": {
+      "name": "Atari 2600",
+      "core": "stella2014_libretro",
+      "resolution": "160x192",
+      "extensions": ["a26", "bin", "zip"],
+      "bios": []
+    },
+    "A5200": {
+      "name": "Atari 5200",
+      "core": "a5200_libretro",
+      "resolution": "336x240",
+      "extensions": ["a52", "bin"],
+      "bios": [
+        {
+          "name": "5200.rom",
+          "md5": "281f20ea4320404ec820fb7ec0693b38",
+          "required": true
+        }
+      ]
+    },
+    "A7800": {
+      "name": "Atari 7800",
+      "core": "prosystem_libretro",
+      "resolution": "320x240",
+      "extensions": ["a78", "bin"],
+      "bios": [
+        {
+          "name": "7800 BIOS (U).rom",
+          "md5": null,
+          "required": false
+        }
+      ]
+    },
+    "LYNX": {
+      "name": "Atari Lynx",
+      "core": "mednafen_lynx_libretro",
+      "resolution": "160x102",
+      "extensions": ["lnx", "o"],
+      "bios": [
+        {
+          "name": "lynxboot.img",
+          "md5": "fcd403db69f54290b51035d82f835e7b",
+          "required": true
+        }
+      ]
+    },
+    "WS": {
+      "name": "WonderSwan",
+      "core": "mednafen_wswan_libretro",
+      "resolution": "224x144",
+      "extensions": ["ws", "pc2"],
+      "bios": []
+    },
+    "WSC": {
+      "name": "WonderSwan Color",
+      "core": "mednafen_wswan_libretro",
+      "resolution": "224x144",
+      "extensions": ["wsc", "ws", "pc2"],
+      "bios": []
+    },
+    "NEOCD": {
+      "name": "Neo Geo CD",
+      "core": "neocd_libretro",
+      "resolution": "320x224",
+      "extensions": ["cue", "chd"],
+      "bios": [
+        {
+          "name": "neocd_z.rom",
+          "md5": "11526d58d4c524daef7d5d677dc6b004",
+          "required": true
+        },
+        {
+          "name": "neocd_f.rom",
+          "md5": "8834880c33164ccbe6476b559f3e37de",
+          "required": false
+        }
+      ]
     }
   }
 }

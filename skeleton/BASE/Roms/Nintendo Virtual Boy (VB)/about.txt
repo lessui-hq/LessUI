@@ -3,6 +3,6 @@ Nintendo Virtual Boy
 Core: mednafen_vb
 
 Supported file types:
-  .vb, .vboy, .bin
+  .vb, .vboy, .bin, .zip, .7z
 
 No BIOS required.

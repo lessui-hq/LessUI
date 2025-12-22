@@ -3,6 +3,6 @@ Super Nintendo Entertainment System / Super Famicom
 Core: snes9x2005_plus
 
 Supported file types:
-  .smc, .sfc, .fig, .swc
+  .smc, .sfc, .fig, .swc, .zip, .7z
 
 No BIOS required.
