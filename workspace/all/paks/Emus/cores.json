@@ -264,7 +264,7 @@
     },
     "A2600": {
       "name": "Atari 2600",
-      "core": "stella_libretro",
+      "core": "stella2014_libretro",
       "resolution": "160x192",
       "extensions": ["a26", "bin", "zip"],
       "bios": []
