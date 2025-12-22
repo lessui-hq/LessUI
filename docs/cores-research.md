@@ -261,12 +261,12 @@ The SG-1000 is the exception, using **gearsystem** as its default rather than pi
 
 ### Atari systems span multiple generations
 
-| System     | Folder              | Default Core   |
-| ---------- | ------------------- | -------------- |
-| Atari 2600 | ATARI               | **stella2014** |
-| Atari 5200 | FIFTYTWOHUNDRED     | **a5200**      |
-| Atari 7800 | SEVENTYEIGHTHUNDRED | **prosystem**  |
-| Atari Lynx | LYNX                | **handy**      |
+| System     | Folder              | Default Core      |
+| ---------- | ------------------- | ----------------- |
+| Atari 2600 | ATARI               | **stella2014**    |
+| Atari 5200 | FIFTYTWOHUNDRED     | **a5200**         |
+| Atari 7800 | SEVENTYEIGHTHUNDRED | **prosystem**     |
+| Atari Lynx | LYNX                | **mednafen_lynx** |
 
 ### NEC PC Engine family uses Mednafen cores
 
