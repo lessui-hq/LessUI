@@ -271,53 +271,14 @@
     },
     "A5200": {
       "name": "Atari 5200",
-      "core": "atari800_libretro",
+      "core": "a5200_libretro",
       "resolution": "336x240",
-      "extensions": ["a52", "bin", "car", "rom"],
+      "extensions": ["a52", "bin"],
       "bios": [
         {
           "name": "5200.rom",
           "md5": "281f20ea4320404ec820fb7ec0693b38",
           "required": true
-        }
-      ]
-    },
-    "A800": {
-      "name": "Atari 800",
-      "core": "atari800_libretro",
-      "resolution": "336x240",
-      "extensions": [
-        "xfd",
-        "atr",
-        "cdm",
-        "cas",
-        "bin",
-        "xex",
-        "atx",
-        "car",
-        "rom",
-        "com"
-      ],
-      "bios": [
-        {
-          "name": "ATARIXL.ROM",
-          "md5": "06daac977823773a3eea3422fd26a703",
-          "required": true
-        },
-        {
-          "name": "ATARIBAS.ROM",
-          "md5": "0bac0c6a50104045d902df4503a4c30b",
-          "required": false
-        },
-        {
-          "name": "ATARIOSA.ROM",
-          "md5": "eb1f32f5d9f382db1bbfb8d7f9cb343a",
-          "required": false
-        },
-        {
-          "name": "ATARIOSB.ROM",
-          "md5": "a3e8d617c95d08031fe1b20d541434b2",
-          "required": false
         }
       ]
     },

@@ -39,8 +39,8 @@
 | Sega CD                                |  SEGACD | SEGACD.pak  | picodrive           | `picodrive_libretro.so`           |
 | Sega 32X                               |     32X | 32X.pak     | picodrive           | `picodrive_libretro.so`           |
 | SG-1000                                |  SG1000 | SG1000.pak  | picodrive           | `picodrive_libretro.so`           |
-| Atari 2600                             |   ATARI | ATARI.pak   | stella              | `stella_libretro.so`              |
-| Atari 5200                             |   A5200 | A5200.pak   | atari800            | `atari800_libretro.so`            |
+| Atari 2600                             |   A2600 | A2600.pak   | stella2014          | `stella2014_libretro.so`          |
+| Atari 5200                             |   A5200 | A5200.pak   | a5200               | `a5200_libretro.so`               |
 | Atari 7800                             |   A7800 | A7800.pak   | prosystem           | `prosystem_libretro.so`           |
 | Atari Lynx                             |    LYNX | LYNX.pak    | mednafen_lynx       | `mednafen_lynx_libretro.so`       |
 | WonderSwan & Color                     |      WS | WS.pak      | mednafen_wswan      | `mednafen_wswan_libretro.so`      |
@@ -73,7 +73,7 @@
 
 ## LessUI-Cores (Cores we currently build)
 
-1. atari800 - libretro/libretro-atari800 - atari800_libretro.so
+1. a5200 - libretro/a5200 - a5200_libretro.so
 2. beetle-lynx - libretro/beetle-lynx-libretro - mednafen_lynx_libretro.so
 3. beetle-pce-fast - libretro/beetle-pce-fast-libretro - mednafen_pce_fast_libretro.so
 4. beetle-supergrafx - libretro/beetle-supergrafx-libretro - mednafen_supergrafx_libretro.so
@@ -267,7 +267,7 @@ The SG-1000 is the exception, using **gearsystem** as its default rather than pi
 | System     | Folder              | Default Core   |
 | ---------- | ------------------- | -------------- |
 | Atari 2600 | ATARI               | **stella2014** |
-| Atari 5200 | FIFTYTWOHUNDRED     | **atari800**   |
+| Atari 5200 | FIFTYTWOHUNDRED     | **a5200**      |
 | Atari 7800 | SEVENTYEIGHTHUNDRED | **prosystem**  |
 | Atari Lynx | LYNX                | **handy**      |
 

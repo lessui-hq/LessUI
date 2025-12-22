@@ -40,7 +40,7 @@ CORES = {
     "NGP/NGPC (race)": (160, 152),
     # Atari
     "A2600 (stella)": (160, 192),
-    "A5200 (atari800)": (336, 240),
+    "A5200 (a5200)": (336, 240),
     "A7800 (prosystem)": (320, 225),
     "LYNX (mednafen_lynx)": (160, 102),
     # Arcade
