@@ -1,9 +1,9 @@
 Atari 5200
 
-Core: atari800
+Core: a5200
 
 Supported file types:
-  .a52, .bin, .car, .rom
+  .a52, .bin
 
 BIOS (required):
   5200.rom - Atari 5200 BIOS

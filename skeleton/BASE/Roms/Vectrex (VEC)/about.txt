@@ -1,8 +1,0 @@
-Vectrex
-
-Core: vecx
-
-Supported file types:
-  .bin, .vec
-
-No BIOS required.

@@ -1,6 +1,6 @@
 Atari 5200
 
-Core: atari800
+Core: a5200
 
 BIOS (required):
   5200.rom - Atari 5200 BIOS

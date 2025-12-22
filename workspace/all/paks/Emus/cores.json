@@ -322,33 +322,6 @@
       "extensions": ["wsc", "ws", "pc2"],
       "bios": []
     },
-    "SGX": {
-      "name": "SuperGrafx",
-      "core": "mednafen_supergrafx_libretro",
-      "resolution": "512x243",
-      "extensions": ["pce", "sgx", "cue", "ccd", "chd"],
-      "bios": [
-        {
-          "name": "syscard3.pce",
-          "md5": "38179df8f4ac870017db21ebcbf53114",
-          "required": false
-        }
-      ]
-    },
-    "VEC": {
-      "name": "Vectrex",
-      "core": "vecx_libretro",
-      "resolution": "330x410",
-      "extensions": ["bin", "vec"],
-      "bios": []
-    },
-    "GW": {
-      "name": "Game & Watch",
-      "core": "gw_libretro",
-      "resolution": "varies",
-      "extensions": ["mgw"],
-      "bios": []
-    },
     "NEOCD": {
       "name": "Neo Geo CD",
       "core": "neocd_libretro",
