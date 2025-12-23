@@ -3319,8 +3319,84 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 	memset(row - 1, 0, (size_t)(w + 2) * 2);
 }
 
+/**
+ * Render bitmap text to an RGBA8888 buffer with transparency.
+ *
+ * Similar to blitBitmapText but for RGBA format used by HW rendering HUD overlay.
+ * White text (0xFFFFFFFF) with black outline (0xFF000000), transparent background.
+ *
+ * @param text Text to render
+ * @param ox X position (negative = right-align from edge)
+ * @param oy Y position (negative = bottom-align from edge)
+ * @param data RGBA8888 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width
+ * @param height Total buffer height
+ */
+static void blitBitmapTextRGBA(char* text, int ox, int oy, uint32_t* data, int stride, int width,
+                               int height) {
+	int len = strlen(text);
+	int w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int h = CHAR_HEIGHT;
+
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need 1px margin for outline
+	if (ox < 1 || oy < 1 || ox + w + 1 > width || oy + h + 1 > height)
+		return;
+
+	// RGBA colors: 0xAABBGGRR format (little-endian RGBA8888)
+	const uint32_t RGBA_WHITE = 0xFFFFFFFF; // Fully opaque white
+	const uint32_t RGBA_BLACK = 0xFF000000; // Fully opaque black
+
+	data += oy * stride + ox;
+
+	// Draw black outline (1px around text)
+	// Top outline row
+	uint32_t* row = data - stride;
+	for (int x = -1; x <= w; x++) {
+		row[x] = RGBA_BLACK;
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < CHAR_HEIGHT; y++) {
+		row = data + (ptrdiff_t)y * stride;
+		row[-1] = RGBA_BLACK; // Left outline
+		int col = 0;
+		for (int i = 0; i < len; i++) {
+			const char* c = bitmap_font[(unsigned char)text[i]];
+			if (!c)
+				c = bitmap_font[' ']; // Fallback for unknown chars
+			for (int x = 0; x < CHAR_WIDTH; x++) {
+				int j = y * CHAR_WIDTH + x;
+				if (c[j] == '1') {
+					row[col] = RGBA_WHITE;
+				} else {
+					row[col] = RGBA_BLACK; // Background within text area is black for outline
+				}
+				col++;
+			}
+			// Letter spacing
+			for (int s = 0; s < LETTERSPACING && col < w; s++) {
+				row[col] = RGBA_BLACK;
+				col++;
+			}
+		}
+		row[w] = RGBA_BLACK; // Right outline
+	}
+
+	// Bottom outline row
+	row = data + (ptrdiff_t)CHAR_HEIGHT * stride;
+	for (int x = -1; x <= w; x++) {
+		row[x] = RGBA_BLACK;
+	}
+}
+
 ///////////////////////////////////////
-// Video Processing
+// Performance Counters (needed by HW HUD before video processing section)
 ///////////////////////////////////////
 
 // Performance counters for debug overlay and monitoring
@@ -3331,6 +3407,136 @@ static double fps_double = 0;
 static double cpu_double = 0;
 static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
+
+///////////////////////////////////////
+// HW Debug HUD
+///////////////////////////////////////
+
+// HUD buffer for HW rendering (allocated once, reused)
+static uint32_t* hw_hud_buffer = NULL;
+static int hw_hud_width = 0;
+static int hw_hud_height = 0;
+
+/**
+ * Render debug HUD overlay for hardware-rendered frames.
+ *
+ * Creates an RGBA surface with the same debug info as the software path
+ * (FPS, CPU usage, resolution, etc.) and passes it to the HW render module
+ * for compositing over the game frame.
+ *
+ * @param src_w Source (game) width in pixels
+ * @param src_h Source (game) height in pixels
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ */
+static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
+	// Allocate or resize HUD buffer if needed
+	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
+		free(hw_hud_buffer);
+		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+		if (!hw_hud_buffer) {
+			LOG_error("Failed to allocate HW HUD buffer");
+			return;
+		}
+		hw_hud_width = screen_w;
+		hw_hud_height = screen_h;
+	}
+
+	// Clear to fully transparent
+	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+
+	int x = 2;
+	int y = 2;
+	char debug_text[128];
+
+	// Calculate scale factor for HW rendering (approximate)
+	int scale = 1;
+	if (src_w > 0 && src_h > 0) {
+		int scale_x = screen_w / src_w;
+		int scale_y = screen_h / src_h;
+		scale = (scale_x < scale_y) ? scale_x : scale_y;
+		if (scale < 1)
+			scale = 1;
+	}
+
+	// Get buffer fill (sampled every 15 frames for readability)
+	static unsigned fill_display = 0;
+	static int sample_count = 0;
+	if (++sample_count >= 15) {
+		sample_count = 0;
+		fill_display = SND_getBufferOccupancy();
+	}
+
+	// Top-left: FPS and system CPU %
+#ifdef SYNC_MODE_AUDIOCLOCK
+	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double, (int)use_double);
+#else
+	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double, (int)use_double);
+#endif
+	blitBitmapTextRGBA(debug_text, x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Top-right: Source resolution and scale factor
+	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", src_w, src_h, scale);
+	blitBitmapTextRGBA(debug_text, -x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Bottom-left: CPU info + buffer fill
+	if (overclock == 3) {
+		// Auto CPU mode: show frequency/level, utilization, and buffer fill
+		pthread_mutex_lock(&auto_cpu_mutex);
+		int current_idx = auto_cpu_state.current_index;
+		int level = auto_cpu_state.current_level;
+		pthread_mutex_unlock(&auto_cpu_mutex);
+
+		// Calculate current utilization from most recent frame times
+		unsigned util = 0;
+		int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+		                  ? auto_cpu_state.frame_time_index
+		                  : auto_cpu_config.window_frames;
+		if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
+			uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
+			util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
+			if (util > 200)
+				util = 200;
+		}
+
+		if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		    current_idx < auto_cpu_state.freq_count) {
+			// Granular mode: show frequency in MHz
+			int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
+			(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
+			               fill_display);
+		} else {
+			// Fallback mode: show level
+			(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
+			               fill_display);
+		}
+	} else {
+		// Manual mode: show level and buffer fill
+		(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
+	}
+	blitBitmapTextRGBA(debug_text, x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Bottom-right: Output resolution
+	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", screen_w, screen_h);
+	blitBitmapTextRGBA(debug_text, -x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Pass HUD to HW renderer for compositing
+	PlayerHWRender_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
+}
+
+/**
+ * Clean up HW HUD resources.
+ */
+static void cleanupHWDebugHUD(void) {
+	free(hw_hud_buffer);
+	hw_hud_buffer = NULL;
+	hw_hud_width = 0;
+	hw_hud_height = 0;
+}
+
+///////////////////////////////////////
+// Video Processing
+///////////////////////////////////////
 
 #ifdef USES_SWSCALER
 static int fit = 1; // Use software scaler (fit to screen)
@@ -3656,7 +3862,20 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 		LOG_debug("video_refresh: HW frame (RETRO_HW_FRAME_BUFFER_VALID), enabled=%d",
 		          PlayerHWRender_isEnabled());
 		if (PlayerHWRender_isEnabled()) {
+			// Count frames for FPS calculation
+			fps_ticks += 1;
+
+			// Render game frame to backbuffer
 			PlayerHWRender_present(width, height, video_state.rotation);
+
+			// Render debug HUD overlay if enabled
+			if (show_debug) {
+				renderHWDebugHUD((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			}
+
+			// Swap buffers to display the frame
+			PlayerHWRender_swapBuffers();
+
 			frame_ready_for_flip = 1;
 		}
 		return;
@@ -3963,6 +4182,9 @@ void Core_close(void) {
 
 	// Free rotation buffer
 	PlayerRotation_freeBuffer();
+
+	// Free HW HUD buffer
+	cleanupHWDebugHUD();
 
 	// Reset pixel format to default for next core
 	pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;

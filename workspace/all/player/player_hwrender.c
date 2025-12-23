@@ -66,6 +66,9 @@ typedef unsigned int GLbitfield;
 #define GL_CULL_FACE 0x0B44
 #define GL_SCISSOR_TEST 0x0C11
 #define GL_ARRAY_BUFFER 0x8892
+#define GL_SRC_ALPHA 0x0302
+#define GL_NO_ERROR 0
+#define GL_ONE_MINUS_SRC_ALPHA 0x0303
 
 // GL function pointers (loaded via SDL_GL_GetProcAddress)
 static void (*glGenFramebuffers)(GLsizei, GLuint*);
@@ -112,8 +115,11 @@ static void (*glVertexAttribPointer)(GLuint, GLint, GLenum, GLboolean, GLsizei, 
 static void (*glDrawArrays)(GLenum, GLint, GLsizei);
 static void (*glViewport)(GLint, GLint, GLsizei, GLsizei);
 static void (*glDisable)(GLenum);
+static void (*glEnable)(GLenum);
+static void (*glBlendFunc)(GLenum, GLenum);
 static void (*glColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
 static void (*glBindBuffer)(GLenum, GLuint);
+static GLenum (*glGetError)(void);
 
 ///////////////////////////////
 // Module State
@@ -178,8 +184,11 @@ static bool loadGLFunctions(void) {
 	LOAD_GL_FUNC(glDrawArrays);
 	LOAD_GL_FUNC(glViewport);
 	LOAD_GL_FUNC(glDisable);
+	LOAD_GL_FUNC(glEnable);
+	LOAD_GL_FUNC(glBlendFunc);
 	LOAD_GL_FUNC(glColorMask);
 	LOAD_GL_FUNC(glBindBuffer);
+	LOAD_GL_FUNC(glGetError);
 
 #undef LOAD_GL_FUNC
 
@@ -419,6 +428,12 @@ static void destroyPresentResources(void) {
 		hw_state.ui_texture = 0;
 		hw_state.ui_texture_width = 0;
 		hw_state.ui_texture_height = 0;
+	}
+	if (hw_state.hud_texture) {
+		glDeleteTextures(1, &hw_state.hud_texture);
+		hw_state.hud_texture = 0;
+		hw_state.hud_texture_width = 0;
+		hw_state.hud_texture_height = 0;
 	}
 }
 
@@ -668,14 +683,11 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 	hw_state.enabled = true;
 	hw_state.context_ready = true;
 
-	// Call core's context_reset now that GL context and FBO are ready
-	// This must happen before retro_load_game() so cores can create GL resources
-	if (hw_state.hw_callback.context_reset) {
-		LOG_info("HW render: calling core context_reset");
-		hw_state.hw_callback.context_reset();
-	}
+	// NOTE: We do NOT call context_reset here. According to libretro spec,
+	// context_reset must be called AFTER retro_load_game() returns, not during.
+	// The caller should call PlayerHWRender_contextReset() after load_game.
 
-	LOG_info("HW render: initialized successfully");
+	LOG_info("HW render: initialized successfully (context_reset pending)");
 	return true;
 }
 
@@ -747,6 +759,7 @@ bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type) 
 
 uintptr_t PlayerHWRender_getCurrentFramebuffer(void) {
 	// Return FBO handle for core to render into
+	LOG_debug("HW render: getCurrentFramebuffer called, returning FBO %u", hw_state.fbo);
 	return (uintptr_t)hw_state.fbo;
 }
 
@@ -755,10 +768,11 @@ retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym) {
 		return NULL;
 	}
 
-	// TODO: Phase 2 - use SDL_GL_GetProcAddress
 	retro_proc_address_t proc = (retro_proc_address_t)SDL_GL_GetProcAddress(sym);
 	if (!proc) {
-		LOG_debug("HW render: getProcAddress failed for '%s'", sym);
+		LOG_warn("HW render: getProcAddress FAILED for '%s'", sym);
+	} else {
+		LOG_debug("HW render: getProcAddress('%s') = %p", sym, (void*)proc);
 	}
 	return proc;
 }
@@ -770,7 +784,10 @@ retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym) {
 void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) {
 	(void)rotation;
 
+	LOG_debug("HW render: present called (%ux%u, rotation=%u)", width, height, rotation);
+
 	if (!hw_state.enabled || !hw_state.context_ready) {
+		LOG_debug("HW render: present skipped (not enabled/ready)");
 		return;
 	}
 
@@ -842,7 +859,8 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) 
 	glDisableVertexAttribArray(hw_state.loc_position);
 	glDisableVertexAttribArray(hw_state.loc_texcoord);
 
-	SDL_GL_SwapWindow(window);
+	// Note: Swap is now done separately via PlayerHWRender_swapBuffers()
+	// to allow HUD overlay rendering before the frame is displayed
 }
 
 bool PlayerHWRender_resizeFBO(unsigned width, unsigned height) {
@@ -910,9 +928,20 @@ void PlayerHWRender_bindFBO(void) {
 		return;
 	}
 
-	LOG_debug("PlayerHWRender_bindFBO: binding FBO %u for core rendering", hw_state.fbo);
+	LOG_debug("HW render: bindFBO called, binding FBO %u for core rendering", hw_state.fbo);
 	PlayerHWRender_makeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, hw_state.fbo);
+
+	// Set viewport to FBO size - cores expect this to be set
+	glViewport(0, 0, (GLsizei)hw_state.fbo_width, (GLsizei)hw_state.fbo_height);
+
+	// Check for GL errors before core.run()
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR) {
+		LOG_warn("HW render: GL error before core.run(): 0x%x", err);
+	}
+	LOG_debug("HW render: bindFBO complete, viewport=%ux%u, GL state clean", hw_state.fbo_width,
+	          hw_state.fbo_height);
 }
 
 void PlayerHWRender_presentSurface(SDL_Surface* surface) {
@@ -1021,6 +1050,103 @@ void PlayerHWRender_presentSurface(SDL_Surface* surface) {
 	LOG_debug("presentSurface: swapping window");
 	SDL_GL_SwapWindow(window);
 	LOG_debug("presentSurface: done");
+}
+
+void PlayerHWRender_swapBuffers(void) {
+	if (!hw_state.enabled || !hw_state.context_ready) {
+		return;
+	}
+
+	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		return;
+	}
+
+	SDL_GL_SwapWindow(window);
+}
+
+void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
+                              int screen_h) {
+	if (!hw_state.enabled || !hw_state.context_ready) {
+		return;
+	}
+
+	if (!pixels || width <= 0 || height <= 0) {
+		return;
+	}
+
+	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		return;
+	}
+
+	PlayerHWRender_makeCurrent();
+
+	// Create or resize HUD texture if needed
+	unsigned int tex_w = (unsigned int)width;
+	unsigned int tex_h = (unsigned int)height;
+
+	if (!hw_state.hud_texture || hw_state.hud_texture_width != tex_w ||
+	    hw_state.hud_texture_height != tex_h) {
+		LOG_debug("renderHUD: creating HUD texture %ux%u", tex_w, tex_h);
+
+		if (hw_state.hud_texture) {
+			glDeleteTextures(1, &hw_state.hud_texture);
+		}
+
+		glGenTextures(1, &hw_state.hud_texture);
+		glBindTexture(GL_TEXTURE_2D, hw_state.hud_texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		hw_state.hud_texture_width = tex_w;
+		hw_state.hud_texture_height = tex_h;
+
+		LOG_debug("renderHUD: HUD texture created (id=%u)", hw_state.hud_texture);
+	}
+
+	// Upload HUD pixels
+	glBindTexture(GL_TEXTURE_2D, hw_state.hud_texture);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, tex_w, tex_h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+	// Set viewport to full screen
+	glViewport(0, 0, screen_w, screen_h);
+
+	// Enable alpha blending
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// Use shader program
+	glUseProgram(hw_state.present_program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, hw_state.hud_texture);
+	glUniform1i(hw_state.loc_texture, 0);
+
+	// Identity MVP (fullscreen quad)
+	float identity[16] = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, -1, -1, 0, 1};
+	glUniformMatrix4fv(hw_state.loc_mvp, 1, GL_FALSE, identity);
+
+	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
+	// Flip Y (SDL surfaces are top-left origin, GL is bottom-left)
+	static const float texco[8] = {0, 1, 1, 1, 0, 0, 1, 0};
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glEnableVertexAttribArray(hw_state.loc_position);
+	glEnableVertexAttribArray(hw_state.loc_texcoord);
+	glVertexAttribPointer(hw_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, verts);
+	glVertexAttribPointer(hw_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, texco);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisableVertexAttribArray(hw_state.loc_position);
+	glDisableVertexAttribArray(hw_state.loc_texcoord);
+
+	// Disable blending after HUD rendering
+	glDisable(GL_BLEND);
 }
 
 #endif /* HAS_OPENGLES */

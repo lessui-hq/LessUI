@@ -65,10 +65,15 @@ typedef struct PlayerHWRenderState {
 	// Presentation resources
 	unsigned int present_program; // Shader program for FBO->screen blit
 
-	// UI surface texture (for menu/HUD rendering via GL)
+	// UI surface texture (for menu rendering via GL)
 	unsigned int ui_texture;
 	unsigned int ui_texture_width;
 	unsigned int ui_texture_height;
+
+	// HUD overlay texture (for debug HUD rendering via GL with alpha blending)
+	unsigned int hud_texture;
+	unsigned int hud_texture_width;
+	unsigned int hud_texture_height;
 
 	// Cached shader locations (to avoid glGet* calls per frame)
 	int loc_mvp; // u_mvp uniform (4x4 MVP matrix)
@@ -211,6 +216,33 @@ void PlayerHWRender_bindFBO(void);
  */
 void PlayerHWRender_presentSurface(SDL_Surface* surface);
 
+/**
+ * Swap the GL buffers to display the rendered frame.
+ *
+ * Must be called after PlayerHWRender_present() and any overlay rendering
+ * (like PlayerHWRender_renderHUD()) to actually show the frame on screen.
+ */
+void PlayerHWRender_swapBuffers(void);
+
+/**
+ * Render HUD overlay on top of the current frame.
+ *
+ * Uploads RGBA pixel data to a texture and renders it over the game frame
+ * with alpha blending. Should be called after PlayerHWRender_present() but
+ * before PlayerHWRender_swapBuffers().
+ *
+ * The alpha channel is used for transparency: 0 = fully transparent,
+ * 255 = fully opaque. This allows the game to show through behind the text.
+ *
+ * @param pixels RGBA8888 pixel data (4 bytes per pixel: R, G, B, A)
+ * @param width Width of the HUD texture in pixels
+ * @param height Height of the HUD texture in pixels
+ * @param screen_w Target screen width (for positioning)
+ * @param screen_h Target screen height (for positioning)
+ */
+void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
+                              int screen_h);
+
 #else /* !HAS_OPENGLES */
 
 // Stub implementations for platforms without OpenGL ES support
@@ -267,6 +299,17 @@ static inline void PlayerHWRender_bindFBO(void) {}
 
 static inline void PlayerHWRender_presentSurface(SDL_Surface* surface) {
 	(void)surface;
+}
+
+static inline void PlayerHWRender_swapBuffers(void) {}
+
+static inline void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height,
+                                            int screen_w, int screen_h) {
+	(void)pixels;
+	(void)width;
+	(void)height;
+	(void)screen_w;
+	(void)screen_h;
 }
 
 #endif /* HAS_OPENGLES */

@@ -249,7 +249,8 @@ Minimal GLES 2.0 shaders:
 - ✅ Letterboxing/pillarboxing working
 - ✅ In-game menu opens without crashing
 - ✅ Menu renders correctly via GL (Y-flipped texture coordinates)
-- **Status**: Working - Flycast (Dreamcast) displays and menu functional
+- ✅ Debug HUD displays correctly with FPS, resolution, CPU info
+- **Status**: Working - Flycast (Dreamcast) displays, menu, and debug HUD functional
 
 **rg35xxplus (Anbernic RG35XX Plus):**
 
@@ -286,13 +287,13 @@ Minimal GLES 2.0 shaders:
 - ✅ Correct orientation (Y-flip for SDL surfaces)
 - ✅ In-game menu rendering via GL (no SDL/GL conflicts)
 - ✅ Dynamic screen resolution (no hardcoded values)
+- ✅ Debug HUD overlay with alpha blending (FPS, CPU usage, resolution)
 
 ### Not Yet Implemented
 
 - ⏳ Rotation support (0°/90°/180°/270°)
 - ⏳ `bottom_left_origin` handling
 - ⏳ Game screenshot behind menu (currently black for HW cores)
-- ⏳ Debug HUD overlay for HW cores
 
 ### Implementation Approach
 
@@ -307,49 +308,53 @@ Simple and direct:
 
 ### High Priority
 
-1. **Debug HUD Support**
-   - Render debug overlay via GL for HW cores
-   - Create overlay surface and composite on top of game frame
-   - Test FPS/CPU display with HW rendering
-
-2. **Game Screenshot Behind Menu**
+1. **Game Screenshot Behind Menu**
    - Use `glReadPixels()` to capture FBO to SDL surface before menu opens
    - Scale and cache for menu background
    - Alternative: render last frame from FBO as background quad
 
-3. **Rotation Support**
+2. **Rotation Support**
    - Add MVP matrix rotation for 0°/90°/180°/270°
    - Swap viewport dimensions for 90°/270° to maintain aspect ratio
    - Test with games that use portrait orientation
 
-4. **`bottom_left_origin` Handling**
+3. **`bottom_left_origin` Handling**
    - Flycast sets `bottom_left_origin=true` (GL convention)
    - Currently works but may need Y-flip adjustment
    - Test with cores that use `bottom_left_origin=false`
 
 ### Medium Priority
 
-5. **Test on rg35xxplus**
-   - Verify HW rendering works on other Mali GPU platform
-   - Test Flycast, PPSSPP, Beetle PSX HW cores
+4. **Debug Mupen64Plus-Next Crash**
+   - Segfaults after context_reset before first frame
+   - Compare GL setup with RetroArch
+   - May need additional GL state setup or extensions
 
-6. **Remove Debug Logging**
+5. **Rebuild PPSSPP Core**
+   - Current build has X11 dependency (libSM.so.6)
+   - Need clean ARM build without desktop libs
+
+6. **Test on rg35xxplus**
+   - Verify HW rendering works on other Mali GPU platform
+   - Test Flycast, Beetle PSX HW cores
+
+7. **Remove Debug Logging**
    - Clean up LOG_debug calls added for troubleshooting
    - Keep only essential INFO-level logs
 
-7. **Performance Optimization**
+8. **Performance Optimization**
    - Profile frame time impact of HW rendering
    - Measure menu presentation overhead
 
 ### Low Priority
 
-7. **GLES 3.0 Support** (optional)
+9. **GLES 3.0 Support** (optional)
    - Some cores prefer GLES3 (ParaLLEl-RDP requires 3.1+)
    - Add version negotiation if needed
 
-8. **Shared Context Support** (optional)
-   - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
-   - Only if cores request it
+10. **Shared Context Support** (optional)
+    - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
+    - Only if cores request it
 
 ### Debug Logging Added
 
@@ -433,12 +438,13 @@ float tex_scale_y = (float)height / (float)fbo_height;
 
 Based on RetroArch expert analysis:
 
-| Core                   | Status      | Requirements        | Notes                            |
-| ---------------------- | ----------- | ------------------- | -------------------------------- |
-| **Flycast** (DC)       | Testing     | GLES2, depth buffer | Should work once display fixed   |
-| **Beetle PSX HW**      | Should work | GLES2/GLES3, depth  | Works with GLES2                 |
-| **PPSSPP** (PSP)       | Should work | GLES2/GLES3         | Complex shaders, test thoroughly |
-| **ParaLLEl-RDP** (N64) | Won't work  | GLES3.1+/Vulkan     | Outside GLES2 scope              |
+| Core                       | Status       | Requirements        | Notes                                           |
+| -------------------------- | ------------ | ------------------- | ----------------------------------------------- |
+| **Flycast** (DC)           | ✅ Working   | GLES2, depth buffer | Displays correctly, menu and HUD functional     |
+| **Beetle PSX HW**          | Untested     | GLES2/GLES3, depth  | Should work with GLES2                          |
+| **PPSSPP** (PSP)           | ❌ Blocked   | GLES2/GLES3         | Core needs rebuild - missing libSM.so.6 (X11)   |
+| **Mupen64Plus-Next** (N64) | ❌ Crashes   | GLES2, depth buffer | Segfault after context_reset - needs debugging  |
+| **ParaLLEl-RDP** (N64)     | Won't work   | GLES3.1+/Vulkan     | Outside GLES2 scope                             |
 
 ## Troubleshooting
 
@@ -491,6 +497,39 @@ PlayerHWRender_present: bottom_left_origin=N
 
 **Fix:**
 Ensure SDL2 on device supports OpenGL ES and libraries are installed.
+
+### Core Crashes After context_reset (N64)
+
+**Symptoms:** Mupen64Plus-Next segfaults immediately after "calling core context_reset"
+
+**Log Pattern:**
+
+```
+[INFO] HW render: calling core context_reset
+[INFO] HW render: initialized successfully
+[INFO] mupen64plus: Game controller 0 ...
+Segmentation fault
+```
+
+**Possible Causes:**
+
+1. Missing GL extension the core expects
+2. GL state not matching what core assumes after context_reset
+3. Core-specific initialization issue
+
+**Debug Steps:**
+
+1. Check if core works in RetroArch on same device
+2. Compare GL context attributes with RetroArch
+3. Add logging to track which GL calls core makes after context_reset
+
+### Core Missing Shared Libraries (PSP)
+
+**Symptoms:** PPSSPP fails with "libSM.so.6: cannot open shared object file"
+
+**Cause:** Core was built with desktop X11 dependencies that don't exist on embedded device.
+
+**Fix:** Rebuild PPSSPP core without X11/desktop dependencies. Use RetroArch's buildbot ARM builds or compile with proper cross-toolchain.
 
 ## Future Enhancements
 
