@@ -29,6 +29,7 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          player_paths.c player_cpu.c player_input.c player_mappings.c \
          player_video_convert.c player_rotation.c player_config.c player_context.c \
          player_menu.c player_env.c player_game.c player_scaler.c player_core.c \
+         player_hwrender.c \
          frame_pacer.c \
          ../../$(PLATFORM)/platform/platform.c
 

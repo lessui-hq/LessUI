@@ -66,6 +66,7 @@
 #include "player_cpu.h"
 #include "player_env.h"
 #include "player_game.h"
+#include "player_hwrender.h"
 #include "player_input.h"
 #include "player_internal.h"
 #include "player_mappings.h"
@@ -2623,12 +2624,33 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_HW_RENDER: { /* 14 */
-		const struct retro_hw_render_callback* cb = (const struct retro_hw_render_callback*)data;
-		if (cb) {
-			LOG_info("Core requested HW render (type=%d, v%d.%d) - not supported, using software",
-			         cb->context_type, cb->version_major, cb->version_minor);
+		LOG_debug("RETRO_ENVIRONMENT_SET_HW_RENDER called");
+		struct retro_hw_render_callback* cb = (struct retro_hw_render_callback*)data;
+		if (!cb) {
+			LOG_error("SET_HW_RENDER: NULL callback");
+			return false;
 		}
-		return false; // Tell core we don't support hardware rendering
+
+		LOG_info("Core requested HW render (type=%d, v%d.%d, depth=%d, stencil=%d)",
+		         cb->context_type, cb->version_major, cb->version_minor, cb->depth, cb->stencil);
+
+		// Check if platform supports this context type
+		if (!PlayerHWRender_isContextSupported(cb->context_type)) {
+			LOG_info("Core requested HW render - not supported on this platform, using software");
+			return false;
+		}
+		LOG_debug("SET_HW_RENDER: context type supported");
+
+		// Initialize hardware rendering with reasonable default size
+		// FBO will be resized when we get actual geometry from core
+		LOG_debug("SET_HW_RENDER: calling PlayerHWRender_init");
+		if (!PlayerHWRender_init(cb, 1024, 1024)) {
+			LOG_error("Failed to initialize HW render - falling back to software");
+			return false;
+		}
+
+		LOG_info("HW render initialized successfully - core will use GPU rendering");
+		return true;
 	}
 
 	// TODO: this is called whether using variables or options
@@ -2789,8 +2811,13 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	}
 	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: { /* 56 */
 		unsigned* out = (unsigned*)data;
-		if (out)
-			*out = RETRO_HW_CONTEXT_NONE; // We prefer software rendering
+		if (out) {
+#if HAS_OPENGLES
+			*out = RETRO_HW_CONTEXT_OPENGLES2; // We support OpenGL ES 2.0
+#else
+			*out = RETRO_HW_CONTEXT_NONE; // Software rendering only
+#endif
+		}
 		break;
 	}
 	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: { /* 57 */
@@ -3623,6 +3650,18 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @note This is a libretro callback, invoked by core after rendering a frame
  */
 void video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
+	// Handle hardware-rendered frames
+	// NOLINTNEXTLINE(performance-no-int-to-ptr) - libretro standard: RETRO_HW_FRAME_BUFFER_VALID is ((void*)-1)
+	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+		LOG_debug("video_refresh: HW frame (RETRO_HW_FRAME_BUFFER_VALID), enabled=%d",
+		          PlayerHWRender_isEnabled());
+		if (PlayerHWRender_isEnabled()) {
+			PlayerHWRender_present(width, height, video_state.rotation);
+			frame_ready_for_flip = 1;
+		}
+		return;
+	}
+
 	if (!data)
 		return;
 
@@ -3893,6 +3932,7 @@ bool Core_load(void) {
 	         av_info.geometry.base_width, av_info.geometry.base_height, av_info.geometry.max_width,
 	         av_info.geometry.max_height, av_info.geometry.aspect_ratio, av_info.timing.fps,
 	         av_info.timing.sample_rate);
+
 	return true;
 }
 void Core_reset(void) {
@@ -3905,6 +3945,10 @@ void Core_quit(void) {
 	if (core.initialized) {
 		SRAM_write();
 		RTC_write();
+
+		// Shutdown HW rendering before unloading game (calls context_destroy)
+		PlayerHWRender_shutdown();
+
 		core.unload_game();
 		core.deinit();
 		core.initialized = 0;

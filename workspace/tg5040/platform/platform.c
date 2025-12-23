@@ -218,6 +218,10 @@ void PLAT_present(GFX_Renderer* renderer) {
 	SDL2_present(&vid_ctx, renderer);
 }
 
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
 ///////////////////////////////
 // Input
 ///////////////////////////////

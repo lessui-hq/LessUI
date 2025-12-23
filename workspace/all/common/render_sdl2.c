@@ -148,8 +148,14 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	LOG_debug("SDL2_initVideo: Creating window/renderer (size=%dx%d)", w, h);
 
 	// Create window and renderer
-	ctx->window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
-	                               SDL_WINDOW_SHOWN);
+	// Add OpenGL flag on platforms that support HW rendering
+	Uint32 window_flags = SDL_WINDOW_SHOWN;
+#if HAS_OPENGLES
+	window_flags |= SDL_WINDOW_OPENGL;
+#endif
+
+	ctx->window =
+	    SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, window_flags);
 	if (!ctx->window) {
 		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
 		return NULL;
@@ -429,4 +435,11 @@ uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx) {
 	// Convert to microseconds
 	uint64_t freq = SDL_GetPerformanceFrequency();
 	return (uint32_t)((end - start) * 1000000 / freq);
+}
+
+SDL_Window* SDL2_getWindow(SDL2_RenderContext* ctx) {
+	if (!ctx) {
+		return NULL;
+	}
+	return ctx->window;
 }

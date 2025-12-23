@@ -261,6 +261,10 @@ void PLAT_present(GFX_Renderer* renderer) {
 	SDL2_present(&vid_ctx, renderer);
 }
 
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
 int PLAT_supportsOverscan(void) {
 	return VARIANT_IS(VARIANT_RG35XX_SQUARE);
 }

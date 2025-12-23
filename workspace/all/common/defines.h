@@ -226,6 +226,15 @@
 ///////////////////////////////
 
 /**
+ * OpenGL ES hardware rendering support.
+ * Platforms with GPU capability define HAS_OPENGLES 1 in platform.h.
+ * Used by player for hardware-accelerated cores (Flycast, PPSSPP, etc.)
+ */
+#ifndef HAS_OPENGLES
+#define HAS_OPENGLES 0
+#endif
+
+/**
  * Detects if platform has a power button.
  */
 #define HAS_POWER_BUTTON (BUTTON_POWER != BUTTON_NA || CODE_POWER != CODE_NA || JOY_POWER != JOY_NA)

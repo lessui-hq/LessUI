@@ -236,4 +236,14 @@ double SDL2_getDisplayHz(void);
  */
 uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx);
 
+/**
+ * Gets the SDL window from render context.
+ *
+ * Used by hardware rendering module to create OpenGL context.
+ *
+ * @param ctx Render context
+ * @return SDL_Window pointer, or NULL if not initialized
+ */
+SDL_Window* SDL2_getWindow(SDL2_RenderContext* ctx);
+
 #endif /* __RENDER_SDL2_H__ */

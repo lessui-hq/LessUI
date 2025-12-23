@@ -71,7 +71,6 @@ static void run_main_loop(void) {
 
 		// Measure frame execution time for auto CPU scaling
 		uint64_t frame_start = getMicroseconds();
-	PlayerHWRender_bindFBO();
 		core.run();
 		uint64_t frame_time = getMicroseconds() - frame_start;
 
