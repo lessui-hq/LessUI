@@ -644,19 +644,182 @@ Segmentation fault
 
 **Fix:** Rebuild PPSSPP core without X11/desktop dependencies. Use RetroArch's buildbot ARM builds or compile with proper cross-toolchain.
 
+## Unified GL Rendering Pipeline (Planned Refactor)
+
+### Why Unify?
+
+The current architecture has **two separate rendering paths**:
+
+- **Software cores**: SDL Surface → SDL_Renderer → Screen
+- **HW cores**: GL FBO → GL present → Screen
+
+This "bolted-on" approach has limitations:
+
+1. Cannot apply shaders to software-rendered cores
+2. Code duplication between paths (scaling, filtering, etc.)
+3. Platform abstraction leaks (SDL vs GL rendering modes)
+4. Difficult to add features uniformly (effects, overlays, etc.)
+
+### Target Architecture
+
+**ALL cores render through a unified GL pipeline:**
+
+```
+Software Core → upload to GL Texture ─┐
+                                      ├→ Unified GL Presentation → Screen
+Hardware Core → already GL Texture ───┘
+```
+
+This enables:
+
+- Shader support for all cores (see docs/shader-pipeline.md)
+- Single code path for scaling, filtering, rotation
+- Cleaner platform abstraction
+- Easier to maintain and extend
+
+### Implementation Approach
+
+Based on RetroArch and NextUI research (see docs/shader-pipeline.md for details):
+
+#### 1. Unified Video Backend
+
+```c
+// New: workspace/all/common/gl_video.h
+typedef struct GLVideoState {
+    // GL Context (managed separately from SDL_Renderer)
+    SDL_GLContext gl_context;
+    SDL_Window* window;
+    bool initialized;
+
+    // Frame textures for software cores (triple-buffered)
+    GLuint sw_texture[3];
+    unsigned sw_tex_index;
+    unsigned sw_width, sw_height;
+
+    // HW core FBO (created when core requests RETRO_ENVIRONMENT_SET_HW_RENDER)
+    GLuint hw_fbo;
+    GLuint hw_fbo_texture;
+    GLuint hw_fbo_depth;
+    unsigned hw_width, hw_height;
+    bool hw_active;
+
+    // Simple presentation shader (blit texture to screen)
+    GLuint present_program;
+    GLint present_mvp, present_texture;
+} GLVideoState;
+```
+
+#### 2. Frame Upload for Software Cores
+
+```c
+// Called from video_refresh_callback() for software cores
+void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size_t pitch) {
+    // Select next texture in triple-buffer
+    unsigned tex_idx = state.sw_tex_index;
+    glBindTexture(GL_TEXTURE_2D, state.sw_texture[tex_idx]);
+
+    // Upload frame data to GPU
+    // Note: GLES2 lacks GL_UNPACK_ROW_LENGTH, may need row-by-row copy
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
+                    GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
+
+    state.sw_width = width;
+    state.sw_height = height;
+    state.sw_tex_index = (tex_idx + 1) % 3;
+}
+```
+
+#### 3. Unified Presentation
+
+```c
+void GLVideo_present(void) {
+    // Determine input texture (SW or HW)
+    GLuint input_texture;
+    unsigned width, height;
+
+    if (state.hw_active) {
+        input_texture = state.hw_fbo_texture;
+        width = state.hw_width;
+        height = state.hw_height;
+    } else {
+        input_texture = state.sw_texture[state.sw_tex_index];
+        width = state.sw_width;
+        height = state.sw_height;
+    }
+
+    // Bind backbuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Use presentation shader (simple blit with aspect/scaling)
+    glUseProgram(state.present_program);
+    glBindTexture(GL_TEXTURE_2D, input_texture);
+
+    // Calculate viewport for aspect-correct display
+    calculateViewport(width, height, scaling_mode, &vp_x, &vp_y, &vp_w, &vp_h);
+    glViewport(vp_x, vp_y, vp_w, vp_h);
+
+    // Draw fullscreen quad
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    SDL_GL_SwapWindow(state.window);
+}
+```
+
+### Migration Strategy
+
+**Step 1: Extract current HW rendering to gl_video module**
+
+- Move `player_hwrender.{c,h}` → `workspace/all/common/gl_video.{c,h}`
+- Rename functions: `PlayerHWRender_*` → `GLVideo_*`
+- Keep HW-only functionality initially (no SW upload yet)
+
+**Step 2: Add software frame upload**
+
+- Implement `GLVideo_uploadFrame()` for SW cores
+- Triple-buffer SW textures for smooth rendering
+- Handle GLES2 pitch limitations (no GL_UNPACK_ROW_LENGTH)
+
+**Step 3: Unified presentation**
+
+- Single `GLVideo_present()` function handles both SW and HW
+- Remove SDL_Renderer dependency on GLES platforms
+- Simple passthrough shader (stock.glsl) for initial version
+
+**Step 4: Platform integration**
+
+- Update `render_sdl2.c` to use GLVideo on HAS_OPENGLES platforms
+- Update `player.c` video_refresh_callback to use GLVideo
+- Remove conditional `#if HAS_OPENGLES` scattered throughout
+
+### File Structure
+
+```
+workspace/all/common/
+├── gl_video.h          # Unified GL video interface
+├── gl_video.c          # Core implementation
+└── gl_video_upload.c   # SW frame upload (GLES2 row-copy handling)
+
+workspace/all/player/
+└── (player_hwrender.* moved to gl_video.*)
+```
+
+**Note**: Shader pipeline will be added later (see docs/shader-pipeline.md)
+
 ## Future Enhancements
 
-**Potential Additions:**
+**After Unified GL Refactor:**
 
+- Shader pipeline (see docs/shader-pipeline.md)
 - Shared context support (`RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`)
-- Multiple FBO rotation for reduced texture uploads
 - Configurable FBO size (currently hardcoded 1024×1024)
+- Performance profiling and optimization
 
 **Out of Scope:**
 
-- Vulkan support (different architecture, Mali doesn't support on these devices)
+- Vulkan support (different architecture, not supported on target devices)
 - Desktop OpenGL (not available on embedded devices)
-- Custom shader pipelines (cores handle their own effects)
+- Multiple render backends (GL-only simplifies implementation)
 
 ## References
 
