@@ -141,13 +141,13 @@ static int gl_error_total = 0; // Track GL errors to avoid log spam
  * @return true if all required functions loaded successfully
  */
 static bool loadGLFunctions(void) {
-#define LOAD_GL_FUNC(name)
-	do {
-		name = SDL_GL_GetProcAddress(#name);
-		if (!name) {
-			LOG_error("GL video: failed to load GL function: %s", #name);
-			return false;
-		}
+#define LOAD_GL_FUNC(name)                                                                         \
+	do {                                                                                           \
+		name = SDL_GL_GetProcAddress(#name);                                                       \
+		if (!name) {                                                                               \
+			LOG_error("GL video: failed to load GL function: %s", #name);                          \
+			return false;                                                                          \
+		}                                                                                          \
 	} while (0)
 
 	    LOAD_GL_FUNC(glGenFramebuffers);
