@@ -2823,15 +2823,15 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: { /* 56 */
 		unsigned* out = (unsigned*)data;
 		if (out) {
-#if HAS_OPENGLES
-			// Report GLES2 as our preferred/baseline context.
-			// We also support GLES3 - cores can request it via SET_HW_RENDER
-			// and we'll provide it if available, with fallback to lower versions.
-			*out = RETRO_HW_CONTEXT_OPENGLES2;
-			LOG_debug("GET_PREFERRED_HW_RENDER: OPENGLES2 (also support GLES3 with fallback)");
-#else
-			*out = RETRO_HW_CONTEXT_NONE; // Software rendering only
-#endif
+			if (HAS_OPENGLES) {
+				// Report GLES2 as our preferred/baseline context.
+				// We also support GLES3 - cores can request it via SET_HW_RENDER
+				// and we'll provide it if available, with fallback to lower versions.
+				*out = RETRO_HW_CONTEXT_OPENGLES2;
+				LOG_debug("GET_PREFERRED_HW_RENDER: OPENGLES2 (also support GLES3 with fallback)");
+			} else {
+				*out = RETRO_HW_CONTEXT_NONE; // Software rendering only
+			}
 		}
 		break;
 	}
