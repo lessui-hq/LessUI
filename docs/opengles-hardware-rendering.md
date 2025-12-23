@@ -37,23 +37,25 @@ player_hwrender.h/c - Self-contained HW rendering module
 ### Pipeline Flow
 
 ```
-1. Core requests HW rendering
+1. Core requests HW rendering (during retro_load_game)
    └─> RETRO_ENVIRONMENT_SET_HW_RENDER
 
-2. Create GL context + FBO
+2. Create GL context + FBO (still during load_game)
    ├─> SDL_GL_CreateContext (GLES 2.0)
    ├─> Load GL function pointers
    ├─> Create FBO with RGBA8888 + depth24/stencil8
-   ├─> Compile presentation shaders
-   └─> Call core's context_reset()
+   └─> Compile presentation shaders
 
-3. Frame rendering loop
+3. After retro_load_game returns
+   └─> Call core's context_reset() (per libretro spec)
+
+4. Frame rendering loop
    ├─> Bind FBO before core.run()
    ├─> Core renders to FBO
    ├─> Core signals RETRO_HW_FRAME_BUFFER_VALID
    └─> Present FBO to screen (shader-based blit)
 
-4. Cleanup
+5. Cleanup
    ├─> Call core's context_destroy()
    ├─> Destroy FBO resources
    └─> Destroy GL context
@@ -197,7 +199,7 @@ Minimal GLES 2.0 shaders:
 
 **Critical Fixes Applied:**
 
-1. ✅ **Context Reset Timing**: Moved `context_reset` call to end of `PlayerHWRender_init()` (before `retro_load_game()`), not after
+1. ✅ **Context Reset Timing**: `context_reset` is now called AFTER `retro_load_game()` returns, not during (per libretro spec)
 2. ✅ **GL State Restoration**: Added comprehensive state reset in `present()` (disable depth/stencil/blend/cull/scissor tests)
 3. ✅ **Removed context_reset from resizeFBO**: FBO resize no longer triggers unexpected context recreation
 4. ✅ **Backbuffer Binding**: Explicitly bind FBO 0 before presentation pass
@@ -239,22 +241,25 @@ Minimal GLES 2.0 shaders:
 
 ### Platform Testing
 
-**tg5040 (TrimUI Smart Pro):**
+**tg5040 (TrimUI Smart Pro - PowerVR Rogue GE8300):**
 
-- ✅ HW rendering works correctly
-- ✅ GL context created
-- ✅ FBO created (1024x1024, depth + stencil)
+- ✅ GL context creation succeeds (GLES 2.0)
+- ✅ FBO created successfully (1024x1024, RGBA8888, depth+stencil)
 - ✅ Shader compiled and linked
-- ✅ Frames display correctly with proper aspect ratio
-- ✅ Letterboxing/pillarboxing working
-- ✅ In-game menu opens without crashing
-- ✅ Menu renders correctly via GL (Y-flipped texture coordinates)
-- ✅ Debug HUD displays correctly with FPS, resolution, CPU info
-- **Status**: Working - Flycast (Dreamcast) displays, menu, and debug HUD functional
+- ✅ **Flycast (Dreamcast)**: Fully working - renders frames, menu functional, proper aspect ratio
+- ❌ **PPSSPP (PSP)**: Crashes during `context_reset` after GPU detection
+- ❌ **Mupen64Plus (N64)**: Crashes after ~1 second in main loop
+- **GPU**: PowerVR Rogue GE8300, OpenGL ES 3.2 capable
+- **Software renderer**: Used for SDL to avoid GL conflicts
 
-**rg35xxplus (Anbernic RG35XX Plus):**
+**rg35xxplus (Anbernic RG35XX Plus/H/SP - Mali-G31):**
 
-- Not yet tested with working implementation
+- ✅ GL context creation succeeds (GLES 2.0)
+- ✅ FBO created successfully (1024x1024)
+- ⚠️ **Mupen64Plus (N64)**: Renders multiple frames successfully, crashes during runtime
+- ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping, not GL-related)
+- **GPU**: Mali-G31, OpenGL ES 3.2 capable
+- **Note**: Better N64 compatibility than tg5040, worse DC compatibility
 
 ### libretro Specification Compliance
 
@@ -277,7 +282,7 @@ Minimal GLES 2.0 shaders:
 
 ### Working Features
 
-- ✅ GL context creation (SDL2-based)
+- ✅ GL context creation (SDL2-based, GLES 2.0)
 - ✅ FBO management (create, resize, destroy)
 - ✅ Shader compilation and linking
 - ✅ Dynamic GL function loading
@@ -288,6 +293,20 @@ Minimal GLES 2.0 shaders:
 - ✅ In-game menu rendering via GL (no SDL/GL conflicts)
 - ✅ Dynamic screen resolution (no hardcoded values)
 - ✅ Debug HUD overlay with alpha blending (FPS, CPU usage, resolution)
+- ✅ Software renderer for SDL (avoids GL context conflicts)
+- ✅ Proper `context_reset` timing (after `retro_load_game` per libretro spec)
+- ✅ GL error handling (drain after context_reset, reduce log spam)
+
+### Platform/Core Compatibility
+
+**tg5040 (PowerVR Rogue GE8300):**
+- ✅ **Flycast (Dreamcast)**: Works, runs for several seconds, displays correctly
+- ❌ **PPSSPP (PSP)**: Crashes during `context_reset` after logging GPU info
+- ❌ **Mupen64Plus-Next (N64)**: Crashes after ~1 second during main loop
+
+**rg35xxplus (Mali-G31):**
+- ✅ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
+- ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping issue, not GL-related)
 
 ### Not Yet Implemented
 
@@ -308,35 +327,48 @@ Simple and direct:
 
 ### High Priority
 
-1. **Game Screenshot Behind Menu**
+1. **Compare Integration with RetroArch**
+   - Deep comparison of GL context setup, timing, and state management
+   - Verify we match RetroArch's implementation exactly for:
+     - Environment callback handling (SET_HW_RENDER timing)
+     - Context creation attributes and flags
+     - FBO setup and lifecycle
+     - Frame presentation and buffer swapping
+     - GL state management between core and frontend
+   - Document any differences and determine if they explain core crashes
+   - Goal: Bulletproof implementation that matches proven RetroArch behavior
+
+2. **Refactor HW Render Integration**
+   - Current implementation feels "bolted on" to existing SDL code
+   - Integrate more naturally with platform abstraction layer
+   - Move GL context management into render_sdl2.c alongside SDL_Renderer
+   - Clean separation between software and hardware rendering paths
+   - Consider: unified video backend that handles both software and HW cores
+   - Improve code organization and reduce coupling
+
+3. **Debug PPSSPP and Mupen64Plus Crashes**
+   - PPSSPP crashes during `context_reset` after logging GPU info (tg5040)
+   - Mupen64Plus crashes during runtime on tg5040, works briefly on rg35xxplus
+   - Try to get device-level crash dumps (GDB, coredump) for backtrace
+   - Compare with working Flycast initialization to find differences
+   - May be core-specific bugs rather than our implementation
+
+### Medium Priority
+
+4. **Game Screenshot Behind Menu**
    - Use `glReadPixels()` to capture FBO to SDL surface before menu opens
    - Scale and cache for menu background
    - Alternative: render last frame from FBO as background quad
 
-2. **Rotation Support**
+5. **Rotation Support**
    - Add MVP matrix rotation for 0°/90°/180°/270°
    - Swap viewport dimensions for 90°/270° to maintain aspect ratio
    - Test with games that use portrait orientation
 
-3. **`bottom_left_origin` Handling**
+6. **`bottom_left_origin` Handling**
    - Flycast sets `bottom_left_origin=true` (GL convention)
    - Currently works but may need Y-flip adjustment
    - Test with cores that use `bottom_left_origin=false`
-
-### Medium Priority
-
-4. **Debug Mupen64Plus-Next Crash**
-   - Segfaults after context_reset before first frame
-   - Compare GL setup with RetroArch
-   - May need additional GL state setup or extensions
-
-5. **Rebuild PPSSPP Core**
-   - Current build has X11 dependency (libSM.so.6)
-   - Need clean ARM build without desktop libs
-
-6. **Test on rg35xxplus**
-   - Verify HW rendering works on other Mali GPU platform
-   - Test Flycast, Beetle PSX HW cores
 
 7. **Remove Debug Logging**
    - Clean up LOG_debug calls added for troubleshooting
@@ -351,6 +383,7 @@ Simple and direct:
 9. **GLES 3.0 Support** (optional)
    - Some cores prefer GLES3 (ParaLLEl-RDP requires 3.1+)
    - Add version negotiation if needed
+   - Currently only support OPENGLES2 (GLES 2.0)
 
 10. **Shared Context Support** (optional)
     - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
@@ -436,15 +469,19 @@ float tex_scale_y = (float)height / (float)fbo_height;
 
 ## Known Core Compatibility
 
-Based on RetroArch expert analysis:
+| Core                       | tg5040 (PowerVR) | rg35xxplus (Mali) | Requirements        | Notes                                                        |
+| -------------------------- | ---------------- | ----------------- | ------------------- | ------------------------------------------------------------ |
+| **Flycast** (DC)           | ✅ Working       | ❌ Crashes        | GLES2, depth+stencil | Works on PowerVR, crashes during init on Mali (nvmem issue)  |
+| **Mupen64Plus-Next** (N64) | ❌ Crashes       | ⚠️ Partial        | GLES2, depth buffer | PowerVR: crashes in main loop. Mali: renders frames then crashes |
+| **PPSSPP** (PSP)           | ❌ Crashes       | Untested          | GLES2/GLES3         | Crashes during `context_reset` after GPU detection           |
+| **Beetle PSX HW**          | Untested         | Untested          | GLES2/GLES3, depth  | Should work with GLES2                                       |
+| **ParaLLEl-RDP** (N64)     | Won't work       | Won't work        | GLES3.1+/Vulkan     | Outside GLES2 scope                                          |
 
-| Core                       | Status       | Requirements        | Notes                                           |
-| -------------------------- | ------------ | ------------------- | ----------------------------------------------- |
-| **Flycast** (DC)           | ✅ Working   | GLES2, depth buffer | Displays correctly, menu and HUD functional     |
-| **Beetle PSX HW**          | Untested     | GLES2/GLES3, depth  | Should work with GLES2                          |
-| **PPSSPP** (PSP)           | ❌ Blocked   | GLES2/GLES3         | Core needs rebuild - missing libSM.so.6 (X11)   |
-| **Mupen64Plus-Next** (N64) | ❌ Crashes   | GLES2, depth buffer | Segfault after context_reset - needs debugging  |
-| **ParaLLEl-RDP** (N64)     | Won't work   | GLES3.1+/Vulkan     | Outside GLES2 scope                             |
+**Key Findings:**
+- Different GPUs have different compatibility (PowerVR vs Mali behave differently)
+- Flycast is the most stable core for HW rendering on PowerVR
+- Core crashes appear to be internal to cores, not our GL setup
+- Identical GL setup yields different results per core/GPU combination
 
 ## Troubleshooting
 

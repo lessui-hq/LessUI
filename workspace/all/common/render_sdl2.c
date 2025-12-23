@@ -162,8 +162,15 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	}
 	LOG_debug("SDL2_initVideo: Window created successfully");
 
-	ctx->renderer =
-	    SDL_CreateRenderer(ctx->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	// On HAS_OPENGLES platforms, use software renderer to avoid GL context conflicts
+	// HW cores will create their own GL context, and SDL's accelerated renderer would conflict
+#if HAS_OPENGLES
+	Uint32 renderer_flags = SDL_RENDERER_SOFTWARE | SDL_RENDERER_PRESENTVSYNC;
+#else
+	Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+#endif
+
+	ctx->renderer = SDL_CreateRenderer(ctx->window, -1, renderer_flags);
 	if (!ctx->renderer) {
 		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
 		SDL_DestroyWindow(ctx->window);

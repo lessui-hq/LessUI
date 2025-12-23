@@ -126,6 +126,7 @@ static GLenum (*glGetError)(void);
 ///////////////////////////////
 
 static PlayerHWRenderState hw_state = {0};
+static int gl_error_total = 0; // Track GL errors to avoid log spam
 
 /**
  * Load GL function pointers via SDL_GL_GetProcAddress.
@@ -603,11 +604,15 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 	}
 	LOG_debug("PlayerHWRender_init: got SDL window successfully");
 
-	// Set GL attributes for OpenGL ES 2.0
-	LOG_debug("PlayerHWRender_init: setting GL attributes for GLES 2.0");
+	// We only support OPENGLES2 for now (checked by isContextSupported)
+	// Match RetroArch: OPENGLES2 always gets GLES 2.0 context
+	unsigned major = 2;
+	unsigned minor = 0;
+
+	LOG_debug("PlayerHWRender_init: setting GL attributes for GLES %u.%u", major, minor);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
 
 	// Create GL context
 	LOG_debug("PlayerHWRender_init: creating GL context");
@@ -617,7 +622,7 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 		return false;
 	}
 
-	LOG_info("HW render: OpenGL ES 2.0 context created successfully");
+	LOG_info("HW render: OpenGL ES %u.%u context created successfully", major, minor);
 
 	// Make context current
 	LOG_debug("PlayerHWRender_init: making GL context current");
@@ -638,6 +643,23 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 		return false;
 	}
 	LOG_debug("PlayerHWRender_init: GL functions loaded");
+
+	// Load additional GL functions for querying capabilities
+	const char* (*glGetStringFunc)(GLenum) = (void*)SDL_GL_GetProcAddress("glGetString");
+	void (*glGetIntegervFunc)(GLenum, GLint*) = (void*)SDL_GL_GetProcAddress("glGetIntegerv");
+
+	if (glGetStringFunc && glGetIntegervFunc) {
+		LOG_info("HW render: GL vendor=%s, renderer=%s, version=%s",
+		         glGetStringFunc(0x1F00), // GL_VENDOR
+		         glGetStringFunc(0x1F01), // GL_RENDERER
+		         glGetStringFunc(0x1F02)); // GL_VERSION
+
+		GLint max_tex_size = 0, max_fbo_size = 0;
+		glGetIntegervFunc(0x0D33, &max_tex_size); // GL_MAX_TEXTURE_SIZE
+		glGetIntegervFunc(0x84E8, &max_fbo_size); // GL_MAX_RENDERBUFFER_SIZE
+		LOG_info("HW render: max_texture_size=%d, max_renderbuffer_size=%d",
+		         max_tex_size, max_fbo_size);
+	}
 
 	// Create FBO for core to render into
 	LOG_debug("PlayerHWRender_init: creating FBO (%ux%u, depth=%d, stencil=%d)", max_width,
@@ -717,6 +739,7 @@ void PlayerHWRender_shutdown(void) {
 	}
 
 	memset(&hw_state, 0, sizeof(hw_state));
+	gl_error_total = 0;
 }
 
 ///////////////////////////////
@@ -918,8 +941,20 @@ void PlayerHWRender_contextReset(void) {
 	}
 
 	if (hw_state.hw_callback.context_reset) {
+		// Make GL context current before calling core's context_reset
+		PlayerHWRender_makeCurrent();
+
 		LOG_info("HW render: calling core context_reset");
 		hw_state.hw_callback.context_reset();
+
+		// Drain any GL errors left by context_reset (cores often probe optional features)
+		int error_count = 0;
+		while (glGetError() != GL_NO_ERROR && error_count < 100) {
+			error_count++;
+		}
+		if (error_count > 0) {
+			LOG_debug("HW render: cleared %d GL errors after context_reset", error_count);
+		}
 	}
 }
 
@@ -928,20 +963,24 @@ void PlayerHWRender_bindFBO(void) {
 		return;
 	}
 
-	LOG_debug("HW render: bindFBO called, binding FBO %u for core rendering", hw_state.fbo);
 	PlayerHWRender_makeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, hw_state.fbo);
 
 	// Set viewport to FBO size - cores expect this to be set
 	glViewport(0, 0, (GLsizei)hw_state.fbo_width, (GLsizei)hw_state.fbo_height);
 
-	// Check for GL errors before core.run()
-	GLenum err = glGetError();
-	if (err != GL_NO_ERROR) {
-		LOG_warn("HW render: GL error before core.run(): 0x%x", err);
+	// Drain any GL errors left by the core (feature probing, etc.)
+	// Only log occasionally to avoid spam
+	GLenum err;
+	int errors_this_frame = 0;
+	while ((err = glGetError()) != GL_NO_ERROR && errors_this_frame < 10) {
+		errors_this_frame++;
+		gl_error_total++;
 	}
-	LOG_debug("HW render: bindFBO complete, viewport=%ux%u, GL state clean", hw_state.fbo_width,
-	          hw_state.fbo_height);
+	// Log first occurrence and then every 100 errors
+	if (errors_this_frame > 0 && (gl_error_total <= errors_this_frame || gl_error_total % 100 == 0)) {
+		LOG_debug("HW render: drained %d GL errors (total: %d)", errors_this_frame, gl_error_total);
+	}
 }
 
 void PlayerHWRender_presentSurface(SDL_Surface* surface) {

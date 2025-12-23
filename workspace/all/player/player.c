@@ -5774,6 +5774,10 @@ int main(int argc, char* argv[]) {
 		goto finish;
 	}
 
+	// Call context_reset AFTER load_game returns (per libretro spec)
+	// This signals to HW cores that they can now create GL resources
+	PlayerHWRender_contextReset();
+
 	LOG_debug("Input_init");
 	Input_init(NULL);
 
