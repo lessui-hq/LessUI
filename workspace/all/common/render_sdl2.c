@@ -36,6 +36,7 @@ static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 	LOG_info("resizeVideo(%i,%i,%i) hard_scale: %i crisp: %i\n", w, h, p, ctx->hard_scale,
 	         ctx->sharpness == SHARPNESS_CRISP);
 
+#if !HAS_OPENGLES
 	// Cleanup old resources
 	SDL_FreeSurface(ctx->buffer);
 	SDL_DestroyTexture(ctx->texture);
@@ -60,6 +61,7 @@ static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 
 	// Recreate buffer wrapper
 	ctx->buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
+#endif
 
 	ctx->width = w;
 	ctx->height = h;
@@ -94,6 +96,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
 	          fx->color, opacity);
 
+#if !HAS_OPENGLES
 	SDL_Texture* new_texture = EFFECT_createGeneratedTextureWithColor(
 	    ctx->renderer, fx->type, fx->scale, target_w, target_h, fx->color);
 	if (new_texture) {
@@ -113,6 +116,9 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 
 		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
 	}
+#else
+	EFFECT_markLive(fx);
+#endif
 }
 
 SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
@@ -163,14 +169,8 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	}
 	LOG_debug("SDL2_initVideo: Window created successfully");
 
-	// On HAS_OPENGLES platforms, use software renderer to avoid GL context conflicts
-	// HW cores will create their own GL context, and SDL's accelerated renderer would conflict
-#if HAS_OPENGLES
-	Uint32 renderer_flags = SDL_RENDERER_SOFTWARE | SDL_RENDERER_PRESENTVSYNC;
-#else
+#if !HAS_OPENGLES
 	Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
-#endif
-
 	ctx->renderer = SDL_CreateRenderer(ctx->window, -1, renderer_flags);
 	if (!ctx->renderer) {
 		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
@@ -184,6 +184,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		LOG_info("SDL2: Using renderer: %s", renderer_info.name);
 	}
 	LOG_debug("SDL2_initVideo: Renderer created successfully");
+#endif
 
 	// Check for rotation (portrait display)
 	if (ctx->config.auto_rotate) {
@@ -202,6 +203,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		}
 	}
 
+#if !HAS_OPENGLES
 	// Create initial texture
 	LOG_debug("SDL2_initVideo: Creating texture (sharpness=%s)",
 	          ctx->config.default_sharpness == SHARPNESS_SOFT ? "soft" : "sharp");
@@ -228,12 +230,16 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
+#endif
+
 	ctx->screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH, RGBA_MASK_565);
 	if (!ctx->screen) {
 		LOG_error("SDL2_initVideo: SDL_CreateRGBSurface failed: %s", SDL_GetError());
+#if !HAS_OPENGLES
 		SDL_FreeSurface(ctx->buffer);
 		SDL_DestroyTexture(ctx->texture);
 		SDL_DestroyRenderer(ctx->renderer);
+#endif
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
@@ -269,13 +275,16 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 	// Clear screen
 	SDL_FillRect(ctx->screen, NULL, 0);
+#if !HAS_OPENGLES
 	for (int i = 0; i < 3; i++) {
 		SDL_RenderClear(ctx->renderer);
 		SDL_RenderPresent(ctx->renderer);
 	}
+#endif
 
 	// Free surfaces
 	SDL_FreeSurface(ctx->screen);
+#if !HAS_OPENGLES
 	SDL_FreeSurface(ctx->buffer);
 
 	// Destroy textures
@@ -287,6 +296,7 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 
 	// Destroy renderer and window
 	SDL_DestroyRenderer(ctx->renderer);
+#endif
 	SDL_DestroyWindow(ctx->window);
 
 #if HAS_OPENGLES
@@ -302,7 +312,9 @@ void SDL2_clearVideo(SDL2_RenderContext* ctx) {
 
 void SDL2_clearAll(SDL2_RenderContext* ctx) {
 	SDL2_clearVideo(ctx);
+#if !HAS_OPENGLES
 	SDL_RenderClear(ctx->renderer);
+#endif
 }
 
 SDL_Surface* SDL2_resizeVideo(SDL2_RenderContext* ctx, int width, int height, int pitch) {
