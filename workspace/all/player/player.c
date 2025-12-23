@@ -1439,12 +1439,17 @@ static void Config_syncFrontend(char* key, int value) {
 		else
 			GFX_setSharpness(screen_sharpness);
 
-		renderer.dst_p = 0;
+		// Only force scaler recalc for software rendering
+		// HW rendering handles scaling directly in PlayerHWRender_present()
+		if (!PlayerHWRender_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_SCALING;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_EFFECT].key)) {
 		screen_effect = value;
 		GFX_setEffect(value);
-		renderer.dst_p = 0;
+		// Effects only apply to software rendering
+		if (!PlayerHWRender_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_EFFECT;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_SHARPNESS].key)) {
 		screen_sharpness = value;
@@ -1455,7 +1460,9 @@ static void Config_syncFrontend(char* key, int value) {
 		else
 			GFX_setSharpness(screen_sharpness);
 
-		renderer.dst_p = 0;
+		// Only force scaler recalc for software rendering
+		if (!PlayerHWRender_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_SHARPNESS;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_OVERCLOCK].key)) {
 		overclock = value;
@@ -3873,8 +3880,9 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 			// Count frames for FPS calculation
 			fps_ticks += 1;
 
-			// Render game frame to backbuffer
-			PlayerHWRender_present(width, height, video_state.rotation);
+			// Render game frame to backbuffer with scaling and filtering
+			PlayerHWRender_present(width, height, video_state.rotation, screen_scaling,
+			                       screen_sharpness, core.aspect_ratio);
 
 			// Render debug HUD overlay if enabled
 			if (show_debug) {

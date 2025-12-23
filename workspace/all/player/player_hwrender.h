@@ -185,14 +185,18 @@ retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym);
 /**
  * Present the HW-rendered frame to screen.
  *
- * Blits FBO texture to screen using GL, handling rotation if needed.
+ * Blits FBO texture to screen using GL, handling rotation and scaling.
  * Called from video_refresh_callback when data == RETRO_HW_FRAME_BUFFER_VALID.
  *
  * @param width Frame width
  * @param height Frame height
  * @param rotation Current rotation (0=0, 1=90 CCW, 2=180, 3=270 CCW)
+ * @param scaling_mode Scaling mode (PLAYER_SCALE_NATIVE, ASPECT, FULLSCREEN, CROPPED)
+ * @param sharpness Texture filtering (SHARPNESS_SHARP, CRISP, SOFT)
+ * @param aspect_ratio Core's reported aspect ratio (0 = use dimensions)
  */
-void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation);
+void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
+                            int sharpness, double aspect_ratio);
 
 /**
  * Resize FBO for new dimensions.
@@ -318,10 +322,14 @@ static inline retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym
 	return NULL;
 }
 
-static inline void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) {
+static inline void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation,
+                                          int scaling_mode, int sharpness, double aspect_ratio) {
 	(void)width;
 	(void)height;
 	(void)rotation;
+	(void)scaling_mode;
+	(void)sharpness;
+	(void)aspect_ratio;
 }
 
 static inline bool PlayerHWRender_resizeFBO(unsigned width, unsigned height) {

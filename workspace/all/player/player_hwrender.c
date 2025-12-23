@@ -11,6 +11,7 @@
 
 #include "api.h"
 #include "log.h"
+#include "player_scaler.h"
 #include <SDL.h>
 #include <math.h>
 #include <string.h>
@@ -38,6 +39,7 @@ typedef unsigned int GLbitfield;
 #define GL_UNSIGNED_BYTE 0x1401
 #define GL_UNSIGNED_SHORT_5_6_5 0x8363
 #define GL_FLOAT 0x1406
+#define GL_NEAREST 0x2600
 #define GL_LINEAR 0x2601
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_TEXTURE_2D 0x0DE1
@@ -950,10 +952,10 @@ retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym) {
 // Frame Operations
 ///////////////////////////////
 
-void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) {
-	(void)rotation;
-
-	LOG_debug("HW render: present called (%ux%u, rotation=%u)", width, height, rotation);
+void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
+                            int sharpness, double aspect_ratio) {
+	LOG_debug("HW render: present called (%ux%u, rotation=%u, scale=%d, sharp=%d)", width, height,
+	          rotation, scaling_mode, sharpness);
 
 	if (!hw_state.enabled || !hw_state.context_ready) {
 		LOG_debug("HW render: present skipped (not enabled/ready)");
@@ -979,39 +981,110 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) 
 		LOG_error("HW render: invalid window size %dx%d", screen_w, screen_h);
 		return;
 	}
-	float src_aspect = (float)width / (float)height;
-	float dst_aspect = (float)screen_w / (float)screen_h;
 
+	// Calculate viewport based on scaling mode
+	// Note: PlayerScaler is designed for software rendering and doesn't work correctly
+	// for GL viewport calculation, so we calculate directly here.
 	int vp_x = 0, vp_y = 0, vp_w = screen_w, vp_h = screen_h;
-	if (src_aspect > dst_aspect) {
-		// Letterbox (black bars top/bottom)
-		vp_h = (int)(screen_w / src_aspect);
-		vp_y = (screen_h - vp_h) / 2;
-	} else {
-		// Pillarbox (black bars left/right)
-		vp_w = (int)(screen_h * src_aspect);
+	int src_x = 0, src_y = 0, src_w = width, src_h = height;
+
+	// Use aspect ratio from core if provided, otherwise use source dimensions
+	double src_aspect = (aspect_ratio > 0) ? aspect_ratio : ((double)width / (double)height);
+	double screen_aspect = (double)screen_w / (double)screen_h;
+
+	switch (scaling_mode) {
+	case 0: // PLAYER_SCALE_NATIVE - integer scale, centered
+	{
+		int scale = MIN(screen_w / (int)width, screen_h / (int)height);
+		if (scale < 1)
+			scale = 1;
+		vp_w = width * scale;
+		vp_h = height * scale;
 		vp_x = (screen_w - vp_w) / 2;
+		vp_y = (screen_h - vp_h) / 2;
+		break;
+	}
+	case 1: // PLAYER_SCALE_ASPECT - maintain aspect ratio
+	{
+		if (src_aspect > screen_aspect) {
+			// Content is wider - letterbox (black bars top/bottom)
+			vp_w = screen_w;
+			vp_h = (int)(screen_w / src_aspect);
+			vp_x = 0;
+			vp_y = (screen_h - vp_h) / 2;
+		} else {
+			// Content is taller - pillarbox (black bars left/right)
+			vp_w = (int)(screen_h * src_aspect);
+			vp_h = screen_h;
+			vp_x = (screen_w - vp_w) / 2;
+			vp_y = 0;
+		}
+		break;
+	}
+	case 2: // PLAYER_SCALE_FULLSCREEN - stretch to fill
+		vp_x = 0;
+		vp_y = 0;
+		vp_w = screen_w;
+		vp_h = screen_h;
+		break;
+	case 3: // PLAYER_SCALE_CROPPED - crop to fill while maintaining aspect
+	{
+		if (src_aspect > screen_aspect) {
+			// Content is wider - crop left/right
+			vp_w = screen_w;
+			vp_h = screen_h;
+			int visible_w = (int)(height * screen_aspect);
+			src_x = (width - visible_w) / 2;
+			src_w = visible_w;
+		} else {
+			// Content is taller - crop top/bottom
+			vp_w = screen_w;
+			vp_h = screen_h;
+			int visible_h = (int)(width / screen_aspect);
+			src_y = (height - visible_h) / 2;
+			src_h = visible_h;
+		}
+		break;
+	}
 	}
 
-	glViewport(vp_x, vp_y, vp_w, vp_h);
+	LOG_debug("HW render: viewport(%d,%d %dx%d) src_crop(%d,%d %dx%d)", vp_x, vp_y, vp_w, vp_h,
+	          src_x, src_y, src_w, src_h);
+
+	// Clear entire screen first (glClear only affects current viewport)
+	glViewport(0, 0, screen_w, screen_h);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
+
+	// Now set render viewport for scaled output
+	glViewport(vp_x, vp_y, vp_w, vp_h);
 
 	// Use shader
 	glUseProgram(hw_state.present_program);
 
-	// Bind texture
+	// Bind texture and set filtering based on sharpness
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, hw_state.fbo_texture);
+
+	// Apply texture filtering based on sharpness setting
+	// SHARPNESS_SHARP (0) = nearest-neighbor (pixelated)
+	// SHARPNESS_CRISP (1) = linear (smooth) - HW rendering can't do 2-pass
+	// SHARPNESS_SOFT (2) = linear (smooth)
+	GLint filter = (sharpness == 0) ? GL_NEAREST : GL_LINEAR;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+
 	glUniform1i(hw_state.loc_texture, 0);
 
 	// Identity MVP (no transformation)
 	float identity[16] = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, -1, -1, 0, 1};
 	glUniformMatrix4fv(hw_state.loc_mvp, 1, GL_FALSE, identity);
 
-	// Scale texture coords to sample only rendered portion
-	float tex_scale_x = (float)width / (float)hw_state.fbo_width;
-	float tex_scale_y = (float)height / (float)hw_state.fbo_height;
+	// Calculate texture coords to sample the portion of FBO (with optional cropping)
+	float tex_x_start = (float)src_x / (float)hw_state.fbo_width;
+	float tex_y_start = (float)src_y / (float)hw_state.fbo_height;
+	float tex_x_end = (float)(src_x + src_w) / (float)hw_state.fbo_width;
+	float tex_y_end = (float)(src_y + src_h) / (float)hw_state.fbo_height;
 
 	// Handle bottom_left_origin flag from core
 	// When true: use OpenGL convention (bottom-left origin, Y increases upward)
@@ -1019,24 +1092,24 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) 
 	float texco[8];
 	if (hw_state.hw_callback.bottom_left_origin) {
 		// OpenGL convention - no Y-flip needed (FBO is already bottom-left)
-		texco[0] = 0.0f;
-		texco[1] = 0.0f; // bottom-left
-		texco[2] = tex_scale_x;
-		texco[3] = 0.0f; // bottom-right
-		texco[4] = 0.0f;
-		texco[5] = tex_scale_y; // top-left
-		texco[6] = tex_scale_x;
-		texco[7] = tex_scale_y; // top-right
+		texco[0] = tex_x_start;
+		texco[1] = tex_y_start; // bottom-left
+		texco[2] = tex_x_end;
+		texco[3] = tex_y_start; // bottom-right
+		texco[4] = tex_x_start;
+		texco[5] = tex_y_end; // top-left
+		texco[6] = tex_x_end;
+		texco[7] = tex_y_end; // top-right
 	} else {
 		// Standard libretro convention - Y-flip needed
-		texco[0] = 0.0f;
-		texco[1] = tex_scale_y; // top-left
-		texco[2] = tex_scale_x;
-		texco[3] = tex_scale_y; // top-right
-		texco[4] = 0.0f;
-		texco[5] = 0.0f; // bottom-left
-		texco[6] = tex_scale_x;
-		texco[7] = 0.0f; // bottom-right
+		texco[0] = tex_x_start;
+		texco[1] = tex_y_end; // top-left
+		texco[2] = tex_x_end;
+		texco[3] = tex_y_end; // top-right
+		texco[4] = tex_x_start;
+		texco[5] = tex_y_start; // bottom-left
+		texco[6] = tex_x_end;
+		texco[7] = tex_y_start; // bottom-right
 	}
 
 	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
@@ -1133,11 +1206,16 @@ void PlayerHWRender_bindFBO(void) {
 		return;
 	}
 
+	LOG_debug("HW render: bindFBO called, binding FBO %u (%ux%u)", hw_state.fbo, hw_state.fbo_width,
+	          hw_state.fbo_height);
+
 	PlayerHWRender_makeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, hw_state.fbo);
 
 	// Set viewport to FBO size - cores expect this to be set
 	glViewport(0, 0, (GLsizei)hw_state.fbo_width, (GLsizei)hw_state.fbo_height);
+
+	LOG_debug("HW render: FBO bound, viewport set to FBO size");
 
 	// Drain any GL errors left by the core (feature probing, etc.)
 	// Only log occasionally to avoid spam

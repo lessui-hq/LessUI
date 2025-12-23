@@ -168,6 +168,27 @@ Minimal GLES 2.0 shaders:
 - Cached shader locations (no per-frame `glGet*` calls)
 - Aspect ratio handled via viewport (not vertex transformation)
 
+### Scaling and Sharpness
+
+**Scaling Modes** (integrated from `PlayerScaler`):
+
+All 4 scaling modes from SDL2 software rendering are supported:
+
+- **Native**: Integer scaling with centered image
+- **Aspect**: Maintain aspect ratio with letterboxing/pillarboxing
+- **Fullscreen**: Stretch to fill entire screen
+- **Cropped**: Crop edges to fill screen while maintaining aspect
+
+**Sharpness Filtering**:
+
+| Mode      | SDL2 Software Path                         | HW Rendering (OpenGL) Path   |
+| --------- | ------------------------------------------ | ---------------------------- |
+| **Sharp** | Nearest-neighbor only                      | `GL_NEAREST` (pixel-perfect) |
+| **Crisp** | 2-pass: 4x NN upscale → bilinear downscale | `GL_LINEAR` (smooth)         |
+| **Soft**  | Bilinear only                              | `GL_LINEAR` (smooth)         |
+
+**Note on CRISP mode**: The SDL2 path uses a hardcoded 4x intermediate upscale for sources smaller than the device resolution, then bilinear downscale to final size. This 2-pass approach produces sharper results than pure bilinear. The HW rendering path uses single-pass `GL_LINEAR` for CRISP mode (same as SOFT) to avoid the complexity of an intermediate FBO. This is a reasonable trade-off for GPU-accelerated cores which typically render at higher resolutions anyway.
+
 ## GL Function Loading
 
 **Approach:** No system GLES headers required - all functions loaded dynamically.
@@ -289,28 +310,72 @@ Minimal GLES 2.0 shaders:
 
 ## Current Status
 
+### Recent Work (2025-12-23)
+
+**GLES Version Detection & Compliance Review:**
+
+- ✅ Added GLES 2.0/3.0/3.1/3.2 support with automatic fallback
+- ✅ Version negotiation following RetroArch pattern
+- ✅ Context type mapping: OPENGLES2→2.0, OPENGLES3→3.0, OPENGLES_VERSION→version_major.version_minor
+- ✅ All 12 `retro_hw_render_callback` fields properly handled per libretro spec
+- ✅ Fixed `bottom_left_origin` handling (prevents upside-down rendering)
+- ✅ Added `debug_context` support for GL debug contexts
+
+**Scaling Integration:**
+
+- ✅ All 4 scaling modes integrated (Native, Aspect, Fullscreen, Cropped)
+- ✅ Sharpness/filtering support (Sharp=GL_NEAREST, Crisp/Soft=GL_LINEAR)
+- ✅ Direct viewport calculation (PlayerScaler designed for software rendering)
+- ✅ Source cropping for CROPPED mode
+- ✅ Fixed viewport clear (full screen clear before setting render viewport)
+- ✅ Texture filtering applied per-frame based on sharpness setting
+
+**Bug Fixes:**
+
+- ✅ Prevented `renderer.dst_p = 0` assignments when HW rendering active
+- ✅ Guarded `select_scaler()` call in menu to skip when renderer uninitialized
+- ✅ Added `!show_menu` guard to prevent core execution during menu
+- ✅ Added explicit FBO rebinding after menu exit
+
+**Current Status:**
+
+- ✅ Aspect scaling displays correctly (proper pillarboxing)
+- ✅ All scaling modes functional (Native, Aspect, Fullscreen, Cropped)
+- ✅ Sharpness settings work (Sharp/Crisp/Soft)
+- ❌ Crash when exiting menu after changing scaling options (Flycast core SIGSEGV)
+  - Error: "SIGSEGV @ 0x4279ac -> 0x20 was not in vram, dynacode:0"
+  - Appears to be in Flycast's dynamic recompiler, not our GL code
+  - Crash happens inside Menu_loop, before return to main loop
+  - May be core-specific issue or GL state problem during menu
+
 ### Working Features
 
-- ✅ GL context creation (SDL2-based, GLES 2.0)
+- ✅ GL context creation (SDL2-based, GLES 2.0/3.0/3.1/3.2)
+- ✅ Version negotiation with automatic fallback (3.2 → 3.1 → 3.0 → 2.0)
 - ✅ FBO management (create, resize, destroy)
 - ✅ Shader compilation and linking
 - ✅ Dynamic GL function loading
 - ✅ Frame presentation to screen
-- ✅ Aspect-preserving viewport (letterbox/pillarbox)
+- ✅ All scaling modes (Native, Aspect, Fullscreen, Cropped)
+- ✅ Sharpness/filtering (Sharp=GL_NEAREST, Crisp/Soft=GL_LINEAR)
 - ✅ Texture coordinate scaling for partial FBO sampling
-- ✅ Correct orientation (Y-flip for SDL surfaces)
+- ✅ Source cropping (for CROPPED scaling mode)
+- ✅ `bottom_left_origin` handling (correct orientation per libretro spec)
+- ✅ `debug_context` support (GL debug contexts when requested)
+- ✅ `cache_context` (implicit - context only destroyed on shutdown)
 - ✅ In-game menu rendering via GL (no SDL/GL conflicts)
 - ✅ Dynamic screen resolution (no hardcoded values)
 - ✅ Debug HUD overlay with alpha blending (FPS, CPU usage, resolution)
 - ✅ Software renderer for SDL (avoids GL context conflicts)
 - ✅ Proper `context_reset` timing (after `retro_load_game` per libretro spec)
 - ✅ GL error handling (drain after context_reset, reduce log spam)
+- ✅ All 12 `retro_hw_render_callback` fields properly handled
 
 ### Platform/Core Compatibility
 
 **tg5040 (PowerVR Rogue GE8300):**
 
-- ✅ **Flycast (Dreamcast)**: Works, runs for several seconds, displays correctly
+- ⚠️ **Flycast (Dreamcast)**: Renders correctly with all scaling modes, crashes when exiting menu after changing options
 - ❌ **PPSSPP (PSP)**: Crashes during `context_reset` after logging GPU info
 - ❌ **Mupen64Plus-Next (N64)**: Crashes after ~1 second during main loop
 
@@ -321,9 +386,9 @@ Minimal GLES 2.0 shaders:
 
 ### Not Yet Implemented
 
-- ⏳ Rotation support (0°/90°/180°/270°)
-- ⏳ `bottom_left_origin` handling
+- ⏳ Rotation support (0°/90°/180°/270°) - rotation parameter accepted but not applied
 - ⏳ Game screenshot behind menu (currently black for HW cores)
+- ⏳ 2-pass CRISP sharpness (intermediate FBO) - currently uses GL_LINEAR
 
 ### Implementation Approach
 
@@ -376,16 +441,11 @@ Simple and direct:
    - Swap viewport dimensions for 90°/270° to maintain aspect ratio
    - Test with games that use portrait orientation
 
-6. **`bottom_left_origin` Handling**
-   - Flycast sets `bottom_left_origin=true` (GL convention)
-   - Currently works but may need Y-flip adjustment
-   - Test with cores that use `bottom_left_origin=false`
-
-7. **Remove Debug Logging**
+6. **Remove Debug Logging**
    - Clean up LOG_debug calls added for troubleshooting
    - Keep only essential INFO-level logs
 
-8. **Performance Optimization**
+7. **Performance Optimization**
    - Profile frame time impact of HW rendering
    - Measure menu presentation overhead
 

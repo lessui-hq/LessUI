@@ -54,8 +54,9 @@ static void run_main_loop(void) {
 
 		for (int run = 0; run < runs_this_vsync; run++) {
 			// First run uses frame pacer, subsequent FF runs always execute
-			bool should_run_core = (run == 0) ? (fast_forward || FramePacer_step(&frame_pacer))
-			                                   : fast_forward;
+			// Don't run core while menu is active
+			bool should_run_core = !show_menu && ((run == 0) ? (fast_forward || FramePacer_step(&frame_pacer))
+			                                                   : fast_forward);
 
 			if (should_run_core) {
 				// Call frame time callback if registered (per libretro spec)
@@ -131,9 +132,17 @@ static void run_main_loop(void) {
 		if (show_menu) {
 			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
 			Menu_loop();
-			LOG_debug("Main loop: returned from Menu_loop");
+			LOG_debug("Main loop: returned from Menu_loop, show_menu=%d", show_menu);
+
+			// Rebind FBO for HW cores after menu (menu uses FBO 0)
+			if (PlayerHWRender_isEnabled()) {
+				LOG_debug("Main loop: re-binding FBO after menu exit");
+				PlayerHWRender_bindFBO();
+			}
 		}
 
+		LOG_debug("Main loop: about to call hdmimon");
 		hdmimon();
+		LOG_debug("Main loop: hdmimon returned, continuing loop");
 	}
 }

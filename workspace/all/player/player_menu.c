@@ -611,7 +611,11 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 					int old_scaling = *ctx->screen_scaling;
 					cb->menu_options(cb->options_menu);
 					if (*ctx->screen_scaling != old_scaling) {
-						cb->select_scaler(r->true_w, r->true_h, r->src_p);
+						// Only recalc scaler for software rendering
+						// HW rendering handles scaling in PlayerHWRender_present()
+						if (r->true_w > 0 && r->true_h > 0) {
+							cb->select_scaler(r->true_w, r->true_h, r->src_p);
+						}
 
 						restore_w = (*scr)->w;
 						restore_h = (*scr)->h;

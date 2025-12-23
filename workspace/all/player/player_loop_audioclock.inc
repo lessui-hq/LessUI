@@ -70,9 +70,12 @@ static void run_main_loop(void) {
 		// blocking audio writes for timing, not the PI rate controller.
 
 		// Measure frame execution time for auto CPU scaling
+		// Don't run core while menu is active
 		uint64_t frame_start = getMicroseconds();
-	PlayerHWRender_bindFBO();
-		core.run();
+		if (!show_menu) {
+			PlayerHWRender_bindFBO();
+			core.run();
+		}
 		uint64_t frame_time = getMicroseconds() - frame_start;
 
 		// Store frame time for auto CPU scaling analysis
