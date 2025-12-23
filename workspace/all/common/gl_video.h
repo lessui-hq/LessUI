@@ -92,6 +92,13 @@ typedef struct GLVideoState {
 	int loc_texture; // u_texture uniform
 	int loc_position; // a_position attribute
 	int loc_texcoord; // a_texcoord attribute
+
+	// Software rendering resources (triple buffered)
+	unsigned int sw_textures[3];
+	unsigned int sw_tex_index; // Current index being written to
+	unsigned int sw_disp_index; // Index to display
+	unsigned int sw_width;
+	unsigned int sw_height;
 } GLVideoState;
 
 ///////////////////////////////
@@ -244,6 +251,21 @@ void GLVideo_contextReset(void);
 void GLVideo_bindFBO(void);
 
 /**
+ * Upload a software-rendered frame to a GL texture.
+ *
+ * Used for cores that render to a system memory buffer (RGB565).
+ * Uploads the data to one of the triple-buffered textures.
+ *
+ * @param data Pixel data pointer (usually RGB565)
+ * @param width Frame width in pixels
+ * @param height Frame height in pixels
+ * @param pitch Bytes per row in data buffer
+ * @param pixel_format Libretro pixel format (RETRO_PIXEL_FORMAT_RGB565, etc.)
+ */
+void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size_t pitch,
+                         unsigned pixel_format);
+
+/**
  * Present an SDL surface to screen via GL.
  *
  * Used by menu and debug HUD when HW rendering is active.
@@ -365,6 +387,15 @@ static inline void GLVideo_makeCurrent(void) {}
 static inline void GLVideo_contextReset(void) {}
 
 static inline void GLVideo_bindFBO(void) {}
+
+static inline void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height,
+                                       size_t pitch, unsigned pixel_format) {
+	(void)data;
+	(void)width;
+	(void)height;
+	(void)pitch;
+	(void)pixel_format;
+}
 
 static inline void GLVideo_presentSurface(SDL_Surface* surface) {
 	(void)surface;

@@ -808,6 +808,12 @@ void GLVideo_shutdown(void) {
 	// Destroy presentation resources
 	destroyPresentResources();
 
+	// Destroy software textures
+	if (gl_state.sw_textures[0]) {
+		glDeleteTextures(3, gl_state.sw_textures);
+		memset(gl_state.sw_textures, 0, sizeof(gl_state.sw_textures));
+	}
+
 	// Destroy FBO resources
 	destroyFBO();
 
@@ -1194,6 +1200,82 @@ void GLVideo_bindFBO(void) {
 	    (gl_error_total <= errors_this_frame || gl_error_total % 100 == 0)) {
 		LOG_debug("GL video: drained %d GL errors (total: %d)", errors_this_frame, gl_error_total);
 	}
+}
+
+void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size_t pitch,
+                         unsigned pixel_format) {
+	if (!data || width == 0 || height == 0) {
+		return;
+	}
+
+	if (!gl_state.gl_context) {
+		return;
+	}
+
+	GLVideo_makeCurrent();
+
+	GLenum internal_fmt = GL_RGB;
+	GLenum type = GL_UNSIGNED_SHORT_5_6_5;
+	size_t bpp = 2;
+
+	if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
+		internal_fmt = GL_RGBA;
+		type = GL_UNSIGNED_BYTE;
+		bpp = 4;
+	} else if (pixel_format == RETRO_PIXEL_FORMAT_RGB565) {
+		internal_fmt = GL_RGB;
+		type = GL_UNSIGNED_SHORT_5_6_5;
+		bpp = 2;
+	} else {
+		// 0RGB1555 not supported yet
+		return;
+	}
+
+	// Recreate textures if dimensions change
+	if (gl_state.sw_width != width || gl_state.sw_height != height) {
+		LOG_info("GL video: resizing SW textures %ux%u -> %ux%u", gl_state.sw_width,
+		         gl_state.sw_height, width, height);
+
+		if (gl_state.sw_textures[0]) {
+			glDeleteTextures(3, gl_state.sw_textures);
+		}
+		glGenTextures(3, gl_state.sw_textures);
+
+		for (int i = 0; i < 3; i++) {
+			glBindTexture(GL_TEXTURE_2D, gl_state.sw_textures[i]);
+			glTexImage2D(GL_TEXTURE_2D, 0, (GLint)internal_fmt, (GLsizei)width, (GLsizei)height, 0,
+			             internal_fmt, type, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}
+		gl_state.sw_width = width;
+		gl_state.sw_height = height;
+		gl_state.sw_tex_index = 0;
+	}
+
+	// Select next texture in triple-buffer
+	gl_state.sw_tex_index = (gl_state.sw_tex_index + 1) % 3;
+	unsigned int tex = gl_state.sw_textures[gl_state.sw_tex_index];
+	glBindTexture(GL_TEXTURE_2D, tex);
+
+	if (pitch == width * bpp) {
+		// Fast path: contiguous data
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)width, (GLsizei)height, internal_fmt, type,
+		                data);
+	} else {
+		// Slow path: row-by-row upload (GLES2 limitation: no GL_UNPACK_ROW_LENGTH)
+		const uint8_t* src = (const uint8_t*)data;
+		for (unsigned int y = 0; y < height; y++) {
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, (GLint)y, (GLsizei)width, 1, internal_fmt, type,
+			                src);
+			src += pitch;
+		}
+	}
+
+	// Update display index to point to the newest frame
+	gl_state.sw_disp_index = gl_state.sw_tex_index;
 }
 
 void GLVideo_presentSurface(SDL_Surface* surface) {
