@@ -2,7 +2,7 @@
 
 ## Overview
 
-LessUI now supports OpenGL ES 2.0 hardware-accelerated rendering for libretro cores that require GPU rendering (Flycast, PPSSPP, Beetle PSX HW, etc.). This enables 3D-intensive cores to run at full speed on devices with Mali GPUs.
+LessUI now supports OpenGL ES hardware-accelerated rendering for libretro cores that require GPU rendering (Flycast, PPSSPP, Beetle PSX HW, etc.). This enables 3D-intensive cores to run at full speed on devices with Mali GPUs.
 
 **Status:** Working on tg5040 - displays correctly with aspect ratio preservation
 
@@ -10,6 +10,11 @@ LessUI now supports OpenGL ES 2.0 hardware-accelerated rendering for libretro co
 
 - rg35xxplus (Anbernic RG35XX Plus/H/SP series - Mali GPU)
 - tg5040 (TrimUI Smart Pro - Mali GPU)
+
+**Supported GLES Versions:**
+
+- GLES 2.0 (baseline, always available)
+- GLES 3.0, 3.1, 3.2 (with automatic fallback if not available)
 
 ## Architecture
 
@@ -19,9 +24,9 @@ Following LessUI's focus on simplicity, the implementation:
 
 - Uses SDL2's OpenGL ES context management (not raw EGL)
 - Loads GL functions dynamically via `SDL_GL_GetProcAddress` (no system header dependencies)
-- Supports GLES 2.0 only (baseline for Mali GPUs)
+- Supports GLES 2.0 through 3.2 with automatic version fallback
 - Provides clean fallback to software rendering on unsupported platforms
-- Minimal code complexity - ~700 lines in a single module
+- Minimal code complexity - ~1000 lines in a single module
 
 ### Module Structure
 
@@ -41,7 +46,11 @@ player_hwrender.h/c - Self-contained HW rendering module
    └─> RETRO_ENVIRONMENT_SET_HW_RENDER
 
 2. Create GL context + FBO (still during load_game)
-   ├─> SDL_GL_CreateContext (GLES 2.0)
+   ├─> Determine target GLES version from context type
+   │   ├─> OPENGLES2 → GLES 2.0
+   │   ├─> OPENGLES3 → GLES 3.0
+   │   └─> OPENGLES_VERSION → use version_major.version_minor
+   ├─> Try to create context (with fallback to lower versions)
    ├─> Load GL function pointers
    ├─> Create FBO with RGBA8888 + depth24/stencil8
    └─> Compile presentation shaders
@@ -300,11 +309,13 @@ Minimal GLES 2.0 shaders:
 ### Platform/Core Compatibility
 
 **tg5040 (PowerVR Rogue GE8300):**
+
 - ✅ **Flycast (Dreamcast)**: Works, runs for several seconds, displays correctly
 - ❌ **PPSSPP (PSP)**: Crashes during `context_reset` after logging GPU info
 - ❌ **Mupen64Plus-Next (N64)**: Crashes after ~1 second during main loop
 
 **rg35xxplus (Mali-G31):**
+
 - ✅ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
 - ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping issue, not GL-related)
 
@@ -380,10 +391,13 @@ Simple and direct:
 
 ### Low Priority
 
-9. **GLES 3.0 Support** (optional)
-   - Some cores prefer GLES3 (ParaLLEl-RDP requires 3.1+)
-   - Add version negotiation if needed
-   - Currently only support OPENGLES2 (GLES 2.0)
+9. ~~**GLES 3.0 Support**~~ ✅ **DONE**
+   - Now supports GLES 2.0, 3.0, 3.1, and 3.2
+   - Automatic version negotiation with fallback to lower versions
+   - Context type mapping follows RetroArch pattern:
+     - `RETRO_HW_CONTEXT_OPENGLES2` → GLES 2.0
+     - `RETRO_HW_CONTEXT_OPENGLES3` → GLES 3.0
+     - `RETRO_HW_CONTEXT_OPENGLES_VERSION` → uses version_major.version_minor
 
 10. **Shared Context Support** (optional)
     - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
@@ -469,15 +483,16 @@ float tex_scale_y = (float)height / (float)fbo_height;
 
 ## Known Core Compatibility
 
-| Core                       | tg5040 (PowerVR) | rg35xxplus (Mali) | Requirements        | Notes                                                        |
-| -------------------------- | ---------------- | ----------------- | ------------------- | ------------------------------------------------------------ |
-| **Flycast** (DC)           | ✅ Working       | ❌ Crashes        | GLES2, depth+stencil | Works on PowerVR, crashes during init on Mali (nvmem issue)  |
-| **Mupen64Plus-Next** (N64) | ❌ Crashes       | ⚠️ Partial        | GLES2, depth buffer | PowerVR: crashes in main loop. Mali: renders frames then crashes |
-| **PPSSPP** (PSP)           | ❌ Crashes       | Untested          | GLES2/GLES3         | Crashes during `context_reset` after GPU detection           |
-| **Beetle PSX HW**          | Untested         | Untested          | GLES2/GLES3, depth  | Should work with GLES2                                       |
-| **ParaLLEl-RDP** (N64)     | Won't work       | Won't work        | GLES3.1+/Vulkan     | Outside GLES2 scope                                          |
+| Core                       | tg5040 (PowerVR) | rg35xxplus (Mali) | Requirements         | Notes                                                            |
+| -------------------------- | ---------------- | ----------------- | -------------------- | ---------------------------------------------------------------- |
+| **Flycast** (DC)           | ✅ Working       | ❌ Crashes        | GLES2, depth+stencil | Works on PowerVR, crashes during init on Mali (nvmem issue)      |
+| **Mupen64Plus-Next** (N64) | ❌ Crashes       | ⚠️ Partial        | GLES2, depth buffer  | PowerVR: crashes in main loop. Mali: renders frames then crashes |
+| **PPSSPP** (PSP)           | ❌ Crashes       | Untested          | GLES2/GLES3          | Crashes during `context_reset` after GPU detection               |
+| **Beetle PSX HW**          | Untested         | Untested          | GLES2/GLES3, depth   | Should work with GLES2                                           |
+| **ParaLLEl-RDP** (N64)     | Won't work       | Won't work        | GLES3.1+/Vulkan      | Outside GLES2 scope                                              |
 
 **Key Findings:**
+
 - Different GPUs have different compatibility (PowerVR vs Mali behave differently)
 - Flycast is the most stable core for HW rendering on PowerVR
 - Core crashes appear to be internal to cores, not our GL setup
@@ -572,7 +587,6 @@ Segmentation fault
 
 **Potential Additions:**
 
-- GLES 3.0 support (for cores that prefer it)
 - Shared context support (`RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`)
 - Multiple FBO rotation for reduced texture uploads
 - Configurable FBO size (currently hardcoded 1024×1024)

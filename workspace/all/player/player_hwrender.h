@@ -50,6 +50,10 @@ typedef struct PlayerHWRenderState {
 	// Core's callback structure (copy of what core provided)
 	struct retro_hw_render_callback hw_callback;
 
+	// Actual context version created (may differ from requested if fallback occurred)
+	unsigned int context_major;
+	unsigned int context_minor;
+
 	// SDL GL context (cast from SDL_GLContext)
 	void* gl_context;
 
@@ -126,6 +130,28 @@ bool PlayerHWRender_isEnabled(void);
  * @return true if we can provide this context type
  */
 bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type);
+
+/**
+ * Check if a specific GLES version is supported.
+ *
+ * Attempts to create a context with the given version to verify support.
+ * This is a probe operation - any created context is destroyed afterward.
+ *
+ * @param major GLES major version (2 or 3)
+ * @param minor GLES minor version (0, 1, or 2)
+ * @return true if the version is supported
+ */
+bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor);
+
+/**
+ * Get the actual context version that was created.
+ *
+ * May differ from requested version if fallback occurred.
+ *
+ * @param major Output: major version
+ * @param minor Output: minor version
+ */
+void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor);
 
 ///////////////////////////////
 // Core Callbacks
@@ -268,6 +294,19 @@ static inline bool PlayerHWRender_isEnabled(void) {
 static inline bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type) {
 	(void)context_type;
 	return false;
+}
+
+static inline bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor) {
+	(void)major;
+	(void)minor;
+	return false;
+}
+
+static inline void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor) {
+	if (major)
+		*major = 0;
+	if (minor)
+		*minor = 0;
 }
 
 static inline uintptr_t PlayerHWRender_getCurrentFramebuffer(void) {

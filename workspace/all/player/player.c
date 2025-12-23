@@ -2649,7 +2649,11 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 			return false;
 		}
 
-		LOG_info("HW render initialized successfully - core will use GPU rendering");
+		// Log actual context version created (may differ from requested due to fallback)
+		unsigned actual_major = 0, actual_minor = 0;
+		PlayerHWRender_getContextVersion(&actual_major, &actual_minor);
+		LOG_info("HW render initialized (GLES %u.%u) - core will use GPU rendering", actual_major,
+		         actual_minor);
 		return true;
 	}
 
@@ -2813,7 +2817,11 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		unsigned* out = (unsigned*)data;
 		if (out) {
 #if HAS_OPENGLES
-			*out = RETRO_HW_CONTEXT_OPENGLES2; // We support OpenGL ES 2.0
+			// Report GLES2 as our preferred/baseline context.
+			// We also support GLES3 - cores can request it via SET_HW_RENDER
+			// and we'll provide it if available, with fallback to lower versions.
+			*out = RETRO_HW_CONTEXT_OPENGLES2;
+			LOG_debug("GET_PREFERRED_HW_RENDER: OPENGLES2 (also support GLES3 with fallback)");
 #else
 			*out = RETRO_HW_CONTEXT_NONE; // Software rendering only
 #endif

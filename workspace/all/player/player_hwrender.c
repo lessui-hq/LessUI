@@ -568,6 +568,117 @@ static const char* getContextTypeName(enum retro_hw_context_type type) {
 // Initialization / Shutdown
 ///////////////////////////////
 
+/**
+ * Helper to determine target GLES version from context type.
+ * Follows RetroArch's version mapping:
+ * - OPENGLES2 -> 2.0
+ * - OPENGLES3 -> 3.0
+ * - OPENGLES_VERSION -> use version_major.version_minor
+ */
+static void getTargetGLESVersion(enum retro_hw_context_type context_type, unsigned req_major,
+                                 unsigned req_minor, unsigned* out_major, unsigned* out_minor) {
+	switch (context_type) {
+	case RETRO_HW_CONTEXT_OPENGLES3:
+		*out_major = 3;
+		*out_minor = 0;
+		break;
+	case RETRO_HW_CONTEXT_OPENGLES_VERSION:
+		// Use the version specified by the core
+		*out_major = req_major;
+		*out_minor = req_minor;
+		break;
+	case RETRO_HW_CONTEXT_OPENGLES2:
+	default:
+		*out_major = 2;
+		*out_minor = 0;
+		break;
+	}
+}
+
+/**
+ * Try to create a GL context with fallback to lower versions.
+ *
+ * Version fallback order:
+ * - Try requested version first
+ * - If GLES 3.2 fails, try 3.1
+ * - If GLES 3.1 fails, try 3.0
+ * - If GLES 3.0 fails, try 2.0
+ *
+ * @param window SDL window to create context for
+ * @param requested_major Requested GLES major version
+ * @param requested_minor Requested GLES minor version
+ * @param debug_context Whether to request a debug context
+ * @param actual_major Output: actual major version created
+ * @param actual_minor Output: actual minor version created
+ * @return SDL_GLContext on success, NULL on failure
+ */
+static SDL_GLContext createGLContextWithFallback(SDL_Window* window, unsigned requested_major,
+                                                 unsigned requested_minor, bool debug_context,
+                                                 unsigned* actual_major, unsigned* actual_minor) {
+	// Version fallback table: try from requested down to GLES 2.0
+	struct {
+		unsigned major;
+		unsigned minor;
+	} versions[] = {
+	    {3, 2},
+	    {3, 1},
+	    {3, 0},
+	    {2, 0},
+	};
+	int num_versions = sizeof(versions) / sizeof(versions[0]);
+
+	// Find starting point in fallback table
+	int start_idx = num_versions - 1; // Default to GLES 2.0
+	for (int i = 0; i < num_versions; i++) {
+		if (versions[i].major == requested_major && versions[i].minor == requested_minor) {
+			start_idx = i;
+			break;
+		}
+		// Also handle case where requested is between table entries
+		if (versions[i].major < requested_major ||
+		    (versions[i].major == requested_major && versions[i].minor < requested_minor)) {
+			start_idx = (i > 0) ? i - 1 : 0;
+			break;
+		}
+	}
+
+	SDL_GLContext ctx = NULL;
+
+	// Set debug context flag if requested
+	if (debug_context) {
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+		LOG_debug("HW render: debug context requested");
+	}
+
+	// Try each version from requested down to 2.0
+	for (int i = start_idx; i < num_versions; i++) {
+		unsigned major = versions[i].major;
+		unsigned minor = versions[i].minor;
+
+		LOG_debug("HW render: trying GLES %u.%u context", major, minor);
+
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, (int)major);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, (int)minor);
+
+		ctx = SDL_GL_CreateContext(window);
+		if (ctx) {
+			*actual_major = major;
+			*actual_minor = minor;
+
+			if (major != requested_major || minor != requested_minor) {
+				LOG_info("HW render: requested GLES %u.%u, got %u.%u (fallback)", requested_major,
+				         requested_minor, major, minor);
+			}
+			return ctx;
+		}
+
+		LOG_debug("HW render: GLES %u.%u failed: %s", major, minor, SDL_GetError());
+	}
+
+	return NULL;
+}
+
 bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max_width,
                          unsigned max_height) {
 	LOG_debug("PlayerHWRender_init: called with max_width=%u, max_height=%u", max_width,
@@ -581,6 +692,8 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 	LOG_debug("PlayerHWRender_init: context_type=%d (%s), version=%u.%u, depth=%d, stencil=%d",
 	          callback->context_type, getContextTypeName(callback->context_type),
 	          callback->version_major, callback->version_minor, callback->depth, callback->stencil);
+	LOG_debug("PlayerHWRender_init: bottom_left_origin=%d, cache_context=%d, debug_context=%d",
+	          callback->bottom_left_origin, callback->cache_context, callback->debug_context);
 
 	// Check if context type is supported
 	if (!PlayerHWRender_isContextSupported(callback->context_type)) {
@@ -604,25 +717,28 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 	}
 	LOG_debug("PlayerHWRender_init: got SDL window successfully");
 
-	// We only support OPENGLES2 for now (checked by isContextSupported)
-	// Match RetroArch: OPENGLES2 always gets GLES 2.0 context
-	unsigned major = 2;
-	unsigned minor = 0;
+	// Determine target GLES version based on context type (following RetroArch)
+	unsigned target_major = 2, target_minor = 0;
+	getTargetGLESVersion(callback->context_type, callback->version_major, callback->version_minor,
+	                     &target_major, &target_minor);
 
-	LOG_debug("PlayerHWRender_init: setting GL attributes for GLES %u.%u", major, minor);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
+	LOG_debug("PlayerHWRender_init: target GLES version is %u.%u", target_major, target_minor);
 
-	// Create GL context
-	LOG_debug("PlayerHWRender_init: creating GL context");
-	hw_state.gl_context = SDL_GL_CreateContext(window);
+	// Create GL context with fallback to lower versions if needed
+	unsigned actual_major = 0, actual_minor = 0;
+	hw_state.gl_context = createGLContextWithFallback(
+	    window, target_major, target_minor, callback->debug_context, &actual_major, &actual_minor);
+
 	if (!hw_state.gl_context) {
-		LOG_error("HW render: SDL_GL_CreateContext failed: %s", SDL_GetError());
+		LOG_error("HW render: failed to create any GL context");
 		return false;
 	}
 
-	LOG_info("HW render: OpenGL ES %u.%u context created successfully", major, minor);
+	// Store actual context version
+	hw_state.context_major = actual_major;
+	hw_state.context_minor = actual_minor;
+
+	LOG_info("HW render: OpenGL ES %u.%u context created successfully", actual_major, actual_minor);
 
 	// Make context current
 	LOG_debug("PlayerHWRender_init: making GL context current");
@@ -657,8 +773,8 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
 		GLint max_tex_size = 0, max_fbo_size = 0;
 		glGetIntegervFunc(0x0D33, &max_tex_size); // GL_MAX_TEXTURE_SIZE
 		glGetIntegervFunc(0x84E8, &max_fbo_size); // GL_MAX_RENDERBUFFER_SIZE
-		LOG_info("HW render: max_texture_size=%d, max_renderbuffer_size=%d",
-		         max_tex_size, max_fbo_size);
+		LOG_info("HW render: max_texture_size=%d, max_renderbuffer_size=%d", max_tex_size,
+		         max_fbo_size);
 	}
 
 	// Create FBO for core to render into
@@ -751,16 +867,15 @@ bool PlayerHWRender_isEnabled(void) {
 }
 
 bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type) {
-	// We only support OpenGL ES 2.0 for now
+	// We support OpenGL ES 2.0 and 3.x
 	switch (context_type) {
 	case RETRO_HW_CONTEXT_OPENGLES2:
 		return true;
 
-	// GLES3 can be added later
 	case RETRO_HW_CONTEXT_OPENGLES3:
 	case RETRO_HW_CONTEXT_OPENGLES_VERSION:
-		LOG_debug("HW render: GLES3 not yet supported, core may fall back to GLES2");
-		return false;
+		// GLES3 is supported - actual version negotiation happens in init
+		return true;
 
 	// Desktop GL and other APIs not supported on these devices
 	case RETRO_HW_CONTEXT_OPENGL:
@@ -774,6 +889,37 @@ bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type) 
 	default:
 		return false;
 	}
+}
+
+bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor) {
+	// Get SDL window from platform for probing
+	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		LOG_warn("HW render: cannot probe version support - no window");
+		return false;
+	}
+
+	// Try to create a context with the requested version
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, (int)major);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, (int)minor);
+
+	SDL_GLContext probe_ctx = SDL_GL_CreateContext(window);
+	if (probe_ctx) {
+		SDL_GL_DeleteContext(probe_ctx);
+		LOG_debug("HW render: GLES %u.%u is supported", major, minor);
+		return true;
+	}
+
+	LOG_debug("HW render: GLES %u.%u not supported: %s", major, minor, SDL_GetError());
+	return false;
+}
+
+void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor) {
+	if (major)
+		*major = hw_state.context_major;
+	if (minor)
+		*minor = hw_state.context_minor;
 }
 
 ///////////////////////////////
@@ -867,7 +1013,31 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) 
 	float tex_scale_x = (float)width / (float)hw_state.fbo_width;
 	float tex_scale_y = (float)height / (float)hw_state.fbo_height;
 
-	float texco[8] = {0.0f, 0.0f, tex_scale_x, 0.0f, 0.0f, tex_scale_y, tex_scale_x, tex_scale_y};
+	// Handle bottom_left_origin flag from core
+	// When true: use OpenGL convention (bottom-left origin, Y increases upward)
+	// When false: use standard libretro convention (top-left origin, Y increases downward)
+	float texco[8];
+	if (hw_state.hw_callback.bottom_left_origin) {
+		// OpenGL convention - no Y-flip needed (FBO is already bottom-left)
+		texco[0] = 0.0f;
+		texco[1] = 0.0f; // bottom-left
+		texco[2] = tex_scale_x;
+		texco[3] = 0.0f; // bottom-right
+		texco[4] = 0.0f;
+		texco[5] = tex_scale_y; // top-left
+		texco[6] = tex_scale_x;
+		texco[7] = tex_scale_y; // top-right
+	} else {
+		// Standard libretro convention - Y-flip needed
+		texco[0] = 0.0f;
+		texco[1] = tex_scale_y; // top-left
+		texco[2] = tex_scale_x;
+		texco[3] = tex_scale_y; // top-right
+		texco[4] = 0.0f;
+		texco[5] = 0.0f; // bottom-left
+		texco[6] = tex_scale_x;
+		texco[7] = 0.0f; // bottom-right
+	}
 
 	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
 
@@ -971,14 +1141,14 @@ void PlayerHWRender_bindFBO(void) {
 
 	// Drain any GL errors left by the core (feature probing, etc.)
 	// Only log occasionally to avoid spam
-	GLenum err;
 	int errors_this_frame = 0;
-	while ((err = glGetError()) != GL_NO_ERROR && errors_this_frame < 10) {
+	while (glGetError() != GL_NO_ERROR && errors_this_frame < 10) {
 		errors_this_frame++;
 		gl_error_total++;
 	}
 	// Log first occurrence and then every 100 errors
-	if (errors_this_frame > 0 && (gl_error_total <= errors_this_frame || gl_error_total % 100 == 0)) {
+	if (errors_this_frame > 0 &&
+	    (gl_error_total <= errors_this_frame || gl_error_total % 100 == 0)) {
 		LOG_debug("HW render: drained %d GL errors (total: %d)", errors_this_frame, gl_error_total);
 	}
 }
