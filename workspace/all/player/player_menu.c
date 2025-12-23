@@ -785,6 +785,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 			if (GLVideo_isEnabled()) {
 				LOG_debug("Menu: about to call GLVideo_presentSurface");
 				GLVideo_presentSurface(*scr);
+				GLVideo_swapBuffers();
 				LOG_debug("Menu: returned from GLVideo_presentSurface");
 			} else {
 				GFX_present(NULL);

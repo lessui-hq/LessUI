@@ -1578,8 +1578,6 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 	glDisableVertexAttribArray(gl_state.loc_position);
 	glDisableVertexAttribArray(gl_state.loc_texcoord);
 
-	LOG_debug("presentSurface: swapping window");
-	SDL_GL_SwapWindow(window);
 	LOG_debug("presentSurface: done");
 }
 
