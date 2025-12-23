@@ -32,74 +32,17 @@
 
 #if HAS_OPENGLES
 
-#include "libretro.h"
 #include <SDL.h>
 #include <stdbool.h>
 
-///////////////////////////////
-// Types
-///////////////////////////////
+// Forward declarations to avoid including libretro.h in non-player components
+struct retro_hw_render_callback;
+typedef void (*retro_proc_address_t)(void);
 
-/**
- * GLVideoState - Hardware render state and resources
- *
- * Manages the lifecycle of OpenGL ES context and FBO resources.
- * All GL resources are created lazily when a core requests HW rendering.
- */
-typedef struct GLVideoState {
-	// State flags
-	bool enabled; // HW rendering is active for current core
-	bool context_ready; // GL context is created and ready
-
-	// Core's callback structure (copy of what core provided)
-	struct retro_hw_render_callback hw_callback;
-
-	// Actual context version created (may differ from requested if fallback occurred)
-	unsigned int context_major;
-	unsigned int context_minor;
-
-	// SDL GL context (cast from SDL_GLContext)
-	void* gl_context;
-
-	// FBO resources
-	unsigned int fbo; // Framebuffer object ID
-	unsigned int fbo_texture; // Color attachment texture
-	unsigned int fbo_depth_rb; // Depth/stencil renderbuffer (0 if not used)
-
-	// FBO dimensions
-	unsigned int fbo_width;
-	unsigned int fbo_height;
-
-	// Last rendered frame dimensions (for capture)
-	unsigned int last_frame_width;
-	unsigned int last_frame_height;
-
-	// Presentation resources
-	unsigned int present_program; // Shader program for FBO->screen blit
-
-	// UI surface texture (for menu rendering via GL)
-	unsigned int ui_texture;
-	unsigned int ui_texture_width;
-	unsigned int ui_texture_height;
-
-	// HUD overlay texture (for debug HUD rendering via GL with alpha blending)
-	unsigned int hud_texture;
-	unsigned int hud_texture_width;
-	unsigned int hud_texture_height;
-
-	// Cached shader locations (to avoid glGet* calls per frame)
-	int loc_mvp; // u_mvp uniform (4x4 MVP matrix)
-	int loc_texture; // u_texture uniform
-	int loc_position; // a_position attribute
-	int loc_texcoord; // a_texcoord attribute
-
-	// Software rendering resources (triple buffered)
-	unsigned int sw_textures[3];
-	unsigned int sw_tex_index; // Current index being written to
-	unsigned int sw_disp_index; // Index to display
-	unsigned int sw_width;
-	unsigned int sw_height;
-} GLVideoState;
+// Pixel formats (compatible with libretro)
+#define GL_VIDEO_PIXEL_FORMAT_0RGB1555 0
+#define GL_VIDEO_PIXEL_FORMAT_XRGB8888 1
+#define GL_VIDEO_PIXEL_FORMAT_RGB565   2
 
 ///////////////////////////////
 // Initialization / Shutdown
@@ -118,6 +61,16 @@ typedef struct GLVideoState {
  */
 bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
                   unsigned max_height);
+
+/**
+ * Initialize GL context for software rendering.
+ *
+ * Creates SDL GL context and presentation resources without FBO.
+ * Used by render_sdl2 on platforms that support GL but use software cores.
+ *
+ * @return true if GL setup succeeded
+ */
+bool GLVideo_initSoftware(void);
 
 /**
  * Shutdown hardware rendering.
@@ -141,10 +94,10 @@ bool GLVideo_isEnabled(void);
 /**
  * Check if a context type is supported.
  *
- * @param context_type The retro_hw_context_type requested by core
+ * @param context_type The retro_hw_context_type requested by core (as int)
  * @return true if we can provide this context type
  */
-bool GLVideo_isContextSupported(enum retro_hw_context_type context_type);
+bool GLVideo_isContextSupported(int context_type);
 
 /**
  * Check if a specific GLES version is supported.
@@ -266,6 +219,37 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
                          unsigned pixel_format);
 
 /**
+ * Draw a texture to the screen using GL.
+ *
+ * Low-level frame presentation function used by both HW and SW paths.
+ *
+ * @param texture_id GL texture ID to draw
+ * @param tex_w Texture width in pixels (for coordinate normalization)
+ * @param tex_h Texture height in pixels
+ * @param src_rect Source rectangle in pixels
+ * @param dst_rect Destination rectangle (viewport) in pixels
+ * @param rotation Rotation (0-3)
+ * @param sharpness Sharpness mode
+ * @param bottom_left_origin true if texture origin is bottom-left (no flip needed)
+ */
+void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
+                       const SDL_Rect* src_rect, const SDL_Rect* dst_rect, unsigned rotation,
+                       int sharpness, bool bottom_left_origin);
+
+/**
+ * Draw the current software frame to the screen.
+ *
+ * Convenience wrapper for GLVideo_drawFrame that uses the current software texture.
+ *
+ * @param src_rect Source rectangle in pixels
+ * @param dst_rect Destination rectangle (viewport) in pixels
+ * @param rotation Rotation (0-3)
+ * @param sharpness Sharpness mode
+ */
+void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
+                               unsigned rotation, int sharpness);
+
+/**
  * Present an SDL surface to screen via GL.
  *
  * Used by menu and debug HUD when HW rendering is active.
@@ -333,13 +317,17 @@ static inline bool GLVideo_init(struct retro_hw_render_callback* callback, unsig
 	return false;
 }
 
+static inline bool GLVideo_initSoftware(void) {
+	return false;
+}
+
 static inline void GLVideo_shutdown(void) {}
 
 static inline bool GLVideo_isEnabled(void) {
 	return false;
 }
 
-static inline bool GLVideo_isContextSupported(enum retro_hw_context_type context_type) {
+static inline bool GLVideo_isContextSupported(int context_type) {
 	(void)context_type;
 	return false;
 }
@@ -395,6 +383,28 @@ static inline void GLVideo_uploadFrame(const void* data, unsigned width, unsigne
 	(void)height;
 	(void)pitch;
 	(void)pixel_format;
+}
+
+static inline void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w,
+                                     unsigned int tex_h, const SDL_Rect* src_rect,
+                                     const SDL_Rect* dst_rect, unsigned rotation, int sharpness,
+                                     bool bottom_left_origin) {
+	(void)texture_id;
+	(void)tex_w;
+	(void)tex_h;
+	(void)src_rect;
+	(void)dst_rect;
+	(void)rotation;
+	(void)sharpness;
+	(void)bottom_left_origin;
+}
+
+static inline void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
+                                             unsigned rotation, int sharpness) {
+	(void)src_rect;
+	(void)dst_rect;
+	(void)rotation;
+	(void)sharpness;
 }
 
 static inline void GLVideo_presentSurface(SDL_Surface* surface) {

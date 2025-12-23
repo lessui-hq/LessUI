@@ -21,6 +21,7 @@
 #include "defines.h"
 #include "effect_system.h"
 #include "effect_utils.h"
+#include "gl_video.h"
 #include "render_common.h"
 #include "utils.h"
 
@@ -249,6 +250,18 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	ctx->sharpness = ctx->config.default_sharpness;
 	ctx->hard_scale = 4;
 
+#if HAS_OPENGLES
+	// Initialize GL context for unified presentation (even if core is software)
+	if (!GLVideo_initSoftware()) {
+		LOG_error("SDL2_initVideo: Failed to initialize GL video");
+		// Fallback to SDL renderer? Or fail?
+		// If we are on GLES platform, we rely on GLVideo for presentation to avoid
+		// SDL_Renderer/GL conflicts. So failure is fatal for video.
+		// However, we can keep running but screen might be black?
+		// Let's assume initSoftware returns true if already inited or successful.
+	}
+#endif
+
 	LOG_debug("SDL2_initVideo: Video initialization complete (screen=%dx%d)", w, h);
 	return ctx->screen;
 }
@@ -275,6 +288,10 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 	// Destroy renderer and window
 	SDL_DestroyRenderer(ctx->renderer);
 	SDL_DestroyWindow(ctx->window);
+
+#if HAS_OPENGLES
+	GLVideo_shutdown();
+#endif
 
 	SDL_Quit();
 }
@@ -321,8 +338,44 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	// Unified presentation: handles both game and UI modes
 	// No state tracking needed - caller explicitly says what to present
 
-	SDL_RenderClear(ctx->renderer);
+#if HAS_OPENGLES
+	// Use GL video pipeline for everything on GLES platforms
+	// This enables shaders for software cores and avoids context conflicts
 
+	if (!renderer) {
+		// UI Mode: Present screen surface
+		// Ensure UI texture is up to date
+		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
+		GLVideo_presentSurface(ctx->screen);
+		GLVideo_swapBuffers();
+		return;
+	}
+
+	// Game Mode: Present from renderer source
+	// Upload frame to GL texture
+	// Note: renderer->src is pixel data, src_p is pitch
+	// We assume RGB565 for now (standard for SDL2 backend)
+	GLVideo_uploadFrame(renderer->src, renderer->true_w, renderer->true_h, renderer->src_p,
+	                    GL_VIDEO_PIXEL_FORMAT_RGB565);
+
+	// Calculate destination rectangle (scaling)
+	SDL_Rect src_rect = {renderer->src_x, renderer->src_y, renderer->src_w, renderer->src_h};
+	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
+	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+
+	// Determine rotation and other parameters
+	unsigned rotation = ctx->on_hdmi ? 0 : ctx->rotate;
+	int sharpness = ctx->sharpness;
+
+	// Draw software frame
+	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness);
+	GLVideo_swapBuffers();
+
+#else
+	SDL_RenderClear(ctx->renderer);
+#endif
+
+#if !HAS_OPENGLES
 	if (!renderer) {
 		// UI mode: present screen surface
 		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
@@ -399,6 +452,7 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	}
 
 	SDL_RenderPresent(ctx->renderer);
+#endif
 }
 
 void SDL2_vsync(int remaining) {

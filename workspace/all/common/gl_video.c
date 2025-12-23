@@ -9,6 +9,7 @@
 
 #if HAS_OPENGLES
 
+#include "libretro.h"
 #include "api.h"
 #include "log.h"
 #include "scaler.h" // For scaling constants/types if needed
@@ -23,6 +24,68 @@
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+///////////////////////////////
+// Types
+///////////////////////////////
+
+/**
+ * GLVideoState - Hardware render state and resources
+ */
+typedef struct GLVideoState {
+	// State flags
+	bool enabled; // HW rendering is active for current core
+	bool context_ready; // GL context is created and ready
+
+	// Core's callback structure (copy of what core provided)
+	struct retro_hw_render_callback hw_callback;
+
+	// Actual context version created (may differ from requested if fallback occurred)
+	unsigned int context_major;
+	unsigned int context_minor;
+
+	// SDL GL context (cast from SDL_GLContext)
+	void* gl_context;
+
+	// FBO resources
+	unsigned int fbo; // Framebuffer object ID
+	unsigned int fbo_texture; // Color attachment texture
+	unsigned int fbo_depth_rb; // Depth/stencil renderbuffer (0 if not used)
+
+	// FBO dimensions
+	unsigned int fbo_width;
+	unsigned int fbo_height;
+
+	// Last rendered frame dimensions (for capture)
+	unsigned int last_frame_width;
+	unsigned int last_frame_height;
+
+	// Presentation resources
+	unsigned int present_program; // Shader program for FBO->screen blit
+
+	// UI surface texture (for menu rendering via GL)
+	unsigned int ui_texture;
+	unsigned int ui_texture_width;
+	unsigned int ui_texture_height;
+
+	// HUD overlay texture (for debug HUD rendering via GL with alpha blending)
+	unsigned int hud_texture;
+	unsigned int hud_texture_width;
+	unsigned int hud_texture_height;
+
+	// Cached shader locations (to avoid glGet* calls per frame)
+	int loc_mvp; // u_mvp uniform (4x4 MVP matrix)
+	int loc_texture; // u_texture uniform
+	int loc_position; // a_position attribute
+	int loc_texcoord; // a_texcoord attribute
+
+	// Software rendering resources (triple buffered)
+	unsigned int sw_textures[3];
+	unsigned int sw_tex_index; // Current index being written to
+	unsigned int sw_disp_index; // Index to display
+	unsigned int sw_width;
+	unsigned int sw_height;
+} GLVideoState;
 
 // OpenGL ES 2.0 types and constants (minimal subset needed)
 // Using SDL_GL_GetProcAddress for functions, define constants ourselves
@@ -293,6 +356,32 @@ static void matrix_multiply(float* result, const float* a, const float* b) {
 
 	for (int i = 0; i < 16; i++) {
 		result[i] = tmp[i];
+	}
+}
+
+/**
+ * Build MVP matrix for presentation.
+ * Combines orthographic projection (0-1 to NDC) with optional rotation.
+ *
+ * @param mvp Output MVP matrix
+ * @param rotation Rotation in 90-degree increments (0, 1, 2, 3)
+ */
+static void build_mvp_matrix(float* mvp, unsigned rotation) {
+	// Start with orthographic projection mapping 0-1 to -1,1
+	float ortho[16];
+	matrix_ortho(ortho, 0.0f, 1.0f, 0.0f, 1.0f);
+
+	if (rotation == 0) {
+		// No rotation - just use ortho
+		for (int i = 0; i < 16; i++) {
+			mvp[i] = ortho[i];
+		}
+	} else {
+		// Apply rotation: MVP = Rotation * Ortho
+		float rot[16];
+		float radians = (float)M_PI * (float)(rotation * 90) / 180.0f;
+		matrix_rotate_z(rot, radians);
+		matrix_multiply(mvp, rot, ortho);
 	}
 }
 
@@ -792,6 +881,67 @@ bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
 	return true;
 }
 
+bool GLVideo_initSoftware(void) {
+	if (gl_state.gl_context) {
+		return true; // Already initialized
+	}
+
+	LOG_info("GL video: initializing software render context");
+
+	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		LOG_error("GL video: failed to get SDL window");
+		return false;
+	}
+
+	// Create GLES 2.0 context
+	unsigned actual_major = 0, actual_minor = 0;
+	gl_state.gl_context = createGLContextWithFallback(window, 2, 0, false, &actual_major,
+	                                                  &actual_minor);
+
+	if (!gl_state.gl_context) {
+		LOG_error("GL video: failed to create GL context");
+		return false;
+	}
+
+	gl_state.context_major = actual_major;
+	gl_state.context_minor = actual_minor;
+
+	if (SDL_GL_MakeCurrent(window, gl_state.gl_context) < 0) {
+		LOG_error("GL video: SDL_GL_MakeCurrent failed: %s", SDL_GetError());
+		SDL_GL_DeleteContext(gl_state.gl_context);
+		gl_state.gl_context = NULL;
+		return false;
+	}
+
+	if (!loadGLFunctions()) {
+		LOG_error("GL video: failed to load GL functions");
+		SDL_GL_DeleteContext(gl_state.gl_context);
+		gl_state.gl_context = NULL;
+		return false;
+	}
+
+	gl_state.present_program = createShaderProgram();
+	if (!gl_state.present_program) {
+		LOG_error("GL video: shader program creation failed");
+		SDL_GL_DeleteContext(gl_state.gl_context);
+		gl_state.gl_context = NULL;
+		return false;
+	}
+
+	// Cache locations
+	gl_state.loc_mvp = glGetUniformLocation(gl_state.present_program, "u_mvp");
+	gl_state.loc_texture = glGetUniformLocation(gl_state.present_program, "u_texture");
+	gl_state.loc_position = glGetAttribLocation(gl_state.present_program, "a_position");
+	gl_state.loc_texcoord = glGetAttribLocation(gl_state.present_program, "a_texcoord");
+
+	gl_state.context_ready = true;
+	gl_state.enabled = false; // Not HW rendering
+
+	LOG_info("GL video: software render context initialized");
+	return true;
+}
+
 void GLVideo_shutdown(void) {
 	if (!gl_state.enabled) {
 		return;
@@ -835,7 +985,7 @@ bool GLVideo_isEnabled(void) {
 	return gl_state.enabled && gl_state.context_ready;
 }
 
-bool GLVideo_isContextSupported(enum retro_hw_context_type context_type) {
+bool GLVideo_isContextSupported(int context_type) {
 	// We support OpenGL ES 2.0 and 3.x
 	switch (context_type) {
 	case RETRO_HW_CONTEXT_OPENGLES2:
@@ -919,13 +1069,107 @@ retro_proc_address_t GLVideo_getProcAddress(const char* sym) {
 // Frame Operations
 ///////////////////////////////
 
+void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
+                       const SDL_Rect* src_rect, const SDL_Rect* dst_rect, unsigned rotation,
+                       int sharpness, bool bottom_left_origin) {
+	if (!gl_state.gl_context) {
+		return;
+	}
+
+	GLVideo_makeCurrent();
+
+	// Clear entire screen first (glClear only affects current viewport)
+	// Only if we are not covering the whole screen?
+	// Actually, clearing is good practice to avoid garbage.
+	// But if we call this multiple times (overlays?), we shouldn't clear.
+	// `GLVideo_present` clears. `SDL2_present` clears (SDL_RenderClear).
+	// So `drawFrame` should probably NOT clear, or take a flag.
+	// Or the caller clears.
+	// `GLVideo_present` clears.
+	// `SDL2_present` clears.
+	// So `drawFrame` should just DRAW.
+
+	// Set viewport
+	glViewport(dst_rect->x, dst_rect->y, dst_rect->w, dst_rect->h);
+
+	// Use shader
+	glUseProgram(gl_state.present_program);
+
+	// Bind texture
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture_id);
+
+	// Filter
+	GLint filter = (sharpness == 0) ? GL_NEAREST : GL_LINEAR;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+
+	glUniform1i(gl_state.loc_texture, 0);
+
+	// MVP Matrix (handling rotation)
+	float mvp[16];
+	build_mvp_matrix(mvp, rotation);
+	glUniformMatrix4fv(gl_state.loc_mvp, 1, GL_FALSE, mvp);
+
+	// Texture Coordinates
+	float tex_x_start = (float)src_rect->x / (float)tex_w;
+	float tex_y_start = (float)src_rect->y / (float)tex_h;
+	float tex_x_end = (float)(src_rect->x + src_rect->w) / (float)tex_w;
+	float tex_y_end = (float)(src_rect->y + src_rect->h) / (float)tex_h;
+
+	float texco[8];
+	if (bottom_left_origin) {
+		// OpenGL convention (bottom-left)
+		texco[0] = tex_x_start;
+		texco[1] = tex_y_start; // bottom-left
+		texco[2] = tex_x_end;
+		texco[3] = tex_y_start; // bottom-right
+		texco[4] = tex_x_start;
+		texco[5] = tex_y_end; // top-left
+		texco[6] = tex_x_end;
+		texco[7] = tex_y_end; // top-right
+	} else {
+		// Top-left origin (Y-flip needed)
+		texco[0] = tex_x_start;
+		texco[1] = tex_y_end; // top-left (V=1)
+		texco[2] = tex_x_end;
+		texco[3] = tex_y_end; // top-right (V=1)
+		texco[4] = tex_x_start;
+		texco[5] = tex_y_start; // bottom-left (V=0)
+		texco[6] = tex_x_end;
+		texco[7] = tex_y_start; // bottom-right (V=0)
+	}
+
+	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glEnableVertexAttribArray(gl_state.loc_position);
+	glEnableVertexAttribArray(gl_state.loc_texcoord);
+	glVertexAttribPointer(gl_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, verts);
+	glVertexAttribPointer(gl_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, texco);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisableVertexAttribArray(gl_state.loc_position);
+	glDisableVertexAttribArray(gl_state.loc_texcoord);
+}
+
+void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
+                               unsigned rotation, int sharpness) {
+	if (!gl_state.enabled) { // Ensure we are in SW mode logic (though textures exist anyway)
+		unsigned int tex_id = gl_state.sw_textures[gl_state.sw_disp_index];
+		GLVideo_drawFrame(tex_id, gl_state.sw_width, gl_state.sw_height, src_rect, dst_rect,
+		                  rotation, sharpness, false);
+	}
+}
+
 void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
                      int sharpness, double aspect_ratio) {
 	LOG_debug("GL video: present called (%ux%u, rotation=%u, scale=%d, sharp=%d)", width, height,
 	          rotation, scaling_mode, sharpness);
 
-	if (!gl_state.enabled || !gl_state.context_ready) {
-		LOG_debug("GL video: present skipped (not enabled/ready)");
+	if (!gl_state.gl_context) {
+		LOG_debug("GL video: present skipped (no context)");
 		return;
 	}
 
@@ -1027,74 +1271,27 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	// Now set render viewport for scaled output
-	glViewport(vp_x, vp_y, vp_w, vp_h);
+	SDL_Rect src_rect = {src_x, src_y, src_w, src_h};
+	SDL_Rect dst_rect = {vp_x, vp_y, vp_w, vp_h};
 
-	// Use shader
-	glUseProgram(gl_state.present_program);
+	unsigned int texture_id;
+	unsigned int tex_w, tex_h;
+	bool bottom_left;
 
-	// Bind texture and set filtering based on sharpness
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, gl_state.fbo_texture);
-
-	// Apply texture filtering based on sharpness setting
-	// SHARPNESS_SHARP (0) = nearest-neighbor (pixelated)
-	// SHARPNESS_CRISP (1) = linear (smooth) - HW rendering can't do 2-pass
-	// SHARPNESS_SOFT (2) = linear (smooth)
-	GLint filter = (sharpness == 0) ? GL_NEAREST : GL_LINEAR;
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
-
-	glUniform1i(gl_state.loc_texture, 0);
-
-	// Identity MVP (no transformation)
-	float identity[16] = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, -1, -1, 0, 1};
-	glUniformMatrix4fv(gl_state.loc_mvp, 1, GL_FALSE, identity);
-
-	// Calculate texture coords to sample the portion of FBO (with optional cropping)
-	float tex_x_start = (float)src_x / (float)gl_state.fbo_width;
-	float tex_y_start = (float)src_y / (float)gl_state.fbo_height;
-	float tex_x_end = (float)(src_x + src_w) / (float)gl_state.fbo_width;
-	float tex_y_end = (float)(src_y + src_h) / (float)gl_state.fbo_height;
-
-	// Handle bottom_left_origin flag from core
-	// When true: use OpenGL convention (bottom-left origin, Y increases upward)
-	// When false: use standard libretro convention (top-left origin, Y increases downward)
-	float texco[8];
-	if (gl_state.hw_callback.bottom_left_origin) {
-		// OpenGL convention - no Y-flip needed (FBO is already bottom-left)
-		texco[0] = tex_x_start;
-		texco[1] = tex_y_start; // bottom-left
-		texco[2] = tex_x_end;
-		texco[3] = tex_y_start; // bottom-right
-		texco[4] = tex_x_start;
-		texco[5] = tex_y_end; // top-left
-		texco[6] = tex_x_end;
-		texco[7] = tex_y_end; // top-right
+	if (gl_state.enabled) {
+		texture_id = gl_state.fbo_texture;
+		tex_w = gl_state.fbo_width;
+		tex_h = gl_state.fbo_height;
+		bottom_left = gl_state.hw_callback.bottom_left_origin;
 	} else {
-		// Standard libretro convention - Y-flip needed
-		texco[0] = tex_x_start;
-		texco[1] = tex_y_end; // top-left
-		texco[2] = tex_x_end;
-		texco[3] = tex_y_end; // top-right
-		texco[4] = tex_x_start;
-		texco[5] = tex_y_start; // bottom-left
-		texco[6] = tex_x_end;
-		texco[7] = tex_y_start; // bottom-right
+		texture_id = gl_state.sw_textures[gl_state.sw_disp_index];
+		tex_w = gl_state.sw_width;
+		tex_h = gl_state.sw_height;
+		bottom_left = false; // SW textures are top-left
 	}
 
-	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glEnableVertexAttribArray(gl_state.loc_position);
-	glEnableVertexAttribArray(gl_state.loc_texcoord);
-	glVertexAttribPointer(gl_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, verts);
-	glVertexAttribPointer(gl_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, texco);
-
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-	glDisableVertexAttribArray(gl_state.loc_position);
-	glDisableVertexAttribArray(gl_state.loc_texcoord);
+	GLVideo_drawFrame(texture_id, tex_w, tex_h, &src_rect, &dst_rect, rotation, sharpness,
+	                  bottom_left);
 
 	// Note: Swap is now done separately via GLVideo_swapBuffers()
 	// to allow HUD overlay rendering before the frame is displayed
@@ -1218,11 +1415,11 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
 	GLenum type = GL_UNSIGNED_SHORT_5_6_5;
 	size_t bpp = 2;
 
-	if (pixel_format == RETRO_PIXEL_FORMAT_XRGB8888) {
+	if (pixel_format == GL_VIDEO_PIXEL_FORMAT_XRGB8888) {
 		internal_fmt = GL_RGBA;
 		type = GL_UNSIGNED_BYTE;
 		bpp = 4;
-	} else if (pixel_format == RETRO_PIXEL_FORMAT_RGB565) {
+	} else if (pixel_format == GL_VIDEO_PIXEL_FORMAT_RGB565) {
 		internal_fmt = GL_RGB;
 		type = GL_UNSIGNED_SHORT_5_6_5;
 		bpp = 2;
@@ -1483,8 +1680,8 @@ void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen
 }
 
 SDL_Surface* GLVideo_captureFrame(void) {
-	if (!gl_state.enabled || !gl_state.context_ready) {
-		LOG_debug("GL video: captureFrame - not enabled");
+	if (!gl_state.gl_context || !gl_state.context_ready) {
+		LOG_debug("GL video: captureFrame - not ready");
 		return NULL;
 	}
 
@@ -1496,12 +1693,50 @@ SDL_Surface* GLVideo_captureFrame(void) {
 		return NULL;
 	}
 
-	LOG_debug("GL video: captureFrame - capturing %ux%u from FBO", width, height);
+	LOG_debug("GL video: captureFrame - capturing %ux%u", width, height);
 
 	GLVideo_makeCurrent();
 
-	// Bind FBO for reading
-	glBindFramebuffer(GL_FRAMEBUFFER, gl_state.fbo);
+	// If using FBO (HW render), bind it.
+	// If using SW render, we need to read from the texture?
+	// glReadPixels reads from the currently bound FRAMEBUFFER.
+	// For SW render, we render to the default framebuffer (screen).
+	// So we should bind FBO 0.
+	// BUT, if we are in the menu, we want to capture the GAME frame.
+	// The game frame was last rendered to the screen (FBO 0).
+	// So reading from FBO 0 should work for SW render.
+	// For HW render, the game frame is in FBO `gl_state.fbo`.
+	// AND it was also rendered to FBO 0 (screen) by `present`.
+	// So we could always read from FBO 0?
+	// No, FBO 0 might have HUD or other things on top if we capture late.
+	// But `captureFrame` is called at start of menu loop.
+	// Ideally we read from the source texture/FBO to avoid capturing overlay?
+	// But `glReadPixels` reads from framebuffer, not texture.
+	// To read texture, we need to bind it to an FBO.
+	// For HW render, we have `gl_state.fbo`.
+	// For SW render, we don't have an FBO for the texture.
+	// We could create a temporary FBO or just read from backbuffer?
+	// Reading from backbuffer (FBO 0) is simplest for SW render.
+
+	if (gl_state.enabled) {
+		glBindFramebuffer(GL_FRAMEBUFFER, gl_state.fbo);
+	} else {
+		// SW render: read from backbuffer
+		// Ensure we are reading from the buffer that was just swapped?
+		// SDL_GL_SwapBuffers swaps buffers.
+		// Reading from FRONT buffer? GLES2 usually reads from BACK.
+		// If we just swapped, BACK is new (undefined?).
+		// Wait, capture happens BEFORE menu is drawn?
+		// Menu loop calls capture first.
+		// If called after `present` and `swap`, the game frame is on screen (FRONT).
+		// We want to capture it.
+		// `glReadPixels` usually reads from current read buffer.
+		// For window system FBO, it's implementation dependent (Back or Front).
+		// Safe bet: Bind the SW texture to a temp FBO and read it?
+		// Or assume backbuffer still has it?
+		// Let's try reading from FBO 0.
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
 
 	// Allocate temporary RGBA buffer
 	size_t rgba_size = width * height * 4;
@@ -1512,7 +1747,7 @@ SDL_Surface* GLVideo_captureFrame(void) {
 		return NULL;
 	}
 
-	// Read pixels from FBO (note: OpenGL origin is bottom-left)
+	// Read pixels (note: OpenGL origin is bottom-left)
 	glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, rgba_buffer);
 
 	// Check for GL errors

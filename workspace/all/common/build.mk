@@ -67,7 +67,7 @@ include $(COMMON_DIR)/cflags.mk
 ###########################################################
 # Paths and sources
 
-INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
+INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -I$(PLATFORM_DEPTH)all/player/libretro-common/include -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
 
 COMMON_SOURCE = \
 	$(COMMON_DIR)/utils.c \
@@ -87,7 +87,7 @@ COMMON_SOURCE += $(COMMON_DIR)/effect_system.c $(COMMON_DIR)/effect_generate.c $
 
 # Add effect support - SDL2 platforms use render_sdl2 + effect_utils, SDL1 platforms use effect_surface
 ifeq ($(SDL),SDL2)
-COMMON_SOURCE += $(COMMON_DIR)/render_sdl2.c $(COMMON_DIR)/effect_utils.c
+COMMON_SOURCE += $(COMMON_DIR)/render_sdl2.c $(COMMON_DIR)/effect_utils.c $(COMMON_DIR)/gl_video.c
 else
 COMMON_SOURCE += $(COMMON_DIR)/effect_surface.c
 endif
