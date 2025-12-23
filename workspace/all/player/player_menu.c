@@ -611,19 +611,20 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 					int old_scaling = *ctx->screen_scaling;
 					cb->menu_options(cb->options_menu);
 					if (*ctx->screen_scaling != old_scaling) {
-						// Only recalc scaler for software rendering
+						// Only recalc scaler and rescale bitmap for software rendering
 						// HW rendering handles scaling in PlayerHWRender_present()
-						if (r->true_w > 0 && r->true_h > 0) {
+						// and has no bitmap to rescale (backing is already black)
+						if (m->bitmap != NULL) {
 							cb->select_scaler(r->true_w, r->true_h, r->src_p);
+
+							restore_w = (*scr)->w;
+							restore_h = (*scr)->h;
+							restore_p = (*scr)->pitch;
+							*scr = GFX_resize(dev_w, dev_h, dev_p);
+
+							SDL_FillRect(backing, NULL, 0);
+							Menu_scale_ctx(ctx, m->bitmap, backing);
 						}
-
-						restore_w = (*scr)->w;
-						restore_h = (*scr)->h;
-						restore_p = (*scr)->pitch;
-						*scr = GFX_resize(dev_w, dev_h, dev_p);
-
-						SDL_FillRect(backing, NULL, 0);
-						Menu_scale_ctx(ctx, m->bitmap, backing);
 					}
 					dirty = 1;
 				}
