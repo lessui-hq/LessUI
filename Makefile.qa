@@ -588,11 +588,19 @@ check-clang-format:
 	@which $(CLANG_FORMAT) > /dev/null || (echo "Error: clang-format not installed" && exit 1)
 
 # Format code in-place (MODIFIES FILES) - Native implementation
-format-native: check-clang-format check-shfmt check-mbake check-prettier
+# Sub-targets can run in parallel with: make -j4 -f Makefile.qa format-native
+format-native: check-clang-format check-shfmt check-mbake check-prettier format-c format-sh format-makefiles format-json
+	@echo ""
+	@echo "NOTE: Files were modified. Review changes with 'git diff'"
+
+.PHONY: format-c format-sh format-makefiles format-json
+
+format-c: check-clang-format
 	@echo "Formatting C code with clang-format..."
 	@$(CLANG_FORMAT) -i $(FORMAT_PATHS)
 	@echo "✓ C code formatted"
-	@echo ""
+
+format-sh: check-shfmt
 	@echo "Formatting shell scripts with shfmt..."
 	@find skeleton workspace -name "*.sh" -type f \
 		-not -path "*/cores/*" \
@@ -603,7 +611,8 @@ format-native: check-clang-format check-shfmt check-mbake check-prettier
 		-exec shfmt -w -i 0 -bn -ci {} \;
 	@shfmt -w -i 0 -bn -ci $(ROOT_SCRIPTS)
 	@echo "✓ Shell scripts formatted"
-	@echo ""
+
+format-makefiles: check-mbake
 	@echo "Formatting makefiles with mbake..."
 	@find . \( -name "Makefile" -o -name "Makefile.*" \) \
 		-not -path "*/other/*" \
@@ -613,12 +622,11 @@ format-native: check-clang-format check-shfmt check-mbake check-prettier
 		-not -path "*/parson/*" \
 		-exec sh -c 'mbake format "$$1" 2>/dev/null || true' _ {} \;
 	@echo "✓ Makefiles formatted"
-	@echo ""
+
+format-json: check-prettier
 	@echo "Formatting JSON, YAML, and Markdown with prettier..."
 	@prettier --write $(PRETTIER_IGNORE) $(PRETTIER_PATTERNS) 2>/dev/null || true
 	@echo "✓ Prettier formatting complete"
-	@echo ""
-	@echo "NOTE: Files were modified. Review changes with 'git diff'"
 
 # Check if code is formatted (no modifications)
 format-check: check-clang-format
@@ -824,7 +832,7 @@ docker-test-quiet: docker-build
 
 docker-lint: docker-build
 	@echo "Running linting in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f Makefile.qa lint-native
+	$(DEV_RUN) make -j4 -f Makefile.qa lint-native
 
 docker-analyze: docker-build
 	@echo "Running static analysis in Docker container (Ubuntu 24.04)..."
@@ -832,7 +840,7 @@ docker-analyze: docker-build
 
 docker-format: docker-build
 	@echo "Running formatter in Docker container (Ubuntu 24.04)..."
-	$(DEV_RUN) make -f Makefile.qa format-native
+	$(DEV_RUN) make -j4 -f Makefile.qa format-native
 
 docker-format-check: docker-build
 	@echo "Checking formatting in Docker container (Ubuntu 24.04)..."
@@ -843,28 +851,12 @@ docker-shell: docker-build
 	docker run --rm -it -v $(shell pwd):/lessui -w /lessui $(DEV_IMAGE) /bin/bash
 
 # Native targets (runs directly on host)
-lint-native: check-clang-tidy check-clang-format check-shellcheck check-shfmt check-mbake check-prettier
-	@echo "=================================" && \
-	echo "Running ALL linting checks..." && \
-	echo "=================================" && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa lint-unsafe-functions && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa lint-code && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa format-check && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa format-shell-check && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa format-make-check && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa format-prettier-check && \
-	echo "" && \
-	$(MAKE) -f Makefile.qa lint-shell && \
-	echo "" && \
-	echo "=================================" && \
-	echo "✓ All linting checks passed" && \
-	echo "================================="
+# Sub-targets can run in parallel with: make -j4 -f Makefile.qa lint-native
+lint-native: lint-unsafe-functions lint-code format-check format-shell-check format-make-check format-prettier-check lint-shell
+	@echo ""
+	@echo "================================="
+	@echo "✓ All linting checks passed"
+	@echo "================================="
 
 ###########################################################
 # Code Coverage Analysis
