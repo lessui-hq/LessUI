@@ -66,6 +66,10 @@ typedef struct PlayerHWRenderState {
 	unsigned int fbo_width;
 	unsigned int fbo_height;
 
+	// Last rendered frame dimensions (for capture)
+	unsigned int last_frame_width;
+	unsigned int last_frame_height;
+
 	// Presentation resources
 	unsigned int present_program; // Shader program for FBO->screen blit
 
@@ -273,6 +277,20 @@ void PlayerHWRender_swapBuffers(void);
 void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
                               int screen_h);
 
+/**
+ * Capture the current frame from the FBO as an SDL surface.
+ *
+ * Reads pixels from the FBO using glReadPixels and creates an RGB565
+ * SDL surface. The Y axis is flipped during conversion (OpenGL origin
+ * is bottom-left, SDL is top-left).
+ *
+ * Used by the in-game menu to capture a screenshot for the background.
+ *
+ * @return SDL_Surface* in RGB565 format, or NULL if capture failed.
+ *         Caller is responsible for freeing the surface with SDL_FreeSurface().
+ */
+SDL_Surface* PlayerHWRender_captureFrame(void);
+
 #else /* !HAS_OPENGLES */
 
 // Stub implementations for platforms without OpenGL ES support
@@ -357,6 +375,10 @@ static inline void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, i
 	(void)height;
 	(void)screen_w;
 	(void)screen_h;
+}
+
+static inline SDL_Surface* PlayerHWRender_captureFrame(void) {
+	return NULL;
 }
 
 #endif /* HAS_OPENGLES */

@@ -122,6 +122,7 @@ static void (*glBlendFunc)(GLenum, GLenum);
 static void (*glColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
 static void (*glBindBuffer)(GLenum, GLuint);
 static GLenum (*glGetError)(void);
+static void (*glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
 
 ///////////////////////////////
 // Module State
@@ -192,6 +193,7 @@ static bool loadGLFunctions(void) {
 	LOAD_GL_FUNC(glColorMask);
 	LOAD_GL_FUNC(glBindBuffer);
 	LOAD_GL_FUNC(glGetError);
+	LOAD_GL_FUNC(glReadPixels);
 
 #undef LOAD_GL_FUNC
 
@@ -962,6 +964,10 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation, 
 		return;
 	}
 
+	// Store frame dimensions for capture
+	hw_state.last_frame_width = width;
+	hw_state.last_frame_height = height;
+
 	SDL_Window* window = PLAT_getWindow();
 	if (!window) {
 		LOG_error("HW render: no window for presentation");
@@ -1434,6 +1440,85 @@ void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int
 
 	// Disable blending after HUD rendering
 	glDisable(GL_BLEND);
+}
+
+SDL_Surface* PlayerHWRender_captureFrame(void) {
+	if (!hw_state.enabled || !hw_state.context_ready) {
+		LOG_debug("HW render: captureFrame - not enabled");
+		return NULL;
+	}
+
+	unsigned int width = hw_state.last_frame_width;
+	unsigned int height = hw_state.last_frame_height;
+
+	if (width == 0 || height == 0) {
+		LOG_warn("HW render: captureFrame - no frame rendered yet (0x0)");
+		return NULL;
+	}
+
+	LOG_debug("HW render: captureFrame - capturing %ux%u from FBO", width, height);
+
+	PlayerHWRender_makeCurrent();
+
+	// Bind FBO for reading
+	glBindFramebuffer(GL_FRAMEBUFFER, hw_state.fbo);
+
+	// Allocate temporary RGBA buffer
+	size_t rgba_size = width * height * 4;
+	uint8_t* rgba_buffer = malloc(rgba_size);
+	if (!rgba_buffer) {
+		LOG_error("HW render: captureFrame - failed to allocate RGBA buffer");
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		return NULL;
+	}
+
+	// Read pixels from FBO (note: OpenGL origin is bottom-left)
+	glReadPixels(0, 0, (GLsizei)width, (GLsizei)height, GL_RGBA, GL_UNSIGNED_BYTE, rgba_buffer);
+
+	// Check for GL errors
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR) {
+		LOG_error("HW render: captureFrame - glReadPixels error 0x%x", err);
+		free(rgba_buffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		return NULL;
+	}
+
+	// Unbind FBO
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Create RGB565 SDL surface
+	SDL_Surface* surface =
+	    SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, 16, 0xF800, 0x07E0, 0x001F, 0);
+	if (!surface) {
+		LOG_error("HW render: captureFrame - failed to create SDL surface");
+		free(rgba_buffer);
+		return NULL;
+	}
+
+	// Convert RGBA to RGB565, flipping Y axis
+	// OpenGL origin is bottom-left, SDL is top-left
+	uint16_t* dst = (uint16_t*)surface->pixels;
+	int dst_pitch = surface->pitch / 2; // pitch in uint16_t units
+
+	for (unsigned int y = 0; y < height; y++) {
+		// Source row from bottom (GL bottom-left origin)
+		unsigned int src_y = height - 1 - y;
+		uint8_t* src_row = rgba_buffer + (src_y * width * 4);
+
+		for (unsigned int x = 0; x < width; x++) {
+			uint8_t r = src_row[x * 4 + 0];
+			uint8_t g = src_row[x * 4 + 1];
+			uint8_t b = src_row[x * 4 + 2];
+			// Convert to RGB565: 5 bits R, 6 bits G, 5 bits B
+			dst[y * dst_pitch + x] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+		}
+	}
+
+	free(rgba_buffer);
+
+	LOG_debug("HW render: captureFrame - captured %ux%u frame", width, height);
+	return surface;
 }
 
 #endif /* HAS_OPENGLES */

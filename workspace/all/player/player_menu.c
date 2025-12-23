@@ -482,9 +482,16 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 	    SDL_CreateRGBSurface(SDL_SWSURFACE, dev_w, dev_h, FIXED_DEPTH, RGBA_MASK_565);
 
 	if (PlayerHWRender_isEnabled()) {
-		LOG_debug("Menu_loop_ctx: HW rendering - using blank backing");
-		SDL_FillRect(backing, NULL, 0);
-		m->bitmap = NULL;
+		LOG_debug("Menu_loop_ctx: HW rendering - capturing frame from FBO");
+		m->bitmap = PlayerHWRender_captureFrame();
+		if (m->bitmap) {
+			LOG_debug("Menu_loop_ctx: captured %dx%d frame, scaling to backing", m->bitmap->w,
+			          m->bitmap->h);
+			Menu_scale_ctx(ctx, m->bitmap, backing);
+		} else {
+			LOG_debug("Menu_loop_ctx: capture failed, using blank backing");
+			SDL_FillRect(backing, NULL, 0);
+		}
 	} else {
 		LOG_debug("Menu_loop_ctx: creating bitmap surface");
 		m->bitmap = SDL_CreateRGBSurfaceFrom(r->src, r->true_w, r->true_h, FIXED_DEPTH, r->src_p,
@@ -611,17 +618,19 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 					int old_scaling = *ctx->screen_scaling;
 					cb->menu_options(cb->options_menu);
 					if (*ctx->screen_scaling != old_scaling) {
-						// Only recalc scaler and rescale bitmap for software rendering
+						// For software rendering, recalculate scaler and resize screen
 						// HW rendering handles scaling in PlayerHWRender_present()
-						// and has no bitmap to rescale (backing is already black)
-						if (m->bitmap != NULL) {
+						if (!PlayerHWRender_isEnabled()) {
 							cb->select_scaler(r->true_w, r->true_h, r->src_p);
 
 							restore_w = (*scr)->w;
 							restore_h = (*scr)->h;
 							restore_p = (*scr)->pitch;
 							*scr = GFX_resize(dev_w, dev_h, dev_p);
+						}
 
+						// Rescale the menu background bitmap if we have one
+						if (m->bitmap != NULL) {
 							SDL_FillRect(backing, NULL, 0);
 							Menu_scale_ctx(ctx, m->bitmap, backing);
 						}

@@ -336,17 +336,22 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ Guarded `select_scaler()` call in menu to skip when renderer uninitialized
 - ✅ Added `!show_menu` guard to prevent core execution during menu
 - ✅ Added explicit FBO rebinding after menu exit
+- ✅ Fixed menu crash when changing scaling options (was dereferencing NULL `m->bitmap`)
+
+**Screenshot Feature:**
+
+- ✅ Added `PlayerHWRender_captureFrame()` using `glReadPixels()` to capture FBO
+- ✅ Converts RGBA8888 → RGB565 with Y-flip (GL bottom-left → SDL top-left origin)
+- ✅ Menu now shows game screenshot as background (same as software rendering)
+- ✅ Fallback to black background if capture fails
 
 **Current Status:**
 
 - ✅ Aspect scaling displays correctly (proper pillarboxing)
 - ✅ All scaling modes functional (Native, Aspect, Fullscreen, Cropped)
 - ✅ Sharpness settings work (Sharp/Crisp/Soft)
-- ❌ Crash when exiting menu after changing scaling options (Flycast core SIGSEGV)
-  - Error: "SIGSEGV @ 0x4279ac -> 0x20 was not in vram, dynacode:0"
-  - Appears to be in Flycast's dynamic recompiler, not our GL code
-  - Crash happens inside Menu_loop, before return to main loop
-  - May be core-specific issue or GL state problem during menu
+- ✅ Menu scaling changes work without crashes
+- ✅ Game screenshot visible behind menu
 
 ### Working Features
 
@@ -364,6 +369,7 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ `debug_context` support (GL debug contexts when requested)
 - ✅ `cache_context` (implicit - context only destroyed on shutdown)
 - ✅ In-game menu rendering via GL (no SDL/GL conflicts)
+- ✅ Game screenshot behind menu (via `glReadPixels()` FBO capture)
 - ✅ Dynamic screen resolution (no hardcoded values)
 - ✅ Debug HUD overlay with alpha blending (FPS, CPU usage, resolution)
 - ✅ Software renderer for SDL (avoids GL context conflicts)
@@ -375,19 +381,18 @@ All 4 scaling modes from SDL2 software rendering are supported:
 
 **tg5040 (PowerVR Rogue GE8300):**
 
-- ⚠️ **Flycast (Dreamcast)**: Renders correctly with all scaling modes, crashes when exiting menu after changing options
+- ✅ **Flycast (Dreamcast)**: Fully working - all scaling modes, menu with screenshot
 - ❌ **PPSSPP (PSP)**: Crashes during `context_reset` after logging GPU info
 - ❌ **Mupen64Plus-Next (N64)**: Crashes after ~1 second during main loop
 
 **rg35xxplus (Mali-G31):**
 
-- ✅ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
+- ⚠️ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
 - ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping issue, not GL-related)
 
 ### Not Yet Implemented
 
 - ⏳ Rotation support (0°/90°/180°/270°) - rotation parameter accepted but not applied
-- ⏳ Game screenshot behind menu (currently black for HW cores)
 - ⏳ 2-pass CRISP sharpness (intermediate FBO) - currently uses GL_LINEAR
 
 ### Implementation Approach
@@ -403,7 +408,16 @@ Simple and direct:
 
 ### High Priority
 
-1. **Compare Integration with RetroArch**
+1. **Refactor HW Render Integration**
+   - Current implementation feels "bolted on" to existing SDL code
+   - Integrate more naturally with platform abstraction layer
+   - Move GL context management into render_sdl2.c alongside SDL_Renderer
+   - Clean separation between software and hardware rendering paths
+   - Consider: unified video backend that handles both software and HW cores
+   - Improve code organization and reduce coupling
+   - Reduce `#if HAS_OPENGLES` scattered throughout player.c
+
+2. **Compare Integration with RetroArch**
    - Deep comparison of GL context setup, timing, and state management
    - Verify we match RetroArch's implementation exactly for:
      - Environment callback handling (SET_HW_RENDER timing)
@@ -414,14 +428,6 @@ Simple and direct:
    - Document any differences and determine if they explain core crashes
    - Goal: Bulletproof implementation that matches proven RetroArch behavior
 
-2. **Refactor HW Render Integration**
-   - Current implementation feels "bolted on" to existing SDL code
-   - Integrate more naturally with platform abstraction layer
-   - Move GL context management into render_sdl2.c alongside SDL_Renderer
-   - Clean separation between software and hardware rendering paths
-   - Consider: unified video backend that handles both software and HW cores
-   - Improve code organization and reduce coupling
-
 3. **Debug PPSSPP and Mupen64Plus Crashes**
    - PPSSPP crashes during `context_reset` after logging GPU info (tg5040)
    - Mupen64Plus crashes during runtime on tg5040, works briefly on rg35xxplus
@@ -431,21 +437,16 @@ Simple and direct:
 
 ### Medium Priority
 
-4. **Game Screenshot Behind Menu**
-   - Use `glReadPixels()` to capture FBO to SDL surface before menu opens
-   - Scale and cache for menu background
-   - Alternative: render last frame from FBO as background quad
-
-5. **Rotation Support**
+4. **Rotation Support**
    - Add MVP matrix rotation for 0°/90°/180°/270°
    - Swap viewport dimensions for 90°/270° to maintain aspect ratio
    - Test with games that use portrait orientation
 
-6. **Remove Debug Logging**
+5. **Remove Debug Logging**
    - Clean up LOG_debug calls added for troubleshooting
    - Keep only essential INFO-level logs
 
-7. **Performance Optimization**
+6. **Performance Optimization**
    - Profile frame time impact of HW rendering
    - Measure menu presentation overhead
 
@@ -543,13 +544,13 @@ float tex_scale_y = (float)height / (float)fbo_height;
 
 ## Known Core Compatibility
 
-| Core                       | tg5040 (PowerVR) | rg35xxplus (Mali) | Requirements         | Notes                                                            |
-| -------------------------- | ---------------- | ----------------- | -------------------- | ---------------------------------------------------------------- |
-| **Flycast** (DC)           | ✅ Working       | ❌ Crashes        | GLES2, depth+stencil | Works on PowerVR, crashes during init on Mali (nvmem issue)      |
-| **Mupen64Plus-Next** (N64) | ❌ Crashes       | ⚠️ Partial        | GLES2, depth buffer  | PowerVR: crashes in main loop. Mali: renders frames then crashes |
-| **PPSSPP** (PSP)           | ❌ Crashes       | Untested          | GLES2/GLES3          | Crashes during `context_reset` after GPU detection               |
-| **Beetle PSX HW**          | Untested         | Untested          | GLES2/GLES3, depth   | Should work with GLES2                                           |
-| **ParaLLEl-RDP** (N64)     | Won't work       | Won't work        | GLES3.1+/Vulkan      | Outside GLES2 scope                                              |
+| Core                       | tg5040 (PowerVR) | rg35xxplus (Mali) | Requirements         | Notes                                                                   |
+| -------------------------- | ---------------- | ----------------- | -------------------- | ----------------------------------------------------------------------- |
+| **Flycast** (DC)           | ✅ Working       | ❌ Crashes        | GLES2, depth+stencil | Fully working on PowerVR (scaling, menu, screenshot). Mali: nvmem crash |
+| **Mupen64Plus-Next** (N64) | ❌ Crashes       | ⚠️ Partial        | GLES2, depth buffer  | PowerVR: crashes in main loop. Mali: renders frames then crashes        |
+| **PPSSPP** (PSP)           | ❌ Crashes       | Untested          | GLES2/GLES3          | Crashes during `context_reset` after GPU detection                      |
+| **Beetle PSX HW**          | Untested         | Untested          | GLES2/GLES3, depth   | Should work with GLES2                                                  |
+| **ParaLLEl-RDP** (N64)     | Won't work       | Won't work        | GLES3.1+/Vulkan      | Outside GLES2 scope                                                     |
 
 **Key Findings:**
 
