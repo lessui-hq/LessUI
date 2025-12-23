@@ -18,9 +18,9 @@
 
 #include "api.h"
 #include "defines.h"
+#include "gl_video.h"
 #include "log.h"
 #include "player_context.h"
-#include "player_hwrender.h"
 #include "player_internal.h"
 #include "player_mappings.h"
 #include "sdl.h"
@@ -464,7 +464,7 @@ static void Menu_afterSleep(void) {
 }
 
 static void Menu_loop_ctx(PlayerContext* ctx) {
-	LOG_debug("Menu_loop_ctx: enter, HW=%d", PlayerHWRender_isEnabled());
+	LOG_debug("Menu_loop_ctx: enter, HW=%d", GLVideo_isEnabled());
 
 	PlayerMenuState* m = ctx->menu;
 	GFX_Renderer* r = (GFX_Renderer*)ctx->renderer;
@@ -481,9 +481,9 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 	SDL_Surface* backing =
 	    SDL_CreateRGBSurface(SDL_SWSURFACE, dev_w, dev_h, FIXED_DEPTH, RGBA_MASK_565);
 
-	if (PlayerHWRender_isEnabled()) {
+	if (GLVideo_isEnabled()) {
 		LOG_debug("Menu_loop_ctx: HW rendering - capturing frame from FBO");
-		m->bitmap = PlayerHWRender_captureFrame();
+		m->bitmap = GLVideo_captureFrame();
 		if (m->bitmap) {
 			LOG_debug("Menu_loop_ctx: captured %dx%d frame, scaling to backing", m->bitmap->w,
 			          m->bitmap->h);
@@ -619,8 +619,8 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 					cb->menu_options(cb->options_menu);
 					if (*ctx->screen_scaling != old_scaling) {
 						// For software rendering, recalculate scaler and resize screen
-						// HW rendering handles scaling in PlayerHWRender_present()
-						if (!PlayerHWRender_isEnabled()) {
+						// HW rendering handles scaling in GLVideo_present()
+						if (!GLVideo_isEnabled()) {
 							cb->select_scaler(r->true_w, r->true_h, r->src_p);
 
 							restore_w = (*scr)->w;
@@ -782,10 +782,10 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 			}
 
 			// Use GL presentation when HW rendering is active to avoid SDL/GL conflicts
-			if (PlayerHWRender_isEnabled()) {
-				LOG_debug("Menu: about to call PlayerHWRender_presentSurface");
-				PlayerHWRender_presentSurface(*scr);
-				LOG_debug("Menu: returned from PlayerHWRender_presentSurface");
+			if (GLVideo_isEnabled()) {
+				LOG_debug("Menu: about to call GLVideo_presentSurface");
+				GLVideo_presentSurface(*scr);
+				LOG_debug("Menu: returned from GLVideo_presentSurface");
 			} else {
 				GFX_present(NULL);
 			}
@@ -811,7 +811,7 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 		cb->video_refresh(r->src, r->true_w, r->true_h, r->src_p);
 		// Skip SDL present for HW rendering - the frame is already on screen
 		// and calling GFX_present would conflict with the GL context
-		if (*cb->frame_ready_for_flip && !PlayerHWRender_isEnabled()) {
+		if (*cb->frame_ready_for_flip && !GLVideo_isEnabled()) {
 			GFX_present(r);
 			*cb->frame_ready_for_flip = 0;
 		}

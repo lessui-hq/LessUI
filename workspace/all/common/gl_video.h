@@ -1,8 +1,11 @@
 /**
- * player_hwrender.h - OpenGL ES hardware rendering support for Player
+ * gl_video.h - OpenGL ES rendering backend
  *
  * This module provides hardware-accelerated rendering support for libretro cores
  * that require OpenGL ES (e.g., Flycast, PPSSPP, Mupen64Plus, Beetle PSX HW).
+ *
+ * It will eventually be expanded to handle ALL video rendering (software cores
+ * uploading to GL textures), unifying the video pipeline.
  *
  * Architecture:
  *   - Creates SDL2 OpenGL ES context when core requests HW rendering
@@ -12,24 +15,25 @@
  *
  * Usage:
  *   When RETRO_ENVIRONMENT_SET_HW_RENDER is called by a core:
- *   1. PlayerHWRender_init() creates GL context and FBO
+ *   1. GLVideo_init() creates GL context and FBO
  *   2. Frontend provides callbacks to core
  *   3. Core renders to FBO via get_current_framebuffer()
- *   4. PlayerHWRender_present() blits FBO to screen
+ *   4. GLVideo_present() blits FBO to screen
  *
  * Platform Support:
  *   Only available on platforms with HAS_OPENGLES defined in platform.h.
  *   Currently supports: rg35xxplus, tg5040 (Mali GPU)
  */
 
-#ifndef PLAYER_HWRENDER_H
-#define PLAYER_HWRENDER_H
+#ifndef GL_VIDEO_H
+#define GL_VIDEO_H
 
 #include "defines.h"
 
 #if HAS_OPENGLES
 
 #include "libretro.h"
+#include <SDL.h>
 #include <stdbool.h>
 
 ///////////////////////////////
@@ -37,12 +41,12 @@
 ///////////////////////////////
 
 /**
- * PlayerHWRenderState - Hardware render state and resources
+ * GLVideoState - Hardware render state and resources
  *
  * Manages the lifecycle of OpenGL ES context and FBO resources.
  * All GL resources are created lazily when a core requests HW rendering.
  */
-typedef struct PlayerHWRenderState {
+typedef struct GLVideoState {
 	// State flags
 	bool enabled; // HW rendering is active for current core
 	bool context_ready; // GL context is created and ready
@@ -88,7 +92,7 @@ typedef struct PlayerHWRenderState {
 	int loc_texture; // u_texture uniform
 	int loc_position; // a_position attribute
 	int loc_texcoord; // a_texcoord attribute
-} PlayerHWRenderState;
+} GLVideoState;
 
 ///////////////////////////////
 // Initialization / Shutdown
@@ -105,8 +109,8 @@ typedef struct PlayerHWRenderState {
  * @param max_height Maximum framebuffer height (from av_info.geometry.max_height)
  * @return true if HW rendering setup succeeded
  */
-bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max_width,
-                         unsigned max_height);
+bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
+                  unsigned max_height);
 
 /**
  * Shutdown hardware rendering.
@@ -114,7 +118,7 @@ bool PlayerHWRender_init(struct retro_hw_render_callback* callback, unsigned max
  * Calls core's context_destroy callback, then destroys FBO and GL context.
  * Safe to call even if HW rendering was never initialized.
  */
-void PlayerHWRender_shutdown(void);
+void GLVideo_shutdown(void);
 
 ///////////////////////////////
 // State Queries
@@ -125,7 +129,7 @@ void PlayerHWRender_shutdown(void);
  *
  * @return true if HW rendering is enabled and context is ready
  */
-bool PlayerHWRender_isEnabled(void);
+bool GLVideo_isEnabled(void);
 
 /**
  * Check if a context type is supported.
@@ -133,7 +137,7 @@ bool PlayerHWRender_isEnabled(void);
  * @param context_type The retro_hw_context_type requested by core
  * @return true if we can provide this context type
  */
-bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type);
+bool GLVideo_isContextSupported(enum retro_hw_context_type context_type);
 
 /**
  * Check if a specific GLES version is supported.
@@ -145,7 +149,7 @@ bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type);
  * @param minor GLES minor version (0, 1, or 2)
  * @return true if the version is supported
  */
-bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor);
+bool GLVideo_isVersionSupported(unsigned major, unsigned minor);
 
 /**
  * Get the actual context version that was created.
@@ -155,7 +159,7 @@ bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor);
  * @param major Output: major version
  * @param minor Output: minor version
  */
-void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor);
+void GLVideo_getContextVersion(unsigned* major, unsigned* minor);
 
 ///////////////////////////////
 // Core Callbacks
@@ -169,7 +173,7 @@ void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor);
  *
  * @return FBO handle, or 0 if not initialized
  */
-uintptr_t PlayerHWRender_getCurrentFramebuffer(void);
+uintptr_t GLVideo_getCurrentFramebuffer(void);
 
 /**
  * Get OpenGL function pointer.
@@ -180,7 +184,7 @@ uintptr_t PlayerHWRender_getCurrentFramebuffer(void);
  * @param sym Function name (e.g., "glClear", "glBindFramebuffer")
  * @return Function pointer, or NULL if not found
  */
-retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym);
+retro_proc_address_t GLVideo_getProcAddress(const char* sym);
 
 ///////////////////////////////
 // Frame Operations
@@ -199,8 +203,8 @@ retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym);
  * @param sharpness Texture filtering (SHARPNESS_SHARP, CRISP, SOFT)
  * @param aspect_ratio Core's reported aspect ratio (0 = use dimensions)
  */
-void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
-                            int sharpness, double aspect_ratio);
+void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
+                     int sharpness, double aspect_ratio);
 
 /**
  * Resize FBO for new dimensions.
@@ -211,7 +215,7 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation, 
  * @param height New framebuffer height
  * @return true if resize succeeded
  */
-bool PlayerHWRender_resizeFBO(unsigned width, unsigned height);
+bool GLVideo_resizeFBO(unsigned width, unsigned height);
 
 ///////////////////////////////
 // Context Management
@@ -222,7 +226,7 @@ bool PlayerHWRender_resizeFBO(unsigned width, unsigned height);
  *
  * Called before any GL operations to ensure correct context is active.
  */
-void PlayerHWRender_makeCurrent(void);
+void GLVideo_makeCurrent(void);
 
 /**
  * Call core's context_reset callback.
@@ -230,14 +234,14 @@ void PlayerHWRender_makeCurrent(void);
  * Called after GL context and FBO are ready, and after retro_load_game().
  * Signals to core that it can create GL resources.
  */
-void PlayerHWRender_contextReset(void);
+void GLVideo_contextReset(void);
 
 /**
  * Bind the FBO for core rendering.
  *
  * Should be called before retro_run() so the core renders to our FBO.
  */
-void PlayerHWRender_bindFBO(void);
+void GLVideo_bindFBO(void);
 
 /**
  * Present an SDL surface to screen via GL.
@@ -248,22 +252,22 @@ void PlayerHWRender_bindFBO(void);
  *
  * @param surface SDL surface to present (must be RGB565 format)
  */
-void PlayerHWRender_presentSurface(SDL_Surface* surface);
+void GLVideo_presentSurface(SDL_Surface* surface);
 
 /**
  * Swap the GL buffers to display the rendered frame.
  *
- * Must be called after PlayerHWRender_present() and any overlay rendering
- * (like PlayerHWRender_renderHUD()) to actually show the frame on screen.
+ * Must be called after GLVideo_present() and any overlay rendering
+ * (like GLVideo_renderHUD()) to actually show the frame on screen.
  */
-void PlayerHWRender_swapBuffers(void);
+void GLVideo_swapBuffers(void);
 
 /**
  * Render HUD overlay on top of the current frame.
  *
  * Uploads RGBA pixel data to a texture and renders it over the game frame
- * with alpha blending. Should be called after PlayerHWRender_present() but
- * before PlayerHWRender_swapBuffers().
+ * with alpha blending. Should be called after GLVideo_present() but
+ * before GLVideo_swapBuffers().
  *
  * The alpha channel is used for transparency: 0 = fully transparent,
  * 255 = fully opaque. This allows the game to show through behind the text.
@@ -274,8 +278,7 @@ void PlayerHWRender_swapBuffers(void);
  * @param screen_w Target screen width (for positioning)
  * @param screen_h Target screen height (for positioning)
  */
-void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
-                              int screen_h);
+void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w, int screen_h);
 
 /**
  * Capture the current frame from the FBO as an SDL surface.
@@ -289,7 +292,7 @@ void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height, int
  * @return SDL_Surface* in RGB565 format, or NULL if capture failed.
  *         Caller is responsible for freeing the surface with SDL_FreeSurface().
  */
-SDL_Surface* PlayerHWRender_captureFrame(void);
+SDL_Surface* GLVideo_captureFrame(void);
 
 #else /* !HAS_OPENGLES */
 
@@ -297,51 +300,52 @@ SDL_Surface* PlayerHWRender_captureFrame(void);
 // These allow the code to compile without #if HAS_OPENGLES everywhere
 
 #include "libretro.h"
+#include <SDL.h>
 #include <stdbool.h>
 
-static inline bool PlayerHWRender_init(struct retro_hw_render_callback* callback,
-                                       unsigned max_width, unsigned max_height) {
+static inline bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
+                                unsigned max_height) {
 	(void)callback;
 	(void)max_width;
 	(void)max_height;
 	return false;
 }
 
-static inline void PlayerHWRender_shutdown(void) {}
+static inline void GLVideo_shutdown(void) {}
 
-static inline bool PlayerHWRender_isEnabled(void) {
+static inline bool GLVideo_isEnabled(void) {
 	return false;
 }
 
-static inline bool PlayerHWRender_isContextSupported(enum retro_hw_context_type context_type) {
+static inline bool GLVideo_isContextSupported(enum retro_hw_context_type context_type) {
 	(void)context_type;
 	return false;
 }
 
-static inline bool PlayerHWRender_isVersionSupported(unsigned major, unsigned minor) {
+static inline bool GLVideo_isVersionSupported(unsigned major, unsigned minor) {
 	(void)major;
 	(void)minor;
 	return false;
 }
 
-static inline void PlayerHWRender_getContextVersion(unsigned* major, unsigned* minor) {
+static inline void GLVideo_getContextVersion(unsigned* major, unsigned* minor) {
 	if (major)
 		*major = 0;
 	if (minor)
 		*minor = 0;
 }
 
-static inline uintptr_t PlayerHWRender_getCurrentFramebuffer(void) {
+static inline uintptr_t GLVideo_getCurrentFramebuffer(void) {
 	return 0;
 }
 
-static inline retro_proc_address_t PlayerHWRender_getProcAddress(const char* sym) {
+static inline retro_proc_address_t GLVideo_getProcAddress(const char* sym) {
 	(void)sym;
 	return NULL;
 }
 
-static inline void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation,
-                                          int scaling_mode, int sharpness, double aspect_ratio) {
+static inline void GLVideo_present(unsigned width, unsigned height, unsigned rotation,
+                                   int scaling_mode, int sharpness, double aspect_ratio) {
 	(void)width;
 	(void)height;
 	(void)rotation;
@@ -350,26 +354,26 @@ static inline void PlayerHWRender_present(unsigned width, unsigned height, unsig
 	(void)aspect_ratio;
 }
 
-static inline bool PlayerHWRender_resizeFBO(unsigned width, unsigned height) {
+static inline bool GLVideo_resizeFBO(unsigned width, unsigned height) {
 	(void)width;
 	(void)height;
 	return false;
 }
 
-static inline void PlayerHWRender_makeCurrent(void) {}
+static inline void GLVideo_makeCurrent(void) {}
 
-static inline void PlayerHWRender_contextReset(void) {}
+static inline void GLVideo_contextReset(void) {}
 
-static inline void PlayerHWRender_bindFBO(void) {}
+static inline void GLVideo_bindFBO(void) {}
 
-static inline void PlayerHWRender_presentSurface(SDL_Surface* surface) {
+static inline void GLVideo_presentSurface(SDL_Surface* surface) {
 	(void)surface;
 }
 
-static inline void PlayerHWRender_swapBuffers(void) {}
+static inline void GLVideo_swapBuffers(void) {}
 
-static inline void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, int height,
-                                            int screen_w, int screen_h) {
+static inline void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
+                                     int screen_h) {
 	(void)pixels;
 	(void)width;
 	(void)height;
@@ -377,10 +381,10 @@ static inline void PlayerHWRender_renderHUD(const uint32_t* pixels, int width, i
 	(void)screen_h;
 }
 
-static inline SDL_Surface* PlayerHWRender_captureFrame(void) {
+static inline SDL_Surface* GLVideo_captureFrame(void) {
 	return NULL;
 }
 
 #endif /* HAS_OPENGLES */
 
-#endif /* PLAYER_HWRENDER_H */
+#endif /* GL_VIDEO_H */

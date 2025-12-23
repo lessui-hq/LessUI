@@ -73,7 +73,7 @@ static void run_main_loop(void) {
 		// Don't run core while menu is active
 		uint64_t frame_start = getMicroseconds();
 		if (!show_menu) {
-			PlayerHWRender_bindFBO();
+			GLVideo_bindFBO();
 			core.run();
 		}
 		uint64_t frame_time = getMicroseconds() - frame_start;
@@ -89,8 +89,8 @@ static void run_main_loop(void) {
 		// Present frame
 		// During FF: throttle vsync to avoid blocking (limitFF controls speed instead)
 		// Normal: present every frame (may or may not wait for vsync depending on platform)
-		// Skip for HW rendering - frame already presented via PlayerHWRender_present()
-		if (!PlayerHWRender_isEnabled()) {
+		// Skip for HW rendering - frame already presented via GLVideo_present()
+		if (!GLVideo_isEnabled()) {
 			if (fast_forward) {
 				uint32_t now = SDL_GetTicks();
 				if (now - last_ff_flip >= 30) { // Visual update every 30ms

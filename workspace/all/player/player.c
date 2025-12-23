@@ -57,6 +57,7 @@
 #include "api.h"
 #include "defines.h"
 #include "frame_pacer.h"
+#include "gl_video.h"
 #include "launcher_file_utils.h"
 #include "libretro.h"
 #include "player_archive.h"
@@ -66,7 +67,6 @@
 #include "player_cpu.h"
 #include "player_env.h"
 #include "player_game.h"
-#include "player_hwrender.h"
 #include "player_input.h"
 #include "player_internal.h"
 #include "player_mappings.h"
@@ -1440,15 +1440,15 @@ static void Config_syncFrontend(char* key, int value) {
 			GFX_setSharpness(screen_sharpness);
 
 		// Only force scaler recalc for software rendering
-		// HW rendering handles scaling directly in PlayerHWRender_present()
-		if (!PlayerHWRender_isEnabled())
+		// HW rendering handles scaling directly in GLVideo_present()
+		if (!GLVideo_isEnabled())
 			renderer.dst_p = 0;
 		i = FE_OPT_SCALING;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_EFFECT].key)) {
 		screen_effect = value;
 		GFX_setEffect(value);
 		// Effects only apply to software rendering
-		if (!PlayerHWRender_isEnabled())
+		if (!GLVideo_isEnabled())
 			renderer.dst_p = 0;
 		i = FE_OPT_EFFECT;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_SHARPNESS].key)) {
@@ -1461,7 +1461,7 @@ static void Config_syncFrontend(char* key, int value) {
 			GFX_setSharpness(screen_sharpness);
 
 		// Only force scaler recalc for software rendering
-		if (!PlayerHWRender_isEnabled())
+		if (!GLVideo_isEnabled())
 			renderer.dst_p = 0;
 		i = FE_OPT_SHARPNESS;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_OVERCLOCK].key)) {
@@ -2642,7 +2642,7 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		         cb->context_type, cb->version_major, cb->version_minor, cb->depth, cb->stencil);
 
 		// Check if platform supports this context type
-		if (!PlayerHWRender_isContextSupported(cb->context_type)) {
+		if (!GLVideo_isContextSupported(cb->context_type)) {
 			LOG_info("Core requested HW render - not supported on this platform, using software");
 			return false;
 		}
@@ -2650,15 +2650,15 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 
 		// Initialize hardware rendering with reasonable default size
 		// FBO will be resized when we get actual geometry from core
-		LOG_debug("SET_HW_RENDER: calling PlayerHWRender_init");
-		if (!PlayerHWRender_init(cb, 1024, 1024)) {
+		LOG_debug("SET_HW_RENDER: calling GLVideo_init");
+		if (!GLVideo_init(cb, 1024, 1024)) {
 			LOG_error("Failed to initialize HW render - falling back to software");
 			return false;
 		}
 
 		// Log actual context version created (may differ from requested due to fallback)
 		unsigned actual_major = 0, actual_minor = 0;
-		PlayerHWRender_getContextVersion(&actual_major, &actual_minor);
+		GLVideo_getContextVersion(&actual_major, &actual_minor);
 		LOG_info("HW render initialized (GLES %u.%u) - core will use GPU rendering", actual_major,
 		         actual_minor);
 		return true;
@@ -3536,7 +3536,7 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 	blitBitmapTextRGBA(debug_text, -x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
 
 	// Pass HUD to HW renderer for compositing
-	PlayerHWRender_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
+	GLVideo_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
 }
 
 /**
@@ -3875,14 +3875,14 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 	// NOLINTNEXTLINE(performance-no-int-to-ptr) - libretro standard: RETRO_HW_FRAME_BUFFER_VALID is ((void*)-1)
 	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
 		LOG_debug("video_refresh: HW frame (RETRO_HW_FRAME_BUFFER_VALID), enabled=%d",
-		          PlayerHWRender_isEnabled());
-		if (PlayerHWRender_isEnabled()) {
+		          GLVideo_isEnabled());
+		if (GLVideo_isEnabled()) {
 			// Count frames for FPS calculation
 			fps_ticks += 1;
 
 			// Render game frame to backbuffer with scaling and filtering
-			PlayerHWRender_present(width, height, video_state.rotation, screen_scaling,
-			                       screen_sharpness, core.aspect_ratio);
+			GLVideo_present(width, height, video_state.rotation, screen_scaling, screen_sharpness,
+			                core.aspect_ratio);
 
 			// Render debug HUD overlay if enabled
 			if (show_debug) {
@@ -3890,7 +3890,7 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 			}
 
 			// Swap buffers to display the frame
-			PlayerHWRender_swapBuffers();
+			GLVideo_swapBuffers();
 
 			frame_ready_for_flip = 1;
 		}
@@ -4182,7 +4182,7 @@ void Core_quit(void) {
 		RTC_write();
 
 		// Shutdown HW rendering before unloading game (calls context_destroy)
-		PlayerHWRender_shutdown();
+		GLVideo_shutdown();
 
 		core.unload_game();
 		core.deinit();
@@ -5792,7 +5792,7 @@ int main(int argc, char* argv[]) {
 
 	// Call context_reset AFTER load_game returns (per libretro spec)
 	// This signals to HW cores that they can now create GL resources
-	PlayerHWRender_contextReset();
+	GLVideo_contextReset();
 
 	LOG_debug("Input_init");
 	Input_init(NULL);

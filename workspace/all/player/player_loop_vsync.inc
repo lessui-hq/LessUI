@@ -97,7 +97,7 @@ static void run_main_loop(void) {
 
 				// Measure frame execution time for auto CPU scaling
 				uint64_t frame_start = getMicroseconds();
-				PlayerHWRender_bindFBO();
+				GLVideo_bindFBO();
 				LOG_debug("Main loop: calling core.run()");
 				core.run();
 				LOG_debug("Main loop: core.run() returned");
@@ -113,8 +113,8 @@ static void run_main_loop(void) {
 		}
 
 		// Always present for vsync timing - when !should_run_core, re-presents previous frame
-		// Skip for HW rendering - frame already presented via PlayerHWRender_present()
-		if (!PlayerHWRender_isEnabled()) {
+		// Skip for HW rendering - frame already presented via GLVideo_present()
+		if (!GLVideo_isEnabled()) {
 			GFX_present(&renderer);
 			frame_ready_for_flip = 0;
 		}
@@ -135,9 +135,9 @@ static void run_main_loop(void) {
 			LOG_debug("Main loop: returned from Menu_loop, show_menu=%d", show_menu);
 
 			// Rebind FBO for HW cores after menu (menu uses FBO 0)
-			if (PlayerHWRender_isEnabled()) {
+			if (GLVideo_isEnabled()) {
 				LOG_debug("Main loop: re-binding FBO after menu exit");
-				PlayerHWRender_bindFBO();
+				GLVideo_bindFBO();
 			}
 		}
 
