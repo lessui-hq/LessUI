@@ -20,6 +20,7 @@
 #include "defines.h"
 #include "log.h"
 #include "player_context.h"
+#include "player_hwrender.h"
 #include "player_internal.h"
 #include "player_mappings.h"
 #include "sdl.h"
@@ -463,6 +464,8 @@ static void Menu_afterSleep(void) {
 }
 
 static void Menu_loop_ctx(PlayerContext* ctx) {
+	LOG_debug("Menu_loop_ctx: enter, HW=%d", PlayerHWRender_isEnabled());
+
 	PlayerMenuState* m = ctx->menu;
 	GFX_Renderer* r = (GFX_Renderer*)ctx->renderer;
 	struct Game* g = ctx->game;
@@ -473,12 +476,22 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 	int dev_h = *ctx->device_height;
 	int dev_p = *ctx->device_pitch;
 
-	m->bitmap = SDL_CreateRGBSurfaceFrom(r->src, r->true_w, r->true_h, FIXED_DEPTH, r->src_p,
-	                                     RGBA_MASK_565);
-
+	// For HW rendering, we can't access the frame buffer (it's in GPU memory)
+	// so create a blank backing surface instead of scaling the game frame
 	SDL_Surface* backing =
 	    SDL_CreateRGBSurface(SDL_SWSURFACE, dev_w, dev_h, FIXED_DEPTH, RGBA_MASK_565);
-	Menu_scale_ctx(ctx, m->bitmap, backing);
+
+	if (PlayerHWRender_isEnabled()) {
+		LOG_debug("Menu_loop_ctx: HW rendering - using blank backing");
+		SDL_FillRect(backing, NULL, 0);
+		m->bitmap = NULL;
+	} else {
+		LOG_debug("Menu_loop_ctx: creating bitmap surface");
+		m->bitmap = SDL_CreateRGBSurfaceFrom(r->src, r->true_w, r->true_h, FIXED_DEPTH, r->src_p,
+		                                     RGBA_MASK_565);
+		LOG_debug("Menu_loop_ctx: scaling to backing");
+		Menu_scale_ctx(ctx, m->bitmap, backing);
+	}
 
 	int restore_w = (*scr)->w;
 	int restore_h = (*scr)->h;
@@ -754,7 +767,14 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 				}
 			}
 
-			GFX_present(NULL);
+			// Use GL presentation when HW rendering is active to avoid SDL/GL conflicts
+			if (PlayerHWRender_isEnabled()) {
+				LOG_debug("Menu: about to call PlayerHWRender_presentSurface");
+				PlayerHWRender_presentSurface(*scr);
+				LOG_debug("Menu: returned from PlayerHWRender_presentSurface");
+			} else {
+				GFX_present(NULL);
+			}
 			dirty = 0;
 		} else
 			GFX_sync();
@@ -775,7 +795,9 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 		GFX_setEffect(*ctx->screen_effect);
 		GFX_clear(*scr);
 		cb->video_refresh(r->src, r->true_w, r->true_h, r->src_p);
-		if (*cb->frame_ready_for_flip) {
+		// Skip SDL present for HW rendering - the frame is already on screen
+		// and calling GFX_present would conflict with the GL context
+		if (*cb->frame_ready_for_flip && !PlayerHWRender_isEnabled()) {
 			GFX_present(r);
 			*cb->frame_ready_for_flip = 0;
 		}

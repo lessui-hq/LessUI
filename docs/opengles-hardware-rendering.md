@@ -210,6 +210,23 @@ Minimal GLES 2.0 shaders:
 - Cached shader locations for performance
 - Removed unused `quad_vao` field
 
+### Menu Integration Fixes
+
+**SDL/GL Context Conflicts:**
+
+1. ✅ **Skip SDL_Renderer for HW cores**: Modified main loop to skip `GFX_present(&renderer)` when HW rendering active (frame already presented via GL)
+2. ✅ **GL surface presentation**: Added `PlayerHWRender_presentSurface()` to render SDL surfaces via GL instead of SDL_Renderer
+3. ✅ **Menu crash fix**: Skip bitmap surface creation for HW cores (frame is in GPU memory, not CPU-accessible)
+4. ✅ **Texture coordinate fix**: Y-flip texture coordinates for SDL surfaces (top-left origin → bottom-left GL origin)
+5. ✅ **Dynamic resolution**: Use `SDL_GetWindowSize()` instead of hardcoded 1280x720
+
+**Key Implementation:**
+
+- Menu uses `PlayerHWRender_presentSurface()` when HW rendering active
+- Uploads SDL surface to GL texture and renders via shader
+- Avoids SDL_Renderer/GL context conflicts that caused crashes
+- Black background for HW cores (game screenshot requires GL readback)
+
 ## Testing Results
 
 ### Build Status
@@ -230,7 +247,9 @@ Minimal GLES 2.0 shaders:
 - ✅ Shader compiled and linked
 - ✅ Frames display correctly with proper aspect ratio
 - ✅ Letterboxing/pillarboxing working
-- **Status**: Working - Flycast (Dreamcast) displays correctly
+- ✅ In-game menu opens without crashing
+- ✅ Menu renders correctly via GL (Y-flipped texture coordinates)
+- **Status**: Working - Flycast (Dreamcast) displays and menu functional
 
 **rg35xxplus (Anbernic RG35XX Plus):**
 
@@ -264,12 +283,16 @@ Minimal GLES 2.0 shaders:
 - ✅ Frame presentation to screen
 - ✅ Aspect-preserving viewport (letterbox/pillarbox)
 - ✅ Texture coordinate scaling for partial FBO sampling
-- ✅ Correct orientation (no Y-flip issues)
+- ✅ Correct orientation (Y-flip for SDL surfaces)
+- ✅ In-game menu rendering via GL (no SDL/GL conflicts)
+- ✅ Dynamic screen resolution (no hardcoded values)
 
 ### Not Yet Implemented
 
 - ⏳ Rotation support (0°/90°/180°/270°)
 - ⏳ `bottom_left_origin` handling
+- ⏳ Game screenshot behind menu (currently black for HW cores)
+- ⏳ Debug HUD overlay for HW cores
 
 ### Implementation Approach
 
@@ -284,33 +307,39 @@ Simple and direct:
 
 ### High Priority
 
-1. **Rotation Support**
+1. **Debug HUD Support**
+   - Render debug overlay via GL for HW cores
+   - Create overlay surface and composite on top of game frame
+   - Test FPS/CPU display with HW rendering
+
+2. **Game Screenshot Behind Menu**
+   - Use `glReadPixels()` to capture FBO to SDL surface before menu opens
+   - Scale and cache for menu background
+   - Alternative: render last frame from FBO as background quad
+
+3. **Rotation Support**
    - Add MVP matrix rotation for 0°/90°/180°/270°
    - Swap viewport dimensions for 90°/270° to maintain aspect ratio
    - Test with games that use portrait orientation
 
-2. **`bottom_left_origin` Handling**
+4. **`bottom_left_origin` Handling**
    - Flycast sets `bottom_left_origin=true` (GL convention)
    - Currently works but may need Y-flip adjustment
    - Test with cores that use `bottom_left_origin=false`
 
-3. **Test on rg35xxplus**
+### Medium Priority
+
+5. **Test on rg35xxplus**
    - Verify HW rendering works on other Mali GPU platform
    - Test Flycast, PPSSPP, Beetle PSX HW cores
 
-### Medium Priority
-
-4. **Remove Debug Logging**
-   - Clean up excessive LOG_debug calls in present function
+6. **Remove Debug Logging**
+   - Clean up LOG_debug calls added for troubleshooting
    - Keep only essential INFO-level logs
 
-5. **Dynamic Screen Resolution**
-   - Replace hardcoded 1280x720 with SDL_GetWindowSize()
-   - Support different device resolutions
-
-6. **Performance Optimization**
+7. **Performance Optimization**
    - Profile frame time impact of HW rendering
-   - Consider VBO for vertex data if performance critical
+   - Measure menu presentation overhead
 
 ### Low Priority
 

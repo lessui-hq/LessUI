@@ -65,6 +65,11 @@ typedef struct PlayerHWRenderState {
 	// Presentation resources
 	unsigned int present_program; // Shader program for FBO->screen blit
 
+	// UI surface texture (for menu/HUD rendering via GL)
+	unsigned int ui_texture;
+	unsigned int ui_texture_width;
+	unsigned int ui_texture_height;
+
 	// Cached shader locations (to avoid glGet* calls per frame)
 	int loc_mvp; // u_mvp uniform (4x4 MVP matrix)
 	int loc_texture; // u_texture uniform
@@ -195,6 +200,17 @@ void PlayerHWRender_contextReset(void);
  */
 void PlayerHWRender_bindFBO(void);
 
+/**
+ * Present an SDL surface to screen via GL.
+ *
+ * Used by menu and debug HUD when HW rendering is active.
+ * Uploads the surface to a GL texture and renders it fullscreen.
+ * This avoids conflicts between SDL_Renderer and our GL context.
+ *
+ * @param surface SDL surface to present (must be RGB565 format)
+ */
+void PlayerHWRender_presentSurface(SDL_Surface* surface);
+
 #else /* !HAS_OPENGLES */
 
 // Stub implementations for platforms without OpenGL ES support
@@ -248,6 +264,10 @@ static inline void PlayerHWRender_makeCurrent(void) {}
 static inline void PlayerHWRender_contextReset(void) {}
 
 static inline void PlayerHWRender_bindFBO(void) {}
+
+static inline void PlayerHWRender_presentSurface(SDL_Surface* surface) {
+	(void)surface;
+}
 
 #endif /* HAS_OPENGLES */
 

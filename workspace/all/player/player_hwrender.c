@@ -33,8 +33,10 @@ typedef unsigned int GLbitfield;
 // GL constants we actually use
 #define GL_FALSE 0
 #define GL_TRUE 1
+#define GL_RGB 0x1907
 #define GL_RGBA 0x1908
 #define GL_UNSIGNED_BYTE 0x1401
+#define GL_UNSIGNED_SHORT_5_6_5 0x8363
 #define GL_FLOAT 0x1406
 #define GL_LINEAR 0x2601
 #define GL_CLAMP_TO_EDGE 0x812F
@@ -72,6 +74,8 @@ static void (*glGenTextures)(GLsizei, GLuint*);
 static void (*glBindTexture)(GLenum, GLuint);
 static void (*glTexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum,
                             const void*);
+static void (*glTexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum,
+                               const void*);
 static void (*glTexParameteri)(GLenum, GLenum, GLint);
 static void (*glFramebufferTexture2D)(GLenum, GLenum, GLenum, GLuint, GLint);
 static void (*glGenRenderbuffers)(GLsizei, GLuint*);
@@ -137,6 +141,7 @@ static bool loadGLFunctions(void) {
 	LOAD_GL_FUNC(glGenTextures);
 	LOAD_GL_FUNC(glBindTexture);
 	LOAD_GL_FUNC(glTexImage2D);
+	LOAD_GL_FUNC(glTexSubImage2D);
 	LOAD_GL_FUNC(glTexParameteri);
 	LOAD_GL_FUNC(glFramebufferTexture2D);
 	LOAD_GL_FUNC(glGenRenderbuffers);
@@ -402,12 +407,18 @@ static GLuint createShaderProgram(void) {
 }
 
 /**
- * Destroy presentation resources (shader program).
+ * Destroy presentation resources (shader program and UI texture).
  */
 static void destroyPresentResources(void) {
 	if (hw_state.present_program) {
 		glDeleteProgram(hw_state.present_program);
 		hw_state.present_program = 0;
+	}
+	if (hw_state.ui_texture) {
+		glDeleteTextures(1, &hw_state.ui_texture);
+		hw_state.ui_texture = 0;
+		hw_state.ui_texture_width = 0;
+		hw_state.ui_texture_height = 0;
 	}
 }
 
@@ -764,14 +775,24 @@ void PlayerHWRender_present(unsigned width, unsigned height, unsigned rotation) 
 	}
 
 	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		LOG_error("HW render: no window for presentation");
+		return;
+	}
+
 	PlayerHWRender_makeCurrent();
 
 	// Bind backbuffer
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// Calculate aspect-preserving viewport
-	int screen_w = 1280;
-	int screen_h = 720;
+	// Get actual screen dimensions from window
+	int screen_w = 0;
+	int screen_h = 0;
+	SDL_GetWindowSize(window, &screen_w, &screen_h);
+	if (screen_w <= 0 || screen_h <= 0) {
+		LOG_error("HW render: invalid window size %dx%d", screen_w, screen_h);
+		return;
+	}
 	float src_aspect = (float)width / (float)height;
 	float dst_aspect = (float)screen_w / (float)screen_h;
 
@@ -892,6 +913,114 @@ void PlayerHWRender_bindFBO(void) {
 	LOG_debug("PlayerHWRender_bindFBO: binding FBO %u for core rendering", hw_state.fbo);
 	PlayerHWRender_makeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, hw_state.fbo);
+}
+
+void PlayerHWRender_presentSurface(SDL_Surface* surface) {
+	LOG_debug("presentSurface: enter");
+
+	if (!hw_state.enabled || !hw_state.context_ready) {
+		LOG_debug("presentSurface: not enabled, returning");
+		return;
+	}
+
+	if (!surface || !surface->pixels) {
+		LOG_error("HW render: NULL surface for presentSurface");
+		return;
+	}
+
+	LOG_debug("presentSurface: surface %dx%d", surface->w, surface->h);
+
+	SDL_Window* window = PLAT_getWindow();
+	if (!window) {
+		LOG_error("HW render: no window for surface presentation");
+		return;
+	}
+
+	LOG_debug("presentSurface: calling makeCurrent");
+	PlayerHWRender_makeCurrent();
+	LOG_debug("presentSurface: makeCurrent done");
+
+	// Bind backbuffer
+	LOG_debug("presentSurface: binding FBO 0");
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	LOG_debug("presentSurface: FBO 0 bound");
+
+	// Get screen dimensions
+	int screen_w = 0;
+	int screen_h = 0;
+	SDL_GetWindowSize(window, &screen_w, &screen_h);
+	LOG_debug("presentSurface: screen %dx%d", screen_w, screen_h);
+	if (screen_w <= 0 || screen_h <= 0) {
+		LOG_error("HW render: invalid window size %dx%d", screen_w, screen_h);
+		return;
+	}
+
+	// Create or resize UI texture if needed
+	unsigned int surf_w = (unsigned int)surface->w;
+	unsigned int surf_h = (unsigned int)surface->h;
+
+	if (!hw_state.ui_texture || hw_state.ui_texture_width != surf_w ||
+	    hw_state.ui_texture_height != surf_h) {
+		LOG_debug("presentSurface: creating UI texture %ux%u", surf_w, surf_h);
+
+		if (hw_state.ui_texture) {
+			glDeleteTextures(1, &hw_state.ui_texture);
+		}
+
+		glGenTextures(1, &hw_state.ui_texture);
+		glBindTexture(GL_TEXTURE_2D, hw_state.ui_texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, surf_w, surf_h, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5,
+		             NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		hw_state.ui_texture_width = surf_w;
+		hw_state.ui_texture_height = surf_h;
+
+		LOG_debug("presentSurface: UI texture created (id=%u)", hw_state.ui_texture);
+	}
+
+	LOG_debug("presentSurface: uploading pixels");
+	glBindTexture(GL_TEXTURE_2D, hw_state.ui_texture);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surf_w, surf_h, GL_RGB, GL_UNSIGNED_SHORT_5_6_5,
+	                surface->pixels);
+
+	LOG_debug("presentSurface: setting viewport and clearing");
+	glViewport(0, 0, screen_w, screen_h);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	LOG_debug("presentSurface: using shader program");
+	glUseProgram(hw_state.present_program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, hw_state.ui_texture);
+	glUniform1i(hw_state.loc_texture, 0);
+
+	float identity[16] = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, -1, -1, 0, 1};
+	glUniformMatrix4fv(hw_state.loc_mvp, 1, GL_FALSE, identity);
+
+	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
+	// Flip Y only (SDL surfaces are top-left origin, GL is bottom-left)
+	static const float texco[8] = {0, 1, 1, 1, 0, 0, 1, 0};
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glEnableVertexAttribArray(hw_state.loc_position);
+	glEnableVertexAttribArray(hw_state.loc_texcoord);
+	glVertexAttribPointer(hw_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, verts);
+	glVertexAttribPointer(hw_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, texco);
+
+	LOG_debug("presentSurface: drawing quad");
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisableVertexAttribArray(hw_state.loc_position);
+	glDisableVertexAttribArray(hw_state.loc_texcoord);
+
+	LOG_debug("presentSurface: swapping window");
+	SDL_GL_SwapWindow(window);
+	LOG_debug("presentSurface: done");
 }
 
 #endif /* HAS_OPENGLES */

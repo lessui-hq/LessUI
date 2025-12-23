@@ -110,8 +110,11 @@ static void run_main_loop(void) {
 		}
 
 		// Always present for vsync timing - when !should_run_core, re-presents previous frame
-		GFX_present(&renderer);
-		frame_ready_for_flip = 0;
+		// Skip for HW rendering - frame already presented via PlayerHWRender_present()
+		if (!PlayerHWRender_isEnabled()) {
+			GFX_present(&renderer);
+			frame_ready_for_flip = 0;
+		}
 
 		// Track performance (only once per vsync, not per FF run)
 		limitFF();

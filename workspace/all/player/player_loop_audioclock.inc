@@ -86,16 +86,19 @@ static void run_main_loop(void) {
 		// Present frame
 		// During FF: throttle vsync to avoid blocking (limitFF controls speed instead)
 		// Normal: present every frame (may or may not wait for vsync depending on platform)
-		if (fast_forward) {
-			uint32_t now = SDL_GetTicks();
-			if (now - last_ff_flip >= 30) { // Visual update every 30ms
+		// Skip for HW rendering - frame already presented via PlayerHWRender_present()
+		if (!PlayerHWRender_isEnabled()) {
+			if (fast_forward) {
+				uint32_t now = SDL_GetTicks();
+				if (now - last_ff_flip >= 30) { // Visual update every 30ms
+					GFX_present(&renderer);
+					frame_ready_for_flip = 0;
+					last_ff_flip = now;
+				}
+			} else {
 				GFX_present(&renderer);
 				frame_ready_for_flip = 0;
-				last_ff_flip = now;
 			}
-		} else {
-			GFX_present(&renderer);
-			frame_ready_for_flip = 0;
 		}
 
 		limitFF();
