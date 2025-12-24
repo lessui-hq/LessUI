@@ -42,7 +42,7 @@ typedef void (*retro_proc_address_t)(void);
 // Pixel formats (compatible with libretro)
 #define GL_VIDEO_PIXEL_FORMAT_0RGB1555 0
 #define GL_VIDEO_PIXEL_FORMAT_XRGB8888 1
-#define GL_VIDEO_PIXEL_FORMAT_RGB565   2
+#define GL_VIDEO_PIXEL_FORMAT_RGB565 2
 
 ///////////////////////////////
 // Initialization / Shutdown

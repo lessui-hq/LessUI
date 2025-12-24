@@ -200,12 +200,13 @@ All 4 scaling modes from SDL2 software rendering are supported:
 3. Declared GL function pointers as static variables
 4. `loadGLFunctions()` loads all via `SDL_GL_GetProcAddress()` at init
 
-**Functions Loaded (30+):**
+**Functions Loaded (35+):**
 
 - FBO: `glGenFramebuffers`, `glBindFramebuffer`, `glCheckFramebufferStatus`, etc.
 - Textures: `glGenTextures`, `glBindTexture`, `glTexImage2D`, etc.
 - Shaders: `glCreateShader`, `glCompileShader`, `glLinkProgram`, etc.
 - Rendering: `glDrawArrays`, `glViewport`, `glClear`, etc.
+- State Query: `glGetIntegerv`, `glIsEnabled` (for state save/restore)
 
 **Why This Works:**
 
@@ -258,6 +259,33 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - Uploads SDL surface to GL texture and renders via shader
 - Avoids SDL_Renderer/GL context conflicts that caused crashes
 - Black background for HW cores (game screenshot requires GL readback)
+
+### OpenGL ES Expert Review (2025-12-23)
+
+**Critical Fixes Applied:**
+
+1. ✅ **Blank Screen Fix**: Changed guard checks in `presentSurface()`, `swapBuffers()`, and `renderHUD()` from `!enabled` to `!context_ready`. The `enabled` flag means "HW core active", not "GL ready" - software mode has `enabled=false` but `context_ready=true`.
+
+2. ✅ **GL State Save/Restore**: Added comprehensive state save/restore in `drawFrame()` when HW core is active. Saves/restores: program, texture binding, active texture, viewport, blend enable, depth test enable. Prevents state corruption between core rendering and frontend presentation.
+
+3. ✅ **Shutdown Resource Leak**: Fixed `GLVideo_shutdown()` to check `context_ready` instead of `enabled`, so software-only GL contexts are properly cleaned up.
+
+4. ✅ **Shader Precision Qualifier**: Added `precision highp float;` to vertex shader for Mali GPU compatibility (some older Mali drivers require explicit precision).
+
+**Robustness Improvements:**
+
+5. ✅ **FBO Validation**: Added check in `GLVideo_bindFBO()` that FBO handle is non-zero before binding.
+
+6. ✅ **Shader Attribute Validation**: Added validation that `a_position` and `a_texcoord` locations are >= 0 after shader linking, with proper cleanup on failure.
+
+7. ✅ **Division by Zero Guard**: Added validation in `GLVideo_drawFrame()` that texture dimensions are non-zero.
+
+8. ✅ **Version Probe Context Restore**: Fixed `GLVideo_isVersionSupported()` to save and restore the current GL context after probing.
+
+**New GL Functions Loaded:**
+
+- `glGetIntegerv` - Query GL state (program, texture, viewport)
+- `glIsEnabled` - Query GL capability state (blend, depth test)
 
 ## Testing Results
 
@@ -376,6 +404,8 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ Proper `context_reset` timing (after `retro_load_game` per libretro spec)
 - ✅ GL error handling (drain after context_reset, reduce log spam)
 - ✅ All 12 `retro_hw_render_callback` fields properly handled
+- ✅ GL state save/restore (prevents state corruption with HW cores)
+- ✅ Proper resource cleanup in both HW and SW modes
 
 ### Platform/Core Compatibility
 

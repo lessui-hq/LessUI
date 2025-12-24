@@ -9,8 +9,8 @@
 
 #if HAS_OPENGLES
 
-#include "libretro.h"
 #include "api.h"
+#include "libretro.h"
 #include "log.h"
 #include "scaler.h" // For scaling constants/types if needed
 #include <SDL.h>
@@ -138,6 +138,10 @@ typedef unsigned int GLbitfield;
 #define GL_SRC_ALPHA 0x0302
 #define GL_NO_ERROR 0
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
+#define GL_CURRENT_PROGRAM 0x8B8D
+#define GL_VIEWPORT 0x0BA2
+#define GL_TEXTURE_BINDING_2D 0x8069
+#define GL_ACTIVE_TEXTURE_BINDING 0x84E0
 
 // GL function pointers (loaded via SDL_GL_GetProcAddress)
 static void (*glGenFramebuffers)(GLsizei, GLuint*);
@@ -190,6 +194,8 @@ static void (*glColorMask)(GLboolean, GLboolean, GLboolean, GLboolean);
 static void (*glBindBuffer)(GLenum, GLuint);
 static GLenum (*glGetError)(void);
 static void (*glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
+static void (*glGetIntegerv)(GLenum, GLint*);
+static GLboolean (*glIsEnabled)(GLenum);
 
 ///////////////////////////////
 // Module State
@@ -213,7 +219,7 @@ static bool loadGLFunctions(void) {
 		}                                                                                          \
 	} while (0)
 
-	    LOAD_GL_FUNC(glGenFramebuffers);
+	LOAD_GL_FUNC(glGenFramebuffers);
 	LOAD_GL_FUNC(glBindFramebuffer);
 	LOAD_GL_FUNC(glGenTextures);
 	LOAD_GL_FUNC(glBindTexture);
@@ -261,6 +267,8 @@ static bool loadGLFunctions(void) {
 	LOAD_GL_FUNC(glBindBuffer);
 	LOAD_GL_FUNC(glGetError);
 	LOAD_GL_FUNC(glReadPixels);
+	LOAD_GL_FUNC(glGetIntegerv);
+	LOAD_GL_FUNC(glIsEnabled);
 
 #undef LOAD_GL_FUNC
 
@@ -274,7 +282,9 @@ static bool loadGLFunctions(void) {
 
 // Vertex shader: MVP matrix transforms vertices, texcoords passed through
 // Following RetroArch's stock shader pattern for simplicity and correctness
+// Note: explicit precision required for Mali GPU compatibility
 static const char* vertex_shader_src = "#version 100\n"
+                                       "precision highp float;\n"
                                        "attribute vec2 a_position;\n"
                                        "attribute vec2 a_texcoord;\n"
                                        "uniform mat4 u_mvp;\n"
@@ -860,6 +870,18 @@ bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
 	LOG_debug("GLVideo_init: shader locations cached (mvp=%d, tex=%d, pos=%d, tc=%d)",
 	          gl_state.loc_mvp, gl_state.loc_texture, gl_state.loc_position, gl_state.loc_texcoord);
 
+	// Validate attribute locations (uniforms can be -1 if unused, but attributes are required)
+	if (gl_state.loc_position < 0 || gl_state.loc_texcoord < 0) {
+		LOG_error("GL video: failed to get shader attribute locations (pos=%d, tc=%d)",
+		          gl_state.loc_position, gl_state.loc_texcoord);
+		glDeleteProgram(gl_state.present_program);
+		gl_state.present_program = 0;
+		destroyFBO();
+		SDL_GL_DeleteContext(gl_state.gl_context);
+		gl_state.gl_context = NULL;
+		return false;
+	}
+
 	// Provide our callbacks to the core
 	LOG_debug("GLVideo_init: setting up core callbacks");
 	callback->get_current_framebuffer = GLVideo_getCurrentFramebuffer;
@@ -896,8 +918,8 @@ bool GLVideo_initSoftware(void) {
 
 	// Create GLES 2.0 context
 	unsigned actual_major = 0, actual_minor = 0;
-	gl_state.gl_context = createGLContextWithFallback(window, 2, 0, false, &actual_major,
-	                                                  &actual_minor);
+	gl_state.gl_context =
+	    createGLContextWithFallback(window, 2, 0, false, &actual_major, &actual_minor);
 
 	if (!gl_state.gl_context) {
 		LOG_error("GL video: failed to create GL context");
@@ -935,6 +957,17 @@ bool GLVideo_initSoftware(void) {
 	gl_state.loc_position = glGetAttribLocation(gl_state.present_program, "a_position");
 	gl_state.loc_texcoord = glGetAttribLocation(gl_state.present_program, "a_texcoord");
 
+	// Validate attribute locations (uniforms can be -1 if unused, but attributes are required)
+	if (gl_state.loc_position < 0 || gl_state.loc_texcoord < 0) {
+		LOG_error("GL video: failed to get shader attribute locations (pos=%d, tc=%d)",
+		          gl_state.loc_position, gl_state.loc_texcoord);
+		glDeleteProgram(gl_state.present_program);
+		gl_state.present_program = 0;
+		SDL_GL_DeleteContext(gl_state.gl_context);
+		gl_state.gl_context = NULL;
+		return false;
+	}
+
 	gl_state.context_ready = true;
 	gl_state.enabled = false; // Not HW rendering
 
@@ -943,14 +976,15 @@ bool GLVideo_initSoftware(void) {
 }
 
 void GLVideo_shutdown(void) {
-	if (!gl_state.enabled) {
+	// Check context_ready (not enabled) to also cleanup software-only mode
+	if (!gl_state.context_ready) {
 		return;
 	}
 
-	LOG_info("GL video: shutting down");
+	LOG_info("GL video: shutting down (enabled=%d)", gl_state.enabled);
 
-	// Call core's context_destroy if provided
-	if (gl_state.hw_callback.context_destroy) {
+	// Call core's context_destroy if HW rendering was enabled
+	if (gl_state.enabled && gl_state.hw_callback.context_destroy) {
 		LOG_debug("GL video: calling core context_destroy");
 		gl_state.hw_callback.context_destroy();
 	}
@@ -964,8 +998,10 @@ void GLVideo_shutdown(void) {
 		memset(gl_state.sw_textures, 0, sizeof(gl_state.sw_textures));
 	}
 
-	// Destroy FBO resources
-	destroyFBO();
+	// Destroy FBO resources (only exist if enabled)
+	if (gl_state.enabled) {
+		destroyFBO();
+	}
 
 	// Destroy GL context
 	if (gl_state.gl_context) {
@@ -1018,20 +1054,30 @@ bool GLVideo_isVersionSupported(unsigned major, unsigned minor) {
 		return false;
 	}
 
+	// Save current context so we can restore it after probing
+	SDL_GLContext current_ctx = SDL_GL_GetCurrentContext();
+
 	// Try to create a context with the requested version
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, (int)major);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, (int)minor);
 
 	SDL_GLContext probe_ctx = SDL_GL_CreateContext(window);
+	bool supported = (probe_ctx != NULL);
+
 	if (probe_ctx) {
 		SDL_GL_DeleteContext(probe_ctx);
 		LOG_debug("GL video: GLES %u.%u is supported", major, minor);
-		return true;
+	} else {
+		LOG_debug("GL video: GLES %u.%u not supported: %s", major, minor, SDL_GetError());
 	}
 
-	LOG_debug("GL video: GLES %u.%u not supported: %s", major, minor, SDL_GetError());
-	return false;
+	// Restore previous context if there was one
+	if (current_ctx) {
+		SDL_GL_MakeCurrent(window, current_ctx);
+	}
+
+	return supported;
 }
 
 void GLVideo_getContextVersion(unsigned* major, unsigned* minor) {
@@ -1076,21 +1122,38 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 		return;
 	}
 
+	// Validate texture dimensions to prevent division by zero
+	if (tex_w == 0 || tex_h == 0) {
+		LOG_error("GL video: invalid texture dimensions %ux%u", tex_w, tex_h);
+		return;
+	}
+
 	GLVideo_makeCurrent();
 
-	// Clear entire screen first (glClear only affects current viewport)
-	// Only if we are not covering the whole screen?
-	// Actually, clearing is good practice to avoid garbage.
-	// But if we call this multiple times (overlays?), we shouldn't clear.
-	// `GLVideo_present` clears. `SDL2_present` clears (SDL_RenderClear).
-	// So `drawFrame` should probably NOT clear, or take a flag.
-	// Or the caller clears.
-	// `GLVideo_present` clears.
-	// `SDL2_present` clears.
-	// So `drawFrame` should just DRAW.
+	// Save GL state that we modify (required for HW cores that maintain their own state)
+	GLint saved_program = 0;
+	GLint saved_texture = 0;
+	GLint saved_active_texture = 0;
+	GLint saved_viewport[4] = {0};
+	GLboolean saved_blend = GL_FALSE;
+	GLboolean saved_depth_test = GL_FALSE;
+
+	if (gl_state.enabled) {
+		// Only save/restore when HW core is active (they maintain GL state between frames)
+		glGetIntegerv(GL_CURRENT_PROGRAM, &saved_program);
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture);
+		glGetIntegerv(GL_ACTIVE_TEXTURE_BINDING, &saved_active_texture);
+		glGetIntegerv(GL_VIEWPORT, saved_viewport);
+		saved_blend = glIsEnabled(GL_BLEND);
+		saved_depth_test = glIsEnabled(GL_DEPTH_TEST);
+	}
 
 	// Set viewport
 	glViewport(dst_rect->x, dst_rect->y, dst_rect->w, dst_rect->h);
+
+	// Disable depth test and blend for our 2D blit
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 
 	// Use shader
 	glUseProgram(gl_state.present_program);
@@ -1152,6 +1215,18 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 
 	glDisableVertexAttribArray(gl_state.loc_position);
 	glDisableVertexAttribArray(gl_state.loc_texcoord);
+
+	// Restore GL state for HW cores
+	if (gl_state.enabled) {
+		glUseProgram((GLuint)saved_program);
+		glActiveTexture((GLenum)saved_active_texture);
+		glBindTexture(GL_TEXTURE_2D, (GLuint)saved_texture);
+		glViewport(saved_viewport[0], saved_viewport[1], saved_viewport[2], saved_viewport[3]);
+		if (saved_blend)
+			glEnable(GL_BLEND);
+		if (saved_depth_test)
+			glEnable(GL_DEPTH_TEST);
+	}
 }
 
 void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
@@ -1374,6 +1449,12 @@ void GLVideo_bindFBO(void) {
 		return;
 	}
 
+	// Validate FBO handle before binding
+	if (gl_state.fbo == 0) {
+		LOG_error("GL video: bindFBO called but FBO is 0 (not created)");
+		return;
+	}
+
 	LOG_debug("GL video: bindFBO called, binding FBO %u (%ux%u)", gl_state.fbo, gl_state.fbo_width,
 	          gl_state.fbo_height);
 
@@ -1478,8 +1559,8 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
 void GLVideo_presentSurface(SDL_Surface* surface) {
 	LOG_debug("presentSurface: enter");
 
-	if (!gl_state.enabled || !gl_state.context_ready) {
-		LOG_debug("presentSurface: not enabled, returning");
+	if (!gl_state.context_ready) {
+		LOG_debug("presentSurface: context not ready, returning");
 		return;
 	}
 
@@ -1582,7 +1663,7 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 }
 
 void GLVideo_swapBuffers(void) {
-	if (!gl_state.enabled || !gl_state.context_ready) {
+	if (!gl_state.context_ready) {
 		return;
 	}
 
@@ -1595,7 +1676,7 @@ void GLVideo_swapBuffers(void) {
 }
 
 void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w, int screen_h) {
-	if (!gl_state.enabled || !gl_state.context_ready) {
+	if (!gl_state.context_ready) {
 		return;
 	}
 
