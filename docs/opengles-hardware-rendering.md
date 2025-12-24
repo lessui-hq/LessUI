@@ -181,13 +181,13 @@ All 4 scaling modes from SDL2 software rendering are supported:
 
 **Sharpness Filtering**:
 
-| Mode      | SDL2 Software Path                         | HW Rendering (OpenGL) Path   |
-| --------- | ------------------------------------------ | ---------------------------- |
-| **Sharp** | Nearest-neighbor only                      | `GL_NEAREST` (pixel-perfect) |
-| **Crisp** | 2-pass: 4x NN upscale → bilinear downscale | `GL_LINEAR` (smooth)         |
-| **Soft**  | Bilinear only                              | `GL_LINEAR` (smooth)         |
+| Mode      | SDL2 Software Path                         | HW Rendering (OpenGL) Path            |
+| --------- | ------------------------------------------ | ------------------------------------- |
+| **Sharp** | Nearest-neighbor only                      | `GL_NEAREST` (pixel-perfect)          |
+| **Crisp** | 2-pass: 4x NN upscale → bilinear downscale | 2-pass: 4x `GL_NEAREST` → `GL_LINEAR` |
+| **Soft**  | Bilinear only                              | `GL_LINEAR` (smooth)                  |
 
-**Note on CRISP mode**: The SDL2 path uses a hardcoded 4x intermediate upscale for sources smaller than the device resolution, then bilinear downscale to final size. This 2-pass approach produces sharper results than pure bilinear. The HW rendering path uses single-pass `GL_LINEAR` for CRISP mode (same as SOFT) to avoid the complexity of an intermediate FBO. This is a reasonable trade-off for GPU-accelerated cores which typically render at higher resolutions anyway.
+**CRISP mode implementation**: Both SDL2 and GL paths now use identical 2-pass rendering for sources smaller than the device resolution. The GL path creates an intermediate FBO at 4x source resolution, renders with `GL_NEAREST` for sharp pixel upscaling, then samples with `GL_LINEAR` for smooth downscaling to final size. This produces the same crisp-but-smooth result as the SDL2 path.
 
 ## GL Function Loading
 
@@ -420,6 +420,9 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ All 12 `retro_hw_render_callback` fields properly handled
 - ✅ GL state save/restore (prevents state corruption with HW cores)
 - ✅ Proper resource cleanup in both HW and SW modes
+- ✅ Rotation support (0°/90°/180°/270° via MVP matrix)
+- ✅ Unified video backend (`gl_video.*` in common/, zero `#if HAS_OPENGLES` in player.c)
+- ✅ 2-pass CRISP sharpening (intermediate FBO with GL_NEAREST upscale → GL_LINEAR downscale)
 
 ### Platform/Core Compatibility
 
@@ -434,10 +437,9 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ⚠️ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
 - ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping issue, not GL-related)
 
-### Not Yet Implemented
+### All Core Features Implemented
 
-- ⏳ Rotation support (0°/90°/180°/270°) - rotation parameter accepted but not applied
-- ⏳ 2-pass CRISP sharpness (intermediate FBO) - currently uses GL_LINEAR
+All planned features for OpenGL ES hardware rendering are now implemented.
 
 ### Implementation Approach
 
@@ -452,25 +454,18 @@ Simple and direct:
 
 ### High Priority
 
-1. **Refactor HW Render Integration**
-   - Current implementation feels "bolted on" to existing SDL code
-   - Integrate more naturally with platform abstraction layer
-   - Move GL context management into render_sdl2.c alongside SDL_Renderer
-   - Clean separation between software and hardware rendering paths
-   - Consider: unified video backend that handles both software and HW cores
-   - Improve code organization and reduce coupling
-   - Reduce `#if HAS_OPENGLES` scattered throughout player.c
+1. ~~**Refactor HW Render Integration**~~ ✅ **DONE**
+   - Moved from `player_hwrender.*` to `workspace/all/common/gl_video.*`
+   - Renamed functions from `PlayerHWRender_*` to `GLVideo_*`
+   - Zero `#if HAS_OPENGLES` in player.c (stub implementations in header)
+   - Clean separation between HW and SW paths
+   - Unified video backend for both software and HW cores
 
-2. **Compare Integration with RetroArch**
-   - Deep comparison of GL context setup, timing, and state management
-   - Verify we match RetroArch's implementation exactly for:
-     - Environment callback handling (SET_HW_RENDER timing)
-     - Context creation attributes and flags
-     - FBO setup and lifecycle
-     - Frame presentation and buffer swapping
-     - GL state management between core and frontend
-   - Document any differences and determine if they explain core crashes
-   - Goal: Bulletproof implementation that matches proven RetroArch behavior
+2. ~~**Compare Integration with RetroArch**~~ ✅ **DONE**
+   - Verified context setup, timing, and state management matches RetroArch
+   - Proper `context_reset` timing (after `retro_load_game` per libretro spec)
+   - GL state save/restore for HW cores
+   - FBO lifecycle and buffer swapping validated
 
 3. **Debug PPSSPP and Mupen64Plus Crashes**
    - PPSSPP crashes during `context_reset` after logging GPU info (tg5040)
@@ -481,13 +476,13 @@ Simple and direct:
 
 ### Medium Priority
 
-4. **Rotation Support**
-   - Add MVP matrix rotation for 0°/90°/180°/270°
-   - Swap viewport dimensions for 90°/270° to maintain aspect ratio
-   - Test with games that use portrait orientation
+4. ~~**Rotation Support**~~ ✅ **DONE**
+   - MVP matrix rotation implemented via `matrix_rotate_z()` and `build_mvp_matrix()`
+   - Supports 0°/90°/180°/270° rotation
+   - Rotation parameter flows through `GLVideo_present()` → `GLVideo_drawFrame()`
 
 5. **Remove Debug Logging**
-   - Clean up LOG_debug calls added for troubleshooting
+   - Clean up LOG_debug calls added for troubleshooting (~62 in gl_video.c)
    - Keep only essential INFO-level logs
 
 6. **Performance Optimization**
@@ -496,7 +491,7 @@ Simple and direct:
 
 ### Low Priority
 
-9. ~~**GLES 3.0 Support**~~ ✅ **DONE**
+8. ~~**GLES 3.0 Support**~~ ✅ **DONE**
    - Now supports GLES 2.0, 3.0, 3.1, and 3.2
    - Automatic version negotiation with fallback to lower versions
    - Context type mapping follows RetroArch pattern:
@@ -504,29 +499,16 @@ Simple and direct:
      - `RETRO_HW_CONTEXT_OPENGLES3` → GLES 3.0
      - `RETRO_HW_CONTEXT_OPENGLES_VERSION` → uses version_major.version_minor
 
-10. **Shared Context Support** (optional)
-    - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
-    - Only if cores request it
-
-### Debug Logging Added
-
-Comprehensive logging at each step:
-
-- `RETRO_ENVIRONMENT_SET_HW_RENDER` entry
-- GL context creation steps
-- FBO creation with IDs
-- Shader compilation status
-- Function pointer loading
-- Frame presentation details
-- Viewport calculations
-- Texture coordinate scaling
+9. **Shared Context Support** (optional)
+   - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
+   - Only if cores request it
 
 ## Files Created/Modified
 
 ### New Files
 
-- `workspace/all/player/player_hwrender.h` - Module API and types
-- `workspace/all/player/player_hwrender.c` - Complete implementation
+- `workspace/all/common/gl_video.h` - Unified GL video backend API (includes stubs for non-GLES platforms)
+- `workspace/all/common/gl_video.c` - Complete implementation (~1900 lines)
 
 ### Modified Files
 
@@ -688,175 +670,45 @@ Segmentation fault
 
 **Fix:** Rebuild PPSSPP core without X11/desktop dependencies. Use RetroArch's buildbot ARM builds or compile with proper cross-toolchain.
 
-## Unified GL Rendering Pipeline (Planned Refactor)
+## Unified GL Rendering Pipeline ✅ IMPLEMENTED
 
-### Why Unify?
+The unified GL rendering pipeline has been implemented in `workspace/all/common/gl_video.{c,h}`.
 
-The current architecture has **two separate rendering paths**:
+### Architecture
 
-- **Software cores**: SDL Surface → SDL_Renderer → Screen
-- **HW cores**: GL FBO → GL present → Screen
-
-This "bolted-on" approach has limitations:
-
-1. Cannot apply shaders to software-rendered cores
-2. Code duplication between paths (scaling, filtering, etc.)
-3. Platform abstraction leaks (SDL vs GL rendering modes)
-4. Difficult to add features uniformly (effects, overlays, etc.)
-
-### Target Architecture
-
-**ALL cores render through a unified GL pipeline:**
+**ALL cores render through a unified GL pipeline on GLES platforms:**
 
 ```
-Software Core → upload to GL Texture ─┐
-                                      ├→ Unified GL Presentation → Screen
-Hardware Core → already GL Texture ───┘
+Software Core → GLVideo_uploadFrame() → GL Texture ─┐
+                                                    ├→ GLVideo_present() → Screen
+Hardware Core → renders to FBO → GL Texture ────────┘
 ```
 
-This enables:
+**Key Features:**
 
-- Shader support for all cores (see docs/shader-pipeline.md)
-- Single code path for scaling, filtering, rotation
-- Cleaner platform abstraction
-- Easier to maintain and extend
-
-### Implementation Approach
-
-Based on RetroArch and NextUI research (see docs/shader-pipeline.md for details):
-
-#### 1. Unified Video Backend
-
-```c
-// New: workspace/all/common/gl_video.h
-typedef struct GLVideoState {
-    // GL Context (managed separately from SDL_Renderer)
-    SDL_GLContext gl_context;
-    SDL_Window* window;
-    bool initialized;
-
-    // Frame textures for software cores (triple-buffered)
-    GLuint sw_texture[3];
-    unsigned sw_tex_index;
-    unsigned sw_width, sw_height;
-
-    // HW core FBO (created when core requests RETRO_ENVIRONMENT_SET_HW_RENDER)
-    GLuint hw_fbo;
-    GLuint hw_fbo_texture;
-    GLuint hw_fbo_depth;
-    unsigned hw_width, hw_height;
-    bool hw_active;
-
-    // Simple presentation shader (blit texture to screen)
-    GLuint present_program;
-    GLint present_mvp, present_texture;
-} GLVideoState;
-```
-
-#### 2. Frame Upload for Software Cores
-
-```c
-// Called from video_refresh_callback() for software cores
-void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size_t pitch) {
-    // Select next texture in triple-buffer
-    unsigned tex_idx = state.sw_tex_index;
-    glBindTexture(GL_TEXTURE_2D, state.sw_texture[tex_idx]);
-
-    // Upload frame data to GPU
-    // Note: GLES2 lacks GL_UNPACK_ROW_LENGTH, may need row-by-row copy
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
-                    GL_RGB, GL_UNSIGNED_SHORT_5_6_5, data);
-
-    state.sw_width = width;
-    state.sw_height = height;
-    state.sw_tex_index = (tex_idx + 1) % 3;
-}
-```
-
-#### 3. Unified Presentation
-
-```c
-void GLVideo_present(void) {
-    // Determine input texture (SW or HW)
-    GLuint input_texture;
-    unsigned width, height;
-
-    if (state.hw_active) {
-        input_texture = state.hw_fbo_texture;
-        width = state.hw_width;
-        height = state.hw_height;
-    } else {
-        input_texture = state.sw_texture[state.sw_tex_index];
-        width = state.sw_width;
-        height = state.sw_height;
-    }
-
-    // Bind backbuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // Use presentation shader (simple blit with aspect/scaling)
-    glUseProgram(state.present_program);
-    glBindTexture(GL_TEXTURE_2D, input_texture);
-
-    // Calculate viewport for aspect-correct display
-    calculateViewport(width, height, scaling_mode, &vp_x, &vp_y, &vp_w, &vp_h);
-    glViewport(vp_x, vp_y, vp_w, vp_h);
-
-    // Draw fullscreen quad
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-    SDL_GL_SwapWindow(state.window);
-}
-```
-
-### Migration Strategy
-
-**Step 1: Extract current HW rendering to gl_video module**
-
-- Move `player_hwrender.{c,h}` → `workspace/all/common/gl_video.{c,h}`
-- Rename functions: `PlayerHWRender_*` → `GLVideo_*`
-- Keep HW-only functionality initially (no SW upload yet)
-
-**Step 2: Add software frame upload**
-
-- Implement `GLVideo_uploadFrame()` for SW cores
-- Triple-buffer SW textures for smooth rendering
-- Handle GLES2 pitch limitations (no GL_UNPACK_ROW_LENGTH)
-
-**Step 3: Unified presentation**
-
-- Single `GLVideo_present()` function handles both SW and HW
-- Remove SDL_Renderer dependency on GLES platforms
-- Simple passthrough shader (stock.glsl) for initial version
-
-**Step 4: Platform integration**
-
-- Update `render_sdl2.c` to use GLVideo on HAS_OPENGLES platforms
-- Update `player.c` video_refresh_callback to use GLVideo
-- Remove conditional `#if HAS_OPENGLES` scattered throughout
+- Single `gl_video` module handles both HW and SW cores
+- Triple-buffered textures for software cores (`sw_textures[3]`)
+- Shared presentation shader for all frame types
+- Zero `#if HAS_OPENGLES` in player.c (stub implementations in header)
+- Row-by-row upload for GLES2 pitch handling (no `GL_UNPACK_ROW_LENGTH`)
 
 ### File Structure
 
 ```
 workspace/all/common/
-├── gl_video.h          # Unified GL video interface
-├── gl_video.c          # Core implementation
-└── gl_video_upload.c   # SW frame upload (GLES2 row-copy handling)
-
-workspace/all/player/
-└── (player_hwrender.* moved to gl_video.*)
+├── gl_video.h          # Unified API + stubs for non-GLES platforms
+└── gl_video.c          # Complete implementation (~1900 lines)
 ```
 
-**Note**: Shader pipeline will be added later (see docs/shader-pipeline.md)
+**Note**: Shader pipeline for effects/filters to be added later (see docs/shader-pipeline.md)
 
 ## Future Enhancements
 
-**After Unified GL Refactor:**
+**Potential improvements:**
 
-- Shader pipeline (see docs/shader-pipeline.md)
+- Shader pipeline for visual effects (see docs/shader-pipeline.md)
 - Shared context support (`RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`)
-- Configurable FBO size (currently hardcoded 1024×1024)
+- Configurable FBO size (currently uses core's max_width/max_height)
 - Performance profiling and optimization
 
 **Out of Scope:**

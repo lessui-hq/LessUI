@@ -86,6 +86,12 @@ typedef struct GLVideoState {
 	unsigned int sw_disp_index; // Index to display
 	unsigned int sw_width;
 	unsigned int sw_height;
+
+	// CRISP sharpening resources (intermediate FBO for 2-pass upscale)
+	unsigned int crisp_fbo;
+	unsigned int crisp_texture;
+	unsigned int crisp_width;
+	unsigned int crisp_height;
 } GLVideoState;
 
 // OpenGL ES 2.0 types and constants (minimal subset needed)
@@ -124,6 +130,7 @@ typedef unsigned int GLbitfield;
 #define GL_DEPTH_COMPONENT16 0x81A5
 #define GL_DEPTH24_STENCIL8_OES 0x88F0
 #define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_FRAMEBUFFER_BINDING 0x8CA6
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_TRIANGLE_STRIP 0x0005
 #define GL_VERTEX_SHADER 0x8B31
@@ -481,7 +488,7 @@ static GLuint createShaderProgram(void) {
 }
 
 /**
- * Destroy presentation resources (shader program and UI texture).
+ * Destroy presentation resources (shader program, UI texture, crisp FBO).
  */
 static void destroyPresentResources(void) {
 	if (gl_state.present_program) {
@@ -500,6 +507,17 @@ static void destroyPresentResources(void) {
 		gl_state.hud_texture_width = 0;
 		gl_state.hud_texture_height = 0;
 	}
+	// Clean up CRISP sharpening FBO
+	if (gl_state.crisp_texture) {
+		glDeleteTextures(1, &gl_state.crisp_texture);
+		gl_state.crisp_texture = 0;
+	}
+	if (gl_state.crisp_fbo) {
+		glDeleteFramebuffers(1, &gl_state.crisp_fbo);
+		gl_state.crisp_fbo = 0;
+	}
+	gl_state.crisp_width = 0;
+	gl_state.crisp_height = 0;
 }
 
 /**
@@ -598,6 +616,106 @@ static void destroyFBO(void) {
 	}
 }
 
+/**
+ * Destroy CRISP sharpening intermediate FBO.
+ */
+static void destroyCrispFBO(void) {
+	if (gl_state.crisp_texture) {
+		glDeleteTextures(1, &gl_state.crisp_texture);
+		gl_state.crisp_texture = 0;
+	}
+
+	if (gl_state.crisp_fbo) {
+		glDeleteFramebuffers(1, &gl_state.crisp_fbo);
+		gl_state.crisp_fbo = 0;
+	}
+
+	gl_state.crisp_width = 0;
+	gl_state.crisp_height = 0;
+}
+
+/**
+ * Create or resize CRISP sharpening intermediate FBO.
+ *
+ * The intermediate FBO is used for 2-pass CRISP scaling:
+ * Pass 1: Source texture → Intermediate FBO (with GL_NEAREST for sharp upscale)
+ * Pass 2: Intermediate FBO → Screen (with GL_LINEAR for smooth downscale)
+ *
+ * @param width Target width (source width * hard_scale)
+ * @param height Target height (source height * hard_scale)
+ * @return true if FBO is ready (created or already correct size)
+ */
+static bool ensureCrispFBO(unsigned int width, unsigned int height) {
+	// Already correct size
+	if (gl_state.crisp_fbo && gl_state.crisp_width == width && gl_state.crisp_height == height) {
+		return true;
+	}
+
+	// Destroy old resources if dimensions changed
+	if (gl_state.crisp_fbo) {
+		LOG_debug("GL video: resizing crisp FBO %ux%u -> %ux%u", gl_state.crisp_width,
+		          gl_state.crisp_height, width, height);
+		destroyCrispFBO();
+	}
+
+	LOG_debug("GL video: creating crisp FBO %ux%u", width, height);
+
+	// Generate FBO
+	glGenFramebuffers(1, &gl_state.crisp_fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, gl_state.crisp_fbo);
+
+	// Create color texture attachment.
+	// Using RGB565 to match software frame format and minimize memory usage.
+	// Note: Some GLES drivers may not support RGB565 FBO attachments. If FBO
+	// completeness check fails on a device, consider switching to RGBA8888.
+	glGenTextures(1, &gl_state.crisp_texture);
+	glBindTexture(GL_TEXTURE_2D, gl_state.crisp_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, (GLsizei)width, (GLsizei)height, 0, GL_RGB,
+	             GL_UNSIGNED_SHORT_5_6_5, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+	                       gl_state.crisp_texture, 0);
+
+	// Check FBO completeness
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (status != GL_FRAMEBUFFER_COMPLETE) {
+		LOG_error("GL video: crisp FBO incomplete (status=0x%x)", status);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		destroyCrispFBO();
+		return false;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	gl_state.crisp_width = width;
+	gl_state.crisp_height = height;
+
+	LOG_info("GL video: crisp FBO created %ux%u", width, height);
+	return true;
+}
+
+/**
+ * Calculate hard_scale for CRISP sharpening.
+ *
+ * Returns the upscale factor for the intermediate FBO.
+ * If source is already >= screen size, returns 1 (no upscale needed).
+ * Otherwise returns 4 for crisp nearest-neighbor upscaling.
+ *
+ * @param src_w Source width
+ * @param src_h Source height
+ * @param screen_w Screen width
+ * @param screen_h Screen height
+ * @return Scale factor (1 or 4)
+ */
+static int calcHardScale(unsigned int src_w, unsigned int src_h, int screen_w, int screen_h) {
+	if ((int)src_w >= screen_w && (int)src_h >= screen_h) {
+		return 1;
+	}
+	return 4;
+}
 
 static const char* getContextTypeName(enum retro_hw_context_type type) {
 	switch (type) {
@@ -1133,45 +1251,15 @@ retro_proc_address_t GLVideo_getProcAddress(const char* sym) {
 // Frame Operations
 ///////////////////////////////
 
-void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
-                       const SDL_Rect* src_rect, const SDL_Rect* dst_rect, unsigned rotation,
-                       int sharpness, bool bottom_left_origin) {
-	if (!gl_state.gl_context) {
-		return;
-	}
-
-	// Validate texture dimensions to prevent division by zero
-	if (tex_w == 0 || tex_h == 0) {
-		LOG_error("GL video: invalid texture dimensions %ux%u", tex_w, tex_h);
-		return;
-	}
-
-	GLVideo_makeCurrent();
-
-	// Save GL state that we modify (required for HW cores that maintain their own state)
-	GLint saved_program = 0;
-	GLint saved_texture = 0;
-	GLint saved_active_texture = 0;
-	GLint saved_viewport[4] = {0};
-	GLboolean saved_blend = GL_FALSE;
-	GLboolean saved_depth_test = GL_FALSE;
-
-	if (gl_state.enabled) {
-		// Only save/restore when HW core is active (they maintain GL state between frames)
-		glGetIntegerv(GL_CURRENT_PROGRAM, &saved_program);
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture);
-		glGetIntegerv(GL_ACTIVE_TEXTURE_BINDING, &saved_active_texture);
-		glGetIntegerv(GL_VIEWPORT, saved_viewport);
-		saved_blend = glIsEnabled(GL_BLEND);
-		saved_depth_test = glIsEnabled(GL_DEPTH_TEST);
-	}
-
+/**
+ * Helper: Draw a single pass (texture to current framebuffer).
+ * Used by GLVideo_drawFrame for both single-pass and two-pass rendering.
+ */
+static void drawPass(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
+                     const SDL_Rect* src_rect, int vp_x, int vp_y, int vp_w, int vp_h,
+                     unsigned rotation, GLint filter, bool bottom_left_origin) {
 	// Set viewport
-	glViewport(dst_rect->x, dst_rect->y, dst_rect->w, dst_rect->h);
-
-	// Disable depth test and blend for our 2D blit
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
+	glViewport(vp_x, vp_y, vp_w, vp_h);
 
 	// Use shader
 	glUseProgram(gl_state.present_program);
@@ -1180,8 +1268,7 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture_id);
 
-	// Filter
-	GLint filter = (sharpness == 0) ? GL_NEAREST : GL_LINEAR;
+	// Set filter
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 
@@ -1233,6 +1320,115 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 
 	glDisableVertexAttribArray(gl_state.loc_position);
 	glDisableVertexAttribArray(gl_state.loc_texcoord);
+}
+
+void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
+                       const SDL_Rect* src_rect, const SDL_Rect* dst_rect, unsigned rotation,
+                       int sharpness, bool bottom_left_origin) {
+	if (!gl_state.gl_context) {
+		return;
+	}
+
+	// Validate texture dimensions to prevent division by zero
+	if (tex_w == 0 || tex_h == 0) {
+		LOG_error("GL video: invalid texture dimensions %ux%u", tex_w, tex_h);
+		return;
+	}
+
+	GLVideo_makeCurrent();
+
+	// Save GL state that we modify (required for HW cores that maintain their own state)
+	GLint saved_program = 0;
+	GLint saved_texture = 0;
+	GLint saved_active_texture = 0;
+	GLint saved_viewport[4] = {0};
+	GLboolean saved_blend = GL_FALSE;
+	GLboolean saved_depth_test = GL_FALSE;
+	GLint saved_fbo = 0;
+
+	if (gl_state.enabled) {
+		// Only save/restore when HW core is active (they maintain GL state between frames)
+		glGetIntegerv(GL_CURRENT_PROGRAM, &saved_program);
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture);
+		glGetIntegerv(GL_ACTIVE_TEXTURE_BINDING, &saved_active_texture);
+		glGetIntegerv(GL_VIEWPORT, saved_viewport);
+		saved_blend = glIsEnabled(GL_BLEND);
+		saved_depth_test = glIsEnabled(GL_DEPTH_TEST);
+	}
+
+	// Disable depth test and blend for our 2D blit
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
+	// Determine rendering mode based on sharpness
+	// 0 = SHARP (GL_NEAREST single pass)
+	// 1 = CRISP (2-pass: GL_NEAREST upscale to intermediate, GL_LINEAR to screen)
+	// 2 = SOFT (GL_LINEAR single pass)
+
+	bool use_crisp_2pass = false;
+	int hard_scale = 1;
+
+	if (sharpness == 1) {
+		// CRISP mode: check if 2-pass is beneficial
+		// Get screen dimensions for hard_scale calculation
+		SDL_Window* window = PLAT_getWindow();
+		if (window) {
+			int screen_w = 0, screen_h = 0;
+			SDL_GetWindowSize(window, &screen_w, &screen_h);
+			hard_scale = calcHardScale(src_rect->w, src_rect->h, screen_w, screen_h);
+
+			if (hard_scale > 1) {
+				// Source is smaller than screen - use 2-pass
+				unsigned int crisp_w = src_rect->w * hard_scale;
+				unsigned int crisp_h = src_rect->h * hard_scale;
+
+				if (ensureCrispFBO(crisp_w, crisp_h)) {
+					use_crisp_2pass = true;
+				}
+			}
+		}
+	}
+
+	if (use_crisp_2pass) {
+		// === CRISP 2-PASS RENDERING ===
+
+		// Save current FBO binding
+		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &saved_fbo);
+
+		// Pass 1: Source texture → Intermediate FBO with GL_NEAREST
+		glBindFramebuffer(GL_FRAMEBUFFER, gl_state.crisp_fbo);
+
+		// Source rect for pass 1 (sample from source texture)
+		// Destination is fullscreen in the intermediate FBO
+		drawPass(texture_id, tex_w, tex_h, src_rect, 0, 0, (int)gl_state.crisp_width,
+		         (int)gl_state.crisp_height, 0, // No rotation in pass 1
+		         GL_NEAREST, bottom_left_origin);
+
+		// Pass 2: Intermediate FBO → Screen with GL_LINEAR
+		glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)saved_fbo);
+
+		// For pass 2, sample the entire intermediate texture.
+		// The intermediate FBO texture uses OpenGL's bottom-left origin convention.
+		// Pass 1 already handled any Y-flip needed for the source texture, so the
+		// intermediate texture is now in GL-native orientation. We set bottom_left_origin=true
+		// to sample it correctly without any additional flip.
+		SDL_Rect crisp_src = {0, 0, (int)gl_state.crisp_width, (int)gl_state.crisp_height};
+
+		drawPass(gl_state.crisp_texture, gl_state.crisp_width, gl_state.crisp_height, &crisp_src,
+		         dst_rect->x, dst_rect->y, dst_rect->w, dst_rect->h, rotation, GL_LINEAR, true);
+
+	} else {
+		// === SINGLE-PASS RENDERING (SHARP or SOFT, or CRISP fallback) ===
+		GLint filter;
+		if (sharpness == 0) {
+			filter = GL_NEAREST; // SHARP
+		} else {
+			filter = GL_LINEAR; // SOFT (or CRISP fallback when hard_scale == 1)
+		}
+
+		drawPass(texture_id, tex_w, tex_h, src_rect, dst_rect->x, dst_rect->y, dst_rect->w,
+		         dst_rect->h, rotation, filter, bottom_left_origin);
+	}
 
 	// Restore GL state for HW cores
 	if (gl_state.enabled) {
