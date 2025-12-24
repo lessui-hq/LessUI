@@ -72,7 +72,7 @@
     },
     "rg35xxplus": {
       "description": "Anbernic RG35XX Plus / H / 2024 / SP / Cube / RG34XX",
-      "arch": "arm32",
+      "arch": "arm64",
       "sdcard_path": "/mnt/sdcard",
       "shutdown_cmd": "shutdown",
       "nice_prefix": ""
