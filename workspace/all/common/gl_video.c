@@ -1889,6 +1889,28 @@ void GLVideo_swapBuffers(void) {
 	SDL_GL_SwapWindow(window);
 }
 
+void GLVideo_clear(void) {
+	if (!gl_state.context_ready) {
+		return;
+	}
+
+	GLVideo_makeCurrent();
+
+	// Clear the entire screen (default framebuffer)
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// Get window size to set correct viewport for clear
+	SDL_Window* window = PLAT_getWindow();
+	if (window) {
+		int screen_w = 0, screen_h = 0;
+		SDL_GetWindowSize(window, &screen_w, &screen_h);
+		glViewport(0, 0, screen_w, screen_h);
+	}
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+}
+
 void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w, int screen_h) {
 	if (!gl_state.context_ready) {
 		return;

@@ -282,6 +282,13 @@ void GLVideo_presentSurface(SDL_Surface* surface);
 void GLVideo_swapBuffers(void);
 
 /**
+ * Clear the screen to black.
+ *
+ * Used by software rendering path to ensure backbuffer is clean before drawing.
+ */
+void GLVideo_clear(void);
+
+/**
  * Render HUD overlay on top of the current frame.
  *
  * Uploads RGBA pixel data to a texture and renders it over the game frame
@@ -427,6 +434,8 @@ static inline void GLVideo_presentSurface(SDL_Surface* surface) {
 }
 
 static inline void GLVideo_swapBuffers(void) {}
+
+static inline void GLVideo_clear(void) {}
 
 static inline void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w,
                                      int screen_h) {
