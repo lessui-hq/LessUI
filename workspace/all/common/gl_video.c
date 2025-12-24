@@ -1325,7 +1325,7 @@ static void drawPass(unsigned int texture_id, unsigned int tex_w, unsigned int t
 void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int tex_h,
                        const SDL_Rect* src_rect, const SDL_Rect* dst_rect, unsigned rotation,
                        int sharpness, bool bottom_left_origin) {
-	if (!gl_state.gl_context) {
+	if (!gl_state.gl_context || gl_state.shutdown_prepared) {
 		return;
 	}
 
@@ -1457,8 +1457,8 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 	LOG_debug("GL video: present called (%ux%u, rotation=%u, scale=%d, sharp=%d)", width, height,
 	          rotation, scaling_mode, sharpness);
 
-	if (!gl_state.gl_context) {
-		LOG_debug("GL video: present skipped (no context)");
+	if (!gl_state.gl_context || gl_state.shutdown_prepared) {
+		LOG_debug("GL video: present skipped (no context or shutdown)");
 		return;
 	}
 
@@ -1700,7 +1700,7 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
 		return;
 	}
 
-	if (!gl_state.gl_context) {
+	if (!gl_state.gl_context || gl_state.shutdown_prepared) {
 		return;
 	}
 
@@ -1773,7 +1773,7 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
 void GLVideo_presentSurface(SDL_Surface* surface) {
 	LOG_debug("presentSurface: enter");
 
-	if (!gl_state.context_ready) {
+	if (!gl_state.context_ready || gl_state.shutdown_prepared) {
 		LOG_debug("presentSurface: context not ready, returning");
 		return;
 	}
@@ -1877,7 +1877,7 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 }
 
 void GLVideo_swapBuffers(void) {
-	if (!gl_state.context_ready) {
+	if (!gl_state.context_ready || gl_state.shutdown_prepared) {
 		return;
 	}
 
@@ -1912,7 +1912,7 @@ void GLVideo_clear(void) {
 }
 
 void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w, int screen_h) {
-	if (!gl_state.context_ready) {
+	if (!gl_state.context_ready || gl_state.shutdown_prepared) {
 		return;
 	}
 

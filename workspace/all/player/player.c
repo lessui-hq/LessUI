@@ -3864,9 +3864,6 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @note This is a libretro callback, invoked by core after rendering a frame
  */
 void video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
-	if (quit)
-		return;
-
 	// Handle hardware-rendered frames
 	// NOLINTNEXTLINE(performance-no-int-to-ptr) - libretro standard: RETRO_HW_FRAME_BUFFER_VALID is ((void*)-1)
 	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
