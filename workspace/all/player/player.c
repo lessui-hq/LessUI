@@ -421,8 +421,6 @@ void SRAM_write(void) {
 	if (result != PLAYER_MEM_OK && result != PLAYER_MEM_NO_SUPPORT) {
 		LOG_error("Error writing SRAM: %s", PlayerMemory_resultString(result));
 	}
-
-	sync();
 }
 
 ///////////////////////////////////////
@@ -468,8 +466,6 @@ void RTC_write(void) {
 	if (result != PLAYER_MEM_OK && result != PLAYER_MEM_NO_SUPPORT) {
 		LOG_error("Error writing RTC: %s", PlayerMemory_resultString(result));
 	}
-
-	sync();
 }
 
 ///////////////////////////////////////
@@ -547,8 +543,6 @@ void State_write(void) {
 	if (result != PLAYER_STATE_OK && result != PLAYER_STATE_NO_SUPPORT) {
 		LOG_error("Error writing state: %s (%s)", filename, PlayerState_resultString(result));
 	}
-
-	sync();
 
 	fast_forward = was_ff;
 }
@@ -1822,7 +1816,6 @@ static void Config_write(int override) {
 	}
 
 	(void)fclose(file); // Config file opened for writing
-	sync();
 }
 static void Config_restore(void) {
 	char path[MAX_PATH];
@@ -3871,6 +3864,9 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @note This is a libretro callback, invoked by core after rendering a frame
  */
 void video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
+	if (quit)
+		return;
+
 	// Handle hardware-rendered frames
 	// NOLINTNEXTLINE(performance-no-int-to-ptr) - libretro standard: RETRO_HW_FRAME_BUFFER_VALID is ((void*)-1)
 	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
@@ -4173,13 +4169,11 @@ bool Core_load(void) {
 void Core_reset(void) {
 	core.reset();
 }
-void Core_unload(void) {
-	SND_quit();
-}
 void Core_quit(void) {
 	if (core.initialized) {
 		SRAM_write();
 		RTC_write();
+		sync();
 
 		// Notify core that GL context is going away (calls context_destroy)
 		// but keep GL context alive for core's dlclose() destructors
@@ -4689,11 +4683,13 @@ static int OptionSaveChanges_onConfirm(MenuList* list, int i) {
 	switch (i) {
 	case 0: {
 		Config_write(CONFIG_WRITE_ALL);
+		sync();
 		message = "Saved for console.";
 		break;
 	}
 	case 1: {
 		Config_write(CONFIG_WRITE_GAME);
+		sync();
 		message = "Saved for game.";
 		break;
 	}
@@ -5823,11 +5819,14 @@ int main(int argc, char* argv[]) {
 	Menu_quit();
 
 finish:
+	if (screen) {
+		GFX_clear(screen);
+		GFX_present(NULL);
+	}
 
 	QuitSettings();
 
 	Game_close();
-	Core_unload();
 
 	Core_quit();
 	Core_close();
@@ -5843,7 +5842,7 @@ finish:
 	PAD_quit();
 	GFX_quit();
 
-	PlayerVideoConvert_freeBuffer();
+	sync();
 
 	// Close log file (flushes and syncs to disk)
 	log_close();

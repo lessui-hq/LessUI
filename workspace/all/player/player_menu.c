@@ -184,6 +184,7 @@ static void Menu_beforeSleep_ctx(PlayerContext* ctx) {
 	cb->sram_write();
 	cb->rtc_write();
 	cb->state_autosave();
+	sync();
 	putFile(AUTO_RESUME_PATH, g->path + strlen(SDCARD_PATH));
 	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 }
@@ -255,6 +256,7 @@ static void Menu_saveState_ctx(PlayerContext* ctx) {
 	*ctx->state_slot = m->slot;
 	putInt(m->slot_path, m->slot);
 	cb->state_write();
+	sync();
 }
 
 static void Menu_loadState_ctx(PlayerContext* ctx) {

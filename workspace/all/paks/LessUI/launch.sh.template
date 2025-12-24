@@ -39,7 +39,7 @@ export LD_LIBRARY_PATH="$SYSTEM_PATH/lib:$LD_LIBRARY_PATH"
 # Shell scripts use log.sh library for their own logging.
 # LOG_SYNC=1 enables crash-safe mode (fsync after each log write).
 # Slower but ensures logs survive crashes - uncomment for debugging.
-export LOG_SYNC=1
+# export LOG_SYNC=1
 
 if [ -f "$SDCARD_PATH/.system/common/log.sh" ]; then
 	. "$SDCARD_PATH/.system/common/log.sh"

@@ -2424,6 +2424,12 @@ int main(int argc, char* argv[]) {
 
 	if (version)
 		SDL_FreeSurface(version);
+
+	if (screen) {
+		GFX_clear(screen);
+		GFX_present(NULL);
+	}
+
 	thumb_cache_clear(&thumb_cache);
 
 	// Free text cache surfaces
@@ -2440,6 +2446,8 @@ int main(int argc, char* argv[]) {
 	PAD_quit();
 	GFX_quit();
 	QuitSettings();
+
+	sync();
 
 	// Close log file (flushes and syncs to disk)
 	log_close();
