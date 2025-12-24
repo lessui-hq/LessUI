@@ -395,6 +395,22 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ Menu scaling changes work without crashes
 - ✅ Game screenshot visible behind menu
 
+### Recent Work (2025-12-24)
+
+**Menu Flickering Fix (GLES Platforms):**
+
+- ✅ **Issue**: Software cores on GLES platforms (like Tetris) caused menu flickering because the backbuffer wasn't cleared, retaining old menu content in pillarbox/letterbox areas.
+- ✅ **Fix**: Implemented `GLVideo_clear()` to explicitly clear the default framebuffer to black.
+- ✅ **Integration**: Modified `SDL2_present` to call `GLVideo_clear()` before drawing software frames on GLES platforms.
+
+**Performance & Responsiveness:**
+
+- ✅ **Startup/Shutdown Optimization**: Consolidated filesystem `sync()` calls. Removed redundant syncs from individual write functions (SRAM, RTC, State, Config) and placed them at key transition points (sleep, shutdown, manual save). Eliminated "triple-sync" delays.
+- ✅ **Immediate Screen Blanking**: Added `GFX_clear` + `GFX_present(NULL)` at the start of the exit sequence in both `player` and `launcher`. Provides instant visual feedback when quitting or launching games.
+- ✅ **Shutdown "Flash" Fix**: Added a guard in `video_refresh_callback` (`if (quit) return;`) to prevent cores from drawing late frames after the screen has been blanked.
+- ✅ **Cleanup**: Removed redundant `SND_quit()` calls and the confusing `Core_unload()` wrapper.
+- ✅ **Safety**: Added a final `sync()` to the launcher's exit path to ensure data integrity.
+
 ### Working Features
 
 - ✅ GL context creation (SDL2-based, GLES 2.0/3.0/3.1/3.2)
