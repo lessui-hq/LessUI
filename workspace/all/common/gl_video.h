@@ -73,9 +73,22 @@ bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
 bool GLVideo_initSoftware(void);
 
 /**
+ * Prepare for shutdown by calling context_destroy.
+ *
+ * Notifies the core that the GL context is about to be destroyed, but keeps
+ * the GL context alive. This allows the core's dlclose() destructors to still
+ * use GL functions if needed. Call GLVideo_shutdown() later to actually
+ * destroy the GL context.
+ *
+ * Safe to call multiple times or even if HW rendering was never initialized.
+ */
+void GLVideo_prepareShutdown(void);
+
+/**
  * Shutdown hardware rendering.
  *
- * Calls core's context_destroy callback, then destroys FBO and GL context.
+ * Calls core's context_destroy callback (if not already called via
+ * GLVideo_prepareShutdown), then destroys FBO and GL context.
  * Safe to call even if HW rendering was never initialized.
  */
 void GLVideo_shutdown(void);
@@ -320,6 +333,8 @@ static inline bool GLVideo_init(struct retro_hw_render_callback* callback, unsig
 static inline bool GLVideo_initSoftware(void) {
 	return false;
 }
+
+static inline void GLVideo_prepareShutdown(void) {}
 
 static inline void GLVideo_shutdown(void) {}
 

@@ -4181,8 +4181,9 @@ void Core_quit(void) {
 		SRAM_write();
 		RTC_write();
 
-		// Shutdown HW rendering before unloading game (calls context_destroy)
-		GLVideo_shutdown();
+		// Notify core that GL context is going away (calls context_destroy)
+		// but keep GL context alive for core's dlclose() destructors
+		GLVideo_prepareShutdown();
 
 		core.unload_game();
 		core.deinit();

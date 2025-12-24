@@ -36,6 +36,7 @@ typedef struct GLVideoState {
 	// State flags
 	bool enabled; // HW rendering is active for current core
 	bool context_ready; // GL context is created and ready
+	bool shutdown_prepared; // context_destroy was called, awaiting full shutdown
 
 	// Core's callback structure (copy of what core provided)
 	struct retro_hw_render_callback hw_callback;
@@ -975,6 +976,23 @@ bool GLVideo_initSoftware(void) {
 	return true;
 }
 
+void GLVideo_prepareShutdown(void) {
+	// Call context_destroy but keep GL context alive for core's dlclose() destructors
+	if (!gl_state.context_ready || gl_state.shutdown_prepared) {
+		return;
+	}
+
+	LOG_debug("GL video: preparing shutdown (enabled=%d)", gl_state.enabled);
+
+	// Call core's context_destroy if HW rendering was enabled
+	if (gl_state.enabled && gl_state.hw_callback.context_destroy) {
+		LOG_debug("GL video: calling core context_destroy");
+		gl_state.hw_callback.context_destroy();
+	}
+
+	gl_state.shutdown_prepared = true;
+}
+
 void GLVideo_shutdown(void) {
 	// Check context_ready (not enabled) to also cleanup software-only mode
 	if (!gl_state.context_ready) {
@@ -983,8 +1001,8 @@ void GLVideo_shutdown(void) {
 
 	LOG_info("GL video: shutting down (enabled=%d)", gl_state.enabled);
 
-	// Call core's context_destroy if HW rendering was enabled
-	if (gl_state.enabled && gl_state.hw_callback.context_destroy) {
+	// Call core's context_destroy if HW rendering was enabled AND not already called
+	if (!gl_state.shutdown_prepared && gl_state.enabled && gl_state.hw_callback.context_destroy) {
 		LOG_debug("GL video: calling core context_destroy");
 		gl_state.hw_callback.context_destroy();
 	}

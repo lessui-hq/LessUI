@@ -287,6 +287,20 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - `glGetIntegerv` - Query GL state (program, texture, viewport)
 - `glIsEnabled` - Query GL capability state (blend, depth test)
 
+### Shutdown Fix (2025-12-23)
+
+**Shutdown Crash Fix:**
+
+1. ✅ **Split shutdown into two phases**: Added `GLVideo_prepareShutdown()` that calls `context_destroy` but keeps GL context alive. The full `GLVideo_shutdown()` is deferred until after `dlclose()`.
+
+2. ✅ **Fixed shutdown order**: The new sequence is:
+   - `GLVideo_prepareShutdown()` - notifies core, calls `context_destroy`
+   - `core.unload_game()` and `core.deinit()` - core cleanup
+   - `dlclose(core.handle)` - unload core .so (destructors can still use GL)
+   - `GLVideo_shutdown()` (via `GFX_quit()`) - destroy GL resources and context
+
+3. ✅ **Fixed window/context destruction order**: `GLVideo_shutdown()` now called before `SDL_DestroyWindow()` in `SDL2_quitVideo()`.
+
 ## Testing Results
 
 ### Build Status

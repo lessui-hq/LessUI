@@ -297,11 +297,12 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 	// Destroy renderer and window
 	SDL_DestroyRenderer(ctx->renderer);
 #endif
-	SDL_DestroyWindow(ctx->window);
 
 #if HAS_OPENGLES
+	// Destroy GL context before window (SDL requires this order)
 	GLVideo_shutdown();
 #endif
+	SDL_DestroyWindow(ctx->window);
 
 	SDL_Quit();
 }
