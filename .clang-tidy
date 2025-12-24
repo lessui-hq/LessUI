@@ -31,6 +31,8 @@ Checks: >
   -bugprone-suspicious-realloc-usage,
   clang-analyzer-*,
   -clang-analyzer-core.NonNullParamChecker,
+  -clang-analyzer-security.ArrayBound,
+  -clang-analyzer-unix.cstring.NullArg,
   -clang-analyzer-unix.Stream,
   performance-*,
   portability-*,

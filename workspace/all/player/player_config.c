@@ -19,7 +19,7 @@ const char* PlayerConfig_getOptionDisplayName(const char* key, const char* defau
 		return default_name;
 	}
 
-	// Search the mapping table
+	// Search the mapping table (pairs: key, value, key, value, ..., NULL)
 	for (int i = 0; option_key_name_map[i]; i += 2) {
 		if (strcmp(key, option_key_name_map[i]) == 0) {
 			return option_key_name_map[i + 1];

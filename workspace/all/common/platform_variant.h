@@ -24,8 +24,8 @@
 
 typedef enum {
 	VARIANT_NONE = 0, // Not applicable / unknown
-	VARIANT_STANDARD, // Base/standard variant
-	VARIANT_ALTERNATE, // Single alternate variant
+	VARIANT_STANDARD = 1, // Base/standard variant
+	VARIANT_ALTERNATE = 2, // Single alternate variant
 	VARIANT_PLATFORM_BASE = 100 // Platform-specific variants start here
 } VariantType;
 

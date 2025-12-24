@@ -85,10 +85,6 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		return;
 	}
 
-	// Target dimensions
-	int target_w = ctx->device_width;
-	int target_h = ctx->device_height;
-
 	// All effects use procedural generation (with color support for GRID)
 	int scale = fx->scale > 0 ? fx->scale : 1;
 	int opacity = EFFECT_getOpacity(scale);
@@ -97,6 +93,10 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	          fx->color, opacity);
 
 #if !HAS_OPENGLES
+	// Target dimensions (only needed for SDL texture creation)
+	int target_w = ctx->device_width;
+	int target_h = ctx->device_height;
+
 	SDL_Texture* new_texture = EFFECT_createGeneratedTextureWithColor(
 	    ctx->renderer, fx->type, fx->scale, target_w, target_h, fx->color);
 	if (new_texture) {

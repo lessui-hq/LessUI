@@ -2828,6 +2828,20 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		}
 		break;
 	}
+	case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: { /* (44 | RETRO_ENVIRONMENT_EXPERIMENTAL) */
+		// Core requests shared GL context between core and frontend.
+		// We acknowledge the request but don't implement shared contexts -
+		// our simple frontend doesn't need them.
+		LOG_debug("SET_HW_SHARED_CONTEXT: acknowledged (not implemented)");
+		break;
+	}
+	case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: { /* (41 | RETRO_ENVIRONMENT_EXPERIMENTAL) */
+		// Core requests extended render interface (Vulkan, D3D9/10/11/12, PS2 GSKit).
+		// OpenGL/GLES has no interface defined in libretro spec - RetroArch's gl2/gl3
+		// drivers also return NULL for this. Cores use the basic hw_render callback instead.
+		LOG_debug("GET_HW_RENDER_INTERFACE: not available (no GL/GLES interface in libretro spec)");
+		return false;
+	}
 	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: { /* 57 */
 		unsigned* out = (unsigned*)data;
 		if (out)

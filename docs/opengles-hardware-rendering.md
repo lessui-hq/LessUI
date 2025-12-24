@@ -26,16 +26,18 @@ Following LessUI's focus on simplicity, the implementation:
 - Loads GL functions dynamically via `SDL_GL_GetProcAddress` (no system header dependencies)
 - Supports GLES 2.0 through 3.2 with automatic version fallback
 - Provides clean fallback to software rendering on unsupported platforms
-- Minimal code complexity - ~1000 lines in a single module
+- Unified video backend - ~2100 lines handling both HW and SW cores
 
 ### Module Structure
 
 ```
-player_hwrender.h/c - Self-contained HW rendering module
+gl_video.h/c - Unified GL video backend (~2100 lines)
     ├── GL Context Management (SDL2-based)
-    ├── FBO Creation & Lifecycle
+    ├── FBO Creation & Lifecycle (HW cores)
+    ├── Triple-buffered Textures (SW cores)
     ├── Shader Program (vertex + fragment)
     ├── Frame Presentation (fullscreen quad blit)
+    ├── CRISP 2-pass Sharpening (intermediate FBO)
     └── Platform Capability Detection
 ```
 
@@ -85,17 +87,17 @@ player_hwrender.h/c - Self-contained HW rendering module
 - `workspace/rg35xxplus/platform/platform.h` - Added `HAS_OPENGLES 1`
 - `workspace/tg5040/platform/platform.h` - Added `HAS_OPENGLES 1`
 - `workspace/all/common/defines.h` - Added capability default
-- `workspace/all/player/player_hwrender.h` - New module API (200 lines)
-- `workspace/all/player/player_hwrender.c` - New implementation (900 lines)
-- `workspace/all/player/Makefile` - Added player_hwrender.c to sources
+- `workspace/all/common/gl_video.h` - Unified GL video API (~450 lines, includes stubs)
+- `workspace/all/common/gl_video.c` - Complete implementation (~2100 lines)
+- `workspace/all/common/Makefile` - Added gl_video.c to sources
 
 **Integration Points:**
 
 - `player.c` - Environment callback handling
-  - `RETRO_ENVIRONMENT_SET_HW_RENDER` (line ~2626)
-  - `RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER` (line ~2807)
-  - `video_refresh_callback` (line ~3652)
-  - `Core_quit()` shutdown (line ~3940)
+  - `RETRO_ENVIRONMENT_SET_HW_RENDER` (line ~2626) - Initializes HW rendering
+  - `RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER` (line ~2816) - Reports GLES2 preference
+  - `video_refresh_callback` (line ~3866) - Handles HW frame presentation
+  - `Core_quit()` shutdown (line ~4169) - Calls GLVideo_prepareShutdown()
 
 ### Phase 2: GL Context Creation
 
@@ -132,10 +134,10 @@ player_hwrender.h/c - Self-contained HW rendering module
 
 **Resource Management:**
 
-- `createFBO()` - Generates FBO with attachments
-- `destroyFBO()` - Cleans up all FBO resources
-- `PlayerHWRender_resizeFBO()` - Recreates FBO with new dimensions
-- `PlayerHWRender_getCurrentFramebuffer()` - Returns FBO ID to cores
+- `createFBO()` - Generates FBO with attachments (internal)
+- `destroyFBO()` - Cleans up all FBO resources (internal)
+- `GLVideo_resizeFBO()` - Recreates FBO with new dimensions
+- `GLVideo_getCurrentFramebuffer()` - Returns FBO ID to cores
 
 ### Phase 4: Frame Presentation
 
@@ -234,7 +236,7 @@ All 4 scaling modes from SDL2 software rendering are supported:
 2. ✅ **GL State Restoration**: Added comprehensive state reset in `present()` (disable depth/stencil/blend/cull/scissor tests)
 3. ✅ **Removed context_reset from resizeFBO**: FBO resize no longer triggers unexpected context recreation
 4. ✅ **Backbuffer Binding**: Explicitly bind FBO 0 before presentation pass
-5. ✅ **FBO Binding Before Core**: Added `PlayerHWRender_bindFBO()` call before `core.run()` in both loop files
+5. ✅ **FBO Binding Before Core**: Added `GLVideo_bindFBO()` call before `core.run()` in both loop files
 
 **Important Improvements:**
 
@@ -248,14 +250,14 @@ All 4 scaling modes from SDL2 software rendering are supported:
 **SDL/GL Context Conflicts:**
 
 1. ✅ **Skip SDL_Renderer for HW cores**: Modified main loop to skip `GFX_present(&renderer)` when HW rendering active (frame already presented via GL)
-2. ✅ **GL surface presentation**: Added `PlayerHWRender_presentSurface()` to render SDL surfaces via GL instead of SDL_Renderer
+2. ✅ **GL surface presentation**: Added `GLVideo_presentSurface()` to render SDL surfaces via GL instead of SDL_Renderer
 3. ✅ **Menu crash fix**: Skip bitmap surface creation for HW cores (frame is in GPU memory, not CPU-accessible)
 4. ✅ **Texture coordinate fix**: Y-flip texture coordinates for SDL surfaces (top-left origin → bottom-left GL origin)
 5. ✅ **Dynamic resolution**: Use `SDL_GetWindowSize()` instead of hardcoded 1280x720
 
 **Key Implementation:**
 
-- Menu uses `PlayerHWRender_presentSurface()` when HW rendering active
+- Menu uses `GLVideo_presentSurface()` when HW rendering active
 - Uploads SDL surface to GL texture and renders via shader
 - Avoids SDL_Renderer/GL context conflicts that caused crashes
 - Black background for HW cores (game screenshot requires GL readback)
@@ -335,20 +337,44 @@ All 4 scaling modes from SDL2 software rendering are supported:
 
 ### libretro Specification Compliance
 
+**Verified against RetroArch reference implementation (December 2024).**
+
 ✅ **Environment Callbacks:**
 
-- `RETRO_ENVIRONMENT_SET_HW_RENDER` - Accepts GLES2 requests
+- `RETRO_ENVIRONMENT_SET_HW_RENDER` - Accepts GLES2/3 requests
 - `RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER` - Reports OPENGLES2
 - `get_current_framebuffer` - Returns FBO handle
-- `get_proc_address` - Provides GL function pointers
-- `context_reset` - Called after GL init, before game load
-- `context_destroy` - Called before core unload
+- `get_proc_address` - Provides GL function pointers via SDL_GL_GetProcAddress
+- `context_reset` - Called **after** `retro_load_game()` returns (per libretro spec)
+- `context_destroy` - Called before core unload via `GLVideo_prepareShutdown()`
+
+✅ **All 12 `retro_hw_render_callback` Fields Handled:**
+
+| Field                     | Implementation                                 |
+| ------------------------- | ---------------------------------------------- |
+| `context_type`            | Checked via `GLVideo_isContextSupported()`     |
+| `context_reset`           | Stored and called via `GLVideo_contextReset()` |
+| `get_current_framebuffer` | Set to `GLVideo_getCurrentFramebuffer()`       |
+| `get_proc_address`        | Set to `GLVideo_getProcAddress()`              |
+| `depth`                   | FBO created with depth attachment if true      |
+| `stencil`                 | FBO created with stencil attachment if true    |
+| `bottom_left_origin`      | Handled in texture coordinate generation       |
+| `version_major`           | Used for GLES version negotiation              |
+| `version_minor`           | Used for GLES version negotiation              |
+| `cache_context`           | Implicit - context only destroyed on shutdown  |
+| `context_destroy`         | Called in `GLVideo_prepareShutdown()`          |
+| `debug_context`           | Passed to SDL_GL_CONTEXT_DEBUG_FLAG            |
 
 ✅ **Frame Handling:**
 
 - `RETRO_HW_FRAME_BUFFER_VALID` detection in `video_refresh_callback`
-- Proper FBO binding before `core.run()`
+- FBO binding before `core.run()` via `GLVideo_bindFBO()`
 - Clean separation from software rendering path
+
+✅ **Optional Callbacks Implemented:**
+
+- `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT` - Acknowledged (shared contexts not needed for simple frontend)
+- `RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE` - Returns false (OpenGL/GLES has no interface in libretro spec; RetroArch's gl2/gl3 drivers also return NULL for this)
 
 ## Current Status
 
@@ -382,7 +408,7 @@ All 4 scaling modes from SDL2 software rendering are supported:
 
 **Screenshot Feature:**
 
-- ✅ Added `PlayerHWRender_captureFrame()` using `glReadPixels()` to capture FBO
+- ✅ Added `GLVideo_captureFrame()` using `glReadPixels()` to capture FBO
 - ✅ Converts RGBA8888 → RGB565 with Y-flip (GL bottom-left → SDL top-left origin)
 - ✅ Menu now shows game screenshot as background (same as software rendering)
 - ✅ Fallback to black background if capture fails
@@ -515,16 +541,18 @@ Simple and direct:
      - `RETRO_HW_CONTEXT_OPENGLES3` → GLES 3.0
      - `RETRO_HW_CONTEXT_OPENGLES_VERSION` → uses version_major.version_minor
 
-9. **Shared Context Support** (optional)
-   - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT_ENABLE`
-   - Only if cores request it
+9. ~~**Shared Context Support**~~ ✅ **DONE**
+   - `RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT` - acknowledged
+
+10. ~~**HW Render Interface**~~ ✅ **DONE**
+    - `RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE` - returns false (no GLES interface in spec)
 
 ## Files Created/Modified
 
 ### New Files
 
-- `workspace/all/common/gl_video.h` - Unified GL video backend API (includes stubs for non-GLES platforms)
-- `workspace/all/common/gl_video.c` - Complete implementation (~1900 lines)
+- `workspace/all/common/gl_video.h` - Unified GL video backend API (~450 lines, includes stubs for non-GLES platforms)
+- `workspace/all/common/gl_video.c` - Complete implementation (~2100 lines)
 
 ### Modified Files
 
@@ -635,9 +663,8 @@ grep "RETRO_ENVIRONMENT_SET_HW_RENDER\|HW render:" /path/to/logs/CORE.log
 Look for these log messages:
 
 ```
-PlayerHWRender_present: viewport WxH at (X,Y)
-PlayerHWRender_present: tex_scale=(X, Y)
-PlayerHWRender_present: bottom_left_origin=N
+GL video: present called (WxH, rotation=N, scale=M, sharp=S)
+GL video: viewport(X,Y WxH) src_crop(...)
 ```
 
 ### GL Function Load Failures
@@ -750,7 +777,7 @@ OpenGL ES (Flycast, PPSSPP, Beetle PSX HW). Enables GPU acceleration
 on platforms with Mali GPUs (rg35xxplus, tg5040).
 
 Architecture:
-- New player_hwrender module handles GL context and FBO lifecycle
+- Unified gl_video module handles GL context and FBO lifecycle
 - SDL2-based GL context creation (no raw EGL dependency)
 - Dynamic GL function loading via SDL_GL_GetProcAddress
 - Shader-based frame presentation with rotation support
