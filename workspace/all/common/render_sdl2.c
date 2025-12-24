@@ -520,3 +520,10 @@ SDL_Window* SDL2_getWindow(SDL2_RenderContext* ctx) {
 	}
 	return ctx->window;
 }
+
+int SDL2_getRotation(SDL2_RenderContext* ctx) {
+	if (!ctx) {
+		return 0;
+	}
+	return ctx->rotate;
+}

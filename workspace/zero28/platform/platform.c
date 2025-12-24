@@ -110,6 +110,10 @@ SDL_Window* PLAT_getWindow(void) {
 	return SDL2_getWindow(&vid_ctx);
 }
 
+int PLAT_getRotation(void) {
+	return SDL2_getRotation(&vid_ctx);
+}
+
 void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
 	// Not implemented
 }

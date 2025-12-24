@@ -246,4 +246,12 @@ uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx);
  */
 SDL_Window* SDL2_getWindow(SDL2_RenderContext* ctx);
 
+/**
+ * Gets the current display rotation.
+ *
+ * @param ctx Render context
+ * @return Rotation in 90-degree increments (0-3)
+ */
+int SDL2_getRotation(SDL2_RenderContext* ctx);
+
 #endif /* __RENDER_SDL2_H__ */

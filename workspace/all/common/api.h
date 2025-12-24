@@ -1336,6 +1336,13 @@ SDL_Window* PLAT_getWindow(void);
 #endif
 
 /**
+ * Get the current display rotation.
+ *
+ * @return Rotation in 90-degree increments (0-3)
+ */
+int PLAT_getRotation(void);
+
+/**
  * Platform-specific sharpness control.
  *
  * @param sharpness Sharpness level

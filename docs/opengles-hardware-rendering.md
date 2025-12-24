@@ -4,12 +4,13 @@
 
 LessUI now supports OpenGL ES hardware-accelerated rendering for libretro cores that require GPU rendering (Flycast, PPSSPP, Beetle PSX HW, etc.). This enables 3D-intensive cores to run at full speed on devices with Mali GPUs.
 
-**Status:** Working on tg5040 - displays correctly with aspect ratio preservation
+**Status:** Working on tg5040, zero28 - displays correctly with aspect ratio preservation and rotation
 
 **Supported Platforms:**
 
 - rg35xxplus (Anbernic RG35XX Plus/H/SP series - Mali GPU)
 - tg5040 (TrimUI Smart Pro - Mali GPU)
+- zero28 (MagicX Mini Zero 28 - Mali GPU, portrait display with 90° rotation)
 
 **Supported GLES Versions:**
 
@@ -437,6 +438,18 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ **Cleanup**: Removed redundant `SND_quit()` calls and the confusing `Core_unload()` wrapper.
 - ✅ **Safety**: Added a final `sync()` to the launcher's exit path to ensure data integrity.
 
+**Portrait Display Rotation Fix (zero28):**
+
+- ✅ **Issue**: Portrait devices like zero28 (480×640 physical, 640×480 logical) require 90° rotation. The GL path wasn't applying rotation correctly because SDL uses clockwise angles while OpenGL's rotation matrix uses counter-clockwise.
+- ✅ **Fix**: Added rotation direction conversion in three places:
+  - `GLVideo_presentSurface()` - UI/launcher rendering now applies platform rotation
+  - `GLVideo_drawSoftwareFrame()` - Software core frames now rotate correctly
+  - `GLVideo_present()` - HW core platform rotation is converted before combining with core rotation
+- ✅ **Conversion Formula**: `gl_rotation = (sdl_rotation == 0) ? 0 : (4 - sdl_rotation)`
+  - SDL rotation 1 (90° CW) → GL rotation 3 (270° CCW = 90° CW visually)
+  - SDL rotation 3 (270° CW) → GL rotation 1 (90° CCW = 270° CW visually)
+- ✅ **Tested**: Working correctly on zero28 for both UI and games.
+
 ### Working Features
 
 - ✅ GL context creation (SDL2-based, GLES 2.0/3.0/3.1/3.2)
@@ -462,7 +475,7 @@ All 4 scaling modes from SDL2 software rendering are supported:
 - ✅ All 12 `retro_hw_render_callback` fields properly handled
 - ✅ GL state save/restore (prevents state corruption with HW cores)
 - ✅ Proper resource cleanup in both HW and SW modes
-- ✅ Rotation support (0°/90°/180°/270° via MVP matrix)
+- ✅ Rotation support (0°/90°/180°/270° via MVP matrix, SDL CW → GL CCW conversion)
 - ✅ Unified video backend (`gl_video.*` in common/, zero `#if HAS_OPENGLES` in player.c)
 - ✅ 2-pass CRISP sharpening (intermediate FBO with GL_NEAREST upscale → GL_LINEAR downscale)
 
@@ -478,6 +491,12 @@ All 4 scaling modes from SDL2 software rendering are supported:
 
 - ⚠️ **Mupen64Plus-Next (N64)**: Renders multiple frames successfully before crash
 - ❌ **Flycast (Dreamcast)**: Crashes during `retro_init` (memory mapping issue, not GL-related)
+
+**zero28 (Mali GPU, portrait display):**
+
+- ✅ **Software cores**: Working with 90° rotation for portrait display
+- ✅ **UI/Launcher**: Correctly rotated and displayed
+- ⚠️ **HW cores**: Untested (rotation conversion in place)
 
 ### All Core Features Implemented
 
@@ -568,6 +587,8 @@ Simple and direct:
 - `workspace/rg35xxplus/platform/platform.c` - Implemented PLAT_getWindow()
 - `workspace/tg5040/platform/platform.h` - Enabled HAS_OPENGLES
 - `workspace/tg5040/platform/platform.c` - Implemented PLAT_getWindow()
+- `workspace/zero28/platform/platform.h` - Enabled HAS_OPENGLES
+- `workspace/zero28/platform/platform.c` - Implemented PLAT_getWindow(), PLAT_getRotation()
 - `tests/support/platform_mocks.c` - Added PLAT_getWindow() stub
 
 ## Technical Highlights
@@ -578,9 +599,10 @@ This implementation prioritizes simplicity and correctness:
 
 **MVP Matrix:**
 
-- Simple identity-like transform: maps vertex coords (0-1) to NDC (-1,1)
-- Hardcoded: `{2,0,0,0, 0,2,0,0, 0,0,1,0, -1,-1,0,1}`
-- No rotation yet (planned for future)
+- Orthographic projection: maps vertex coords (0-1) to NDC (-1,1)
+- Base matrix: `{2,0,0,0, 0,2,0,0, 0,0,1,0, -1,-1,0,1}`
+- Rotation via `build_mvp_matrix()` with `matrix_rotate_z()` for 90°/180°/270°
+- Rotation direction conversion: SDL uses CW, OpenGL uses CCW - converted via `(4 - rotation) % 4`
 
 ### FBO Configuration
 

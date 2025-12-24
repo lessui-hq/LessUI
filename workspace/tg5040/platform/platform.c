@@ -222,6 +222,10 @@ SDL_Window* PLAT_getWindow(void) {
 	return SDL2_getWindow(&vid_ctx);
 }
 
+int PLAT_getRotation(void) {
+	return SDL2_getRotation(&vid_ctx);
+}
+
 ///////////////////////////////
 // Input
 ///////////////////////////////

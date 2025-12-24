@@ -1446,9 +1446,11 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
                                unsigned rotation, int sharpness) {
 	if (!gl_state.enabled) { // Ensure we are in SW mode logic (though textures exist anyway)
+		// Convert from SDL CW convention to GL CCW convention
+		unsigned gl_rotation = (rotation == 0) ? 0 : (4 - rotation);
 		unsigned int tex_id = gl_state.sw_textures[gl_state.sw_disp_index];
 		GLVideo_drawFrame(tex_id, gl_state.sw_width, gl_state.sw_height, src_rect, dst_rect,
-		                  rotation, sharpness, false);
+		                  gl_rotation, sharpness, false);
 	}
 }
 
@@ -1461,6 +1463,12 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 		LOG_debug("GL video: present skipped (no context or shutdown)");
 		return;
 	}
+
+	// Combine core rotation with platform rotation (e.g. for portrait devices)
+	// Convert platform rotation from SDL CW convention to GL CCW convention
+	unsigned sdl_platform_rotation = PLAT_getRotation();
+	unsigned platform_rotation = (sdl_platform_rotation == 0) ? 0 : (4 - sdl_platform_rotation);
+	rotation = (rotation + platform_rotation) % 4;
 
 	// Store frame dimensions for capture
 	gl_state.last_frame_width = width;
@@ -1854,8 +1862,13 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 	glBindTexture(GL_TEXTURE_2D, gl_state.ui_texture);
 	glUniform1i(gl_state.loc_texture, 0);
 
-	float identity[16] = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 0, -1, -1, 0, 1};
-	glUniformMatrix4fv(gl_state.loc_mvp, 1, GL_FALSE, identity);
+	// Apply platform rotation (for portrait devices like zero28)
+	// Convert from SDL CW convention to GL CCW convention: 90° CW = 270° CCW, etc.
+	unsigned sdl_rotation = PLAT_getRotation();
+	unsigned rotation = (sdl_rotation == 0) ? 0 : (4 - sdl_rotation);
+	float mvp[16];
+	build_mvp_matrix(mvp, rotation);
+	glUniformMatrix4fv(gl_state.loc_mvp, 1, GL_FALSE, mvp);
 
 	static const float verts[8] = {0, 0, 1, 0, 0, 1, 1, 1};
 	// Flip Y only (SDL surfaces are top-left origin, GL is bottom-left)
