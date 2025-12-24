@@ -345,14 +345,16 @@
       "core": "mupen64plus_next_libretro",
       "resolution": "320x240",
       "extensions": ["z64", "n64", "v64", "zip", "7z"],
-      "bios": []
+      "bios": [],
+      "arm64_only": true
     },
     "PSP": {
       "name": "PlayStation Portable",
       "core": "ppsspp_libretro",
       "resolution": "480x272",
       "extensions": ["elf", "iso", "cso", "prx", "pbp"],
-      "bios": []
+      "bios": [],
+      "arm64_only": true
     },
     "DC": {
       "name": "Sega Dreamcast",
@@ -382,7 +384,8 @@
           "md5": null,
           "required": false
         }
-      ]
+      ],
+      "arm64_only": true
     }
   }
 }

@@ -106,6 +106,10 @@ SDL_Surface* PLAT_resizeVideo(int w, int h, int p) {
 	return SDL2_resizeVideo(&vid_ctx, w, h, p);
 }
 
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
 void PLAT_setVideoScaleClip(int x, int y, int width, int height) {
 	// Not implemented
 }
