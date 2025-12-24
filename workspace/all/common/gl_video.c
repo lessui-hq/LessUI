@@ -2012,45 +2012,28 @@ SDL_Surface* GLVideo_captureFrame(void) {
 
 	GLVideo_makeCurrent();
 
-	// If using FBO (HW render), bind it.
-	// If using SW render, we need to read from the texture?
-	// glReadPixels reads from the currently bound FRAMEBUFFER.
-	// For SW render, we render to the default framebuffer (screen).
-	// So we should bind FBO 0.
-	// BUT, if we are in the menu, we want to capture the GAME frame.
-	// The game frame was last rendered to the screen (FBO 0).
-	// So reading from FBO 0 should work for SW render.
-	// For HW render, the game frame is in FBO `gl_state.fbo`.
-	// AND it was also rendered to FBO 0 (screen) by `present`.
-	// So we could always read from FBO 0?
-	// No, FBO 0 might have HUD or other things on top if we capture late.
-	// But `captureFrame` is called at start of menu loop.
-	// Ideally we read from the source texture/FBO to avoid capturing overlay?
-	// But `glReadPixels` reads from framebuffer, not texture.
-	// To read texture, we need to bind it to an FBO.
-	// For HW render, we have `gl_state.fbo`.
-	// For SW render, we don't have an FBO for the texture.
-	// We could create a temporary FBO or just read from backbuffer?
-	// Reading from backbuffer (FBO 0) is simplest for SW render.
+	GLuint capture_fbo = 0;
+	bool using_temp_fbo = false;
 
 	if (gl_state.enabled) {
+		// HW render: bind core's FBO
 		glBindFramebuffer(GL_FRAMEBUFFER, gl_state.fbo);
 	} else {
-		// SW render: read from backbuffer
-		// Ensure we are reading from the buffer that was just swapped?
-		// SDL_GL_SwapBuffers swaps buffers.
-		// Reading from FRONT buffer? GLES2 usually reads from BACK.
-		// If we just swapped, BACK is new (undefined?).
-		// Wait, capture happens BEFORE menu is drawn?
-		// Menu loop calls capture first.
-		// If called after `present` and `swap`, the game frame is on screen (FRONT).
-		// We want to capture it.
-		// `glReadPixels` usually reads from current read buffer.
-		// For window system FBO, it's implementation dependent (Back or Front).
-		// Safe bet: Bind the SW texture to a temp FBO and read it?
-		// Or assume backbuffer still has it?
-		// Let's try reading from FBO 0.
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		// SW render: create temp FBO and attach current texture
+		// This avoids reading from the backbuffer which might be undefined after swap
+		glGenFramebuffers(1, &capture_fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, capture_fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+		                       gl_state.sw_textures[gl_state.sw_disp_index], 0);
+
+		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		if (status != GL_FRAMEBUFFER_COMPLETE) {
+			LOG_error("GL video: captureFrame - temp FBO incomplete (0x%x)", status);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glDeleteFramebuffers(1, &capture_fbo);
+			return NULL;
+		}
+		using_temp_fbo = true;
 	}
 
 	// Allocate temporary RGBA buffer
@@ -2059,6 +2042,9 @@ SDL_Surface* GLVideo_captureFrame(void) {
 	if (!rgba_buffer) {
 		LOG_error("GL video: captureFrame - failed to allocate RGBA buffer");
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		if (using_temp_fbo) {
+			glDeleteFramebuffers(1, &capture_fbo);
+		}
 		return NULL;
 	}
 
@@ -2071,11 +2057,17 @@ SDL_Surface* GLVideo_captureFrame(void) {
 		LOG_error("GL video: captureFrame - glReadPixels error 0x%x", err);
 		free(rgba_buffer);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		if (using_temp_fbo) {
+			glDeleteFramebuffers(1, &capture_fbo);
+		}
 		return NULL;
 	}
 
 	// Unbind FBO
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (using_temp_fbo) {
+		glDeleteFramebuffers(1, &capture_fbo);
+	}
 
 	// Create RGB565 SDL surface
 	SDL_Surface* surface =
