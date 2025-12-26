@@ -377,14 +377,15 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	GLVideo_uploadFrame(renderer->src, renderer->true_w, renderer->true_h, renderer->src_p,
 	                    GL_VIDEO_PIXEL_FORMAT_RGB565);
 
-	// Calculate destination rectangle (scaling)
-	SDL_Rect src_rect = {renderer->src_x, renderer->src_y, renderer->src_w, renderer->src_h};
-	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
-	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
-
 	// Determine rotation and other parameters
 	unsigned rotation = ctx->on_hdmi ? 0 : ctx->rotate;
 	int sharpness = ctx->sharpness;
+
+	// Calculate destination rectangle (scaling)
+	// device_width/height are already logical dimensions, use them directly
+	SDL_Rect src_rect = {renderer->src_x, renderer->src_y, renderer->src_w, renderer->src_h};
+	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
+	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
 
 	// Clear screen before drawing (important for non-fullscreen aspect ratios)
 	GLVideo_clear();

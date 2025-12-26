@@ -1449,7 +1449,19 @@ void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rec
 		// Convert from SDL CW convention to GL CCW convention
 		unsigned gl_rotation = (rotation == 0) ? 0 : (4 - rotation);
 		unsigned int tex_id = gl_state.sw_textures[gl_state.sw_disp_index];
-		GLVideo_drawFrame(tex_id, gl_state.sw_width, gl_state.sw_height, src_rect, dst_rect,
+
+		// dst_rect comes from render_sdl2.c in logical coordinates (with swapped dimensions)
+		// Need to transform to physical coordinates for glViewport
+		SDL_Rect physical_dst = *dst_rect;
+		if (rotation == 1 || rotation == 3) {
+			// Swap x↔y and w↔h to transform from logical to physical space
+			physical_dst.x = dst_rect->y;
+			physical_dst.y = dst_rect->x;
+			physical_dst.w = dst_rect->h;
+			physical_dst.h = dst_rect->w;
+		}
+
+		GLVideo_drawFrame(tex_id, gl_state.sw_width, gl_state.sw_height, src_rect, &physical_dst,
 		                  gl_rotation, sharpness, false);
 	}
 }
@@ -1485,16 +1497,29 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 	// Bind backbuffer
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	// Get actual screen dimensions from window
-	int screen_w = 0;
-	int screen_h = 0;
-	SDL_GetWindowSize(window, &screen_w, &screen_h);
-	if (screen_w <= 0 || screen_h <= 0) {
-		LOG_error("GL video: invalid window size %dx%d", screen_w, screen_h);
+	// Get actual screen dimensions from window (physical coordinates)
+	int physical_w = 0;
+	int physical_h = 0;
+	SDL_GetWindowSize(window, &physical_w, &physical_h);
+	if (physical_w <= 0 || physical_h <= 0) {
+		LOG_error("GL video: invalid window size %dx%d", physical_w, physical_h);
 		return;
 	}
 
-	// Calculate viewport based on scaling mode
+	LOG_debug("GL video: physical screen %dx%d, rotation=%u", physical_w, physical_h, rotation);
+
+	// Calculate viewport in logical (rotated) coordinate space for correct aspect ratios
+	// For 90°/270° rotation, swap dimensions to get logical screen size
+	int screen_w = physical_w;
+	int screen_h = physical_h;
+	bool is_rotated = (rotation == 1 || rotation == 3);
+	if (is_rotated) {
+		screen_w = physical_h;
+		screen_h = physical_w;
+		LOG_debug("GL video: logical screen %dx%d (swapped for scaling calc)", screen_w, screen_h);
+	}
+
+	// Calculate viewport based on scaling mode (in logical space)
 	// Note: PlayerScaler is designed for software rendering and doesn't work correctly
 	// for GL viewport calculation, so we calculate directly here.
 	int vp_x = 0, vp_y = 0, vp_w = screen_w, vp_h = screen_h;
@@ -1560,16 +1585,34 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 	}
 	}
 
-	LOG_debug("GL video: viewport(%d,%d %dx%d) src_crop(%d,%d %dx%d)", vp_x, vp_y, vp_w, vp_h,
-	          src_x, src_y, src_w, src_h);
+	LOG_debug("GL video: content=%ux%u logical_screen=%dx%d aspect=%.3f/%.3f mode=%d", width,
+	          height, screen_w, screen_h, src_aspect, screen_aspect, scaling_mode);
+	LOG_debug("GL video: logical_viewport(%d,%d %dx%d) src_crop(%d,%d %dx%d)", vp_x, vp_y, vp_w,
+	          vp_h, src_x, src_y, src_w, src_h);
+
+	// Transform viewport to physical coordinates for glViewport calls
+	int physical_vp_x = vp_x;
+	int physical_vp_y = vp_y;
+	int physical_vp_w = vp_w;
+	int physical_vp_h = vp_h;
+
+	if (is_rotated) {
+		// Swap x↔y and w↔h to transform from logical to physical space
+		physical_vp_x = vp_y;
+		physical_vp_y = vp_x;
+		physical_vp_w = vp_h;
+		physical_vp_h = vp_w;
+		LOG_debug("GL video: physical_viewport(%d,%d %dx%d)", physical_vp_x, physical_vp_y,
+		          physical_vp_w, physical_vp_h);
+	}
 
 	// Clear entire screen first (glClear only affects current viewport)
-	glViewport(0, 0, screen_w, screen_h);
+	glViewport(0, 0, physical_w, physical_h);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	SDL_Rect src_rect = {src_x, src_y, src_w, src_h};
-	SDL_Rect dst_rect = {vp_x, vp_y, vp_w, vp_h};
+	SDL_Rect dst_rect = {physical_vp_x, physical_vp_y, physical_vp_w, physical_vp_h};
 
 	unsigned int texture_id;
 	unsigned int tex_w, tex_h;
