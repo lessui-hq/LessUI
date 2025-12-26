@@ -265,6 +265,12 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		// SDL_Renderer/GL conflicts. So failure is fatal for video.
 		// However, we can keep running but screen might be black?
 		// Let's assume initSoftware returns true if already inited or successful.
+	} else {
+		// Clear screen a few times to ensure display pipe is ready
+		for (int i = 0; i < 3; i++) {
+			GLVideo_clear();
+			GLVideo_swapBuffers();
+		}
 	}
 #endif
 
