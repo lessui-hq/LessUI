@@ -45,7 +45,13 @@
 // UI Scaling
 ///////////////////////////////
 
-// Uses default SCALE_MODIFIER (1.0f) and EDGE_PADDING (10) for standard layout
+// Runtime-configurable SCALE_MODIFIER and EDGE_PADDING based on variant detection
+// - RG28XX (2.8" screen): 0.92f scale with 5px padding (smaller screen needs compact UI)
+// - Other devices (3.5"+ screens): 1.0f scale with 10px padding (standard layout)
+#define IS_SMALL_SCREEN_VARIANT                                                                    \
+	(platform_variant.variant == VARIANT_RG35XX_VGA && platform_variant.screen_diagonal < 3.0f)
+#define SCALE_MODIFIER (IS_SMALL_SCREEN_VARIANT ? 0.92f : 1.0f)
+#define EDGE_PADDING (IS_SMALL_SCREEN_VARIANT ? 5 : 10)
 
 ///////////////////////////////
 // Dependencies

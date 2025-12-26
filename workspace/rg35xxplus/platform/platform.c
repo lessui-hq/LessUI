@@ -137,13 +137,19 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Read model string from environment
 	char* model = getenv("RGXX_MODEL");
-	if (!model)
+	if (!model) {
+		LOG_debug("RGXX_MODEL not set, defaulting to RG35xxPlus\n");
 		model = "RG35xxPlus"; // Fallback to default
+	} else {
+		LOG_debug("RGXX_MODEL=%s\n", model);
+	}
 
 	// Look up device in mapping table
 	const DeviceVariantMap* map = NULL;
 	for (int i = 0; rg35xxplus_device_map[i].model_string != NULL; i++) {
 		if (prefixMatch((char*)rg35xxplus_device_map[i].model_string, model)) {
+			LOG_debug("Matched device: %s (table entry: %s)\n", model,
+			          rg35xxplus_device_map[i].model_string);
 			map = &rg35xxplus_device_map[i];
 			break;
 		}
