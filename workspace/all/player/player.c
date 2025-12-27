@@ -3889,7 +3889,7 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 
 			// Render game frame to backbuffer with scaling and filtering
 			GLVideo_present(width, height, video_state.rotation, screen_scaling, screen_sharpness,
-			                core.aspect_ratio);
+			                core.aspect_ratio, renderer.visual_scale);
 
 			// Render debug HUD overlay if enabled
 			if (show_debug) {

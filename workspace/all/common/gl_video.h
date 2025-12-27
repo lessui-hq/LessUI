@@ -175,9 +175,10 @@ retro_proc_address_t GLVideo_getProcAddress(const char* sym);
  * @param scaling_mode Scaling mode (PLAYER_SCALE_NATIVE, ASPECT, FULLSCREEN, CROPPED)
  * @param sharpness Texture filtering (SHARPNESS_SHARP, CRISP, SOFT)
  * @param aspect_ratio Core's reported aspect ratio (0 = use dimensions)
+ * @param visual_scale Content-to-screen scale factor for effects
  */
 void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
-                     int sharpness, double aspect_ratio);
+                     int sharpness, double aspect_ratio, int visual_scale);
 
 /**
  * Resize FBO for new dimensions.
@@ -253,14 +254,16 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
  * Draw the current software frame to the screen.
  *
  * Convenience wrapper for GLVideo_drawFrame that uses the current software texture.
+ * Also handles effect overlay rendering for software cores.
  *
  * @param src_rect Source rectangle in pixels
  * @param dst_rect Destination rectangle (viewport) in pixels
  * @param rotation Rotation (0-3)
  * @param sharpness Sharpness mode
+ * @param visual_scale Content-to-screen scale factor for effects
  */
 void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
-                               unsigned rotation, int sharpness);
+                               unsigned rotation, int sharpness, int visual_scale);
 
 /**
  * Present an SDL surface to screen via GL.
@@ -305,6 +308,20 @@ void GLVideo_clear(void);
  * @param screen_h Target screen height (for positioning)
  */
 void GLVideo_renderHUD(const uint32_t* pixels, int width, int height, int screen_w, int screen_h);
+
+/**
+ * Sets effect type for next frame.
+ *
+ * @param type Effect type (EFFECT_NONE, EFFECT_LINE, EFFECT_GRID, etc.)
+ */
+void GLVideo_setEffect(int type);
+
+/**
+ * Sets effect color (for DMG grid colorization).
+ *
+ * @param color RGB565 color value
+ */
+void GLVideo_setEffectColor(int color);
 
 /**
  * Capture the current frame from the FBO as an SDL surface.
@@ -377,13 +394,15 @@ static inline retro_proc_address_t GLVideo_getProcAddress(const char* sym) {
 }
 
 static inline void GLVideo_present(unsigned width, unsigned height, unsigned rotation,
-                                   int scaling_mode, int sharpness, double aspect_ratio) {
+                                   int scaling_mode, int sharpness, double aspect_ratio,
+                                   int visual_scale) {
 	(void)width;
 	(void)height;
 	(void)rotation;
 	(void)scaling_mode;
 	(void)sharpness;
 	(void)aspect_ratio;
+	(void)visual_scale;
 }
 
 static inline bool GLVideo_resizeFBO(unsigned width, unsigned height) {
@@ -422,11 +441,12 @@ static inline void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w
 }
 
 static inline void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
-                                             unsigned rotation, int sharpness) {
+                                             unsigned rotation, int sharpness, int visual_scale) {
 	(void)src_rect;
 	(void)dst_rect;
 	(void)rotation;
 	(void)sharpness;
+	(void)visual_scale;
 }
 
 static inline void GLVideo_presentSurface(SDL_Surface* surface) {
@@ -444,6 +464,14 @@ static inline void GLVideo_renderHUD(const uint32_t* pixels, int width, int heig
 	(void)height;
 	(void)screen_w;
 	(void)screen_h;
+}
+
+static inline void GLVideo_setEffect(int type) {
+	(void)type;
+}
+
+static inline void GLVideo_setEffectColor(int color) {
+	(void)color;
 }
 
 static inline SDL_Surface* GLVideo_captureFrame(void) {

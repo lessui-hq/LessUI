@@ -10,11 +10,14 @@
 #if HAS_OPENGLES
 
 #include "api.h"
+#include "effect_generate.h"
+#include "effect_system.h"
 #include "libretro.h"
 #include "log.h"
 #include "scaler.h" // For scaling constants/types if needed
 #include <SDL.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef M_PI
@@ -92,6 +95,12 @@ typedef struct GLVideoState {
 	unsigned int crisp_texture;
 	unsigned int crisp_width;
 	unsigned int crisp_height;
+
+	// Effect overlay resources
+	EffectState effect_state;
+	unsigned int effect_texture;
+	unsigned int effect_texture_width;
+	unsigned int effect_texture_height;
 } GLVideoState;
 
 // OpenGL ES 2.0 types and constants (minimal subset needed)
@@ -717,6 +726,10 @@ static int calcHardScale(unsigned int src_w, unsigned int src_h, int screen_w, i
 	return 4;
 }
 
+// Forward declarations for effect functions
+static void updateGLEffect(int screen_width, int screen_height, int visual_scale);
+static void renderEffectOverlay(int physical_w, int physical_h, const SDL_Rect* dst_rect);
+
 static const char* getContextTypeName(enum retro_hw_context_type type) {
 	switch (type) {
 	case RETRO_HW_CONTEXT_NONE:
@@ -1014,6 +1027,9 @@ bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
 	gl_state.enabled = true;
 	gl_state.context_ready = true;
 
+	// Initialize effect state
+	EFFECT_init(&gl_state.effect_state);
+
 	// NOTE: We do NOT call context_reset here. According to libretro spec,
 	// context_reset must be called AFTER retro_load_game() returns, not during.
 	// The caller should call GLVideo_contextReset() after load_game.
@@ -1090,6 +1106,9 @@ bool GLVideo_initSoftware(void) {
 	gl_state.context_ready = true;
 	gl_state.enabled = false; // Not HW rendering
 
+	// Initialize effect state
+	EFFECT_init(&gl_state.effect_state);
+
 	LOG_info("GL video: software render context initialized");
 	return true;
 }
@@ -1132,6 +1151,14 @@ void GLVideo_shutdown(void) {
 	if (gl_state.sw_textures[0]) {
 		glDeleteTextures(3, gl_state.sw_textures);
 		memset(gl_state.sw_textures, 0, sizeof(gl_state.sw_textures));
+	}
+
+	// Destroy effect texture
+	if (gl_state.effect_texture) {
+		glDeleteTextures(1, &gl_state.effect_texture);
+		gl_state.effect_texture = 0;
+		gl_state.effect_texture_width = 0;
+		gl_state.effect_texture_height = 0;
 	}
 
 	// Destroy FBO resources (only exist if enabled)
@@ -1444,7 +1471,7 @@ void GLVideo_drawFrame(unsigned int texture_id, unsigned int tex_w, unsigned int
 }
 
 void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rect,
-                               unsigned rotation, int sharpness) {
+                               unsigned rotation, int sharpness, int visual_scale) {
 	if (!gl_state.enabled) { // Ensure we are in SW mode logic (though textures exist anyway)
 		// Convert from SDL CW convention to GL CCW convention
 		unsigned gl_rotation = (rotation == 0) ? 0 : (4 - rotation);
@@ -1461,15 +1488,32 @@ void GLVideo_drawSoftwareFrame(const SDL_Rect* src_rect, const SDL_Rect* dst_rec
 			physical_dst.h = dst_rect->w;
 		}
 
+		// Get physical screen dimensions for effect generation
+		SDL_Window* window = PLAT_getWindow();
+		int physical_w = 0, physical_h = 0;
+		if (window) {
+			SDL_GetWindowSize(window, &physical_w, &physical_h);
+		}
+
+		// Update effect overlay if needed
+		if (physical_w > 0 && physical_h > 0) {
+			updateGLEffect(physical_w, physical_h, visual_scale);
+		}
+
 		GLVideo_drawFrame(tex_id, gl_state.sw_width, gl_state.sw_height, src_rect, &physical_dst,
 		                  gl_rotation, sharpness, false);
+
+		// Render effect overlay aligned to game content
+		if (physical_w > 0 && physical_h > 0) {
+			renderEffectOverlay(physical_w, physical_h, &physical_dst);
+		}
 	}
 }
 
 void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int scaling_mode,
-                     int sharpness, double aspect_ratio) {
-	LOG_debug("GL video: present called (%ux%u, rotation=%u, scale=%d, sharp=%d)", width, height,
-	          rotation, scaling_mode, sharpness);
+                     int sharpness, double aspect_ratio, int visual_scale) {
+	LOG_debug("GL video: present called (%ux%u, rotation=%u, scale=%d, sharp=%d, vscale=%d)", width,
+	          height, rotation, scaling_mode, sharpness, visual_scale);
 
 	if (!gl_state.gl_context || gl_state.shutdown_prepared) {
 		LOG_debug("GL video: present skipped (no context or shutdown)");
@@ -1630,8 +1674,14 @@ void GLVideo_present(unsigned width, unsigned height, unsigned rotation, int sca
 		bottom_left = false; // SW textures are top-left
 	}
 
+	// Update and render effect overlay if enabled
+	updateGLEffect(physical_w, physical_h, visual_scale);
+
 	GLVideo_drawFrame(texture_id, tex_w, tex_h, &src_rect, &dst_rect, rotation, sharpness,
 	                  bottom_left);
+
+	// Render effect overlay aligned to game content
+	renderEffectOverlay(physical_w, physical_h, &dst_rect);
 
 	// Note: Swap is now done separately via GLVideo_swapBuffers()
 	// to allow HUD overlay rendering before the frame is displayed
@@ -2157,6 +2207,239 @@ SDL_Surface* GLVideo_captureFrame(void) {
 
 	LOG_debug("GL video: captureFrame - captured %ux%u frame", width, height);
 	return surface;
+}
+
+///////////////////////////////
+// Effect Support
+///////////////////////////////
+
+/**
+ * Update effect texture if needed.
+ *
+ * Generates effect pattern into pixel buffer and uploads to GL texture.
+ * Only regenerates when effect settings change (type, scale, color).
+ */
+static void updateGLEffect(int screen_width, int screen_height, int visual_scale) {
+	EffectState* fx = &gl_state.effect_state;
+
+	// Update scale from renderer (before applying pending to take effect immediately)
+	EFFECT_setScale(fx, visual_scale);
+
+	// Apply pending state
+	EFFECT_applyPending(fx);
+
+	// Handle disabled effects - cleanup texture if transitioning from active to none
+	if (fx->type == EFFECT_NONE) {
+		if (gl_state.effect_texture) {
+			glDeleteTextures(1, &gl_state.effect_texture);
+			gl_state.effect_texture = 0;
+			gl_state.effect_texture_width = 0;
+			gl_state.effect_texture_height = 0;
+		}
+		EFFECT_markLive(fx);
+		return;
+	}
+
+	// Check if update needed for active effects
+	if (!EFFECT_needsUpdate(fx)) {
+		return;
+	}
+
+	// Generate effect pattern (use scale consistently - clamp to at least 1)
+	int scale = fx->scale > 0 ? fx->scale : 1;
+	int target_w = screen_width;
+	int target_h = screen_height;
+
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x size=%dx%d", fx->type, scale,
+	          fx->color, target_w, target_h);
+
+	// Allocate pixel buffer (RGBA32)
+	size_t buffer_size = target_w * target_h * 4;
+	uint32_t* pixels = malloc(buffer_size);
+	if (!pixels) {
+		LOG_error("Effect: failed to allocate pixel buffer (%zu bytes)", buffer_size);
+		return;
+	}
+
+	// Generate pattern based on type (use clamped scale)
+	int pitch = target_w * 4; // RGBA = 4 bytes per pixel
+	switch (fx->type) {
+	case EFFECT_LINE:
+		EFFECT_generateLine(pixels, target_w, target_h, pitch, scale);
+		break;
+	case EFFECT_GRID:
+		EFFECT_generateGridWithColor(pixels, target_w, target_h, pitch, scale, fx->color);
+		break;
+	case EFFECT_GRILLE:
+		EFFECT_generateGrille(pixels, target_w, target_h, pitch, scale);
+		break;
+	case EFFECT_SLOT:
+		EFFECT_generateSlot(pixels, target_w, target_h, pitch, scale);
+		break;
+	default:
+		LOG_warn("Effect: unknown effect type %d", fx->type);
+		free(pixels);
+		return;
+	}
+
+	// Create or resize texture if needed
+	if (!gl_state.effect_texture || gl_state.effect_texture_width != (unsigned)target_w ||
+	    gl_state.effect_texture_height != (unsigned)target_h) {
+		// Delete old texture if it exists
+		if (gl_state.effect_texture) {
+			glDeleteTextures(1, &gl_state.effect_texture);
+		}
+
+		// Create new texture
+		glGenTextures(1, &gl_state.effect_texture);
+		if (gl_state.effect_texture == 0) {
+			LOG_error("Effect: glGenTextures failed");
+			free(pixels);
+			return;
+		}
+
+		glBindTexture(GL_TEXTURE_2D, gl_state.effect_texture);
+		// Use GL_NEAREST for crisp grid lines (no blur from bilinear filtering)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		gl_state.effect_texture_width = target_w;
+		gl_state.effect_texture_height = target_h;
+
+		LOG_debug("Effect: created texture %ux%u (id=%u)", target_w, target_h,
+		          gl_state.effect_texture);
+	} else {
+		glBindTexture(GL_TEXTURE_2D, gl_state.effect_texture);
+	}
+
+	// Apply global opacity by pre-multiplying alpha channel
+	// This matches SDL_SetTextureAlphaMod behavior
+	int opacity = EFFECT_getOpacity(scale);
+	if (opacity < 255) {
+		for (int i = 0; i < target_w * target_h; i++) {
+			uint32_t pixel = pixels[i];
+			uint8_t alpha = (pixel >> 24) & 0xFF;
+			uint8_t new_alpha = (alpha * opacity) / 255;
+			pixels[i] = (pixels[i] & 0x00FFFFFF) | (new_alpha << 24);
+		}
+	}
+
+	// Upload pixel data to texture
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, target_w, target_h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+	             pixels);
+
+	// Check for errors
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR) {
+		LOG_error("Effect: glTexImage2D failed (error 0x%x)", err);
+	}
+
+	// Cleanup
+	glBindTexture(GL_TEXTURE_2D, 0);
+	free(pixels);
+
+	// Mark as live
+	EFFECT_markLive(fx);
+
+	LOG_debug("Effect: updated texture successfully");
+}
+
+void GLVideo_setEffect(int type) {
+	EFFECT_setType(&gl_state.effect_state, type);
+}
+
+void GLVideo_setEffectColor(int color) {
+	EFFECT_setColor(&gl_state.effect_state, color);
+}
+
+/**
+ * Render effect overlay over a specific region.
+ *
+ * Renders the effect texture over the dst_rect area (game content),
+ * ensuring grid alignment with game pixels. Effects render screen-aligned
+ * (no rotation) since rotation is already handled by coordinate transforms.
+ *
+ * @param physical_w Physical screen width
+ * @param physical_h Physical screen height
+ * @param dst_rect Destination rectangle (where game is rendered, in physical coords)
+ */
+static void renderEffectOverlay(int physical_w, int physical_h, const SDL_Rect* dst_rect) {
+	if (gl_state.effect_state.type == EFFECT_NONE || !gl_state.effect_texture || !dst_rect) {
+		return;
+	}
+
+	// Guard against division by zero
+	if (physical_w <= 0 || physical_h <= 0 || gl_state.effect_texture_width == 0 ||
+	    gl_state.effect_texture_height == 0) {
+		return;
+	}
+
+	// Enable blending for effect overlay
+	// Opacity is pre-multiplied into texture alpha during updateGLEffect() to match SDL2 behavior
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// Save current GL state (for HW cores)
+	GLint saved_program = 0;
+	GLint saved_texture = 0;
+	if (gl_state.enabled) {
+		glGetIntegerv(GL_CURRENT_PROGRAM, &saved_program);
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture);
+	}
+
+	// Use presentation shader
+	glUseProgram(gl_state.present_program);
+
+	// Set up viewport to full physical screen (effects render in screen space)
+	glViewport(0, 0, physical_w, physical_h);
+
+	// Bind effect texture
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, gl_state.effect_texture);
+	glUniform1i(gl_state.loc_texture, 0);
+
+	// Calculate quad vertices in NDC to cover dst_rect area
+	// dst_rect is in physical pixel coordinates, need to convert to NDC (-1 to 1)
+	float x0 = (2.0f * dst_rect->x / physical_w) - 1.0f;
+	float y0 = 1.0f - (2.0f * dst_rect->y / physical_h); // Y flipped for GL
+	float x1 = (2.0f * (dst_rect->x + dst_rect->w) / physical_w) - 1.0f;
+	float y1 = 1.0f - (2.0f * (dst_rect->y + dst_rect->h) / physical_h);
+
+	// Calculate texture coordinates - always sample from top-left (0,0) of effect texture
+	// This ensures grid aligns with game pixels, not screen position (matches SDL2 behavior)
+	// SDL2 uses: effect_src = {0, 0, dst_rect.w, dst_rect.h}
+	float tx0 = 0.0f;
+	float ty0 = 0.0f;
+	float tx1 = (float)dst_rect->w / (float)gl_state.effect_texture_width;
+	float ty1 = (float)dst_rect->h / (float)gl_state.effect_texture_height;
+
+	// Use identity MVP (vertices are already in NDC, no rotation needed)
+	static const float identity_mvp[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+	glUniformMatrix4fv(gl_state.loc_mvp, 1, GL_FALSE, identity_mvp);
+
+	// Quad vertices (in NDC) and texcoords
+	float effect_verts[8] = {x0, y1, x1, y1, x0, y0, x1, y0};
+	float effect_texco[8] = {tx0, ty1, tx1, ty1, tx0, ty0, tx1, ty0};
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glEnableVertexAttribArray(gl_state.loc_position);
+	glEnableVertexAttribArray(gl_state.loc_texcoord);
+	glVertexAttribPointer(gl_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, effect_verts);
+	glVertexAttribPointer(gl_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, effect_texco);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisableVertexAttribArray(gl_state.loc_position);
+	glDisableVertexAttribArray(gl_state.loc_texcoord);
+
+	// Restore state
+	glUseProgram((GLuint)saved_program);
+	if (gl_state.enabled) {
+		glBindTexture(GL_TEXTURE_2D, (GLuint)saved_texture);
+	}
+	glDisable(GL_BLEND);
 }
 
 #endif /* HAS_OPENGLES */

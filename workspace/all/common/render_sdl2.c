@@ -390,8 +390,8 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	// Clear screen before drawing (important for non-fullscreen aspect ratios)
 	GLVideo_clear();
 
-	// Draw software frame
-	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness);
+	// Draw software frame (with effect support)
+	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness, renderer->visual_scale);
 	GLVideo_swapBuffers();
 
 #else

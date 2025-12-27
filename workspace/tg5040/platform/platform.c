@@ -37,6 +37,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
 
@@ -199,11 +200,13 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 void PLAT_setEffect(int effect) {
-	SDL2_setEffect(&vid_ctx, effect);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffect(effect);
 }
 
 void PLAT_setEffectColor(int color) {
-	SDL2_setEffectColor(&vid_ctx, color);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffectColor(color);
 }
 
 void PLAT_vsync(int remaining) {
