@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -312,6 +312,15 @@ setup: name
 	@rsync -a ./build/SYSTEM/common/bin/arm64/7z ./build/BOOT/bin/arm64/
 	@echo "Generating emulator paks..."
 	@./scripts/generate-paks.sh all
+
+# LessOS bootstrap: copy init.sh to build/lessos/
+# This is the entry point for all LessOS-based devices
+lessos:
+	@echo "Setting up LessOS bootstrap..."
+	@mkdir -p ./build/lessos
+	@cp ./workspace/all/paks/LessUI/lessos/init.sh ./build/lessos/
+	@chmod +x ./build/lessos/init.sh
+	@echo "LessOS bootstrap ready at build/lessos/init.sh"
 
 # Platform-specific packaging for Miyoo/Trimui family
 special:

@@ -56,6 +56,14 @@
       "shutdown_cmd": "shutdown",
       "nice_prefix": ""
     },
+    "rk3566": {
+      "description": "Rockchip RK3566 devices (LessOS)",
+      "arch": "arm64",
+      "sdcard_path": "/storage",
+      "shutdown_cmd": "poweroff",
+      "nice_prefix": "",
+      "lessos": true
+    },
     "m17": {
       "description": "Powkiddy X55",
       "arch": "arm32",
