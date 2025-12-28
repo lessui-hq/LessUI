@@ -11,6 +11,7 @@ LessUI now supports OpenGL ES hardware-accelerated rendering for libretro cores 
 - rg35xxplus (Anbernic RG35XX Plus/H/SP series - Mali GPU)
 - tg5040 (TrimUI Smart Pro - Mali GPU)
 - zero28 (MagicX Mini Zero 28 - Mali GPU, portrait display with 90° rotation)
+- my355 (Miyoo Flip - RK3566, Mali G52 GPU)
 
 **Supported GLES Versions:**
 
@@ -589,6 +590,8 @@ Simple and direct:
 - `workspace/tg5040/platform/platform.c` - Implemented PLAT_getWindow()
 - `workspace/zero28/platform/platform.h` - Enabled HAS_OPENGLES
 - `workspace/zero28/platform/platform.c` - Implemented PLAT_getWindow(), PLAT_getRotation()
+- `workspace/my355/platform/platform.h` - Enabled HAS_OPENGLES
+- `workspace/my355/platform/platform.c` - Implemented PLAT_getWindow(), PLAT_getRotation(), GLVideo effects
 - `tests/support/platform_mocks.c` - Added PLAT_getWindow() stub
 
 ## Technical Highlights
