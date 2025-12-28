@@ -343,8 +343,15 @@ SDL_Surface* GLVideo_captureFrame(void);
 // These allow the code to compile without #if HAS_OPENGLES everywhere
 
 #include "libretro.h"
-#include <SDL.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+// Forward declarations for SDL types (avoid including SDL.h which may not exist on SDL1 platforms)
+struct SDL_Surface;
+typedef struct SDL_Surface SDL_Surface;
+struct SDL_Rect;
+typedef struct SDL_Rect SDL_Rect;
 
 static inline bool GLVideo_init(struct retro_hw_render_callback* callback, unsigned max_width,
                                 unsigned max_height) {
