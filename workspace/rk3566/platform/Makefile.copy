@@ -1,5 +1,13 @@
 $(PLATFORM):
 	# $@
+	cp ./workspace/$@/keymon/keymon.elf ./build/SYSTEM/$@/bin/
 	# show.elf (platform-specific build)
 	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
 	rsync -a ./workspace/$@/other/sdl12-compat/build/libSDL-1.2.so.1.2.69 ./build/SYSTEM/$@/lib/libSDL-1.2.so.0
+	# installer
+	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
+	mkdir -p ./build/BOOT/common/$@/
+	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	# boot assets
+	rsync -a ./skeleton/SYSTEM/res/installing@3x.png ./build/BOOT/common/$@/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@3x.png ./build/BOOT/common/$@/updating.png

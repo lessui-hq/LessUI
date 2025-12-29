@@ -52,18 +52,14 @@ if [ -f "$UPDATE_PATH" ]; then
 
 	# Perform atomic update with automatic rollback
 	atomic_system_update "$UPDATE_PATH" "$SDCARD_PATH" "$SYSTEM_PATH" "$LOG_FILE"
-	sync
 
 	# Run platform-specific install script
 	run_platform_install "$SYSTEM_PATH/$PLATFORM/bin/install.sh" "$LOG_FILE"
-
-	if [ "$ACTION" = "installing" ]; then
-		log_info "Rebooting..."
-		reboot
-	fi
 fi
 
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
-if [ -f "$LAUNCH_PATH" ]; then
-	exec "$LAUNCH_PATH"
-fi
+while [ -f "$LAUNCH_PATH" ]; do
+	"$LAUNCH_PATH"
+done
+
+reboot
