@@ -1324,6 +1324,25 @@ void PLAT_setVideoScaleClip(int x, int y, int width, int height);
 void PLAT_setNearestNeighbor(int enabled);
 
 /**
+ * Get the SDL window for OpenGL context creation.
+ *
+ * Only available on platforms with HAS_OPENGLES support and SDL2.
+ * Returns NULL on platforms without OpenGL ES or using SDL1.
+ *
+ * @return SDL_Window pointer, or NULL if not available
+ */
+#ifdef USE_SDL2
+SDL_Window* PLAT_getWindow(void);
+#endif
+
+/**
+ * Get the current display rotation.
+ *
+ * @return Rotation in 90-degree increments (0-3)
+ */
+int PLAT_getRotation(void);
+
+/**
  * Platform-specific sharpness control.
  *
  * @param sharpness Sharpness level

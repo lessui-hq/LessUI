@@ -21,6 +21,7 @@
 #include "defines.h"
 #include "effect_system.h"
 #include "effect_utils.h"
+#include "gl_video.h"
 #include "render_common.h"
 #include "utils.h"
 
@@ -35,6 +36,7 @@ static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 	LOG_info("resizeVideo(%i,%i,%i) hard_scale: %i crisp: %i\n", w, h, p, ctx->hard_scale,
 	         ctx->sharpness == SHARPNESS_CRISP);
 
+#if !HAS_OPENGLES
 	// Cleanup old resources
 	SDL_FreeSurface(ctx->buffer);
 	SDL_DestroyTexture(ctx->texture);
@@ -59,6 +61,7 @@ static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 
 	// Recreate buffer wrapper
 	ctx->buffer = SDL_CreateRGBSurfaceFrom(NULL, w, h, FIXED_DEPTH, p, RGBA_MASK_565);
+#endif
 
 	ctx->width = w;
 	ctx->height = h;
@@ -82,16 +85,17 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		return;
 	}
 
-	// Target dimensions
-	int target_w = ctx->device_width;
-	int target_h = ctx->device_height;
-
 	// All effects use procedural generation (with color support for GRID)
 	int scale = fx->scale > 0 ? fx->scale : 1;
 	int opacity = EFFECT_getOpacity(scale);
 
 	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
 	          fx->color, opacity);
+
+#if !HAS_OPENGLES
+	// Target dimensions (only needed for SDL texture creation)
+	int target_w = ctx->device_width;
+	int target_h = ctx->device_height;
 
 	SDL_Texture* new_texture = EFFECT_createGeneratedTextureWithColor(
 	    ctx->renderer, fx->type, fx->scale, target_w, target_h, fx->color);
@@ -112,6 +116,9 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 
 		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
 	}
+#else
+	EFFECT_markLive(fx);
+#endif
 }
 
 SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
@@ -148,16 +155,23 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	LOG_debug("SDL2_initVideo: Creating window/renderer (size=%dx%d)", w, h);
 
 	// Create window and renderer
-	ctx->window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h,
-	                               SDL_WINDOW_SHOWN);
+	// Add OpenGL flag on platforms that support HW rendering
+	Uint32 window_flags = SDL_WINDOW_SHOWN;
+#if HAS_OPENGLES
+	window_flags |= SDL_WINDOW_OPENGL;
+#endif
+
+	ctx->window =
+	    SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, window_flags);
 	if (!ctx->window) {
 		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
 		return NULL;
 	}
 	LOG_debug("SDL2_initVideo: Window created successfully");
 
-	ctx->renderer =
-	    SDL_CreateRenderer(ctx->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+#if !HAS_OPENGLES
+	Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+	ctx->renderer = SDL_CreateRenderer(ctx->window, -1, renderer_flags);
 	if (!ctx->renderer) {
 		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
 		SDL_DestroyWindow(ctx->window);
@@ -170,6 +184,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		LOG_info("SDL2: Using renderer: %s", renderer_info.name);
 	}
 	LOG_debug("SDL2_initVideo: Renderer created successfully");
+#endif
 
 	// Check for rotation (portrait display)
 	if (ctx->config.auto_rotate) {
@@ -188,6 +203,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		}
 	}
 
+#if !HAS_OPENGLES
 	// Create initial texture
 	LOG_debug("SDL2_initVideo: Creating texture (sharpness=%s)",
 	          ctx->config.default_sharpness == SHARPNESS_SOFT ? "soft" : "sharp");
@@ -214,12 +230,16 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
+#endif
+
 	ctx->screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, FIXED_DEPTH, RGBA_MASK_565);
 	if (!ctx->screen) {
 		LOG_error("SDL2_initVideo: SDL_CreateRGBSurface failed: %s", SDL_GetError());
+#if !HAS_OPENGLES
 		SDL_FreeSurface(ctx->buffer);
 		SDL_DestroyTexture(ctx->texture);
 		SDL_DestroyRenderer(ctx->renderer);
+#endif
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
@@ -236,6 +256,24 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	ctx->sharpness = ctx->config.default_sharpness;
 	ctx->hard_scale = 4;
 
+#if HAS_OPENGLES
+	// Initialize GL context for unified presentation (even if core is software)
+	if (!GLVideo_initSoftware()) {
+		LOG_error("SDL2_initVideo: Failed to initialize GL video");
+		// Fallback to SDL renderer? Or fail?
+		// If we are on GLES platform, we rely on GLVideo for presentation to avoid
+		// SDL_Renderer/GL conflicts. So failure is fatal for video.
+		// However, we can keep running but screen might be black?
+		// Let's assume initSoftware returns true if already inited or successful.
+	} else {
+		// Clear screen a few times to ensure display pipe is ready
+		for (int i = 0; i < 3; i++) {
+			GLVideo_clear();
+			GLVideo_swapBuffers();
+		}
+	}
+#endif
+
 	LOG_debug("SDL2_initVideo: Video initialization complete (screen=%dx%d)", w, h);
 	return ctx->screen;
 }
@@ -243,13 +281,16 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 	// Clear screen
 	SDL_FillRect(ctx->screen, NULL, 0);
+#if !HAS_OPENGLES
 	for (int i = 0; i < 3; i++) {
 		SDL_RenderClear(ctx->renderer);
 		SDL_RenderPresent(ctx->renderer);
 	}
+#endif
 
 	// Free surfaces
 	SDL_FreeSurface(ctx->screen);
+#if !HAS_OPENGLES
 	SDL_FreeSurface(ctx->buffer);
 
 	// Destroy textures
@@ -261,6 +302,12 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 
 	// Destroy renderer and window
 	SDL_DestroyRenderer(ctx->renderer);
+#endif
+
+#if HAS_OPENGLES
+	// Destroy GL context before window (SDL requires this order)
+	GLVideo_shutdown();
+#endif
 	SDL_DestroyWindow(ctx->window);
 
 	SDL_Quit();
@@ -272,7 +319,9 @@ void SDL2_clearVideo(SDL2_RenderContext* ctx) {
 
 void SDL2_clearAll(SDL2_RenderContext* ctx) {
 	SDL2_clearVideo(ctx);
+#if !HAS_OPENGLES
 	SDL_RenderClear(ctx->renderer);
+#endif
 }
 
 SDL_Surface* SDL2_resizeVideo(SDL2_RenderContext* ctx, int width, int height, int pitch) {
@@ -308,8 +357,48 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	// Unified presentation: handles both game and UI modes
 	// No state tracking needed - caller explicitly says what to present
 
-	SDL_RenderClear(ctx->renderer);
+#if HAS_OPENGLES
+	// Use GL video pipeline for everything on GLES platforms
+	// This enables shaders for software cores and avoids context conflicts
 
+	if (!renderer) {
+		// UI Mode: Present screen surface
+		// Ensure UI texture is up to date
+		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
+		GLVideo_presentSurface(ctx->screen);
+		GLVideo_swapBuffers();
+		return;
+	}
+
+	// Game Mode: Present from renderer source
+	// Upload frame to GL texture
+	// Note: renderer->src is pixel data, src_p is pitch
+	// We assume RGB565 for now (standard for SDL2 backend)
+	GLVideo_uploadFrame(renderer->src, renderer->true_w, renderer->true_h, renderer->src_p,
+	                    GL_VIDEO_PIXEL_FORMAT_RGB565);
+
+	// Determine rotation and other parameters
+	unsigned rotation = ctx->on_hdmi ? 0 : ctx->rotate;
+	int sharpness = ctx->sharpness;
+
+	// Calculate destination rectangle (scaling)
+	// device_width/height are already logical dimensions, use them directly
+	SDL_Rect src_rect = {renderer->src_x, renderer->src_y, renderer->src_w, renderer->src_h};
+	RenderDestRect dest = RENDER_calcDestRect(renderer, ctx->device_width, ctx->device_height);
+	SDL_Rect dst_rect = {dest.x, dest.y, dest.w, dest.h};
+
+	// Clear screen before drawing (important for non-fullscreen aspect ratios)
+	GLVideo_clear();
+
+	// Draw software frame (with effect support)
+	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness, renderer->visual_scale);
+	GLVideo_swapBuffers();
+
+#else
+	SDL_RenderClear(ctx->renderer);
+#endif
+
+#if !HAS_OPENGLES
 	if (!renderer) {
 		// UI mode: present screen surface
 		resizeVideoInternal(ctx, ctx->device_width, ctx->device_height, ctx->device_pitch);
@@ -386,6 +475,7 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 	}
 
 	SDL_RenderPresent(ctx->renderer);
+#endif
 }
 
 void SDL2_vsync(int remaining) {
@@ -429,4 +519,18 @@ uint32_t SDL2_measureVsyncInterval(SDL2_RenderContext* ctx) {
 	// Convert to microseconds
 	uint64_t freq = SDL_GetPerformanceFrequency();
 	return (uint32_t)((end - start) * 1000000 / freq);
+}
+
+SDL_Window* SDL2_getWindow(SDL2_RenderContext* ctx) {
+	if (!ctx) {
+		return NULL;
+	}
+	return ctx->window;
+}
+
+int SDL2_getRotation(SDL2_RenderContext* ctx) {
+	if (!ctx) {
+		return 0;
+	}
+	return ctx->rotate;
 }

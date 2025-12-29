@@ -37,6 +37,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
 
@@ -137,13 +138,19 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Read model string from environment
 	char* model = getenv("RGXX_MODEL");
-	if (!model)
+	if (!model) {
+		LOG_debug("RGXX_MODEL not set, defaulting to RG35xxPlus\n");
 		model = "RG35xxPlus"; // Fallback to default
+	} else {
+		LOG_debug("RGXX_MODEL=%s\n", model);
+	}
 
 	// Look up device in mapping table
 	const DeviceVariantMap* map = NULL;
 	for (int i = 0; rg35xxplus_device_map[i].model_string != NULL; i++) {
 		if (prefixMatch((char*)rg35xxplus_device_map[i].model_string, model)) {
+			LOG_debug("Matched device: %s (table entry: %s)\n", model,
+			          rg35xxplus_device_map[i].model_string);
 			map = &rg35xxplus_device_map[i];
 			break;
 		}
@@ -241,11 +248,13 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 void PLAT_setEffect(int effect) {
-	SDL2_setEffect(&vid_ctx, effect);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffect(effect);
 }
 
 void PLAT_setEffectColor(int color) {
-	SDL2_setEffectColor(&vid_ctx, color);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffectColor(color);
 }
 
 void PLAT_vsync(int remaining) {
@@ -259,6 +268,14 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 void PLAT_present(GFX_Renderer* renderer) {
 	vid_ctx.on_hdmi = GetHDMI();
 	SDL2_present(&vid_ctx, renderer);
+}
+
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
+int PLAT_getRotation(void) {
+	return SDL2_getRotation(&vid_ctx);
 }
 
 int PLAT_supportsOverscan(void) {

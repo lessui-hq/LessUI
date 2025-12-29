@@ -21,7 +21,7 @@ SDL ?= SDL
 ###########################################################
 
 TARGET = launcher
-INCDIR = -I. -I../common/ -isystem ../vendor/stb/ -I../../$(PLATFORM)/platform/
+INCDIR = -I. -I../common/ -I../player/libretro-common/include/ -isystem ../vendor/stb/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/ui_layout.c ../common/log.c ../common/pad.c \
          ../common/gfx_text.c ../common/platform_variant.c ../common/stb_ds_impl.c \
@@ -36,7 +36,7 @@ SOURCE += ../common/effect_system.c ../common/effect_generate.c ../common/render
 
 # Add effect support - SDL2 platforms use render_sdl2 + effect_utils, SDL1 platforms use effect_surface
 ifeq ($(SDL),SDL2)
-SOURCE += ../common/render_sdl2.c ../common/effect_utils.c
+SOURCE += ../common/render_sdl2.c ../common/effect_utils.c ../common/gl_video.c
 else
 SOURCE += ../common/effect_surface.c
 endif

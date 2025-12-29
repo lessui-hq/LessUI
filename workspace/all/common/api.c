@@ -734,6 +734,18 @@ FALLBACK_IMPLEMENTATION int PLAT_supportsOverscan(void) {
 }
 
 /**
+ * Gets the current display rotation.
+ *
+ * Default implementation returns 0 (no rotation).
+ * Platforms can override this weak symbol to provide rotation.
+ *
+ * @return Rotation in 90-degree increments (0-3)
+ */
+FALLBACK_IMPLEMENTATION int PLAT_getRotation(void) {
+	return 0;
+}
+
+/**
  * Sets the color for screen effects (scanlines, grids).
  *
  * Default implementation does nothing. Platforms with effect

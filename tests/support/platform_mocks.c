@@ -103,6 +103,7 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 SDL_Surface* PLAT_initVideo(void) { return NULL; }
 void PLAT_quitVideo(void) {}
 void PLAT_clearVideo(SDL_Surface* screen) {}
+SDL_Window* PLAT_getWindow(void) { return NULL; }
 void PLAT_present(GFX_Renderer* renderer) {}
 void PLAT_vsync(int remaining) {}
 void PLAT_setCPUSpeed(int speed) {}

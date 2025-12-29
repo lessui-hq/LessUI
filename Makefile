@@ -274,7 +274,7 @@ clean:
 	@find workspace -type d -name "output" -path "*/squashfs/output" -exec rm -rf {} + 2>/dev/null || true
 	@find workspace -type f -name "*.bmp" -path "*/boot/*.bmp" -delete 2>/dev/null || true
 	@find workspace -type f -name "boot_logo.png" -path "*/boot/boot_logo.png" -delete 2>/dev/null || true
-	@rm -rf workspace/all/paks/Emus/cores/
+	@rm -rf workspace/all/paks/Emus/cores/extracted/
 
 # Prepare fresh build directory and skeleton
 setup: name

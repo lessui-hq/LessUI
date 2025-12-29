@@ -216,7 +216,7 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
 		return PLAYER_CPU_DECISION_SKIP;
 	}
 
-	// Get current indices
+	// Get current indices (target_index is always 0..freq_count-1)
 	int current_idx = state->target_index;
 	int current_level = state->target_level;
 	int max_idx = state->freq_count - 1;

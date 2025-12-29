@@ -339,6 +339,53 @@
           "required": false
         }
       ]
+    },
+    "N64": {
+      "name": "Nintendo 64",
+      "core": "mupen64plus_next_libretro",
+      "resolution": "320x240",
+      "extensions": ["z64", "n64", "v64", "zip", "7z"],
+      "bios": [],
+      "arm64_only": true
+    },
+    "PSP": {
+      "name": "PlayStation Portable",
+      "core": "ppsspp_libretro",
+      "resolution": "480x272",
+      "extensions": ["elf", "iso", "cso", "prx", "pbp"],
+      "bios": [],
+      "arm64_only": true
+    },
+    "DC": {
+      "name": "Sega Dreamcast",
+      "core": "flycast_libretro",
+      "resolution": "640x480",
+      "extensions": [
+        "chd",
+        "cdi",
+        "iso",
+        "elf",
+        "bin",
+        "cue",
+        "gdi",
+        "lst",
+        "zip",
+        "7z",
+        "dat"
+      ],
+      "bios": [
+        {
+          "name": "dc/dc_boot.bin",
+          "md5": null,
+          "required": true
+        },
+        {
+          "name": "dc/dc_flash.bin",
+          "md5": null,
+          "required": false
+        }
+      ],
+      "arm64_only": true
     }
   }
 }
