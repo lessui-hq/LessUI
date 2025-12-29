@@ -12,8 +12,7 @@ cpu_restore() {
 }
 cpu_restore
 
-# SDL environment for sdl12-compat
-export SDL_VIDEODRIVER=kmsdrm
+# SDL environment
 export SDL_AUDIODRIVER=alsa
 
 # Start keymon
