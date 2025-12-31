@@ -80,6 +80,7 @@ COMMON_SOURCE = \
 	$(COMMON_DIR)/gfx_text.c \
 	$(COMMON_DIR)/scaler.c \
 	$(COMMON_DIR)/platform_variant.c \
+	$(COMMON_DIR)/paths.c \
 	$(PLATFORM_DIR)/platform.c
 
 # Add shared rendering modules

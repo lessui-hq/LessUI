@@ -25,6 +25,7 @@ INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../launcher/ -isystem .
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/ui_layout.c ../common/log.c ../common/pad.c \
          ../common/gfx_text.c ../launcher/launcher_file_utils.c ../common/platform_variant.c \
+         ../common/paths.c \
          player_archive.c player_memory.c player_state.c \
          player_paths.c player_cpu.c player_input.c player_mappings.c \
          player_video_convert.c player_rotation.c player_config.c player_context.c \
