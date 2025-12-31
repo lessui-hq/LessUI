@@ -52,6 +52,7 @@ if [ -f "$UPDATE_PATH" ]; then
 
 	# Perform atomic update with automatic rollback
 	atomic_system_update "$UPDATE_PATH" "$SDCARD_PATH" "$SYSTEM_PATH" "$LOG_FILE"
+	sync
 
 	# Run platform-specific install script
 	run_platform_install "$SYSTEM_PATH/$PLATFORM/bin/install.sh" "$LOG_FILE"

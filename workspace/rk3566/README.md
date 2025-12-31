@@ -49,7 +49,7 @@ Platform implementation for Rockchip RK3566-based retro handheld devices (LessOS
 
 ## Platform Architecture
 
-The RGB30 uses a **hybrid input system** that combines:
+RK3566 devices use a **hybrid input system** that combines:
 - SDL2 joystick for gamepad buttons (D-Pad, face buttons, shoulders)
 - Minimal SDL keyboard for power button
 - Evdev codes for volume control and L3/R3 menu modifiers
@@ -70,15 +70,12 @@ RK3566/
 ├── show/              Boot splash screen utility
 │   ├── show.c         SDL2-based image display (supports HDMI)
 │   └── makefile       Build configuration
-├── cores/             Libretro cores (submodules + builds)
-└── other/             Third-party dependencies
-    ├── DinguxCommander/  File manager (branch: launcher-rgb30)
-    └── sdl12-compat/     SDL 1.2 compatibility layer (branch: launcher-rgb30)
+└── cores/             Libretro cores (submodules + builds)
 ```
 
 ## Input System
 
-The RGB30 uses a **joystick-first input architecture**:
+RK3566 devices use a **joystick-first input architecture**:
 
 1. **SDL Joystick API**: Primary gamepad input (D-Pad, face buttons, shoulders, Start/Select)
 2. **SDL Keyboard**: Power button only (SDLK_POWER)
@@ -124,34 +121,21 @@ Audio and video routing automatically switches when headphones or HDMI are conne
 ## Building
 
 ### Prerequisites
-Requires Docker with RGB30 cross-compilation toolchain.
+Requires Docker with RK3566 cross-compilation toolchain.
 
 ### Build Commands
 
 ```bash
 # Enter platform build environment
-make PLATFORM=rgb30 shell
+make PLATFORM=rk3566 shell
 
 # Inside container: build all platform components
-cd /root/workspace/rgb30
+cd /root/workspace/rk3566
 make
 
-# This builds (in early target):
-# - DinguxCommander (file manager)
-# - sdl12-compat (SDL 1.2 compatibility layer)
-#
-# And (in all target):
+# This builds:
 # - show.elf (boot splash display)
-# - All libretro cores in cores/
 ```
-
-### Dependencies
-
-The platform automatically clones required dependencies on first build:
-- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `launcher-rgb30`)
-- **sdl12-compat**: `github.com/shauninman/sdl12-compat.git` (branch: `launcher-rgb30`)
-
-Both dependencies use custom toolchain configurations for the RGB30 hardware.
 
 ## Installation
 
@@ -180,7 +164,7 @@ LessUI installs to the SD card with the following structure:
 
 ### Settings Management
 
-The RGB30 uses shared memory for settings synchronization between processes:
+RK3566 devices use shared memory for settings synchronization between processes:
 
 **Settings Stored**:
 - Brightness level (0-10)
@@ -261,7 +245,7 @@ Volume and brightness buttons support repeat:
 
 ## Supported Emulator Cores
 
-The RGB30 platform includes these libretro cores:
+The RK3566 platform includes these libretro cores:
 
 | Core | Systems | Notes |
 |------|---------|-------|
@@ -279,15 +263,6 @@ The RGB30 platform includes these libretro cores:
 | **mgba** | Game Boy Advance | High accuracy |
 | **race** | Neo Geo Pocket, Neo Geo Pocket Color | SNK handheld |
 
-## Included Tools
-
-### Files.pak
-DinguxCommander-based file manager (custom RGB30 build):
-- Full file operations (copy, cut, paste, delete, rename)
-- Directory navigation
-- Image preview support
-- Integrated with LessUI launcher
-
 ## Known Issues / Quirks
 
 ### Hardware Quirks
@@ -298,7 +273,7 @@ DinguxCommander-based file manager (custom RGB30 build):
 5. **Audio crackling**: Light crackling reported in some cores (fceumm, snes9x2005_plus) - likely SDL2 audio pipeline issue
 
 ### Development Notes
-1. **SDL2**: Platform uses SDL2 (not SDL 1.2), requiring sdl12-compat for legacy cores
+1. **SDL2**: Platform uses SDL2 natively (LessOS provides SDL2)
 2. **Shared memory settings**: libmsettings uses `/SharedSettings` SHM for IPC
 3. **Settings host**: keymon is always the settings "host" (first to create SHM)
 4. **HDMI polling**: Background thread polls HDMI state at 1Hz (every second)

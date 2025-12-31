@@ -1,9 +1,11 @@
 /**
- * platform.c - Powkiddy RGB30 platform implementation
+ * platform.c - Rockchip RK3566 platform implementation
  *
  * REFACTORED VERSION - Uses shared render_sdl2 backend
  *
- * Platform-specific code for the Powkiddy RGB30 handheld device.
+ * Platform-specific code for Rockchip RK3566-based handheld devices.
+ * Supported devices: PowKiddy RGB30, Anbernic RG353P/M/V/VS
+ *
  * Key features:
  * - Dual analog sticks with swapped right stick axes (X/Y reversed)
  * - WiFi support with status monitoring
@@ -12,8 +14,8 @@
  * - Dynamic device model detection from device tree
  * - Overscan support (PLAT_supportsOverscan returns 1)
  *
- * The RGB30 uses the Rockchip RK3566 SoC with 720x720 display.
- * Input events are read directly from /dev/input/event* devices.
+ * RK3566 devices use 720x720 displays and read input events directly
+ * from /dev/input/event* devices.
  */
 
 #include <linux/fb.h>

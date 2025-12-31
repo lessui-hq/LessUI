@@ -64,7 +64,7 @@
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
-// RGB30 uses minimal SDL keyboard input (power button only)
+// RK3566 devices use minimal SDL keyboard input (power button only)
 ///////////////////////////////
 
 #define BUTTON_UP BUTTON_NA
