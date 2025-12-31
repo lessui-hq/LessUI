@@ -10,7 +10,7 @@ endif
 
 ###########################################################
 
-REQUIRES_SDLCOMPAT = other/sdl12-compat
+# LessOS provides SDL2 natively - no sdl12-compat needed
 
 # keymon.elf is now built in workspace/all/utils
 # LessOS doesn't need DinguxCommander (file manager for stock firmware)
@@ -20,18 +20,9 @@ all: readmes show
 show:
 	@$(MAKE) -C show
 
-early: $(REQUIRES_SDLCOMPAT)/build
-	@cd $(REQUIRES_SDLCOMPAT) && cmake --build build >/dev/null
+# No early dependencies for rk3566
+early:
 
 clean:
-	@cd $(REQUIRES_SDLCOMPAT) && rm -rf build
-
-###########################################################
-
-$(REQUIRES_SDLCOMPAT):
-	git clone --depth 1 --branch minui-rgb30 https://github.com/shauninman/sdl12-compat.git $(REQUIRES_SDLCOMPAT)
-
-$(REQUIRES_SDLCOMPAT)/build: $(REQUIRES_SDLCOMPAT)
-	cd $(REQUIRES_SDLCOMPAT) && cmake --toolchain ./toolchain.cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .
 
 include ../all/readmes/Makefile

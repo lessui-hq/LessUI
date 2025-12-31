@@ -189,7 +189,8 @@
 // Platform-Specific Paths and Settings
 ///////////////////////////////
 
-#define SDCARD_PATH "/storage" // Path to SD card mount point (LessOS storage)
+#define SDCARD_PATH                                                                                \
+	"/storage" // Path to SD card mount point (LessOS default, overridden by LESSOS_STORAGE)
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 
 ///////////////////////////////

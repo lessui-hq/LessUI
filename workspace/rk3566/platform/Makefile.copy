@@ -3,7 +3,7 @@ $(PLATFORM):
 	cp ./workspace/$@/keymon/keymon.elf ./build/SYSTEM/$@/bin/
 	# show.elf (platform-specific build)
 	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
-	rsync -a ./workspace/$@/other/sdl12-compat/build/libSDL-1.2.so.1.2.69 ./build/SYSTEM/$@/lib/libSDL-1.2.so.0
+	# LessOS provides SDL2 natively - no sdl12-compat needed
 	# installer
 	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
 	mkdir -p ./build/BOOT/common/$@/
