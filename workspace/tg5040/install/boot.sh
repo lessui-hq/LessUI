@@ -56,11 +56,14 @@ if [ -f "$UPDATE_PATH" ]; then
 
 	# Run platform-specific install script
 	run_platform_install "$SYSTEM_PATH/$PLATFORM/bin/install.sh" "$LOG_FILE"
+
+	if [ "$ACTION" = "installing" ]; then
+		log_info "Rebooting..."
+		reboot
+	fi
 fi
 
 LAUNCH_PATH="$SYSTEM_PATH/$PLATFORM/paks/LessUI.pak/launch.sh"
-while [ -f "$LAUNCH_PATH" ]; do
-	"$LAUNCH_PATH"
-done
-
-reboot
+if [ -f "$LAUNCH_PATH" ]; then
+	exec "$LAUNCH_PATH"
+fi
