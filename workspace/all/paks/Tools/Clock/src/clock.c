@@ -23,6 +23,7 @@
 
 #include "api.h"
 #include "defines.h"
+#include "paths.h"
 #include "utils.h"
 
 /**
@@ -49,6 +50,7 @@ enum {
  * @return EXIT_SUCCESS on normal exit
  */
 int main(int argc, char* argv[]) {
+	Paths_init();
 	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
@@ -90,7 +92,9 @@ int main(int argc, char* argv[]) {
 	int save_changes = 0;
 	int select_cursor = 0;
 	// Check if user prefers 24-hour format (stored as a flag file)
-	int show_24hour = exists(USERDATA_PATH "/show_24hour");
+	char pref_path[MAX_PATH];
+	(void)snprintf(pref_path, sizeof(pref_path), "%s/show_24hour", g_userdata_path);
+	int show_24hour = exists(pref_path);
 
 	// Initialize with current system time
 	time_t t = time(NULL);
@@ -268,9 +272,9 @@ int main(int argc, char* argv[]) {
 
 			// Persist preference as a flag file
 			if (show_24hour) {
-				system("touch " USERDATA_PATH "/show_24hour");
+				touch(pref_path);
 			} else {
-				system("rm " USERDATA_PATH "/show_24hour");
+				unlink(pref_path);
 			}
 		}
 

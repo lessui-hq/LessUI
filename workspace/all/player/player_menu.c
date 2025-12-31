@@ -20,6 +20,7 @@
 #include "defines.h"
 #include "gl_video.h"
 #include "log.h"
+#include "paths.h"
 #include "player_context.h"
 #include "player_internal.h"
 #include "player_mappings.h"
@@ -113,8 +114,8 @@ static void Menu_init_ctx(PlayerContext* ctx) {
 
 	char emu_name[256];
 	getEmuName(g->path, emu_name);
-	(void)snprintf(m->launcher_dir, sizeof(m->launcher_dir), SHARED_USERDATA_PATH "/.launcher/%s",
-	               emu_name);
+	(void)snprintf(m->launcher_dir, sizeof(m->launcher_dir), "%s/.launcher/%s",
+	               g_shared_userdata_path, emu_name);
 	mkdir(m->launcher_dir, 0755);
 
 	(void)snprintf(m->slot_path, sizeof(m->slot_path), "%s/%s.txt", m->launcher_dir, g->name);
@@ -185,12 +186,12 @@ static void Menu_beforeSleep_ctx(PlayerContext* ctx) {
 	cb->rtc_write();
 	cb->state_autosave();
 	sync();
-	putFile(AUTO_RESUME_PATH, g->path + strlen(SDCARD_PATH));
+	putFile(g_auto_resume_path, g->path + strlen(g_sdcard_path));
 	PWR_setCPUSpeed(CPU_SPEED_IDLE);
 }
 
 static void Menu_afterSleep_ctx(PlayerContext* ctx) {
-	unlink(AUTO_RESUME_PATH);
+	unlink(g_auto_resume_path);
 	ctx->callbacks->set_overclock(*ctx->overclock);
 }
 

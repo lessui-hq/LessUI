@@ -56,6 +56,7 @@
 #include "launcher_state.h"
 #include "launcher_str_compare.h"
 #include "launcher_thumbnail.h"
+#include "paths.h"
 #include "recent_file.h"
 #include "utils.h"
 
@@ -360,7 +361,7 @@ static void thumb_cache_clear(LauncherThumbnailCache* cache) {
  *
  * Map.txt format: Each line is "filename<TAB>display name"
  * - If display name starts with '.', the entry is hidden
- * - Collections use a shared map.txt in COLLECTIONS_PATH
+ * - Collections use a shared map.txt in g_collections_path
  *
  * Duplicate handling:
  * - If two entries have the same display name but different filenames,
@@ -371,15 +372,16 @@ static void thumb_cache_clear(LauncherThumbnailCache* cache) {
  * @param self Directory to index (modified in place)
  */
 void Directory_index(Directory* self) {
-	int is_collection = prefixMatch(COLLECTIONS_PATH, self->path);
-	int skip_index = exactMatch(FAUX_RECENT_PATH, self->path) || is_collection; // not alphabetized
+	int is_collection = prefixMatch(g_collections_path, self->path);
+	int skip_index =
+	    exactMatch(g_faux_recent_path, self->path) || is_collection; // not alphabetized
 
 	// Load maps for name aliasing (pak-bundled + user overrides)
 	// For collections, just load collection map.txt directly
 	MapEntry* map;
 	if (is_collection) {
 		char map_path[256];
-		(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", COLLECTIONS_PATH);
+		(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", g_collections_path);
 		map = Map_load(map_path);
 	} else {
 		// Load merged pak + user maps for ROM directories
@@ -411,7 +413,7 @@ static Entry** getEntries(char* path);
  * Automatically determines which type of directory this is and
  * populates its entries accordingly:
  * - Root (SDCARD_PATH): Shows systems, recents, collections, tools
- * - Recently played (FAUX_RECENT_PATH): Shows recent games
+ * - Recently played (g_faux_recent_path): Shows recent games
  * - Collection (.txt file): Loads games from text file
  * - Multi-disc (.m3u file): Shows disc list
  * - Regular directory: Shows files and subdirectories
@@ -440,11 +442,11 @@ Directory* Directory_new(char* path, int selected) {
 		free(self);
 		return NULL;
 	}
-	if (exactMatch(path, SDCARD_PATH)) {
+	if (exactMatch(path, g_sdcard_path)) {
 		self->entries = getRoot();
-	} else if (exactMatch(path, FAUX_RECENT_PATH)) {
+	} else if (exactMatch(path, g_faux_recent_path)) {
 		self->entries = getRecents();
-	} else if (!exactMatch(path, COLLECTIONS_PATH) && prefixMatch(COLLECTIONS_PATH, path) &&
+	} else if (!exactMatch(path, g_collections_path) && prefixMatch(g_collections_path, path) &&
 	           suffixMatch(".txt", path)) {
 		self->entries = getCollection(path);
 	} else if (suffixMatch(".m3u", path)) {
@@ -483,7 +485,7 @@ static int hasEmu(char* emu_name);
 // Local wrappers for convenience:
 
 static Recent* Recent_new_local(char* path, char* alias) {
-	return Recent_new(path, alias, SDCARD_PATH, hasEmu);
+	return Recent_new(path, alias, g_sdcard_path, hasEmu);
 }
 
 ///////////////////////////////
@@ -524,9 +526,9 @@ static LauncherRestoreState g_restore_state = {
  * Paths are relative to SDCARD_PATH for platform portability.
  */
 static void saveRecents(void) {
-	FILE* file = fopen(RECENT_PATH, "w");
+	FILE* file = fopen(g_recent_path, "w");
 	if (!file) {
-		LOG_errno("Failed to save recent games to %s", RECENT_PATH);
+		LOG_errno("Failed to save recent games to %s", g_recent_path);
 		return;
 	}
 
@@ -554,7 +556,7 @@ static void saveRecents(void) {
  * @param alias Optional custom display name, or NULL
  */
 static void addRecent(char* path, char* alias) {
-	path += strlen(SDCARD_PATH); // makes paths platform agnostic
+	path += strlen(g_sdcard_path); // makes paths platform agnostic
 	int id = RecentArray_indexOf(recents, path);
 	if (id == -1) { // add new entry
 		while ((int)arrlen(recents) >= MAX_RECENTS) {
@@ -609,7 +611,7 @@ static int hasM3u(char* rom_path, char* m3u_path) {
  *
  * This function performs several important tasks:
  * 1. Handles disc change requests (from in-game disc swapping)
- * 2. Loads recent games from RECENT_PATH file
+ * 2. Loads recent games from g_recent_path file
  * 3. Filters out games whose emulators no longer exist
  * 4. Deduplicates multi-disc games (shows only most recent disc)
  * 5. Populates the global recents array
@@ -623,7 +625,7 @@ static int hasM3u(char* rom_path, char* m3u_path) {
  * @return 1 if any playable recents exist, 0 otherwise
  */
 static int hasRecents(void) {
-	LOG_debug("hasRecents %s", RECENT_PATH);
+	LOG_debug("hasRecents %s", g_recent_path);
 	int has = 0;
 
 	// Track parent directories to avoid duplicate multi-disc entries
@@ -632,7 +634,7 @@ static int hasRecents(void) {
 		char sd_path[256];
 		getFile(CHANGE_DISC_PATH, sd_path, 256);
 		if (exists(sd_path)) {
-			char* disc_path = sd_path + strlen(SDCARD_PATH); // makes path platform agnostic
+			char* disc_path = sd_path + strlen(g_sdcard_path); // makes path platform agnostic
 			Recent* recent = Recent_new_local(disc_path, NULL);
 			if (recent) {
 				if (recent->available)
@@ -651,7 +653,7 @@ static int hasRecents(void) {
 		unlink(CHANGE_DISC_PATH);
 	}
 
-	FILE* file = fopen(RECENT_PATH, "r"); // newest at top
+	FILE* file = fopen(g_recent_path, "r"); // newest at top
 	if (file) {
 		char line[256];
 		while (fgets(line, 256, file) != NULL) {
@@ -671,7 +673,7 @@ static int hasRecents(void) {
 			}
 
 			char sd_path[MAX_PATH];
-			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, path);
+			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", g_sdcard_path, path);
 			if (exists(sd_path)) {
 				if ((int)arrlen(recents) < MAX_RECENTS) {
 					// this logic replaces an existing disc from a multi-disc game with the last used
@@ -729,7 +731,7 @@ static int hasRecents(void) {
  * Wrapper around Launcher_hasNonHiddenFiles.
  */
 static int hasCollections(void) {
-	return Launcher_hasNonHiddenFiles(COLLECTIONS_PATH);
+	return Launcher_hasNonHiddenFiles(g_collections_path);
 }
 
 /**
@@ -737,7 +739,7 @@ static int hasCollections(void) {
  * Wrapper around LauncherDir_hasRoms with platform-specific paths.
  */
 static int hasRoms(char* dir_name) {
-	return LauncherDir_hasRoms(dir_name, ROMS_PATH, PAKS_PATH, SDCARD_PATH, PLATFORM);
+	return LauncherDir_hasRoms(dir_name, g_roms_path, g_paks_path, g_sdcard_path, PLATFORM);
 }
 
 ///////////////////////////////
@@ -761,26 +763,42 @@ static int hasRoms(char* dir_name) {
 static Entry** getRoot(void) {
 	Entry** root = NULL;
 
+	LOG_debug("getRoot: g_roms_path=%s", g_roms_path);
+	LOG_debug("getRoot: g_paks_path=%s", g_paks_path);
+	LOG_debug("getRoot: PLATFORM=%s", PLATFORM);
+
 	if (hasRecents())
-		arrpush(root, Entry_new(FAUX_RECENT_PATH, ENTRY_DIR));
+		arrpush(root, Entry_new(g_faux_recent_path, ENTRY_DIR));
 
 	Entry** entries = NULL;
-	DIR* dh = opendir(ROMS_PATH);
+	DIR* dh = opendir(g_roms_path);
 	if (dh != NULL) {
+		LOG_debug("getRoot: Opened g_roms_path successfully");
 		struct dirent* dp;
 		char* tmp;
 		char full_path[256];
-		(void)snprintf(full_path, sizeof(full_path), "%s/", ROMS_PATH);
+		(void)snprintf(full_path, sizeof(full_path), "%s/", g_roms_path);
 		tmp = full_path + strlen(full_path);
 		Entry** emus = NULL;
+		int dir_count = 0;
+		int has_roms_count = 0;
+		int total_entries = 0;
 		while ((dp = readdir(dh)) != NULL) {
+			total_entries++;
+			LOG_debug("getRoot: readdir entry='%s' d_type=%d", dp->d_name, dp->d_type);
 			if (hide(dp->d_name))
 				continue;
-			if (hasRoms(dp->d_name)) {
+			dir_count++;
+			int has = hasRoms(dp->d_name);
+			LOG_debug("getRoot: dir='%s' hasRoms=%d", dp->d_name, has);
+			if (has) {
+				has_roms_count++;
 				safe_strcpy(tmp, dp->d_name, sizeof(full_path) - (tmp - full_path));
 				arrpush(emus, Entry_new(full_path, ENTRY_DIR));
 			}
 		}
+		LOG_debug("getRoot: readdir returned %d entries, %d visible dirs, %d have ROMs",
+		          total_entries, dir_count, has_roms_count);
 		EntryArray_sort(emus);
 		Entry* prev_entry = NULL;
 		int emus_count = (int)arrlen(emus);
@@ -797,11 +815,15 @@ static Entry** getRoot(void) {
 		}
 		arrfree(emus); // just free the array part, entries now owns emus entries
 		closedir(dh);
+	} else {
+		LOG_error("getRoot: Failed to open g_roms_path '%s'", g_roms_path);
 	}
+
+	LOG_debug("getRoot: Found %d system entries", (int)arrlen(entries));
 
 	// Apply aliases from Roms/map.txt (we don't support hidden remaps here)
 	char map_path[256];
-	(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", ROMS_PATH);
+	(void)snprintf(map_path, sizeof(map_path), "%s/map.txt", g_roms_path);
 	if (arrlen(entries) > 0) {
 		MapEntry* map = Map_load(map_path);
 		if (map) {
@@ -824,14 +846,14 @@ static Entry** getRoot(void) {
 
 	if (hasCollections()) {
 		if (arrlen(entries))
-			arrpush(root, Entry_new(COLLECTIONS_PATH, ENTRY_DIR));
+			arrpush(root, Entry_new(g_collections_path, ENTRY_DIR));
 		else { // no visible systems, promote collections to root
-			dh = opendir(COLLECTIONS_PATH);
+			dh = opendir(g_collections_path);
 			if (dh != NULL) {
 				struct dirent* dp;
 				char* tmp;
 				char full_path[256];
-				(void)snprintf(full_path, sizeof(full_path), "%s/", COLLECTIONS_PATH);
+				(void)snprintf(full_path, sizeof(full_path), "%s/", g_collections_path);
 				tmp = full_path + strlen(full_path);
 				Entry** collections = NULL;
 				while ((dp = readdir(dh)) != NULL) {
@@ -861,7 +883,8 @@ static Entry** getRoot(void) {
 	}
 	arrfree(entries); // root now owns entries' entries
 
-	char* tools_path = SDCARD_PATH "/Tools/" PLATFORM;
+	char tools_path[MAX_PATH];
+	(void)snprintf(tools_path, sizeof(tools_path), "%s/Tools/%s", g_sdcard_path, PLATFORM);
 	if (exists(tools_path) && !simple_mode)
 		arrpush(root, Entry_new(tools_path, ENTRY_DIR));
 
@@ -885,7 +908,7 @@ static Entry** getRecents(void) {
 			continue;
 
 		char sd_path[256];
-		(void)snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, recent->path);
+		(void)snprintf(sd_path, sizeof(sd_path), "%s%s", g_sdcard_path, recent->path);
 		int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM;
 		Entry* entry = Entry_new(sd_path, type);
 		if (!entry)
@@ -921,7 +944,7 @@ static Entry** getCollection(char* path) {
 				continue; // skip empty lines
 
 			char sd_path[MAX_PATH];
-			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, line);
+			(void)snprintf(sd_path, sizeof(sd_path), "%s%s", g_sdcard_path, line);
 			if (exists(sd_path)) {
 				int type = suffixMatch(".pak", sd_path) ? ENTRY_PAK : ENTRY_ROM;
 				arrpush(entries, Entry_new(sd_path, type));
@@ -979,7 +1002,7 @@ static void addEntries(Entry*** entries, char* path) {
 				continue;
 			safe_strcpy(tmp, dp->d_name, sizeof(full_path) - (tmp - full_path));
 			int is_dir = dp->d_type == DT_DIR;
-			int type = LauncherDir_determineEntryType(dp->d_name, is_dir, path, COLLECTIONS_PATH);
+			int type = LauncherDir_determineEntryType(dp->d_name, is_dir, path, g_collections_path);
 			arrpush(*entries, Entry_new(full_path, type));
 		}
 		closedir(dh);
@@ -991,7 +1014,7 @@ static void addEntries(Entry*** entries, char* path) {
  * Wrapper around LauncherDir_isConsoleDir.
  */
 static int isConsoleDir(char* path) {
-	return LauncherDir_isConsoleDir(path, ROMS_PATH);
+	return LauncherDir_isConsoleDir(path, g_roms_path);
 }
 
 static Entry** getEntries(char* path) {
@@ -1001,7 +1024,7 @@ static Entry** getEntries(char* path) {
 		char collation_prefix[LAUNCHER_DIR_MAX_PATH];
 		if (LauncherDir_buildCollationPrefix(path, collation_prefix)) {
 			// Collated console directory (e.g., "Game Boy (USA)" matches "Game Boy (Japan)")
-			DIR* dh = opendir(ROMS_PATH);
+			DIR* dh = opendir(g_roms_path);
 			if (dh != NULL) {
 				struct dirent* dp;
 				char full_path[LAUNCHER_DIR_MAX_PATH];
@@ -1010,7 +1033,7 @@ static Entry** getEntries(char* path) {
 						continue;
 					if (dp->d_type != DT_DIR)
 						continue;
-					(void)snprintf(full_path, sizeof(full_path), "%s/%s", ROMS_PATH, dp->d_name);
+					(void)snprintf(full_path, sizeof(full_path), "%s/%s", g_roms_path, dp->d_name);
 
 					if (!LauncherDir_matchesCollation(full_path, collation_prefix))
 						continue;
@@ -1072,7 +1095,7 @@ static void readyResumePath(char* rom_path, int type) {
 	char path[MAX_PATH];
 	SAFE_STRCPY(path, rom_path);
 
-	if (!prefixMatch(ROMS_PATH, path))
+	if (!prefixMatch(g_roms_path, path))
 		return;
 
 	char auto_path[MAX_PATH];
@@ -1101,7 +1124,7 @@ static void readyResumePath(char* rom_path, int type) {
 	tmp = strrchr(path, '/') + 1;
 	SAFE_STRCPY(rom_file, tmp);
 
-	(void)snprintf(slot_path, sizeof(slot_path), "%s/.launcher/%s/%s.txt", SHARED_USERDATA_PATH,
+	(void)snprintf(slot_path, sizeof(slot_path), "%s/.launcher/%s/%s.txt", g_shared_userdata_path,
 	               emu_name,
 	               rom_file); // /.userdata/.launcher/<EMU>/<romname>.ext.txt
 
@@ -1117,17 +1140,17 @@ static void loadLast(void);
 static int autoResume(void) {
 	// NOTE: bypasses recents
 
-	if (!exists(AUTO_RESUME_PATH))
+	if (!exists(g_auto_resume_path))
 		return 0;
 
 	char path[MAX_PATH];
-	getFile(AUTO_RESUME_PATH, path, MAX_PATH);
-	unlink(AUTO_RESUME_PATH);
+	getFile(g_auto_resume_path, path, MAX_PATH);
+	unlink(g_auto_resume_path);
 	sync();
 
 	// make sure rom still exists
 	char sd_path[MAX_PATH];
-	(void)snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, path);
+	(void)snprintf(sd_path, sizeof(sd_path), "%s%s", g_sdcard_path, path);
 	if (!exists(sd_path))
 		return 0;
 
@@ -1141,7 +1164,7 @@ static int autoResume(void) {
 	if (!exists(emu_path))
 		return 0;
 
-	// putFile(LAST_PATH, FAUX_RECENT_PATH); // saveLast() will crash here because top is NULL
+	// putFile(LAST_PATH, g_faux_recent_path); // saveLast() will crash here because top is NULL
 
 	char cmd[MAX_PATH * 2];
 	(void)snprintf(cmd, sizeof(cmd), "'%s' '%s'", Launcher_escapeSingleQuotes(emu_path),
@@ -1166,7 +1189,7 @@ static int autoResume(void) {
  */
 static void openPak_ctx(LauncherContext* ctx, char* path) {
 	// Save path before escaping (escapeSingleQuotes modifies string)
-	if (prefixMatch(ROMS_PATH, path)) {
+	if (prefixMatch(g_roms_path, path)) {
 		if (ctx->callbacks && ctx->callbacks->add_recent) {
 			ctx->callbacks->add_recent(path, NULL);
 		}
@@ -1235,7 +1258,7 @@ static void openRom_ctx(LauncherContext* ctx, char* path, char* last) {
 			// get disc for state
 			char disc_path_path[MAX_PATH];
 			(void)snprintf(disc_path_path, sizeof(disc_path_path), "%s/.launcher/%s/%s.%s.txt",
-			               SHARED_USERDATA_PATH, emu_name, rom_file,
+			               g_shared_userdata_path, emu_name, rom_file,
 			               slot); // /.userdata/arm-480/.launcher/<EMU>/<romname>.ext.0.txt
 
 			if (exists(disc_path_path)) {
@@ -1407,7 +1430,7 @@ static void Entry_open_ctx(LauncherContext* ctx, Entry* self) {
 		char* last = NULL;
 		char last_path[MAX_PATH]; // Moved outside if block to fix invalidLifetime bug
 		// Collection ROMs use collection path for state restoration
-		if (prefixMatch(COLLECTIONS_PATH, current_top->path)) {
+		if (prefixMatch(g_collections_path, current_top->path)) {
 			char* tmp;
 			char filename[MAX_PATH];
 
@@ -1447,9 +1470,9 @@ static void Entry_open(Entry* self) {
  */
 static void saveLast(char* path) {
 	// special case for recently played
-	if (exactMatch(top->path, FAUX_RECENT_PATH)) {
+	if (exactMatch(top->path, g_faux_recent_path)) {
 		// Most recent game is always at top, no need to save specific ROM
-		path = FAUX_RECENT_PATH;
+		path = g_faux_recent_path;
 	}
 	putFile(LAST_PATH, path);
 }
@@ -1486,7 +1509,7 @@ static void loadLast(void) {
 		safe_strcpy(filename, tmp, sizeof(filename));
 
 	char** last = NULL;
-	while (!exactMatch(last_path, SDCARD_PATH)) {
+	while (!exactMatch(last_path, g_sdcard_path)) {
 		char* path_copy = strdup(last_path);
 		if (path_copy)
 			arrpush(last, path_copy);
@@ -1499,7 +1522,7 @@ static void loadLast(void) {
 		char* path = arrpop(last);
 		if (!exactMatch(
 		        path,
-		        ROMS_PATH)) { // romsDir is effectively root as far as restoring state after a game
+		        g_roms_path)) { // romsDir is effectively root as far as restoring state after a game
 			// Extract collation prefix if this is a collated console dir (e.g., "Game Boy (USA)")
 			// This allows matching against other regions like "Game Boy (Japan)"
 			char collated_path[LAUNCHER_STATE_MAX_PATH];
@@ -1515,7 +1538,7 @@ static void loadLast(void) {
 				// NOTE: strlen() is required for collated_path, '\0' wasn't reading as NULL for some reason
 				if (exactMatch(entry->path, path) ||
 				    (strlen(collated_path) && prefixMatch(collated_path, entry->path)) ||
-				    (prefixMatch(COLLECTIONS_PATH, full_path) &&
+				    (prefixMatch(g_collections_path, full_path) &&
 				     suffixMatch(filename, entry->path))) {
 					top->selected = i;
 					if (i >= top->end) {
@@ -1526,9 +1549,9 @@ static void loadLast(void) {
 							top->start = top->end - ui.row_count;
 						}
 					}
-					if (arrlen(last) == 0 && !exactMatch(entry->path, FAUX_RECENT_PATH) &&
-					    !(!exactMatch(entry->path, COLLECTIONS_PATH) &&
-					      prefixMatch(COLLECTIONS_PATH, entry->path)))
+					if (arrlen(last) == 0 && !exactMatch(entry->path, g_faux_recent_path) &&
+					    !(!exactMatch(entry->path, g_collections_path) &&
+					      prefixMatch(g_collections_path, entry->path)))
 						break; // don't show contents of auto-launch dirs
 
 					if (entry->type == ENTRY_DIR) {
@@ -1564,7 +1587,7 @@ static void Menu_init(void) {
 	stack = NULL; // stb_ds dynamic array, starts as NULL
 	recents = NULL; // stb_ds dynamic array, starts as NULL
 
-	openDirectory(SDCARD_PATH, 0);
+	openDirectory(g_sdcard_path, 0);
 	loadLast(); // restore state when available
 }
 
@@ -1674,13 +1697,16 @@ int main(int argc, char* argv[]) {
 	// This must happen before any LOG_* calls to ensure crash-safe logging
 	log_open(NULL);
 
+	// Initialize runtime paths from environment (supports LessOS dynamic storage)
+	Paths_init();
+
 	// Check for auto-resume first (fast path)
 	if (autoResume()) {
 		log_close();
 		return 0;
 	}
 
-	simple_mode = exists(SIMPLE_MODE_PATH);
+	simple_mode = exists(g_simple_mode_path);
 
 	// Initialize context with pointers to globals
 	// This enables navigation functions to be tested and migrated incrementally
@@ -1713,7 +1739,7 @@ int main(int argc, char* argv[]) {
 	LauncherThumbnail_loaderInit();
 
 	LOG_debug("EmuCache_init");
-	int emu_count = EmuCache_init(PAKS_PATH, SDCARD_PATH, PLATFORM);
+	int emu_count = EmuCache_init(g_paks_path, g_sdcard_path, PLATFORM);
 	LOG_info("Cached %d emulators", emu_count);
 
 	LOG_debug("ResCache_init");
@@ -2135,7 +2161,10 @@ int main(int argc, char* argv[]) {
 			if (show_version) {
 				if (!version) {
 					char release[256];
-					getFile(ROOT_SYSTEM_PATH "/version.txt", release, 256);
+					char version_path[MAX_PATH];
+					(void)snprintf(version_path, sizeof(version_path), "%s/version.txt",
+					               g_root_system_path);
+					getFile(version_path, release, 256);
 
 					char *tmp, *commit;
 					commit = strrchr(release, '\n');

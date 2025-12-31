@@ -6,6 +6,7 @@
 
 #include "launcher_file_utils.h"
 #include "defines.h"
+#include "log.h"
 #include "utils.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -30,13 +31,18 @@ int Launcher_hasEmu(char* emu_name, const char* paks_path, const char* sdcard_pa
 
 	// Try shared location first
 	(void)snprintf(pak_path, sizeof(pak_path), "%s/Emus/%s.pak/launch.sh", paks_path, emu_name);
-	if (exists(pak_path))
+	if (exists(pak_path)) {
+		LOG_debug("hasEmu: found '%s'", pak_path);
 		return 1;
+	}
+	LOG_debug("hasEmu: not found '%s'", pak_path);
 
 	// Try platform-specific location
 	(void)snprintf(pak_path, sizeof(pak_path), "%s/Emus/%s/%s.pak/launch.sh", sdcard_path, platform,
 	               emu_name);
-	return exists(pak_path);
+	int found = exists(pak_path);
+	LOG_debug("hasEmu: %s '%s'", found ? "found" : "not found", pak_path);
+	return found;
 }
 
 /**

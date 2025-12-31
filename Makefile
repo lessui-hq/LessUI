@@ -29,7 +29,7 @@ endif
 
 # Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
-PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini
+PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini rk3566
 endif
 
 ###########################################################
@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -313,7 +313,7 @@ setup: name
 	@echo "Generating emulator paks..."
 	@./scripts/generate-paks.sh all
 
-# Platform-specific packaging for Miyoo/Trimui family
+# Platform-specific packaging for Miyoo/Trimui/LessOS families
 special:
 	@mkdir -p ./build/BOOT/common/install
 	@rsync -a ./skeleton/SYSTEM/common/log.sh ./build/BOOT/common/install/
@@ -323,9 +323,11 @@ special:
 	@mv ./build/BOOT/miyoo ./build/BASE/
 	@mv ./build/BOOT/trimui ./build/BASE/
 	@mv ./build/BOOT/magicx ./build/BASE/
+	@if [ -d ./build/BOOT/lessos ]; then mv ./build/BOOT/lessos ./build/BASE/; fi
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/miyoo/app/.tmp_update/
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/trimui/app/.tmp_update/
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/magicx/.tmp_update/
+	@if [ -d ./build/BASE/lessos ]; then rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/lessos/.tmp_update/; fi
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo354/
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo355/
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo285/
@@ -389,7 +391,7 @@ compress:
 		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
 	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
+	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 lessos em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
 
 # Package: full release build (stage + compress)

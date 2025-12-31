@@ -60,6 +60,7 @@
 #include "gl_video.h"
 #include "launcher_file_utils.h"
 #include "libretro.h"
+#include "paths.h"
 #include "player_archive.h"
 #include "player_config.h"
 #include "player_context.h"
@@ -1693,12 +1694,13 @@ static void Config_load(void) {
 		player_scaling_labels[3] = NULL;
 	}
 
-	char* system_path = SYSTEM_PATH "/system.cfg";
+	char system_path[MAX_PATH];
+	(void)snprintf(system_path, sizeof(system_path), "%s/system.cfg", g_system_path);
 
 	char device_system_path[MAX_PATH] = {0};
 	if (config.device_tag)
-		(void)snprintf(device_system_path, sizeof(device_system_path), SYSTEM_PATH "/system-%s.cfg",
-		               config.device_tag);
+		(void)snprintf(device_system_path, sizeof(device_system_path), "%s/system-%s.cfg",
+		               g_system_path, config.device_tag);
 
 	if (config.device_tag && exists(device_system_path)) {
 		LOG_debug("Using device_system_path: %s", device_system_path);
@@ -3983,11 +3985,14 @@ void Core_getName(char* in_name, char* out_name) {
  * @param bios_dir Output buffer for selected BIOS directory path
  */
 void Player_selectBiosPath(const char* tag, char* bios_dir) {
+	char bios_root[MAX_PATH];
+	(void)snprintf(bios_root, sizeof(bios_root), "%s/Bios", g_sdcard_path);
+
 	char tag_bios_dir[MAX_PATH];
-	PlayerPaths_getTagBios(SDCARD_PATH "/Bios", tag, tag_bios_dir);
+	PlayerPaths_getTagBios(bios_root, tag, tag_bios_dir);
 
 	int has_files = Launcher_hasNonHiddenFiles(tag_bios_dir);
-	PlayerPaths_chooseBios(SDCARD_PATH "/Bios", tag, bios_dir, has_files);
+	PlayerPaths_chooseBios(bios_root, tag, bios_dir, has_files);
 
 	if (has_files) {
 		LOG_info("Using tag-specific BIOS directory: %s", bios_dir);
@@ -4067,11 +4072,11 @@ void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("core: %s version: %s tag: %s (valid_extensions: %s need_fullpath: %i)", core.name,
 	         core.version, core.tag, info.valid_extensions, info.need_fullpath);
 
-	(void)snprintf((char*)core.config_dir, sizeof(core.config_dir), USERDATA_PATH "/%s-%s",
+	(void)snprintf((char*)core.config_dir, sizeof(core.config_dir), "%s/%s-%s", g_userdata_path,
 	               core.tag, core.name);
-	(void)snprintf((char*)core.states_dir, sizeof(core.states_dir), SHARED_USERDATA_PATH "/%s-%s",
-	               core.tag, core.name);
-	(void)snprintf((char*)core.saves_dir, sizeof(core.saves_dir), SDCARD_PATH "/Saves/%s",
+	(void)snprintf((char*)core.states_dir, sizeof(core.states_dir), "%s/%s-%s",
+	               g_shared_userdata_path, core.tag, core.name);
+	(void)snprintf((char*)core.saves_dir, sizeof(core.saves_dir), "%s/Saves/%s", g_sdcard_path,
 	               core.tag);
 	Player_selectBiosPath(core.tag, (char*)core.bios_dir);
 
@@ -5647,6 +5652,9 @@ static void showFatalError(void) {
 int main(int argc, char* argv[]) {
 	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
 	log_open(NULL);
+
+	// Initialize runtime paths (reads LESSOS_STORAGE from environment)
+	Paths_init();
 
 	LOG_info("Player");
 

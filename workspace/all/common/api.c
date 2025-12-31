@@ -44,6 +44,7 @@
 #include "defines.h"
 #include "gfx_text.h"
 #include "pad.h"
+#include "paths.h"
 #include "utils.h"
 
 ///////////////////////////////
@@ -364,7 +365,7 @@ SDL_Surface* GFX_init(int mode) {
 
 	// Load asset sprite sheet at selected tier
 	char asset_path[MAX_PATH];
-	(void)snprintf(asset_path, sizeof(asset_path), RES_PATH "/assets@%ix.png", asset_scale);
+	(void)snprintf(asset_path, sizeof(asset_path), "%s/assets@%ix.png", g_res_path, asset_scale);
 	LOG_debug("GFX_init: Loading assets from: %s", asset_path);
 	if (!exists(asset_path))
 		LOG_error("GFX_init: Missing assets at %s, about to segfault!", asset_path);
@@ -582,17 +583,17 @@ SDL_Surface* GFX_init(int mode) {
 		LOG_error("GFX_init: TTF_Init failed: %s", SDL_GetError());
 		return NULL;
 	}
-	LOG_debug("GFX_init: Loading fonts from %s", FONT_PATH);
-	font.large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
+	LOG_debug("GFX_init: Loading fonts from %s", g_font_path);
+	font.large = TTF_OpenFont(g_font_path, DP(FONT_LARGE));
 	if (!font.large)
 		LOG_error("GFX_init: Failed to load large font: %s", SDL_GetError());
-	font.medium = TTF_OpenFont(FONT_PATH, DP(FONT_MEDIUM));
+	font.medium = TTF_OpenFont(g_font_path, DP(FONT_MEDIUM));
 	if (!font.medium)
 		LOG_error("GFX_init: Failed to load medium font: %s", SDL_GetError());
-	font.small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
+	font.small = TTF_OpenFont(g_font_path, DP(FONT_SMALL));
 	if (!font.small)
 		LOG_error("GFX_init: Failed to load small font: %s", SDL_GetError());
-	font.tiny = TTF_OpenFont(FONT_PATH, DP(FONT_TINY));
+	font.tiny = TTF_OpenFont(g_font_path, DP(FONT_TINY));
 	if (!font.tiny)
 		LOG_error("GFX_init: Failed to load tiny font: %s", SDL_GetError());
 	LOG_debug("GFX_init: Fonts loaded successfully");
@@ -3029,9 +3030,10 @@ void PWR_powerOff(void) {
 
 		char* msg;
 		if (HAS_POWER_BUTTON || HAS_POWEROFF_BUTTON)
-			msg = exists(AUTO_RESUME_PATH) ? "Quicksave created,\npowering off" : "Powering off";
+			msg = exists(g_auto_resume_path) ? "Quicksave created,\npowering off" : "Powering off";
 		else
-			msg = exists(AUTO_RESUME_PATH) ? "Quicksave created,\npower off now" : "Power off now";
+			msg =
+			    exists(g_auto_resume_path) ? "Quicksave created,\npower off now" : "Power off now";
 
 		// LOG_info("PWR_powerOff %s (%ix%i)\n", gfx.screen, gfx.screen->w, gfx.screen->h);
 
