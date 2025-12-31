@@ -2,6 +2,7 @@
 
 #include "fonts.h"
 #include "defines.h"
+#include "paths.h"
 
 TTF_Font* g_font_large = NULL;
 TTF_Font* g_font_small = NULL;
@@ -9,12 +10,12 @@ TTF_Font* g_font_small = NULL;
 void fonts_init(void) {
 	if (g_font_large) return;
 
-	g_font_large = TTF_OpenFont(FONT_PATH, DP(FONT_LARGE));
+	g_font_large = TTF_OpenFont(g_font_path, DP(FONT_LARGE));
 	if (g_font_large) {
 		TTF_SetFontStyle(g_font_large, TTF_STYLE_BOLD);
 	}
 
-	g_font_small = TTF_OpenFont(FONT_PATH, DP(FONT_SMALL));
+	g_font_small = TTF_OpenFont(g_font_path, DP(FONT_SMALL));
 }
 
 void fonts_cleanup(void) {

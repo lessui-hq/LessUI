@@ -11,6 +11,7 @@
 #include "defines.h"
 #include "log.h"
 #include "nointro_parser.h"
+#include "paths.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -268,7 +269,7 @@ int findSystemFile(const char* relative_path, char* output_path) {
 	char candidate[512];
 
 	// Check platform-specific location first
-	(void)snprintf(candidate, sizeof(candidate), "%s/.system/%s/%s", SDCARD_PATH, PLATFORM,
+	(void)snprintf(candidate, sizeof(candidate), "%s/%s/%s", g_root_system_path, PLATFORM,
 	               relative_path);
 	if (exists(candidate)) {
 		safe_strcpy(output_path, candidate, MAX_PATH);
@@ -276,8 +277,7 @@ int findSystemFile(const char* relative_path, char* output_path) {
 	}
 
 	// Fall back to shared common location
-	(void)snprintf(candidate, sizeof(candidate), "%s/.system/common/%s", SDCARD_PATH,
-	               relative_path);
+	(void)snprintf(candidate, sizeof(candidate), "%s/common/%s", g_root_system_path, relative_path);
 	if (exists(candidate)) {
 		safe_strcpy(output_path, candidate, MAX_PATH);
 		return 1;
@@ -563,8 +563,8 @@ void getEmuName(const char* in_name, char* out_name) {
 	tmp = out_name;
 
 	// Extract just the Roms folder name if this is a full path
-	if (prefixMatch(ROMS_PATH, tmp)) {
-		tmp += strlen(ROMS_PATH) + 1;
+	if (prefixMatch(g_roms_path, tmp)) {
+		tmp += strlen(g_roms_path) + 1;
 		char* tmp2 = strchr(tmp, '/');
 		if (tmp2)
 			tmp2[0] = '\0';
@@ -600,11 +600,11 @@ void getEmuName(const char* in_name, char* out_name) {
  * @note pak_path is always modified, even if file doesn't exist
  */
 void getEmuPath(char* emu_name, char* pak_path) {
-	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s/%s.pak/launch.sh", SDCARD_PATH, PLATFORM,
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s/%s.pak/launch.sh", g_sdcard_path, PLATFORM,
 	               emu_name);
 	if (exists(pak_path))
 		return;
-	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s.pak/launch.sh", PAKS_PATH, emu_name);
+	(void)snprintf(pak_path, MAX_PATH, "%s/Emus/%s.pak/launch.sh", g_paks_path, emu_name);
 }
 
 ///////////////////////////////

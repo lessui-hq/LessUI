@@ -34,6 +34,7 @@
 #include "defines.h"
 #include "fonts.h"
 #include "log.h"
+#include "paths.h"
 #include "shui_utils.h"
 #include "ui_message.h"
 #include "ui_list.h"
@@ -844,6 +845,9 @@ static void process_request(const Request* req, Response* resp) {
 static int run_daemon(void) {
 	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
 	log_open(NULL);
+
+	// Initialize runtime paths (reads LESSOS_STORAGE from environment)
+	Paths_init();
 
 	LOG_info("Starting shui daemon on %s", PLATFORM);
 
