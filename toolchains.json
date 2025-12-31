@@ -5,6 +5,9 @@
     },
     "tg5040": {
       "platform": "linux/amd64"
+    },
+    "rk3566": {
+      "platform": "linux/amd64"
     }
   }
 }
