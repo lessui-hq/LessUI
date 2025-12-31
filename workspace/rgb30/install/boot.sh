@@ -1,7 +1,7 @@
 #!/bin/sh
-# NOTE: becomes .tmp_update/rk3566.sh
+# NOTE: becomes .tmp_update/rgb30.sh
 
-PLATFORM="rk3566"
+PLATFORM="rgb30"
 # Use LessOS storage path if set, otherwise default
 SDCARD_PATH="${LESSOS_STORAGE:-/storage}"
 UPDATE_PATH="$SDCARD_PATH/LessUI.7z"

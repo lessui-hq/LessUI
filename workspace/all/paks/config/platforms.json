@@ -50,14 +50,7 @@
       "nice_prefix": ""
     },
     "rgb30": {
-      "description": "Powkiddy RGB30",
-      "arch": "arm64",
-      "sdcard_path": "/storage/roms",
-      "shutdown_cmd": "shutdown",
-      "nice_prefix": ""
-    },
-    "rk3566": {
-      "description": "Rockchip RK3566 devices (LessOS)",
+      "description": "Powkiddy RGB30 (LessOS)",
       "arch": "arm64",
       "sdcard_path": "/storage",
       "shutdown_cmd": "poweroff",

@@ -6,7 +6,7 @@
     "tg5040": {
       "platform": "linux/amd64"
     },
-    "rk3566": {
+    "rgb30": {
       "platform": "linux/amd64"
     }
   }

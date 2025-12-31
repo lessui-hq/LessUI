@@ -1,6 +1,9 @@
-# Anbernic RGB30
+# RGB30 Platform
 
-Platform implementation for the Anbernic RGB30 retro handheld device.
+Platform implementation for the PowKiddy RGB30 handheld (LessOS).
+
+## Device
+- **PowKiddy RGB30** - Rockchip RK3566 (Cortex-A55), 720x720 display
 
 ## Hardware Specifications
 
@@ -41,11 +44,11 @@ Platform implementation for the Anbernic RGB30 retro handheld device.
 - **Brightness Range**: 0-10 (raw: 0-255)
 
 ### Storage
-- SD card mounted at `/storage/roms`
+- SD card mounted at `/storage` (LessOS)
 
 ## Platform Architecture
 
-The RGB30 uses a **hybrid input system** that combines:
+RGB30 use a **hybrid input system** that combines:
 - SDL2 joystick for gamepad buttons (D-Pad, face buttons, shoulders)
 - Minimal SDL keyboard for power button
 - Evdev codes for volume control and L3/R3 menu modifiers
@@ -66,15 +69,12 @@ rgb30/
 ├── show/              Boot splash screen utility
 │   ├── show.c         SDL2-based image display (supports HDMI)
 │   └── makefile       Build configuration
-├── cores/             Libretro cores (submodules + builds)
-└── other/             Third-party dependencies
-    ├── DinguxCommander/  File manager (branch: launcher-rgb30)
-    └── sdl12-compat/     SDL 1.2 compatibility layer (branch: launcher-rgb30)
+└── cores/             Libretro cores (submodules + builds)
 ```
 
 ## Input System
 
-The RGB30 uses a **joystick-first input architecture**:
+RGB30 use a **joystick-first input architecture**:
 
 1. **SDL Joystick API**: Primary gamepad input (D-Pad, face buttons, shoulders, Start/Select)
 2. **SDL Keyboard**: Power button only (SDLK_POWER)
@@ -120,7 +120,7 @@ Audio and video routing automatically switches when headphones or HDMI are conne
 ## Building
 
 ### Prerequisites
-Requires Docker with RGB30 cross-compilation toolchain.
+Requires Docker with rgb30 cross-compilation toolchain.
 
 ### Build Commands
 
@@ -132,22 +132,9 @@ make PLATFORM=rgb30 shell
 cd /root/workspace/rgb30
 make
 
-# This builds (in early target):
-# - DinguxCommander (file manager)
-# - sdl12-compat (SDL 1.2 compatibility layer)
-#
-# And (in all target):
+# This builds:
 # - show.elf (boot splash display)
-# - All libretro cores in cores/
 ```
-
-### Dependencies
-
-The platform automatically clones required dependencies on first build:
-- **DinguxCommander**: `github.com/shauninman/DinguxCommander.git` (branch: `launcher-rgb30`)
-- **sdl12-compat**: `github.com/shauninman/sdl12-compat.git` (branch: `launcher-rgb30`)
-
-Both dependencies use custom toolchain configurations for the RGB30 hardware.
 
 ## Installation
 
@@ -156,9 +143,11 @@ Both dependencies use custom toolchain configurations for the RGB30 hardware.
 LessUI installs to the SD card with the following structure:
 
 ```
-/storage/roms/
+/storage/
+├── lessos/                 LessOS bootstrap
+│   └── init.sh             Entry point
 ├── .system/
-│   ├── rgb30/              Platform-specific binaries
+│   ├── rgb30/             Platform-specific binaries
 │   │   ├── bin/            Utilities (keymon, show, etc.)
 │   │   └── paks/           Applications and emulators
 │   │       └── LessUI.pak/  Main launcher
@@ -166,7 +155,7 @@ LessUI installs to the SD card with the following structure:
 │       ├── assets@2x.png   UI sprite sheet (2x scale)
 │       └── InterTight-Bold.ttf
 ├── .userdata/              User settings and save data
-│   └── rgb30/              Platform-specific settings
+│   └── rgb30/             Platform-specific settings
 │       └── msettings.bin   Volume/brightness preferences
 ├── Roms/                   ROM files organized by system
 └── LessUI.7z               Update package (if present)
@@ -174,7 +163,7 @@ LessUI installs to the SD card with the following structure:
 
 ### Settings Management
 
-The RGB30 uses shared memory for settings synchronization between processes:
+RGB30 use shared memory for settings synchronization between processes:
 
 **Settings Stored**:
 - Brightness level (0-10)
@@ -273,15 +262,6 @@ The RGB30 platform includes these libretro cores:
 | **mgba** | Game Boy Advance | High accuracy |
 | **race** | Neo Geo Pocket, Neo Geo Pocket Color | SNK handheld |
 
-## Included Tools
-
-### Files.pak
-DinguxCommander-based file manager (custom RGB30 build):
-- Full file operations (copy, cut, paste, delete, rename)
-- Directory navigation
-- Image preview support
-- Integrated with LessUI launcher
-
 ## Known Issues / Quirks
 
 ### Hardware Quirks
@@ -292,7 +272,7 @@ DinguxCommander-based file manager (custom RGB30 build):
 5. **Audio crackling**: Light crackling reported in some cores (fceumm, snes9x2005_plus) - likely SDL2 audio pipeline issue
 
 ### Development Notes
-1. **SDL2**: Platform uses SDL2 (not SDL 1.2), requiring sdl12-compat for legacy cores
+1. **SDL2**: Platform uses SDL2 natively (LessOS provides SDL2)
 2. **Shared memory settings**: libmsettings uses `/SharedSettings` SHM for IPC
 3. **Settings host**: keymon is always the settings "host" (first to create SHM)
 4. **HDMI polling**: Background thread polls HDMI state at 1Hz (every second)
