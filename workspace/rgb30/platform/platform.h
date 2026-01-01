@@ -1,19 +1,18 @@
 /**
  * rgb30/platform/platform.h - Platform definitions for PowKiddy RGB30
  *
- * Supported devices (Rockchip RK3566, Cortex-A55):
- * - PowKiddy RGB30: 4.0" 720x720 display
+ * Device: PowKiddy RGB30 (Rockchip RK3566, Cortex-A55)
+ * OS: LessOS (ROCKNIX-based)
  *
  * Hardware features:
  * - 720x720 square display (1:1 aspect ratio)
  * - 1280x720 HDMI output support
  * - D-pad and face buttons (A/B/X/Y)
  * - Shoulder buttons (L1/R1/L2/R2)
- * - Menu buttons (primary and alternate)
- * - Uses hybrid input (minimal SDL keyboard + joystick)
- * - Larger UI with increased row count and padding
+ * - Dual analog sticks with L3/R3 clicks
+ * - Uses rocknix-singleadc-joypad kernel driver
  *
- * @note Power button uses SDL keyboard mapping, volume controls use evdev codes
+ * @note Input handled via LessOS's standardized joypad driver
  */
 
 #ifndef PLATFORM_H
@@ -24,6 +23,12 @@
 ///////////////////////////////
 
 #define PLATFORM "rgb30"
+
+///////////////////////////////
+// Hardware Capabilities
+///////////////////////////////
+
+#define HAS_OPENGLES 1 // Mali-G52 GPU supports OpenGL ES 2.0
 
 ///////////////////////////////
 // Audio Configuration
@@ -182,7 +187,8 @@
 // Platform-Specific Paths and Settings
 ///////////////////////////////
 
-#define SDCARD_PATH "/storage/roms" // Path to SD card mount point
+#define SDCARD_PATH                                                                                \
+	"/storage" // Path to SD card mount point (LessOS default, overridden by LESSOS_STORAGE)
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 
 ///////////////////////////////
@@ -191,8 +197,8 @@
 
 #define KEYMON_BUTTON_MENU 317
 #define KEYMON_BUTTON_MENU_ALT 318
-#define KEYMON_BUTTON_PLUS 114
-#define KEYMON_BUTTON_MINUS 115
+#define KEYMON_BUTTON_PLUS 115 // KEY_VOLUMEUP
+#define KEYMON_BUTTON_MINUS 114 // KEY_VOLUMEDOWN
 
 #define KEYMON_HAS_HDMI 1
 #define KEYMON_HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"

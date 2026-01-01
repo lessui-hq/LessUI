@@ -2,9 +2,23 @@
 
 # NOTE: becomes .tmp_update/updater
 
-# LessOS provides platform directly via environment variable
-if [ -n "$LESSOS_PLATFORM" ]; then
-	PLATFORM=$(echo "$LESSOS_PLATFORM" | tr '[:upper:]' '[:lower:]')
+# LessOS provides device name - map to LessUI platform
+if [ -n "$LESSOS_DEVICE" ]; then
+	case "$LESSOS_DEVICE" in
+		*"RGB30"*)
+			PLATFORM="rgb30"
+			;;
+		*"RG353P"*|*"RG353V"*|*"RG353M"*|*"RG353"*)
+			# Future: map to rg353 platform if/when we add it
+			# For now, unsupported
+			echo "LessUI: Device $LESSOS_DEVICE not yet supported"
+			PLATFORM=""
+			;;
+		*)
+			echo "LessUI: Unknown LessOS device: $LESSOS_DEVICE"
+			PLATFORM=""
+			;;
+	esac
 else
 	# Stock OS - detect platform from cpuinfo
 	INFO=$(cat /proc/cpuinfo 2>/dev/null)

@@ -1,19 +1,22 @@
 /**
- * platform.c - Powkiddy RGB30 platform implementation
+ * platform.c - PowKiddy RGB30 platform implementation
  *
  * REFACTORED VERSION - Uses shared render_sdl2 backend
  *
- * Platform-specific code for the Powkiddy RGB30 handheld device.
+ * Platform-specific code for PowKiddy RGB30 handheld.
+ * Device: PowKiddy RGB30 (Rockchip RK3566, Cortex-A55)
+ * OS: LessOS (ROCKNIX-based)
+ *
  * Key features:
+ * - 720x720 square display
  * - Dual analog sticks with swapped right stick axes (X/Y reversed)
  * - WiFi support with status monitoring
  * - Grid and line visual effects for retro aesthetics
- * - Rotation support for display output
- * - Dynamic device model detection from device tree
+ * - HDMI output with rotation support
+ * - Uses rocknix-singleadc-joypad kernel driver
  * - Overscan support (PLAT_supportsOverscan returns 1)
  *
- * The RGB30 uses the Rockchip RK3566 SoC with 720x720 display.
- * Input events are read directly from /dev/input/event* devices.
+ * Input is read directly from /dev/input/event* devices via evdev.
  */
 
 #include <linux/fb.h>
@@ -33,6 +36,7 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
 
@@ -80,11 +84,13 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 void PLAT_setEffect(int effect) {
-	SDL2_setEffect(&vid_ctx, effect);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffect(effect);
 }
 
 void PLAT_setEffectColor(int color) {
-	SDL2_setEffectColor(&vid_ctx, color);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffectColor(color);
 }
 
 void PLAT_vsync(int remaining) {
@@ -97,6 +103,14 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 
 void PLAT_present(GFX_Renderer* renderer) {
 	SDL2_present(&vid_ctx, renderer);
+}
+
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
+int PLAT_getRotation(void) {
+	return SDL2_getRotation(&vid_ctx);
 }
 
 int PLAT_supportsOverscan(void) {

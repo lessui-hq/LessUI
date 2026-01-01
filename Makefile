@@ -29,7 +29,7 @@ endif
 
 # Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
-PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini rk3566
+PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini
 endif
 
 ###########################################################
@@ -208,26 +208,35 @@ dev-run-16x9:
 # Usage: make dev-deploy              - Deploy all platforms
 #        make dev-deploy PLATFORM=X   - Deploy single platform
 dev-deploy:
-	@if [ -n "$(PLATFORM)" ]; then \
-		./scripts/dev-deploy.sh --platform $(PLATFORM); \
+	@DEPLOY_ARGS=""; \
+	if [ -n "$(DEPLOY_PATH)" ]; then \
+		DEPLOY_ARGS="--path $(DEPLOY_PATH)"; \
+	fi; \
+	if [ -n "$(PLATFORM)" ]; then \
+		./scripts/dev-deploy.sh --platform $(PLATFORM) $$DEPLOY_ARGS; \
 	else \
-		./scripts/dev-deploy.sh; \
+		./scripts/dev-deploy.sh $$DEPLOY_ARGS; \
 	fi
 
 # Build and deploy in one shot for dev iteration (always debug build)
 # Uses 'stage' to prepare files without compression (faster than full 'all')
-# Usage: make dev-build-deploy                    - Build all platforms and deploy
-#        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
+# Usage: make dev-build-deploy                              - Build all platforms and deploy
+#        make dev-build-deploy PLATFORM=miyoomini           - Build and deploy single platform
+#        make dev-build-deploy DEPLOY_PATH=/Volumes/LESSUI  - Override SD card path
 # Note: Single-platform requires 'make setup' to have been run first
 dev-build-deploy:
-	@if [ -n "$(PLATFORM)" ]; then \
+	@DEPLOY_ARGS=""; \
+	if [ -n "$(DEPLOY_PATH)" ]; then \
+		DEPLOY_ARGS="--path $(DEPLOY_PATH)"; \
+	fi; \
+	if [ -n "$(PLATFORM)" ]; then \
 		if [ ! -d ./build/SYSTEM ]; then \
 			echo "Error: build/SYSTEM not found. Run 'make setup' first."; \
 			exit 1; \
 		fi; \
-		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && $(MAKE) stage && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && $(MAKE) stage && ./scripts/dev-deploy.sh --platform $(PLATFORM) $$DEPLOY_ARGS; \
 	else \
-		$(MAKE) setup DEBUG=1 && $(MAKE) $(PLATFORMS) DEBUG=1 && $(MAKE) special && $(MAKE) stage && ./scripts/dev-deploy.sh; \
+		$(MAKE) setup DEBUG=1 && $(MAKE) $(PLATFORMS) DEBUG=1 && $(MAKE) special && $(MAKE) stage && ./scripts/dev-deploy.sh $$DEPLOY_ARGS; \
 	fi
 
 # Build all components for a specific platform (in Docker)

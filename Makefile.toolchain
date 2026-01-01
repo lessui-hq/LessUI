@@ -16,10 +16,14 @@
 #   specific architectures (e.g., trimuismart and tg5040 need amd64).
 #
 # Adding a new platform:
-#   1. Fork the union-<platform>-toolchain repo to lessui-hq org
-#   2. Add .github/workflows/build-container.yml to the fork
-#   3. Trigger the workflow to build and publish container
-#   4. Add platform entry to toolchains.json with appropriate architecture
+#   1. Choose approach:
+#      a) Reuse existing toolchain: Add to toolchains.json with "toolchain" field
+#         (e.g., rgb30 reuses rk3566 toolchain)
+#      b) New toolchain: Fork union-<chipset>-toolchain repo to lessui-hq org
+#   2. If creating new toolchain:
+#      - Add .github/workflows/build-container.yml to the fork
+#      - Trigger workflow to build and publish container
+#   3. Add platform entry to toolchains.json with appropriate architecture
 #
 # DO NOT call this makefile directly unless debugging toolchain issues.
 # Use the main makefile's 'shell' and 'build' targets instead.
@@ -43,7 +47,11 @@ GUEST_WORKSPACE = /root/workspace
 # Pre-built container registry
 CONTAINER_REGISTRY = ghcr.io
 CONTAINER_ORG = lessui-hq
-CONTAINER_NAME = union-$(PLATFORM)-toolchain
+
+# Read toolchain name from toolchains.json (defaults to platform name)
+# Allows platforms to share toolchains (e.g., rgb30 uses rk3566 toolchain)
+TOOLCHAIN_NAME = $(shell jq -r --arg p "$(PLATFORM)" '.toolchains[$$p].toolchain // $$p' toolchains.json 2>/dev/null || echo "$(PLATFORM)")
+CONTAINER_NAME = union-$(TOOLCHAIN_NAME)-toolchain
 CONTAINER_TAG = latest
 CONTAINER_IMAGE = $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/$(CONTAINER_NAME):$(CONTAINER_TAG)
 
@@ -52,7 +60,7 @@ CONTAINER_IMAGE = $(CONTAINER_REGISTRY)/$(CONTAINER_ORG)/$(CONTAINER_NAME):$(CON
 DOCKER_PLATFORM = $(shell jq -r --arg p "$(PLATFORM)" '.toolchains[$$p].platform // "linux/arm64"' toolchains.json 2>/dev/null || echo "linux/arm64")
 
 # Common docker run options
-DOCKER_RUN = docker run --rm --platform=$(DOCKER_PLATFORM) -e LOG_FLAGS="$(LOG_FLAGS)" -e OPT_FLAGS="$(OPT_FLAGS)" -e BUILD_HASH="$(BUILD_HASH)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
+DOCKER_RUN = docker run --rm --platform=$(DOCKER_PLATFORM) -e PLATFORM="$(PLATFORM)" -e LOG_FLAGS="$(LOG_FLAGS)" -e OPT_FLAGS="$(OPT_FLAGS)" -e BUILD_HASH="$(BUILD_HASH)" -v $(HOST_WORKSPACE):$(GUEST_WORKSPACE)
 
 # Default target: launch interactive shell (pulls image if missing)
 all:
@@ -71,9 +79,15 @@ pull:
 		 echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
 		 echo "" && \
 		 echo "To add support for $(PLATFORM):" && \
-		 echo "  1. Fork the union-$(PLATFORM)-toolchain to lessui-hq org" && \
-		 echo "  2. Add .github/workflows/build-container.yml" && \
-		 echo "  3. Trigger workflow to build and publish container" && \
+		 echo "  Option A: Reuse existing toolchain" && \
+		 echo "    1. Add \"toolchain\": \"<chipset>\" to toolchains.json" && \
+		 echo "    2. Specify platform architecture (linux/amd64 or linux/arm64)" && \
+		 echo "" && \
+		 echo "  Option B: Create new toolchain" && \
+		 echo "    1. Fork union-<chipset>-toolchain to lessui-hq org" && \
+		 echo "    2. Add .github/workflows/build-container.yml" && \
+		 echo "    3. Trigger workflow to build and publish container" && \
+		 echo "    4. Add platform entry to toolchains.json" && \
 		 echo "" && \
 		 exit 1)
 	@echo "✓ Updated to latest"

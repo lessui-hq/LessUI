@@ -98,9 +98,7 @@ static void run_main_loop(void) {
 				// Measure frame execution time for auto CPU scaling
 				uint64_t frame_start = getMicroseconds();
 				GLVideo_bindFBO();
-				LOG_debug("Main loop: calling core.run()");
 				core.run();
-				LOG_debug("Main loop: core.run() returned");
 				uint64_t frame_time = getMicroseconds() - frame_start;
 
 				// Store frame time for auto CPU scaling analysis
@@ -130,19 +128,14 @@ static void run_main_loop(void) {
 		input_poll_callback();
 
 		if (show_menu) {
-			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
 			Menu_loop();
-			LOG_debug("Main loop: returned from Menu_loop, show_menu=%d", show_menu);
 
 			// Rebind FBO for HW cores after menu (menu uses FBO 0)
 			if (GLVideo_isEnabled()) {
-				LOG_debug("Main loop: re-binding FBO after menu exit");
 				GLVideo_bindFBO();
 			}
 		}
 
-		LOG_debug("Main loop: about to call hdmimon");
 		hdmimon();
-		LOG_debug("Main loop: hdmimon returned, continuing loop");
 	}
 }
