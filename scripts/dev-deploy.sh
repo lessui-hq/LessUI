@@ -4,6 +4,7 @@
 # Usage: ./scripts/dev-deploy.sh [options]
 #
 # Options:
+#   --path PATH    Override SD card path (default: /Volumes/LESSUI_DEV)
 #   --no-update    Skip .tmp_update (won't trigger update on device boot)
 #   --platform X   Only sync specific platform (e.g., miyoomini)
 #   --no-eject     Don't eject the SD card after sync
@@ -20,7 +21,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SD_CARD="/Volumes/LESSUI_DEV"
+SD_CARD="/Volumes/LESSUI_DEV"  # Default, can be overridden
 PAYLOAD_DIR="$PROJECT_ROOT/build/PAYLOAD"
 BASE_DIR="$PROJECT_ROOT/build/BASE"
 
@@ -31,6 +32,14 @@ DO_EJECT=true
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --path)
+            if [[ -z "${2:-}" || "$2" == --* ]]; then
+                echo "Error: --path requires a value"
+                exit 1
+            fi
+            SD_CARD="$2"
+            shift 2
+            ;;
         --no-update)
             SYNC_UPDATE=false
             shift
@@ -54,7 +63,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Error: Unknown option: $1"
-            echo "Usage: $0 [--no-update] [--platform <name>] [--no-eject]"
+            echo "Usage: $0 [--path <path>] [--no-update] [--platform <name>] [--no-eject]"
             exit 1
             ;;
     esac
