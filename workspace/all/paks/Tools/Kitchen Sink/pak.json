@@ -16,7 +16,8 @@
     "rgb30",
     "m17",
     "my282",
-    "magicmini"
+    "magicmini",
+    "retroid"
   ],
 
   "launch": "launch.sh"

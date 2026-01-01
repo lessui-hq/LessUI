@@ -77,6 +77,14 @@
       "sdcard_path": "/mnt/sdcard",
       "shutdown_cmd": "shutdown",
       "nice_prefix": ""
+    },
+    "retroid": {
+      "description": "Retroid Pocket 5 / Mini V2 / Flip 2 (LessOS)",
+      "arch": "arm64",
+      "sdcard_path": "/storage",
+      "shutdown_cmd": "poweroff",
+      "nice_prefix": "",
+      "lessos": true
     }
   }
 }

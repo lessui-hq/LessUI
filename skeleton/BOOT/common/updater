@@ -8,6 +8,9 @@ if [ -n "$LESSOS_DEVICE" ]; then
 		*"RGB30"*)
 			PLATFORM="rgb30"
 			;;
+		*"Retroid"*|*"Pocket"*)
+			PLATFORM="retroid"
+			;;
 		*"RG353P"*|*"RG353V"*|*"RG353M"*|*"RG353"*)
 			# Future: map to rg353 platform if/when we add it
 			# For now, unsupported
