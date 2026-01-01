@@ -1872,10 +1872,7 @@ void GLVideo_uploadFrame(const void* data, unsigned width, unsigned height, size
 }
 
 void GLVideo_presentSurface(SDL_Surface* surface) {
-	LOG_debug("presentSurface: enter");
-
 	if (!gl_state.context_ready || gl_state.shutdown_prepared) {
-		LOG_debug("presentSurface: context not ready, returning");
 		return;
 	}
 
@@ -1884,28 +1881,21 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 		return;
 	}
 
-	LOG_debug("presentSurface: surface %dx%d", surface->w, surface->h);
-
 	SDL_Window* window = PLAT_getWindow();
 	if (!window) {
 		LOG_error("GL video: no window for surface presentation");
 		return;
 	}
 
-	LOG_debug("presentSurface: calling makeCurrent");
 	GLVideo_makeCurrent();
-	LOG_debug("presentSurface: makeCurrent done");
 
 	// Bind backbuffer
-	LOG_debug("presentSurface: binding FBO 0");
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	LOG_debug("presentSurface: FBO 0 bound");
 
 	// Get screen dimensions
 	int screen_w = 0;
 	int screen_h = 0;
 	SDL_GetWindowSize(window, &screen_w, &screen_h);
-	LOG_debug("presentSurface: screen %dx%d", screen_w, screen_h);
 	if (screen_w <= 0 || screen_h <= 0) {
 		LOG_error("GL video: invalid window size %dx%d", screen_w, screen_h);
 		return;
@@ -1917,8 +1907,6 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 
 	if (!gl_state.ui_texture || gl_state.ui_texture_width != surf_w ||
 	    gl_state.ui_texture_height != surf_h) {
-		LOG_debug("presentSurface: creating UI texture %ux%u", surf_w, surf_h);
-
 		if (gl_state.ui_texture) {
 			glDeleteTextures(1, &gl_state.ui_texture);
 		}
@@ -1934,21 +1922,16 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 
 		gl_state.ui_texture_width = surf_w;
 		gl_state.ui_texture_height = surf_h;
-
-		LOG_debug("presentSurface: UI texture created (id=%u)", gl_state.ui_texture);
 	}
 
-	LOG_debug("presentSurface: uploading pixels");
 	glBindTexture(GL_TEXTURE_2D, gl_state.ui_texture);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surf_w, surf_h, GL_RGB, GL_UNSIGNED_SHORT_5_6_5,
 	                surface->pixels);
 
-	LOG_debug("presentSurface: setting viewport and clearing");
 	glViewport(0, 0, screen_w, screen_h);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	LOG_debug("presentSurface: using shader program");
 	glUseProgram(gl_state.present_program);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -1973,13 +1956,10 @@ void GLVideo_presentSurface(SDL_Surface* surface) {
 	glVertexAttribPointer(gl_state.loc_position, 2, GL_FLOAT, GL_FALSE, 0, verts);
 	glVertexAttribPointer(gl_state.loc_texcoord, 2, GL_FLOAT, GL_FALSE, 0, texco);
 
-	LOG_debug("presentSurface: drawing quad");
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
 	glDisableVertexAttribArray(gl_state.loc_position);
 	glDisableVertexAttribArray(gl_state.loc_texcoord);
-
-	LOG_debug("presentSurface: done");
 }
 
 void GLVideo_swapBuffers(void) {

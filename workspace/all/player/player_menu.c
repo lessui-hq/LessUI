@@ -467,8 +467,6 @@ static void Menu_afterSleep(void) {
 }
 
 static void Menu_loop_ctx(PlayerContext* ctx) {
-	LOG_debug("Menu_loop_ctx: enter, HW=%d", GLVideo_isEnabled());
-
 	PlayerMenuState* m = ctx->menu;
 	GFX_Renderer* r = (GFX_Renderer*)ctx->renderer;
 	struct Game* g = ctx->game;
@@ -786,10 +784,8 @@ static void Menu_loop_ctx(PlayerContext* ctx) {
 
 			// Use GL presentation when HW rendering is active to avoid SDL/GL conflicts
 			if (GLVideo_isEnabled()) {
-				LOG_debug("Menu: about to call GLVideo_presentSurface");
 				GLVideo_presentSurface(*scr);
 				GLVideo_swapBuffers();
-				LOG_debug("Menu: returned from GLVideo_presentSurface");
 			} else {
 				GFX_present(NULL);
 			}

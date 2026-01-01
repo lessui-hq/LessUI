@@ -2446,12 +2446,12 @@ static void retro_log_callback(enum retro_log_level level, const char* fmt, ...)
 	va_end(args);
 
 	// Map libretro levels to our levels and log
+	// Note: Core DEBUG/INFO logs are demoted to LOG_debug to avoid huge log files
+	// in release builds. Only WARN/ERROR from cores are shown in release logs.
 	switch (level) {
 	case RETRO_LOG_DEBUG:
-		LOG_debug("%s", msg_buffer);
-		break;
 	case RETRO_LOG_INFO:
-		LOG_info("%s", msg_buffer);
+		LOG_debug("%s", msg_buffer);
 		break;
 	case RETRO_LOG_WARN:
 		LOG_warn("%s", msg_buffer);
