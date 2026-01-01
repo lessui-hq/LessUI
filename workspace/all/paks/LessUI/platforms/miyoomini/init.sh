@@ -1,18 +1,8 @@
 #!/bin/sh
 # miyoomini initialization
 
-# CPU governor
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-
-# CPU speeds for player
-export CPU_SPEED_MENU=504000
-export CPU_SPEED_GAME=1296000
-export CPU_SPEED_PERF=1488000
-
-cpu_restore() {
-	overclock.elf $CPU_SPEED_PERF
-}
-cpu_restore
 
 # Detect Mini Plus
 if [ -f /customer/app/axp_test ]; then

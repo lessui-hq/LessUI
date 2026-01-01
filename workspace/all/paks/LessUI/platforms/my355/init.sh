@@ -5,15 +5,8 @@
 export PATH="$PATH:/usr/miyoo/bin:/usr/miyoo/sbin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/miyoo/lib"
 
-# CPU setup
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
-CPU_PATH=/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed
-CPU_SPEED_PERF=1992000
-
-cpu_restore() {
-	echo $CPU_SPEED_PERF >$CPU_PATH
-}
-cpu_restore
 
 # Headphone jack GPIO
 echo 150 >/sys/class/gpio/export

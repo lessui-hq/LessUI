@@ -8,15 +8,9 @@ export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
 # Button configuration
 echo A,B,X,Y,L,R >/sys/module/gpio_keys_polled/parameters/button_config
 
-# CPU setup
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
-CPU_SPEED_PERF=1536000
-
-cpu_restore() {
-	echo $CPU_SPEED_PERF >$CPU_PATH
-}
-cpu_restore
 
 # LED off
 leds_off
