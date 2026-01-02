@@ -52,13 +52,13 @@ VARIANTS = {
         "brick": (1024, 768, 3.2),
     },
     "retroid": {
-        "mini_v1": (1280, 960, 3.7),    # 4:3 aspect ratio
-        "mini_v2": (1240, 1080, 3.92),  # Nearly square (~31:27)
+        "miniv1": (1280, 960, 3.7),    # 4:3 aspect ratio
+        "miniv2": (1240, 1080, 3.92),  # Nearly square (~31:27)
     },
 }
 
 # Square screens get Sharp sharpness, others get Sharp too when Native
-SQUARE_SCREENS = {"cube", "rgb30", "mini_v2"}
+SQUARE_SCREENS = {"cube", "rgb30", "miniv2"}
 
 # =============================================================================
 # CORE DATA
@@ -124,8 +124,8 @@ SCALING_OVERRIDES = {
     ("rg35xxplus", "SFC", "cube"): "Cropped",
     ("rgb30", "FC", None): "Cropped",
     ("rgb30", "SFC", None): "Cropped",
-    ("retroid", "FC", "mini_v2"): "Cropped",
-    ("retroid", "SFC", "mini_v2"): "Cropped",
+    ("retroid", "FC", "miniv2"): "Cropped",
+    ("retroid", "SFC", "miniv2"): "Cropped",
 }
 
 # =============================================================================
