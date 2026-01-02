@@ -39,6 +39,7 @@ PLATFORMS = {
     "m17":          (480, 272, 4.3),    # Miyoo A30 / similar
     "trimuismart":  (640, 480, 4.95),
     "tg5040":       (1280, 720, 4.96),  # Trimui Smart Pro
+    "retroid":      (1920, 1080, 5.5),  # Pocket 5, Flip 2 (FHD)
 }
 
 # Device variants (platform -> variant -> screen info)
@@ -50,10 +51,13 @@ VARIANTS = {
     "tg5040": {
         "brick": (1024, 768, 3.2),
     },
+    "retroid": {
+        "mini_v2": (1240, 1080, 3.92),  # Nearly square (~31:27)
+    },
 }
 
 # Square screens get Sharp sharpness, others get Sharp too when Native
-SQUARE_SCREENS = {"cube", "rgb30"}
+SQUARE_SCREENS = {"cube", "rgb30", "mini_v2"}
 
 # =============================================================================
 # CORE DATA
@@ -119,6 +123,8 @@ SCALING_OVERRIDES = {
     ("rg35xxplus", "SFC", "cube"): "Cropped",
     ("rgb30", "FC", None): "Cropped",
     ("rgb30", "SFC", None): "Cropped",
+    ("retroid", "FC", "mini_v2"): "Cropped",
+    ("retroid", "SFC", "mini_v2"): "Cropped",
 }
 
 # =============================================================================
