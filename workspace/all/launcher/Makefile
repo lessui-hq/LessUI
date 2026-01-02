@@ -40,6 +40,12 @@ SOURCE += ../common/render_sdl2.c ../common/effect_utils.c ../common/gl_video.c
 else
 SOURCE += ../common/effect_surface.c
 endif
+
+# Add libudev support for dynamic input device discovery (retroid, rgb30)
+ifeq ($(HAS_LIBUDEV),1)
+SOURCE += ../common/udev_input.c
+LIBS += -ludev
+endif
 HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 
 CC = $(CROSS_COMPILE)gcc

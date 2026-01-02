@@ -227,18 +227,10 @@
 
 #define KEYMON_HAS_JACK 0 // Headphone jack detection TBD
 
-// Retroid gamepad device path is dynamic - search multiple event devices
-// The "Retroid Pocket Gamepad" can be on different eventN depending on boot order
-// Volume buttons may be on separate device, so check more devices
-#define KEYMON_INPUT_COUNT 8
-#define KEYMON_INPUT_DEVICE_0 "/dev/input/event0"
-#define KEYMON_INPUT_DEVICE_1 "/dev/input/event1"
-#define KEYMON_INPUT_DEVICE_2 "/dev/input/event2"
-#define KEYMON_INPUT_DEVICE_3 "/dev/input/event3"
-#define KEYMON_INPUT_DEVICE_4 "/dev/input/event4"
-#define KEYMON_INPUT_DEVICE_5 "/dev/input/event5"
-#define KEYMON_INPUT_DEVICE_6 "/dev/input/event6"
-#define KEYMON_INPUT_DEVICE_7 "/dev/input/event7"
+// Use libudev for dynamic input device discovery
+// This is more robust than hardcoding event paths and handles
+// devices appearing in any order during boot
+#define KEYMON_USE_LIBUDEV 1
 
 ///////////////////////////////
 

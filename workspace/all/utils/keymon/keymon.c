@@ -45,6 +45,10 @@
 #include <pthread.h>
 #endif
 
+#ifdef KEYMON_USE_LIBUDEV
+#include "udev_input.h"
+#endif
+
 // Input event values from linux/input.h
 #define RELEASED 0
 #define PRESSED 1
@@ -62,7 +66,10 @@ static void handle_signal(int sig) {
 }
 
 // Input device management
-#if KEYMON_INPUT_COUNT > 1
+#ifdef KEYMON_USE_LIBUDEV
+static int inputs[UDEV_MAX_DEVICES];
+static int input_count = 0;
+#elif KEYMON_INPUT_COUNT > 1
 static int inputs[KEYMON_INPUT_COUNT];
 #else
 static int input_fd = 0;
@@ -326,7 +333,15 @@ int main(int argc, char* argv[]) {
 	InitSettings();
 
 	// Open input device(s)
-#if KEYMON_INPUT_COUNT > 1
+#ifdef KEYMON_USE_LIBUDEV
+	// Use libudev for dynamic input device discovery
+	input_count = udev_open_all_inputs(inputs);
+	if (input_count == 0) {
+		LOG_warn("No input devices found via udev\n");
+	} else {
+		LOG_info("Opened %d input devices via udev\n", input_count);
+	}
+#elif KEYMON_INPUT_COUNT > 1
 	// Custom device paths (if platform defines them)
 #if defined(KEYMON_INPUT_DEVICE_0)
 	inputs[0] = open(KEYMON_INPUT_DEVICE_0, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
@@ -413,7 +428,10 @@ int main(int argc, char* argv[]) {
 			ignore_stale = 1;
 
 		// Read and process all available input events
-#if KEYMON_INPUT_COUNT > 1
+#ifdef KEYMON_USE_LIBUDEV
+		for (int i = 0; i < input_count; i++) {
+			while (read(inputs[i], &ev, sizeof(ev)) == sizeof(ev)) {
+#elif KEYMON_INPUT_COUNT > 1
 		for (int i = 0; i < KEYMON_INPUT_COUNT; i++) {
 			while (read(inputs[i], &ev, sizeof(ev)) == sizeof(ev)) {
 #else
@@ -496,7 +514,7 @@ int main(int argc, char* argv[]) {
 				default:
 					break;
 				}
-#if KEYMON_INPUT_COUNT > 1
+#if defined(KEYMON_USE_LIBUDEV) || KEYMON_INPUT_COUNT > 1
 			}
 #endif
 		}
@@ -605,6 +623,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Clean shutdown
+#ifdef KEYMON_USE_LIBUDEV
+	udev_close_all(inputs, UDEV_MAX_DEVICES);
+#endif
 	QuitSettings();
 	log_close();
 

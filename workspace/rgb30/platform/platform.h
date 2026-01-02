@@ -206,14 +206,10 @@
 #define KEYMON_HAS_JACK 1
 #define KEYMON_JACK_STATE_PATH "/sys/bus/platform/devices/singleadc-joypad/hp"
 
-// Uses event0-4 plus js0 (joystick) for menu button detection
-#define KEYMON_INPUT_COUNT 6
-#define KEYMON_INPUT_DEVICE_0 "/dev/input/event0"
-#define KEYMON_INPUT_DEVICE_1 "/dev/input/event1"
-#define KEYMON_INPUT_DEVICE_2 "/dev/input/event2"
-#define KEYMON_INPUT_DEVICE_3 "/dev/input/event3"
-#define KEYMON_INPUT_DEVICE_4 "/dev/input/event4"
-#define KEYMON_INPUT_DEVICE_5 "/dev/input/js0"
+// Use libudev for dynamic input device discovery
+// This is more robust than hardcoding event paths and handles
+// devices appearing in any order during boot
+#define KEYMON_USE_LIBUDEV 1
 
 ///////////////////////////////
 

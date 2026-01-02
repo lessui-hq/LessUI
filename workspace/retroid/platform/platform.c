@@ -45,6 +45,7 @@
 #include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
+#include "udev_input.h"
 
 // Paths for HDMI detection
 #define HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"
@@ -328,41 +329,9 @@ int PLAT_supportsOverscan(void) {
 #define RAW_MENU1 RAW_L3
 #define RAW_MENU2 RAW_R3
 
-#define INPUT_COUNT 4
-static int inputs[INPUT_COUNT];
-
-/**
- * Find input device by name in sysfs.
- * Returns device path (e.g., "/dev/input/event2") or NULL if not found.
- */
-static char* findInputDeviceByName(const char* device_name) {
-	static char device_path[64];
-	char name_path[128];
-	char name[256];
-
-	// Search /sys/class/input/event* for matching device name
-	for (int i = 0; i < 10; i++) {
-		snprintf(name_path, sizeof(name_path), "/sys/class/input/event%d/device/name", i);
-		FILE* f = fopen(name_path, "r");
-		if (!f)
-			continue;
-
-		if (fgets(name, sizeof(name), f)) {
-			// Strip newline
-			name[strcspn(name, "\n")] = 0;
-			if (strcmp(name, device_name) == 0) {
-				snprintf(device_path, sizeof(device_path), "/dev/input/event%d", i);
-				fclose(f);
-				LOG_debug("Found '%s' at %s\n", device_name, device_path);
-				return device_path;
-			}
-		}
-		fclose(f);
-	}
-
-	LOG_warn("Device '%s' not found in /sys/class/input/\n", device_name);
-	return NULL;
-}
+// Input devices discovered via libudev
+static int inputs[UDEV_MAX_DEVICES];
+static int input_count = 0;
 
 /**
  * Disable RGB LEDs on analog sticks.
@@ -395,36 +364,20 @@ void PLAT_initInput(void) {
 	// Disable stick LEDs on startup
 	disableStickLEDs();
 
-	// Find Retroid Pocket Gamepad dynamically by name
-	char* gamepad_path = findInputDeviceByName("Retroid Pocket Gamepad");
-	if (gamepad_path) {
-		inputs[0] = open(gamepad_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-		if (inputs[0] < 0)
-			LOG_warn("Failed to open gamepad at %s\n", gamepad_path);
+	// Use libudev to discover all input devices dynamically.
+	// This is more robust than hardcoding event device paths and handles
+	// devices appearing in any order during boot.
+	input_count = udev_open_all_inputs(inputs);
+	if (input_count == 0) {
+		LOG_warn("No input devices found via udev\n");
 	} else {
-		// Fallback: try event0 (shouldn't happen on Retroid)
-		inputs[0] = open("/dev/input/event0", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-		if (inputs[0] < 0)
-			LOG_warn("Failed to open fallback /dev/input/event0\n");
-	}
-
-	// Open additional event devices for power button, volume, etc.
-	// Power button location varies, so open multiple devices like RGB30
-	inputs[1] = open("/dev/input/event1", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[2] = open("/dev/input/event2", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[3] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-
-	for (int i = 1; i < INPUT_COUNT; i++) {
-		if (inputs[i] < 0)
-			LOG_debug("Could not open /dev/input/event%d\n", i);
+		LOG_info("Opened %d input devices via udev\n", input_count);
 	}
 }
 
 void PLAT_quitInput(void) {
-	for (int i = 0; i < INPUT_COUNT; i++) {
-		if (inputs[i] >= 0)
-			close(inputs[i]);
-	}
+	udev_close_all(inputs, UDEV_MAX_DEVICES);
+	input_count = 0;
 }
 
 // from <linux/input.h> which has BTN_ constants that conflict with platform.h
@@ -444,10 +397,8 @@ void PLAT_pollInput(void) {
 
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
-		if (input < 0)
-			continue;
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type != EV_KEY && event.type != EV_ABS)
 				continue;
@@ -538,10 +489,8 @@ void PLAT_pollInput(void) {
 int PLAT_shouldWake(void) {
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
-		if (input < 0)
-			continue;
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type == EV_KEY && event.code == RAW_POWER && event.value == 0)
 				return 1;
