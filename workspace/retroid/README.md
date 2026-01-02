@@ -8,7 +8,8 @@ Platform implementation for Retroid Pocket devices running LessOS.
 |--------|---------|------------|-------|
 | **Pocket 5** | 5.5" AMOLED | 1920x1080 | Flagship model |
 | **Pocket Flip 2** | 5.5" AMOLED | 1920x1080 | Clamshell design |
-| **Pocket Mini V2** | 3.92" AMOLED | 1240x1080 | Compact form factor |
+| **Pocket Mini V1** | 3.7" AMOLED | 1280x960 | 4:3 compact |
+| **Pocket Mini V2** | 3.92" AMOLED | 1240x1080 | Near-square compact |
 
 **OS**: LessOS (ROCKNIX-based)
 
@@ -95,6 +96,7 @@ The platform auto-detects device variant via `LESSOS_DEVICE`:
 | Variant | Devices | Resolution | Aspect |
 |---------|---------|------------|--------|
 | `VARIANT_RETROID_FHD` | Pocket 5, Flip 2 | 1920x1080 | 16:9 |
+| `VARIANT_RETROID_MINI_V1` | Pocket Mini V1 | 1280x960 | 4:3 |
 | `VARIANT_RETROID_MINI_V2` | Pocket Mini V2 | 1240x1080 | ~31:27 |
 
 ## LessOS/ROCKNIX References

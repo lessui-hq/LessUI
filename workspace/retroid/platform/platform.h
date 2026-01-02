@@ -4,6 +4,7 @@
  * Supports multiple device variants in the Retroid Pocket family:
  * - Retroid Pocket 5: 5.5" 1920x1080 AMOLED (16:9)
  * - Retroid Pocket Flip 2: 5.5" 1920x1080 AMOLED (16:9, clamshell)
+ * - Retroid Pocket Mini V1: 3.7" 1280x960 AMOLED (4:3)
  * - Retroid Pocket Mini V2: 3.92" 1240x1080 AMOLED (~31:27, near square)
  *
  * Hardware features:
@@ -76,7 +77,8 @@
 
 // Retroid Pocket SM8250 family variants
 #define VARIANT_RETROID_FHD (VARIANT_PLATFORM_BASE + 0) // 1920x1080 (Pocket 5, Flip 2)
-#define VARIANT_RETROID_MINI_V2 (VARIANT_PLATFORM_BASE + 1) // 1240x1080 (Mini V2)
+#define VARIANT_RETROID_MINI_V1 (VARIANT_PLATFORM_BASE + 1) // 1280x960 (Mini V1)
+#define VARIANT_RETROID_MINI_V2 (VARIANT_PLATFORM_BASE + 2) // 1240x1080 (Mini V2)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

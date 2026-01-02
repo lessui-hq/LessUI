@@ -52,6 +52,7 @@ VARIANTS = {
         "brick": (1024, 768, 3.2),
     },
     "retroid": {
+        "mini_v1": (1280, 960, 3.7),    # 4:3 aspect ratio
         "mini_v2": (1240, 1080, 3.92),  # Nearly square (~31:27)
     },
 }

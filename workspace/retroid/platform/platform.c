@@ -6,6 +6,7 @@
  * Supports multiple device variants in the Retroid Pocket family:
  * - Retroid Pocket 5 (1920x1080)
  * - Retroid Pocket Flip 2 (1920x1080)
+ * - Retroid Pocket Mini V1 (1280x960)
  * - Retroid Pocket Mini V2 (1240x1080)
  *
  * Hardware features:
@@ -58,6 +59,9 @@ static const DeviceInfo retroid_devices[] = {
     {.device_id = "pocket5", .display_name = "Pocket 5", .manufacturer = "Retroid"},
     {.device_id = "flip2", .display_name = "Pocket Flip 2", .manufacturer = "Retroid"},
 
+    // 1280x960 Mini V1
+    {.device_id = "miniv1", .display_name = "Pocket Mini V1", .manufacturer = "Retroid"},
+
     // 1240x1080 Mini V2
     {.device_id = "miniv2", .display_name = "Pocket Mini V2", .manufacturer = "Retroid"},
 
@@ -78,6 +82,11 @@ static const VariantConfig retroid_variants[] = {
      .screen_width = 1920,
      .screen_height = 1080,
      .screen_diagonal_default = 5.5f,
+     .hw_features = HW_FEATURE_NEON | HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
+    {.variant = VARIANT_RETROID_MINI_V1,
+     .screen_width = 1280,
+     .screen_height = 960,
+     .screen_diagonal_default = 3.7f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
     {.variant = VARIANT_RETROID_MINI_V2,
      .screen_width = 1240,
@@ -106,11 +115,17 @@ static const DeviceVariantMap retroid_device_map[] = {
     {"Flip 2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
     {"RPF2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
 
+    // 1280x960 Mini V1 - VARIANT_RETROID_MINI_V1
+    {"Retroid Pocket Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
+    {"Pocket Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
+    {"Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
+    {"RPMV1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
+
     // 1240x1080 Mini V2 - VARIANT_RETROID_MINI_V2
-    {"Retroid Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[2], 3.92f},
-    {"Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[2], 3.92f},
-    {"Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[2], 3.92f},
-    {"RPMV2", VARIANT_RETROID_MINI_V2, &retroid_devices[2], 3.92f},
+    {"Retroid Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
+    {"Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
+    {"Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
+    {"RPMV2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
 
     // Sentinel
     {NULL, VARIANT_NONE, NULL, 0.0f}};
@@ -174,9 +189,14 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		v->screen_height = HDMI_HEIGHT;
 	}
 
+	const char* variant_name = "FHD";
+	if (v->variant == VARIANT_RETROID_MINI_V1)
+		variant_name = "Mini V1";
+	else if (v->variant == VARIANT_RETROID_MINI_V2)
+		variant_name = "Mini V2";
 	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
-	         v->device->display_name, v->variant == VARIANT_RETROID_MINI_V2 ? "Mini V2" : "FHD",
-	         v->screen_width, v->screen_height, v->screen_diagonal);
+	         v->device->display_name, variant_name, v->screen_width, v->screen_height,
+	         v->screen_diagonal);
 }
 
 ///////////////////////////////
