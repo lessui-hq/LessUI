@@ -15,7 +15,6 @@
 #include "libretro.h"
 #include "log.h"
 #include "scaler.h" // For scaling constants/types if needed
-#include <SDL.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
