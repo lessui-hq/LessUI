@@ -14,7 +14,7 @@
 # The main makefile forwards to this file for test/lint/format targets.
 # Run 'make -f Makefile.qa help' for complete target list.
 
-.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native test-asan test-asan-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-test docker-test-asan docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
+.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native test-asan test-asan-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-pull docker-test docker-test-asan docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
 help:
 	@echo "LessUI Quality Assurance Tools"
@@ -811,12 +811,28 @@ report: check-clang-tidy
 ###########################################################
 # Docker QA (recommended for consistency with CI)
 DEV_IMAGE = lessui-dev
+GHCR_IMAGE = ghcr.io/lessui-hq/lessui-dev:latest
 DEV_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(DEV_IMAGE)
 
+# Set FORCE_DOCKER_BUILD=1 to build locally instead of pulling from GHCR
+FORCE_DOCKER_BUILD ?= 0
+
+# Pull prebuilt image from GHCR and tag it locally
+docker-pull:
+	@echo "Pulling dev image from GHCR..."
+	@docker pull $(GHCR_IMAGE)
+	@docker tag $(GHCR_IMAGE) $(DEV_IMAGE)
+	@echo "✓ Dev image ready (from GHCR)"
+
+# Default: pull from GHCR. Use FORCE_DOCKER_BUILD=1 to build locally.
 docker-build:
-	@echo "Building dev Docker image (Ubuntu 24.04, matches GitHub CI)..."
+ifeq ($(FORCE_DOCKER_BUILD),1)
+	@echo "Building dev Docker image locally..."
 	@docker build -q -t $(DEV_IMAGE) -f Dockerfile .
-	@echo "✓ Dev image ready"
+	@echo "✓ Dev image ready (built locally)"
+else
+	@$(MAKE) -f Makefile.qa docker-pull
+endif
 
 docker-test: docker-build
 	@echo "Running tests in Docker container (Ubuntu 24.04)..."
