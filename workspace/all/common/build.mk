@@ -93,6 +93,12 @@ else
 COMMON_SOURCE += $(COMMON_DIR)/effect_surface.c
 endif
 
+# Add libudev support for dynamic input device discovery (retroid, rgb30)
+ifeq ($(HAS_LIBUDEV),1)
+COMMON_SOURCE += $(COMMON_DIR)/udev_input.c
+EXTRA_LDFLAGS += -ludev
+endif
+
 SOURCE ?= $(TARGET).c $(COMMON_SOURCE) $(EXTRA_SOURCE)
 HEADERS = $(wildcard $(COMMON_DIR)/*.h) $(wildcard $(PLATFORM_DIR)/*.h)
 

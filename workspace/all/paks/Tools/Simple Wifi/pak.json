@@ -4,7 +4,7 @@
   "description": "Simple WiFi toggle using stock firmware utilities",
   "version": "1.0.0",
 
-  "platforms": ["rgb30"],
+  "platforms": ["rgb30", "retroid"],
 
   "build": {
     "type": "shell-only"

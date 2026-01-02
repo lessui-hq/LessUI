@@ -39,6 +39,7 @@
 #include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
+#include "udev_input.h"
 
 ///////////////////////////////
 // Video - Using shared SDL2 backend
@@ -151,25 +152,25 @@ int PLAT_supportsOverscan(void) {
 #define RAW_MENU1 RAW_L3
 #define RAW_MENU2 RAW_R3
 
-#define INPUT_COUNT 4
-static int inputs[INPUT_COUNT];
+// Input devices discovered via libudev
+static int inputs[UDEV_MAX_DEVICES];
+static int input_count = 0;
 
 void PLAT_initInput(void) {
-	inputs[0] = open("/dev/input/event0", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[1] = open("/dev/input/event1", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[2] = open("/dev/input/event2", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[3] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-
-	for (int i = 0; i < INPUT_COUNT; i++) {
-		if (inputs[i] < 0)
-			LOG_warn("Failed to open /dev/input/event%d\n", i);
+	// Use libudev to discover all input devices dynamically.
+	// This is more robust than hardcoding event device paths and handles
+	// devices appearing in any order during boot.
+	input_count = udev_open_all_inputs(inputs);
+	if (input_count == 0) {
+		LOG_warn("No input devices found via udev\n");
+	} else {
+		LOG_info("Opened %d input devices via udev\n", input_count);
 	}
 }
 
 void PLAT_quitInput(void) {
-	for (int i = 0; i < INPUT_COUNT; i++) {
-		close(inputs[i]);
-	}
+	udev_close_all(inputs, UDEV_MAX_DEVICES);
+	input_count = 0;
 }
 
 struct input_event {
@@ -188,7 +189,7 @@ void PLAT_pollInput(void) {
 
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type != EV_KEY && event.type != EV_ABS)
@@ -275,7 +276,7 @@ void PLAT_pollInput(void) {
 int PLAT_shouldWake(void) {
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type == EV_KEY && event.code == RAW_POWER && event.value == 0)

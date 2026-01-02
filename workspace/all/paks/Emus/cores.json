@@ -102,6 +102,43 @@
         }
       ]
     },
+    "SWST": {
+      "name": "Sony PlayStation (SwanStation)",
+      "core": "swanstation_libretro",
+      "resolution": "320x240",
+      "extensions": [
+        "bin",
+        "cue",
+        "img",
+        "iso",
+        "pbp",
+        "chd",
+        "m3u",
+        "mdf",
+        "ccd",
+        "exe"
+      ],
+      "bios": [
+        {
+          "name": "scph5501.bin",
+          "md5": "490f666e1afb15b7362b406ed1cea246",
+          "required": true
+        },
+        { "name": "scph5500.bin", "md5": null, "required": false },
+        { "name": "scph5502.bin", "md5": null, "required": false },
+        {
+          "name": "scph1001.bin",
+          "md5": "924e392ed05558ffdb115408c263dccf",
+          "required": false
+        },
+        {
+          "name": "scph7001.bin",
+          "md5": "1e68c231d0896b7eadcad1d7d8e76129",
+          "required": false
+        }
+      ],
+      "arm64_only": true
+    },
     "GG": {
       "name": "Sega Game Gear",
       "core": "picodrive_libretro",

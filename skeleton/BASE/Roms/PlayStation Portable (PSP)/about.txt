@@ -1,0 +1,8 @@
+PlayStation Portable
+
+Core: ppsspp
+
+Supported file types:
+  .elf, .iso, .cso, .prx, .pbp
+
+ARM64 devices only
