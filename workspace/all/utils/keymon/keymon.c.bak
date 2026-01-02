@@ -450,14 +450,14 @@ int main(int argc, char* argv[]) {
 				case KEYMON_BUTTON_R1:
 					// R1 button (brightness/volume up when combined)
 					up_pressed = up_just_pressed = pressed;
-
+					LOG_debug("PLUS button: %s (code=%d)", pressed ? "pressed" : "released", ev.code);
 					if (pressed)
 						up_repeat_at = now + 300; // 300ms initial delay
 					break;
 				case KEYMON_BUTTON_L1:
 					// L1 button (brightness/volume down when combined)
 					down_pressed = down_just_pressed = pressed;
-
+					LOG_debug("MINUS button: %s (code=%d)", pressed ? "pressed" : "released", ev.code);
 					if (pressed)
 						down_repeat_at = now + 300; // 300ms initial delay
 					break;
@@ -478,17 +478,17 @@ int main(int argc, char* argv[]) {
 				case KEYMON_BUTTON_MENU_ALT2:
 #endif
 					menu_pressed = pressed;
-
+					LOG_debug("MENU button: %s", pressed ? "pressed" : "released");
 					break;
 				case KEYMON_BUTTON_PLUS:
 					up_pressed = up_just_pressed = pressed;
-
+					LOG_debug("PLUS button: %s (code=%d)", pressed ? "pressed" : "released", ev.code);
 					if (pressed)
 						up_repeat_at = now + 300;
 					break;
 				case KEYMON_BUTTON_MINUS:
 					down_pressed = down_just_pressed = pressed;
-
+					LOG_debug("MINUS button: %s (code=%d)", pressed ? "pressed" : "released", ev.code);
 					if (pressed)
 						down_repeat_at = now + 300;
 					break;

@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <string.h>
 
+#include "log.h"
 #include "msettings.h"
 
 ///////////////////////////////////////
@@ -40,9 +41,9 @@ static int shm_fd = -1;
 static int is_host = 0;
 static int shm_size = sizeof(Settings);
 
-// SM8250 uses panel0-backlight for AMOLED displays
-#define BRIGHTNESS_PATH "/sys/class/backlight/panel0-backlight/brightness"
-#define BRIGHTNESS_MAX_PATH "/sys/class/backlight/panel0-backlight/max_brightness"
+// SM8250 uses DSI panel backlight (device name: ae94000.dsi.0)
+#define BRIGHTNESS_PATH "/sys/class/backlight/ae94000.dsi.0/brightness"
+#define BRIGHTNESS_MAX_PATH "/sys/class/backlight/ae94000.dsi.0/max_brightness"
 #define HDMI_STATE_PATH "/sys/class/extcon/hdmi/cable.0/state"
 
 static int max_brightness = 255;
@@ -58,7 +59,10 @@ int getInt(char* path) {
 }
 
 void InitSettings(void) {
-	sprintf(SettingsPath, "%s/msettings.bin", getenv("USERDATA_PATH"));
+	const char* userdata = getenv("USERDATA_PATH");
+	if (!userdata)
+		userdata = "/storage/.userdata/retroid"; // Fallback if env not set
+	snprintf(SettingsPath, sizeof(SettingsPath), "%s/msettings.bin", userdata);
 
 	// Read max brightness from sysfs
 	max_brightness = getInt(BRIGHTNESS_MAX_PATH);
@@ -67,11 +71,11 @@ void InitSettings(void) {
 
 	shm_fd = shm_open(SHM_KEY, O_RDWR | O_CREAT | O_EXCL, 0644); // see if it exists
 	if (shm_fd == -1 && errno == EEXIST) { // already exists
-		puts("Settings client");
+		LOG_debug("Settings client (connecting to existing shared memory)");
 		shm_fd = shm_open(SHM_KEY, O_RDWR, 0644);
 		settings = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
 	} else { // host
-		puts("Settings host"); // should always be keymon
+		LOG_debug("Settings host (creating new shared memory)");
 		is_host = 1;
 		// we created it so set initial size and populate
 		ftruncate(shm_fd, shm_size);
@@ -88,9 +92,8 @@ void InitSettings(void) {
 	}
 
 	int hdmi = getInt(HDMI_STATE_PATH);
-	printf("brightness: %i (hdmi: %i)\nspeaker: %i\n", settings->brightness, hdmi,
-	       settings->speaker);
-	fflush(stdout);
+	LOG_debug("Loaded settings: brightness=%i hdmi=%i speaker=%i", settings->brightness, hdmi,
+	          settings->speaker);
 
 	SetHDMI(hdmi);
 	SetBrightness(GetBrightness());
@@ -186,16 +189,18 @@ void SetRawBrightness(int val) {
 	if (settings->hdmi)
 		return;
 
-	int fd = open(BRIGHTNESS_PATH, O_WRONLY);
-	if (fd >= 0) {
-		dprintf(fd, "%d", val);
-		close(fd);
+	FILE* file = fopen(BRIGHTNESS_PATH, "w");
+	if (file) {
+		fprintf(file, "%d\n", val);
+		fclose(file);
+	} else {
+		LOG_warn("Failed to set brightness to %d: %s", val, strerror(errno));
 	}
 }
 
 void SetRawVolume(int val) { // 0 - 100
 	char cmd[256];
-	sprintf(cmd, "amixer sset -M 'Master' %i%% &> /dev/null", val);
+	snprintf(cmd, sizeof(cmd), "amixer sset -M 'Master' %i%% &> /dev/null", val);
 	system(cmd);
 }
 

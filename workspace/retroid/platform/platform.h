@@ -155,18 +155,18 @@
 #define JOY_SELECT 10 // BTN_SELECT (bit 10)
 #define JOY_START 11 // BTN_START (bit 11)
 
-// Retroid uses Xbox-style layout: A=South, B=East, X=West, Y=North
-#define JOY_A 7 // BTN_SOUTH (bit 7)
-#define JOY_B 6 // BTN_EAST (bit 6)
-#define JOY_X 5 // BTN_WEST (bit 5)
-#define JOY_Y 4 // BTN_NORTH (bit 4)
+// Retroid uses Nintendo-style layout: A=East, B=South, Y=West, X=North
+#define JOY_A 6 // BTN_EAST (bit 6)
+#define JOY_B 7 // BTN_SOUTH (bit 7)
+#define JOY_X 4 // BTN_NORTH (bit 4)
+#define JOY_Y 5 // BTN_WEST (bit 5)
 
 #define JOY_L1 8 // BTN_TL (bit 8)
 #define JOY_R1 9 // BTN_TR (bit 9)
 #define JOY_L2 JOY_NA // Analog trigger, handled via ABS_HAT2X
 #define JOY_R2 JOY_NA // Analog trigger, handled via ABS_HAT2Y
-#define JOY_L3 12 // BTN_THUMBL (bit 12)
-#define JOY_R3 13 // BTN_THUMBR (bit 13)
+#define JOY_L3 JOY_NA // Repurposed as menu button (see RAW_MENU1)
+#define JOY_R3 JOY_NA // Repurposed as menu button (see RAW_MENU2)
 
 #define JOY_MENU 14 // BTN_MODE (bit 14) - Home button
 #define JOY_MENU_ALT JOY_NA
@@ -208,7 +208,7 @@
 // Platform-Specific Paths and Settings
 ///////////////////////////////
 
-#define SDCARD_PATH "/storage" // LessOS default, overridden by LESSOS_STORAGE
+#define SDCARD_PATH "/storage/lessui" // LessOS default, overridden by LESSOS_STORAGE
 #define MUTE_VOLUME_RAW 0 // Raw value for muted volume
 
 ///////////////////////////////
@@ -227,11 +227,16 @@
 
 // Retroid gamepad device path is dynamic - search multiple event devices
 // The "Retroid Pocket Gamepad" can be on different eventN depending on boot order
-#define KEYMON_INPUT_COUNT 4
+// Volume buttons may be on separate device, so check more devices
+#define KEYMON_INPUT_COUNT 8
 #define KEYMON_INPUT_DEVICE_0 "/dev/input/event0"
 #define KEYMON_INPUT_DEVICE_1 "/dev/input/event1"
 #define KEYMON_INPUT_DEVICE_2 "/dev/input/event2"
 #define KEYMON_INPUT_DEVICE_3 "/dev/input/event3"
+#define KEYMON_INPUT_DEVICE_4 "/dev/input/event4"
+#define KEYMON_INPUT_DEVICE_5 "/dev/input/event5"
+#define KEYMON_INPUT_DEVICE_6 "/dev/input/event6"
+#define KEYMON_INPUT_DEVICE_7 "/dev/input/event7"
 
 ///////////////////////////////
 

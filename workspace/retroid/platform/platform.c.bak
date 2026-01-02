@@ -473,6 +473,10 @@ void PLAT_pollInput(void) {
 					btn = BTN_L1;
 				} else if (code == RAW_R1) {
 					btn = BTN_R1;
+
+
+
+
 				} else if (code == RAW_PLUS) {
 					btn = BTN_PLUS;
 				} else if (code == RAW_MINUS) {

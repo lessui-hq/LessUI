@@ -15,14 +15,16 @@ CC = $(CROSS_COMPILE)gcc
 SYSROOT := $(shell $(CC) --print-sysroot)
 
 INCLUDEDIR = $(SYSROOT)/usr/include
-# OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
+# OPT_FLAGS and LOG_FLAGS from parent makefile
 OPT_FLAGS ?= -O3
-CFLAGS = -I$(INCLUDEDIR) $(OPT_FLAGS)
+LOG_FLAGS ?=
+CFLAGS = -I$(INCLUDEDIR) -I../../all/common $(OPT_FLAGS) $(LOG_FLAGS)
 LDFLAGS = -ldl -lrt -s
 
 build:
 	@$(CC) -c -Werror -fpic "$(TARGET).c" -Wl,--no-as-needed $(CFLAGS)
-	@$(CC) -shared -o "lib$(TARGET).so" "$(TARGET).o" $(LDFLAGS)
+	@$(CC) -c -fpic "../../all/common/log.c" $(CFLAGS)
+	@$(CC) -shared -o "lib$(TARGET).so" "$(TARGET).o" "log.o" $(LDFLAGS)
 	@cp "$(TARGET).h" "$(PREFIX)/include"
 	@cp "lib$(TARGET).so" "$(PREFIX)/lib"
 clean:
