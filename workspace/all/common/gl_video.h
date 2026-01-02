@@ -32,7 +32,7 @@
 
 #if HAS_OPENGLES
 
-#include <SDL.h>
+#include "sdl.h"
 #include <stdbool.h>
 
 // Forward declarations to avoid including libretro.h in non-player components
