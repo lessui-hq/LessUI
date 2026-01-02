@@ -1,6 +1,7 @@
 # LessUI Development Container
 # Ubuntu 24.04 LTS - matches GitHub Actions runners
 # Provides: clang-tidy, clang-format, scan-build, gcc, shellcheck, shfmt, mbake, prettier for QA tasks
+# Multi-arch: Supports linux/amd64 and linux/arm64 (Apple Silicon)
 
 FROM ubuntu:24.04
 

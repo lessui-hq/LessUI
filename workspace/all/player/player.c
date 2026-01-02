@@ -1726,7 +1726,8 @@ static void Config_load(void) {
 	// Read LESSUI_* environment variables (set by init.sh)
 	config.device_tag = getenv("LESSUI_DEVICE");
 	config.variant_tag = getenv("LESSUI_VARIANT");
-	LOG_debug("config.device_tag=%s config.variant_tag=%s", config.device_tag ? config.device_tag : "(null)",
+	LOG_debug("config.device_tag=%s config.variant_tag=%s",
+	          config.device_tag ? config.device_tag : "(null)",
 	          config.variant_tag ? config.variant_tag : "(null)");
 
 	// update for crop overscan support
