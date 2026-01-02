@@ -102,7 +102,7 @@
         }
       ]
     },
-    "SWAN": {
+    "SWST": {
       "name": "Sony PlayStation (SwanStation)",
       "core": "swanstation_libretro",
       "resolution": "320x240",
