@@ -12,7 +12,7 @@
     },
     "retroid": {
       "platform": "linux/amd64",
-      "toolchain": "rk3566"
+      "toolchain": "sm8250"
     }
   }
 }
