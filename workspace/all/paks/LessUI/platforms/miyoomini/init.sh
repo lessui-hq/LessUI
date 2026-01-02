@@ -16,6 +16,26 @@ export IS_PLUS
 MY_MODEL=$(strings -n 5 /customer/app/MainUI | grep MY)
 export MY_MODEL
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="miyoomini"
+
+# 560p detection
+if [ -f /sys/class/graphics/fb0/modes ] && grep -q "752x560" /sys/class/graphics/fb0/modes; then
+	export LESSUI_VARIANT="560p"
+	if $IS_PLUS; then
+		export LESSUI_DEVICE="miyoominiplus560p"
+	else
+		export LESSUI_DEVICE="miyoomini560p"
+	fi
+else
+	export LESSUI_VARIANT="vga"
+	if $IS_PLUS; then
+		export LESSUI_DEVICE="miyoominiplus"
+	else
+		export LESSUI_DEVICE="miyoomini"
+	fi
+fi
+
 # Detect firmware version
 MIYOO_VERSION=$(/etc/fw_printenv miyoo_version)
 export MIYOO_VERSION=${MIYOO_VERSION#miyoo_version=}

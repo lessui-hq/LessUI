@@ -164,8 +164,10 @@ cleanup() {
 main() {
 	trap "cleanup" EXIT INT TERM HUP QUIT
 
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$DEVICE" ]; then
-		export DEVICE="brick"
+	# Handle platform aliases (legacy: tg3040 was the original name for tg5040+brick)
+	if [ "$PLATFORM" = "tg3040" ] && [ -z "$LESSUI_DEVICE" ]; then
+		export LESSUI_DEVICE="brick"
+		export LESSUI_PLATFORM="tg5040"
 		export PLATFORM="tg5040"
 	fi
 

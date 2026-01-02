@@ -66,12 +66,12 @@ typedef struct {
 } VariantConfig;
 
 static const VariantConfig tg5040_variants[] = {
-    {.variant = VARIANT_TG5040_STANDARD,
+    {.variant = VARIANT_TG5040_WIDE,
      .screen_width = 1280,
      .screen_height = 720,
      .screen_diagonal_default = 4.95f,
      .hw_features = HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
-    {.variant = VARIANT_TG5040_BRICK,
+    {.variant = VARIANT_TG5040_4X3,
      .screen_width = 1024,
      .screen_height = 768,
      .screen_diagonal_default = 3.2f,
@@ -87,11 +87,11 @@ typedef struct {
 } DeviceVariantMap;
 
 static const DeviceVariantMap tg5040_device_map[] = {
-    // Standard TG5040 - VARIANT_TG5040_STANDARD
-    {"smartpro", VARIANT_TG5040_STANDARD, &tg5040_devices[0]},
+    // Smart Pro (16:9 widescreen)
+    {"smartpro", VARIANT_TG5040_WIDE, &tg5040_devices[0]},
 
-    // Brick variant - VARIANT_TG5040_BRICK
-    {"brick", VARIANT_TG5040_BRICK, &tg5040_devices[1]},
+    // Brick (4:3 aspect)
+    {"brick", VARIANT_TG5040_4X3, &tg5040_devices[1]},
 
     // Sentinel
     {NULL, VARIANT_NONE, NULL}};
@@ -141,10 +141,12 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		v->hw_features = config->hw_features;
 	}
 
+	// Set variant name for LESSUI_VARIANT export
+	v->variant_name = (v->variant == VARIANT_TG5040_4X3) ? "4x3" : "wide";
+
 	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
-	         v->device->display_name,
-	         v->variant == VARIANT_TG5040_BRICK ? "Brick (4:3)" : "standard (16:9)",
-	         v->screen_width, v->screen_height, v->screen_diagonal);
+	         v->device->display_name, v->variant_name, v->screen_width, v->screen_height,
+	         v->screen_diagonal);
 }
 
 ///////////////////////////////
@@ -299,15 +301,15 @@ void PLAT_getBatteryStatus(int* is_charging, int* charge) {
 static void PLAT_enableLED(int enable) {
 	if (enable) {
 		putInt(LED_PATH1, 60);
-		if (VARIANT_IS(VARIANT_TG5040_BRICK))
+		if (VARIANT_IS(VARIANT_TG5040_4X3))
 			putInt(LED_PATH2, 60);
-		if (VARIANT_IS(VARIANT_TG5040_BRICK))
+		if (VARIANT_IS(VARIANT_TG5040_4X3))
 			putInt(LED_PATH3, 60);
 	} else {
 		putInt(LED_PATH1, 0);
-		if (VARIANT_IS(VARIANT_TG5040_BRICK))
+		if (VARIANT_IS(VARIANT_TG5040_4X3))
 			putInt(LED_PATH2, 0);
-		if (VARIANT_IS(VARIANT_TG5040_BRICK))
+		if (VARIANT_IS(VARIANT_TG5040_4X3))
 			putInt(LED_PATH3, 0);
 	}
 }
@@ -325,7 +327,7 @@ static void PLAT_enableLED(int enable) {
 void PLAT_enableBacklight(int enable) {
 	if (enable) {
 		// Brick needs minimum brightness to be visible
-		if (VARIANT_IS(VARIANT_TG5040_BRICK))
+		if (VARIANT_IS(VARIANT_TG5040_4X3))
 			SetRawBrightness(8);
 		SetBrightness(GetBrightness());
 	} else {

@@ -84,12 +84,12 @@ static const VariantConfig retroid_variants[] = {
      .screen_height = 1080,
      .screen_diagonal_default = 5.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
-    {.variant = VARIANT_RETROID_MINI_V1,
+    {.variant = VARIANT_RETROID_4X3,
      .screen_width = 1280,
      .screen_height = 960,
      .screen_diagonal_default = 3.7f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_ANALOG | HW_FEATURE_RUMBLE},
-    {.variant = VARIANT_RETROID_MINI_V2,
+    {.variant = VARIANT_RETROID_TALL,
      .screen_width = 1240,
      .screen_height = 1080,
      .screen_diagonal_default = 3.92f,
@@ -116,17 +116,17 @@ static const DeviceVariantMap retroid_device_map[] = {
     {"Flip 2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
     {"RPF2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
 
-    // 1280x960 Mini V1 - VARIANT_RETROID_MINI_V1
-    {"Retroid Pocket Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
-    {"Pocket Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
-    {"Mini V1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
-    {"RPMV1", VARIANT_RETROID_MINI_V1, &retroid_devices[2], 3.7f},
+    // 1280x960 (4:3 aspect) - Mini V1
+    {"Retroid Pocket Mini V1", VARIANT_RETROID_4X3, &retroid_devices[2], 3.7f},
+    {"Pocket Mini V1", VARIANT_RETROID_4X3, &retroid_devices[2], 3.7f},
+    {"Mini V1", VARIANT_RETROID_4X3, &retroid_devices[2], 3.7f},
+    {"RPMV1", VARIANT_RETROID_4X3, &retroid_devices[2], 3.7f},
 
-    // 1240x1080 Mini V2 - VARIANT_RETROID_MINI_V2
-    {"Retroid Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
-    {"Pocket Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
-    {"Mini V2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
-    {"RPMV2", VARIANT_RETROID_MINI_V2, &retroid_devices[3], 3.92f},
+    // 1240x1080 (tall/narrow aspect) - Mini V2
+    {"Retroid Pocket Mini V2", VARIANT_RETROID_TALL, &retroid_devices[3], 3.92f},
+    {"Pocket Mini V2", VARIANT_RETROID_TALL, &retroid_devices[3], 3.92f},
+    {"Mini V2", VARIANT_RETROID_TALL, &retroid_devices[3], 3.92f},
+    {"RPMV2", VARIANT_RETROID_TALL, &retroid_devices[3], 3.92f},
 
     // Sentinel
     {NULL, VARIANT_NONE, NULL, 0.0f}};
@@ -183,6 +183,14 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		v->hw_features = config->hw_features;
 	}
 
+	// Set variant name for LESSUI_VARIANT export
+	if (v->variant == VARIANT_RETROID_4X3)
+		v->variant_name = "4x3";
+	else if (v->variant == VARIANT_RETROID_TALL)
+		v->variant_name = "tall";
+	else
+		v->variant_name = "fhd";
+
 	// Check for HDMI connection (runtime override)
 	v->hdmi_active = getInt(HDMI_STATE_PATH);
 	if (v->hdmi_active) {
@@ -190,13 +198,8 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		v->screen_height = HDMI_HEIGHT;
 	}
 
-	const char* variant_name = "FHD";
-	if (v->variant == VARIANT_RETROID_MINI_V1)
-		variant_name = "Mini V1";
-	else if (v->variant == VARIANT_RETROID_MINI_V2)
-		variant_name = "Mini V2";
 	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
-	         v->device->display_name, variant_name, v->screen_width, v->screen_height,
+	         v->device->display_name, v->variant_name, v->screen_width, v->screen_height,
 	         v->screen_diagonal);
 }
 
@@ -289,7 +292,7 @@ int PLAT_getRotation(void) {
 
 int PLAT_supportsOverscan(void) {
 	// Only Mini V2 with near-square aspect ratio benefits from overscan
-	return VARIANT_IS(VARIANT_RETROID_MINI_V2);
+	return VARIANT_IS(VARIANT_RETROID_TALL);
 }
 
 ///////////////////////////////

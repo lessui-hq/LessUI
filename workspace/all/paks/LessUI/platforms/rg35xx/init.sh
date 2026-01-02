@@ -1,6 +1,11 @@
 #!/bin/sh
 # rg35xx initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="rg35xx"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="rg35xx"
+
 # CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 

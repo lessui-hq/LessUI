@@ -620,6 +620,7 @@ static struct Config config =
         .default_cfg = NULL,
         .user_cfg = NULL,
         .device_tag = NULL,
+        .variant_tag = NULL,
         .frontend =
             {
                 // (PlayerOptionList)
@@ -1680,11 +1681,53 @@ static void Config_readControlsString(char* cfg) {
 		mapping->modifier = mod;
 	}
 }
+/**
+ * Appends a config file's contents to an existing string buffer.
+ * Used for building cascaded config (base + variant + device).
+ *
+ * @param buffer Existing buffer (will be reallocated)
+ * @param path Path to config file to append
+ * @return New buffer with appended content (caller owns), or original buffer if file missing
+ */
+static char* Config_appendFile(char* buffer, const char* path) {
+	if (!exists(path))
+		return buffer;
+
+	char* content = allocFile(path);
+	if (!content)
+		return buffer;
+
+	LOG_debug("Config cascade: appending %s", path);
+
+	if (!buffer) {
+		return content;
+	}
+
+	size_t old_len = strlen(buffer);
+	size_t new_len = strlen(content);
+	char* combined = malloc(old_len + new_len + 2); // +2 for newline and null
+	if (!combined) {
+		free(content);
+		return buffer;
+	}
+
+	memcpy(combined, buffer, old_len);
+	combined[old_len] = '\n';
+	memcpy(combined + old_len + 1, content, new_len + 1);
+
+	free(buffer);
+	free(content);
+	return combined;
+}
+
 static void Config_load(void) {
 	LOG_info("Config_load");
 
-	config.device_tag = getenv("DEVICE");
-	LOG_debug("config.device_tag %s", config.device_tag);
+	// Read LESSUI_* environment variables (set by init.sh)
+	config.device_tag = getenv("LESSUI_DEVICE");
+	config.variant_tag = getenv("LESSUI_VARIANT");
+	LOG_debug("config.device_tag=%s config.variant_tag=%s", config.device_tag ? config.device_tag : "(null)",
+	          config.variant_tag ? config.variant_tag : "(null)");
 
 	// update for crop overscan support
 	PlayerOption* scaling_option = &config.frontend.options[FE_OPT_SCALING];
@@ -1712,27 +1755,40 @@ static void Config_load(void) {
 
 	// LOG_info("config.system_cfg: %s", config.system_cfg);
 
-	char default_path[MAX_PATH];
-	getEmuPath((char*)core.tag, default_path);
-	char* tmp = strrchr(default_path, '/');
-	safe_strcpy(tmp, "/default.cfg", MAX_PATH - (tmp - default_path));
+	// Build base path for config files (e.g., /path/to/pak/)
+	char emu_path[MAX_PATH];
+	getEmuPath((char*)core.tag, emu_path);
+	char* path_end = strrchr(emu_path, '/');
+	if (path_end)
+		*path_end = '\0';
 
-	char device_default_path[MAX_PATH] = {0};
-	if (config.device_tag) {
-		getEmuPath((char*)core.tag, device_default_path);
-		tmp = strrchr(device_default_path, '/');
-		char filename[64];
-		(void)snprintf(filename, sizeof(filename), "/default-%s.cfg", config.device_tag);
-		safe_strcpy(tmp, filename, MAX_PATH - (tmp - device_default_path));
+	// Config cascade: default.cfg → variant-{variant}.cfg → device-{device}.cfg
+	// Each layer can override settings from previous layers
+
+	// 1. Base config (always loaded if exists)
+	char default_path[MAX_PATH];
+	(void)snprintf(default_path, sizeof(default_path), "%s/default.cfg", emu_path);
+	config.default_cfg = NULL;
+	if (exists(default_path)) {
+		config.default_cfg = allocFile(default_path);
+		LOG_debug("Config cascade: loaded base %s", default_path);
 	}
 
-	if (config.device_tag && exists(device_default_path)) {
-		LOG_debug("Using device_default_path: %s", device_default_path);
-		config.default_cfg = allocFile(device_default_path);
-	} else if (exists(default_path))
-		config.default_cfg = allocFile(default_path);
-	else
-		config.default_cfg = NULL;
+	// 2. Variant config (e.g., variant-vga.cfg, variant-square.cfg)
+	if (config.variant_tag) {
+		char variant_path[MAX_PATH];
+		(void)snprintf(variant_path, sizeof(variant_path), "%s/variant-%s.cfg", emu_path,
+		               config.variant_tag);
+		config.default_cfg = Config_appendFile(config.default_cfg, variant_path);
+	}
+
+	// 3. Device config (e.g., device-rg28xx.cfg, device-brick.cfg)
+	if (config.device_tag) {
+		char device_path[MAX_PATH];
+		(void)snprintf(device_path, sizeof(device_path), "%s/device-%s.cfg", emu_path,
+		               config.device_tag);
+		config.default_cfg = Config_appendFile(config.default_cfg, device_path);
+	}
 
 	// LOG_info("config.default_cfg: %s", config.default_cfg);
 

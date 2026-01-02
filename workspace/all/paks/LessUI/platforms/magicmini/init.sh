@@ -1,6 +1,11 @@
 #!/bin/sh
 # magicmini initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="magicmini"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="magicmini"
+
 # CPU/GPU/DMC governors (CPU speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 echo performance >/sys/devices/platform/ff400000.gpu/devfreq/ff400000.gpu/governor

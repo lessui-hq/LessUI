@@ -1,6 +1,11 @@
 #!/bin/sh
 # trimuismart initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="trimuismart"
+export LESSUI_VARIANT="qvga"
+export LESSUI_DEVICE="trimuismart"
+
 # Extra paths (appended so system paths have priority)
 export PATH="$PATH:/usr/trimui/bin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"

@@ -1,6 +1,11 @@
 #!/bin/sh
 # zero28 initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="zero28"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="zero28"
+
 # Create standard directories
 mkdir -p "$BIOS_PATH"
 mkdir -p "$SDCARD_PATH/Roms"

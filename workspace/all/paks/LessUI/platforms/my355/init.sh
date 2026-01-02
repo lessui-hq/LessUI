@@ -1,6 +1,11 @@
 #!/bin/sh
 # my355 initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="my355"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="my355"
+
 # Extra paths (appended so system paths have priority)
 export PATH="$PATH:/usr/miyoo/bin:/usr/miyoo/sbin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/miyoo/lib"
