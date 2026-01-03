@@ -121,7 +121,8 @@ has_credentials() {
 		[ -z "$line" ] && continue
 		echo "$line" | grep -q "^#" && continue
 		echo "$line" | grep -q ":" || continue
-		ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+		ssid="$(echo "$line" | cut -d: -f1)"
+		ssid="$(trim "$ssid")"
 		[ -n "$ssid" ] && return 0
 	done <"$SDCARD_PATH/wifi.txt"
 
@@ -174,8 +175,10 @@ write_config() {
 			echo "$line" | grep -q "^#" && continue
 			echo "$line" | grep -q ":" || continue
 
-			ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-			psk="$(echo "$line" | cut -d: -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+			ssid="$(echo "$line" | cut -d: -f1)"
+			ssid="$(trim "$ssid")"
+			psk="$(echo "$line" | cut -d: -f2-)"
+			psk="$(trim "$psk")"
 			[ -z "$ssid" ] && continue
 
 			has_passwords=true
@@ -248,8 +251,10 @@ write_config() {
 					echo "$line" | grep -q "^#" && continue
 					echo "$line" | grep -q ":" || continue
 
-					ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-					psk="$(echo "$line" | cut -d: -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+					ssid="$(echo "$line" | cut -d: -f1)"
+					ssid="$(trim "$ssid")"
+					psk="$(echo "$line" | cut -d: -f2-)"
+					psk="$(trim "$psk")"
 					[ -z "$ssid" ] && continue
 
 					# Sanitize SSID for filename
@@ -394,14 +399,15 @@ networks_screen() {
 
 	scan_temp="/tmp/wifi-scan-results"
 
+	# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+	ESC=$(printf '\033')
+
 	case "$PLATFORM" in
 		rgb30 | retroid)
 			# IWD-based platforms (LessOS)
 			# Try wifictl first (LessOS native tool), then fall back to iwctl
 			if command -v wifictl >/dev/null 2>&1; then
 				wifictl scan 2>/dev/null || true
-				# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
-				ESC=$(printf '\033')
 				for _ in $(seq 1 "$DELAY"); do
 					shui progress "Scanning for networks..." --indeterminate
 					# wifictl scanlist outputs one SSID per line, but stderr may have colored error messages
@@ -505,7 +511,8 @@ password_screen() {
 
 	initial_password=""
 	if grep -q "^$SSID:" "$SDCARD_PATH/wifi.txt" 2>/dev/null; then
-		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2-)"
+		initial_password="$(trim "$initial_password")"
 	fi
 
 	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/launcher-output
