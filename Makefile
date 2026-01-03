@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -345,26 +345,10 @@ ifneq (,$(findstring my355, $(PLATFORMS)))
 	@rsync -a ./workspace/my355/other/squashfs/output/ ./build/BASE/miyoo355/app/my355/payload/
 endif
 
-# Backward compatibility for platforms that were merged
-# Only copies files if the source platform was actually built
-tidy:
-ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
-	@if [ -f ./build/SYSTEM/rg35xxplus/bin/install.sh ]; then \
-		mkdir -p ./build/SYSTEM/rg40xxcube/bin/; \
-		rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/; \
-	fi
-endif
-ifneq (,$(findstring tg5040, $(PLATFORMS)))
-	@if [ -f ./build/SYSTEM/tg5040/bin/install.sh ]; then \
-		mkdir -p ./build/SYSTEM/tg3040/paks/LessUI.pak/; \
-		rsync -a ./build/SYSTEM/tg5040/bin/install.sh ./build/SYSTEM/tg3040/paks/LessUI.pak/launch.sh; \
-	fi
-endif
-
 # Stage: reorganize build/SYSTEM → build/PAYLOAD for deployment
 # This prepares the directory structure without creating archives
 # Can be run incrementally after single-platform builds
-stage: tidy
+stage:
 	@echo "# ----------------------------------------------------"
 	@echo "# Staging for deployment..."
 	@echo "# ----------------------------------------------------"

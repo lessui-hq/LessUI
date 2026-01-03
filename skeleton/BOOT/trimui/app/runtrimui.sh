@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# becomes /usr/trimui/bin/runtrimui.sh on tg5040/tg3040
+# becomes /usr/trimui/bin/runtrimui.sh on tg5040
 
 MOUNTED=$(grep SDCARD /proc/mounts)
 ATTEMPTS=0

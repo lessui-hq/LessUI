@@ -90,7 +90,7 @@ tg5040/
 │   └── show.c         PNG image loader for install/update screens
 ├── install/           Installation assets and boot scripts
 │   ├── boot.sh        Variant detection and boot/update handler
-│   ├── update.sh      Migration script (tg3040 to tg5040)
+│   ├── update.sh      Post-install update script
 │   ├── installing.png Standard boot splash (1280x720)
 │   ├── updating.png   Standard update splash (1280x720)
 │   └── brick/         Brick-specific assets
@@ -267,18 +267,6 @@ To update LessUI on device:
 3. Boot script auto-detects archive and performs update
 4. Displays variant-appropriate update splash
 5. Archive is deleted after successful extraction
-
-### Migration from TG3040
-
-The update script (`update.sh`) handles migration from the old Brick platform identifier:
-
-1. Checks for `/mnt/SDCARD/.system/tg3040` (old Brick folder)
-2. If found:
-   - Copies all `.cfg` files from `.userdata/tg3040/*/*.cfg` to `.userdata/tg5040/*/NAME-brick.cfg`
-   - Deletes old system folder and userdata
-   - Removes old update staging area
-   - Reboots to complete migration
-3. Updates `runtrimui.sh` if outdated version detected
 
 ## Platform-Specific Features
 
@@ -473,7 +461,6 @@ This platform is notable for:
 - **Analog controls**: Full analog stick and trigger support
 - **Complex audio**: Inverted volume mapping, dual mute controls, jack detection
 - **Hardware monitoring**: GPIO polling, switch events, multi-device input
-- **Migration support**: Handles upgrade from old tg3040 platform identifier
 
 The variant detection mechanism is somewhat fragile (depends on binary string search), but allows a single build to support both devices. Future improvements might include more robust hardware detection.
 

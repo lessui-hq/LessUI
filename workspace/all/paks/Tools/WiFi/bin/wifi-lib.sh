@@ -28,16 +28,6 @@ setup_wifi_paths() {
 # Platform Handling
 # ============================================================================
 
-# Normalize platform aliases (legacy: tg3040 -> tg5040+brick)
-# Call this at the start of main() in each script
-normalize_platform() {
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$LESSUI_DEVICE" ]; then
-		export LESSUI_DEVICE="brick"
-		export LESSUI_PLATFORM="tg5040"
-		export PLATFORM="tg5040"
-	fi
-}
-
 # Get system.json path for platforms that use it
 # Returns empty string for platforms without system.json:
 #   - rg35xxplus: uses systemd networking

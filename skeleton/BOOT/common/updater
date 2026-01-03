@@ -48,9 +48,6 @@ else
 	esac
 
 	# fallback for tg5040 20240413 recovery firmware
-	# TODO: doublecheck interaction with tg3040
-	# might need/want to strings /usr/trimui/bin/MainUI during install/update
-	# and store platform in a text file
 	if [ -z "$PLATFORM" ] && [ -f /usr/trimui/bin/runtrimui.sh ]; then
 		PLATFORM="tg5040"
 	fi
