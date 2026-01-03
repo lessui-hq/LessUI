@@ -19,6 +19,9 @@ export HOME="$USERDATA_PATH/$PAK_NAME"
 export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
 
+# shellcheck source=bin/wifi-lib.sh
+. "$PAK_DIR/bin/wifi-lib.sh"
+
 # ============================================================================
 # Utility Functions
 # ============================================================================
@@ -37,14 +40,7 @@ show_message_wait() {
 	shui message "$message" --confirm "OK"
 }
 
-get_wifi_interface() {
-	# Dynamically detect WiFi interface (LessOS style)
-	# Use glob pattern instead of ls | grep
-	for iface in /sys/class/net/wlan*; do
-		[ -e "$iface" ] && basename "$iface" && return
-	done
-	echo "wlan0"
-}
+# get_wifi_interface() is provided by wifi-lib.sh
 
 get_ssid_and_ip() {
 	WIFI_DEV="$(get_wifi_interface)"
@@ -284,7 +280,7 @@ write_config() {
 			fi
 			;;
 		*)
-			show_message_wait "$PLATFORM is not a supported platform"
+			# Unsupported platforms caught by is_supported_platform() in main()
 			return 1
 			;;
 	esac
@@ -422,19 +418,19 @@ networks_screen() {
 					# iwctl get-networks output is tabular with ANSI colors
 					# Format: "    NetworkName                psk    ****"
 					# Strip ANSI escape codes and parse network names
-					iwctl station "$WIFI_DEV" get-networks 2>/dev/null | \
-						sed 's/\x1b\[[0-9;]*m//g' | \
-						tail -n +5 | \
-						awk '{
+					iwctl station "$WIFI_DEV" get-networks 2>/dev/null \
+						| sed 's/\x1b\[[0-9;]*m//g' \
+						| tail -n +5 \
+						| awk '{
 							# Skip empty lines and header separators
 							if (NF == 0 || /^-+$/) next
 							# Extract network name (everything before security type)
 							gsub(/^[[:space:]]+/, "")
 							gsub(/[[:space:]]+(psk|open|8021x|wep).*$/, "")
 							if (length($0) > 0) print
-						}' | \
-						grep -v '^$' | \
-						sort -u >"$scan_temp"
+						}' \
+						| grep -v '^$' \
+						| sort -u >"$scan_temp"
 					[ -s "$scan_temp" ] && break
 					sleep 1
 				done
@@ -648,12 +644,7 @@ main() {
 	echo "1" >/tmp/stay_awake
 	trap "cleanup" EXIT INT TERM HUP QUIT
 
-	# Handle platform aliases (legacy: tg3040 was the original name for tg5040+brick)
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$LESSUI_DEVICE" ]; then
-		export LESSUI_DEVICE="brick"
-		export LESSUI_PLATFORM="tg5040"
-		export PLATFORM="tg5040"
-	fi
+	normalize_platform
 
 	# Check required tools
 	if ! command -v shui >/dev/null 2>&1; then
@@ -662,13 +653,10 @@ main() {
 	fi
 
 	# Platform validation
-	case "$PLATFORM" in
-		miyoomini | my282 | my355 | tg5040 | rg35xxplus | rgb30 | retroid) ;;
-		*)
-			show_message_wait "$PLATFORM is not a supported platform"
-			return 1
-			;;
-	esac
+	if ! is_supported_platform; then
+		show_message_wait "$PLATFORM is not a supported platform"
+		return 1
+	fi
 
 	# Platform-specific checks
 	if [ "$PLATFORM" = "miyoomini" ]; then
