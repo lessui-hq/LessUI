@@ -205,6 +205,74 @@ main() {
 			fi
 			;;
 
+		rgb30 | retroid)
+			# IWD-based platforms (LessOS)
+			echo "Starting IWD WiFi..."
+
+			# Detect WiFi interface dynamically (use glob instead of ls | grep)
+			WIFI_DEV="wlan0"
+			for iface in /sys/class/net/wlan*; do
+				[ -e "$iface" ] && WIFI_DEV="$(basename "$iface")" && break
+			done
+
+			# Try wifictl first (LessOS native tool)
+			if command -v wifictl >/dev/null 2>&1; then
+				echo "Using wifictl..."
+				wifictl enable 2>/dev/null || true
+				sleep 1
+				wifictl connect 2>/dev/null || true
+			else
+				# Fall back to manual IWD control
+				echo "Using iwctl..."
+
+				# Bring up the interface
+				ip link set "$WIFI_DEV" up 2>/dev/null || true
+
+				# Unblock WiFi via rfkill if available
+				if command -v rfkill >/dev/null 2>&1; then
+					rfkill unblock wifi 2>/dev/null || true
+				fi
+
+				# Disable power save if iw is available
+				if command -v iw >/dev/null 2>&1; then
+					iw dev "$WIFI_DEV" set power_save off 2>/dev/null || true
+				fi
+
+				# Ensure IWD is running (should already be started by system)
+				if ! pgrep -x iwd >/dev/null 2>&1; then
+					echo "Starting IWD daemon..."
+					if ! systemctl start iwd 2>/dev/null; then
+						/usr/lib/iwd &
+						sleep 1  # Allow daemon to initialize after background start
+					fi
+				fi
+
+				# Wait for IWD to be ready (max 5 seconds)
+				timeout=0
+				while [ $timeout -lt 50 ]; do
+					if pgrep -x iwd >/dev/null 2>&1; then
+						break
+					fi
+					sleep 0.1
+					timeout=$((timeout + 1))
+				done
+
+				if ! pgrep -x iwd >/dev/null 2>&1; then
+					echo "Failed to start IWD"
+					return 1
+				fi
+
+				# Power on the WiFi adapter via iwctl
+				iwctl device "$WIFI_DEV" set-property Powered on 2>/dev/null || true
+
+				# Trigger a scan to find networks
+				iwctl station "$WIFI_DEV" scan 2>/dev/null || true
+			fi
+
+			# IWD handles DHCP internally via EnableNetworkConfiguration=true
+			# No need to start systemd-networkd or external DHCP client
+			;;
+
 		*)
 			echo "$PLATFORM is not a supported platform for WiFi.pak"
 			return 1

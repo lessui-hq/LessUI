@@ -93,6 +93,30 @@ main() {
 		systemctl stop systemd-networkd 2>/dev/null || true
 	fi
 
+	# IWD-based platforms (LessOS) - disconnect and power off adapter
+	case "$PLATFORM" in
+		rgb30 | retroid)
+			# Detect WiFi interface dynamically (use glob instead of ls | grep)
+			WIFI_DEV="wlan0"
+			for iface in /sys/class/net/wlan*; do
+				[ -e "$iface" ] && WIFI_DEV="$(basename "$iface")" && break
+			done
+
+			# Try wifictl first (LessOS native tool)
+			if command -v wifictl >/dev/null 2>&1; then
+				wifictl disconnect 2>/dev/null || true
+				wifictl disable 2>/dev/null || true
+			else
+				# Fall back to manual IWD control
+				# Disconnect from current network
+				iwctl station "$WIFI_DEV" disconnect 2>/dev/null || true
+
+				# Power off the WiFi adapter
+				iwctl device "$WIFI_DEV" set-property Powered off 2>/dev/null || true
+			fi
+			;;
+	esac
+
 	return 0
 }
 

@@ -17,6 +17,8 @@ Manage WiFi settings on supported devices.
 - **my355** - Miyoo Flip
 - **rg35xxplus** - RG-35XX Plus, RG-34XX, RG-35XX H, RG-35XX SP (not RG28XX)
 - **tg5040** - Trimui Brick, Trimui Smart Pro
+- **rgb30** - PowKiddy RGB30 (LessOS)
+- **retroid** - Retroid Pocket 5, Retroid Pocket Mini V1/V2, Retroid Pocket Flip 2 (LessOS)
 
 ## Usage
 
@@ -56,3 +58,10 @@ Forked from commit: `ff5fae810d6a3a0f5c612ebcd78ac2a6c568d3d4`
 
 ### my355
 - Uses wpa_cli instead of iw for network scanning
+
+### rgb30 / retroid (LessOS)
+- Uses IWD (iNet Wireless Daemon) instead of wpa_supplicant
+- Network credentials stored in `/storage/.cache/iwd/` as `.psk` or `.open` files
+- Uses `wifictl` (LessOS native) or `iwctl` for WiFi management
+- DHCP handled by IWD's built-in client (EnableNetworkConfiguration=true)
+- WiFi interface detected dynamically (not hardcoded to wlan0)

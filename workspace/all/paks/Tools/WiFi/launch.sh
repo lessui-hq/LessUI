@@ -37,9 +37,20 @@ show_message_wait() {
 	shui message "$message" --confirm "OK"
 }
 
+get_wifi_interface() {
+	# Dynamically detect WiFi interface (LessOS style)
+	# Use glob pattern instead of ls | grep
+	for iface in /sys/class/net/wlan*; do
+		[ -e "$iface" ] && basename "$iface" && return
+	done
+	echo "wlan0"
+}
+
 get_ssid_and_ip() {
-	# Check if wlan0 interface exists and is not down
-	operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+	WIFI_DEV="$(get_wifi_interface)"
+
+	# Check if interface exists and is not down
+	operstate="$(cat "/sys/class/net/$WIFI_DEV/operstate" 2>/dev/null)"
 	[ "$operstate" = "down" ] && return
 	[ -z "$operstate" ] && return
 
@@ -47,17 +58,28 @@ get_ssid_and_ip() {
 	ip_address=""
 
 	for _ in 1 2 3 4 5; do
-		if [ "$PLATFORM" = "my355" ]; then
-			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
-			ip_address="$(wpa_cli -i wlan0 status 2>/dev/null | grep ip_address= | cut -d'=' -f2)"
-		elif command -v iw >/dev/null 2>&1; then
-			ssid="$(iw dev wlan0 link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')"
-			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
-		else
-			# Fallback to wpa_cli if iw is not available
-			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
-			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
-		fi
+		case "$PLATFORM" in
+			rgb30 | retroid)
+				# IWD-based platforms (LessOS) - use iwctl
+				# Strip ANSI color codes from output
+				ssid="$(iwctl station "$WIFI_DEV" show 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep 'Connected network' | sed 's/.*Connected network[[:space:]]*//' | xargs)"
+				ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				;;
+			my355)
+				ssid="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
+				ip_address="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ip_address= | cut -d'=' -f2)"
+				;;
+			*)
+				if command -v iw >/dev/null 2>&1; then
+					ssid="$(iw dev "$WIFI_DEV" link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')"
+					ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				else
+					# Fallback to wpa_cli if iw is not available
+					ssid="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
+					ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				fi
+				;;
+		esac
 
 		[ -n "$ip_address" ] && [ -n "$ssid" ] && break
 		sleep 1
@@ -215,6 +237,52 @@ write_config() {
 		tg5040)
 			cp "$PAK_DIR/res/wpa_supplicant.conf" /etc/wifi/wpa_supplicant.conf
 			;;
+		rgb30 | retroid)
+			# IWD-based platforms (LessOS) - generate IWD config files
+			# LessOS stores IWD state in /storage/.cache/iwd
+			IWD_DIR="/storage/.cache/iwd"
+			if ! mkdir -p "$IWD_DIR"; then
+				echo "Failed to create IWD config directory: $IWD_DIR"
+				show_message_wait "Cannot write WiFi config (disk full?)"
+				return 1
+			fi
+
+			if [ "$ENABLING_WIFI" = "true" ]; then
+				# Read credentials from wifi.txt and create IWD network files
+				while read -r line; do
+					line="$(echo "$line" | xargs)"
+					[ -z "$line" ] && continue
+					echo "$line" | grep -q "^#" && continue
+					echo "$line" | grep -q ":" || continue
+
+					ssid="$(echo "$line" | cut -d: -f1 | xargs)"
+					psk="$(echo "$line" | cut -d: -f2- | xargs)"
+					[ -z "$ssid" ] && continue
+
+					# Sanitize SSID for filename
+					# IWD uses the SSID as filename with = for spaces
+					# Also escape filesystem-unsafe characters (/, \, ?, *, etc.)
+					safe_ssid="$(printf '%s' "$ssid" | sed 's/ /=/g; s/[\/\\?*|<>:]/_/g')"
+
+					if [ -z "$psk" ]; then
+						# Open network
+						{
+							echo "[Settings]"
+							echo "AutoConnect=true"
+						} >"$IWD_DIR/$safe_ssid.open"
+					else
+						# PSK network
+						{
+							echo "[Security]"
+							echo "Passphrase=$psk"
+							echo ""
+							echo "[Settings]"
+							echo "AutoConnect=true"
+						} >"$IWD_DIR/$safe_ssid.psk"
+					fi
+				done <"$SDCARD_PATH/wifi.txt"
+			fi
+			;;
 		*)
 			show_message_wait "$PLATFORM is not a supported platform"
 			return 1
@@ -246,8 +314,9 @@ wifi_on() {
 	fi
 
 	# Wait for connection (up to 30 seconds)
+	WIFI_DEV="$(get_wifi_interface)"
 	for _ in $(seq 1 30); do
-		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
+		STATUS=$(cat "/sys/class/net/$WIFI_DEV/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
 		sleep 1
 	done
@@ -328,34 +397,79 @@ networks_screen() {
 	touch "$launcher_list_file"
 
 	DELAY=30
+	WIFI_DEV="$(get_wifi_interface)"
 
-	# my355 uses wpa_cli, others use iw (with wpa_cli fallback)
 	scan_temp="/tmp/wifi-scan-results"
-	if [ "$PLATFORM" = "my355" ]; then
-		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	elif command -v iw >/dev/null 2>&1; then
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 10 iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	else
-		# Fallback to wpa_cli if iw is not available
-		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	fi
+
+	case "$PLATFORM" in
+		rgb30 | retroid)
+			# IWD-based platforms (LessOS)
+			# Try wifictl first (LessOS native tool), then fall back to iwctl
+			if command -v wifictl >/dev/null 2>&1; then
+				wifictl scan 2>/dev/null || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					# wifictl scanlist outputs one SSID per line
+					wifictl scanlist 2>/dev/null | sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			else
+				# Fall back to iwctl
+				iwctl station "$WIFI_DEV" scan 2>/dev/null || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					# iwctl get-networks output is tabular with ANSI colors
+					# Format: "    NetworkName                psk    ****"
+					# Strip ANSI escape codes and parse network names
+					iwctl station "$WIFI_DEV" get-networks 2>/dev/null | \
+						sed 's/\x1b\[[0-9;]*m//g' | \
+						tail -n +5 | \
+						awk '{
+							# Skip empty lines and header separators
+							if (NF == 0 || /^-+$/) next
+							# Extract network name (everything before security type)
+							gsub(/^[[:space:]]+/, "")
+							gsub(/[[:space:]]+(psk|open|8021x|wep).*$/, "")
+							if (length($0) > 0) print
+						}' | \
+						grep -v '^$' | \
+						sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			fi
+			;;
+		my355)
+			timeout 10 wpa_cli -i "$WIFI_DEV" scan 2>/dev/null || true
+			for _ in $(seq 1 "$DELAY"); do
+				shui progress "Scanning for networks..." --indeterminate
+				timeout 5 wpa_cli -i "$WIFI_DEV" scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+				[ -s "$scan_temp" ] && break
+				sleep 1
+			done
+			;;
+		*)
+			if command -v iw >/dev/null 2>&1; then
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					timeout 10 iw dev "$WIFI_DEV" scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			else
+				# Fallback to wpa_cli if iw is not available
+				timeout 10 wpa_cli -i "$WIFI_DEV" scan 2>/dev/null || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					timeout 5 wpa_cli -i "$WIFI_DEV" scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			fi
+			;;
+	esac
+
 	mv "$scan_temp" "$launcher_list_file" 2>/dev/null || touch "$launcher_list_file"
 
 	shui list --file "$launcher_list_file" --format text --confirm "Connect" --title "WiFi Networks" --write-location /tmp/launcher-output
@@ -549,7 +663,7 @@ main() {
 
 	# Platform validation
 	case "$PLATFORM" in
-		miyoomini | my282 | my355 | tg5040 | rg35xxplus) ;;
+		miyoomini | my282 | my355 | tg5040 | rg35xxplus | rgb30 | retroid) ;;
 		*)
 			show_message_wait "$PLATFORM is not a supported platform"
 			return 1

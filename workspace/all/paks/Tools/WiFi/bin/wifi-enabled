@@ -16,6 +16,33 @@ main() {
 		export PLATFORM="tg5040"
 	fi
 
+	# IWD-based platforms (LessOS) - check if IWD is running and device is powered on
+	case "$PLATFORM" in
+		rgb30 | retroid)
+			# Detect WiFi interface dynamically (use glob instead of ls | grep)
+			WIFI_DEV="wlan0"
+			for iface in /sys/class/net/wlan*; do
+				[ -e "$iface" ] && WIFI_DEV="$(basename "$iface")" && break
+			done
+
+			# Check if IWD daemon is running
+			pgrep -x iwd >/dev/null 2>&1 || return 1
+
+			# Check rfkill status
+			if command -v rfkill >/dev/null 2>&1; then
+				wifi_status="$(rfkill list wifi 2>/dev/null || true)"
+				echo "$wifi_status" | grep -q "blocked: yes" && return 1
+			fi
+
+			# Check if device is powered on via iwctl
+			# iwctl device show outputs "Powered on/off"
+			# Strip ANSI color codes from output
+			powered="$(iwctl device "$WIFI_DEV" show 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -i 'Powered' | awk '{print $NF}')"
+			[ "$powered" = "on" ] && return 0
+			return 1
+			;;
+	esac
+
 	# Check system.json wifi flag (not used on rg35xxplus which uses systemd)
 	case "$PLATFORM" in
 		rg35xxplus)
