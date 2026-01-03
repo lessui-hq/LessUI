@@ -4,40 +4,20 @@
 BIN_DIR="$(dirname "$0")"
 PAK_DIR="$(dirname "$BIN_DIR")"
 
-export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
-export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
+# shellcheck source=wifi-lib.sh
+. "$BIN_DIR/wifi-lib.sh"
+setup_wifi_paths "$PAK_DIR"
 
 main() {
-	# Handle platform aliases (legacy: tg3040 was the original name for tg5040+brick)
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$LESSUI_DEVICE" ]; then
-		export LESSUI_DEVICE="brick"
-		export LESSUI_PLATFORM="tg5040"
-		export PLATFORM="tg5040"
-	fi
+	normalize_platform
 
 	echo "Preparing to disable wifi..."
 
 	# Update system.json for platforms that use it
-	case "$PLATFORM" in
-		miyoomini | my282 | my355 | tg5040)
-			case "$PLATFORM" in
-				miyoomini) SYSTEM_JSON_PATH="/appconfigs/system.json" ;;
-				my282) SYSTEM_JSON_PATH="/config/system.json" ;;
-				my355) SYSTEM_JSON_PATH="/userdata/system.json" ;;
-				*) SYSTEM_JSON_PATH="/mnt/UDISK/system.json" ;;
-			esac
-
-			[ ! -f "$SYSTEM_JSON_PATH" ] && echo '{"wifi": 0}' >"$SYSTEM_JSON_PATH"
-			[ ! -s "$SYSTEM_JSON_PATH" ] && echo '{"wifi": 0}' >"$SYSTEM_JSON_PATH"
-
-			if [ -x /usr/trimui/bin/systemval ]; then
-				/usr/trimui/bin/systemval wifi 0
-			else
-				jq '.wifi = 0' "$SYSTEM_JSON_PATH" >"/tmp/system.json.tmp"
-				mv "/tmp/system.json.tmp" "$SYSTEM_JSON_PATH"
-			fi
-			;;
-	esac
+	SYSTEM_JSON_PATH="$(get_system_json_path)"
+	if [ -n "$SYSTEM_JSON_PATH" ]; then
+		set_system_wifi "$SYSTEM_JSON_PATH" 0
+	fi
 
 	# Stop wpa_supplicant
 	if pgrep wpa_supplicant >/dev/null 2>&1; then
@@ -53,14 +33,15 @@ main() {
 	fi
 
 	# Mark interface down if it's not already down
-	if [ -d /sys/class/net/wlan0 ]; then
-		operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+	WIFI_DEV="$(get_wifi_interface)"
+	if [ -d "/sys/class/net/$WIFI_DEV" ]; then
+		operstate="$(cat "/sys/class/net/$WIFI_DEV/operstate" 2>/dev/null)"
 		if [ "$operstate" != "down" ]; then
-			echo "Marking wlan0 interface down..."
+			echo "Marking $WIFI_DEV interface down..."
 			if [ "$PLATFORM" = "rg35xxplus" ]; then
-				ip link set wlan0 down 2>/dev/null || true
+				ip link set "$WIFI_DEV" down 2>/dev/null || true
 			else
-				ifconfig wlan0 down 2>/dev/null || true
+				ifconfig "$WIFI_DEV" down 2>/dev/null || true
 			fi
 		fi
 	fi
@@ -91,6 +72,21 @@ main() {
 		rm -f /etc/netplan/01-netcfg.yaml
 		netplan apply 2>/dev/null || true
 		systemctl stop systemd-networkd 2>/dev/null || true
+	fi
+
+	# IWD-based platforms (LessOS) - disconnect and power off adapter
+	if is_iwd_platform; then
+		WIFI_DEV="$(get_wifi_interface)"
+
+		# Disconnect and power off via iwctl
+		# Note: wifictl disable only does rfkill block, doesn't power off device
+		iwctl station "$WIFI_DEV" disconnect 2>/dev/null || true
+		iwctl device "$WIFI_DEV" set-property Powered off 2>/dev/null || true
+
+		# Block WiFi via rfkill
+		if command -v rfkill >/dev/null 2>&1; then
+			rfkill block wifi 2>/dev/null || true
+		fi
 	fi
 
 	return 0

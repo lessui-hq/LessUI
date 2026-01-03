@@ -4,7 +4,15 @@
   "description": "Transfer files via web browser",
   "version": "1.0.0",
 
-  "platforms": ["miyoomini", "my282", "my355", "rg35xxplus", "tg5040"],
+  "platforms": [
+    "miyoomini",
+    "my282",
+    "my355",
+    "rg35xxplus",
+    "tg5040",
+    "rgb30",
+    "retroid"
+  ],
 
   "launch": "launch.sh"
 }

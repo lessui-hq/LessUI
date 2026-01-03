@@ -11,13 +11,6 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR")"
 PAK_NAME="${PAK_NAME%.*}"
 
-# Set up logging
-LOG_FILE="$LOGS_PATH/$PAK_NAME.txt"
-mkdir -p "$(dirname "$LOG_FILE")"
-rm -f "$LOG_FILE"
-exec >>"$LOG_FILE" 2>&1
-
-echo "$0" "$@"
 cd "$PAK_DIR" || exit 1
 
 # Create userdata directory for pak
