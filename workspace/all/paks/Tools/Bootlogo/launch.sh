@@ -229,7 +229,7 @@ case "$PLATFORM" in
 
 	tg5040)
 		# Detect device variant (brick uses different bootlogo path)
-		if [ "$DEVICE" = "brick" ]; then
+		if [ "$LESSUI_DEVICE" = "brick" ]; then
 			LOGO_PATH="$DIR/brick/bootlogo.bmp"
 		else
 			LOGO_PATH="$DIR/tg5040/bootlogo.bmp"

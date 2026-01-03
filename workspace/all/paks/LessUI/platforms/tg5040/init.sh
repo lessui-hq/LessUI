@@ -13,10 +13,20 @@ mkdir -p "$SAVES_PATH"
 # Detect model
 TRIMUI_MODEL=$(strings /usr/trimui/bin/MainUI | grep ^Trimui)
 export TRIMUI_MODEL
+
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="tg5040"
+
 if [ "$TRIMUI_MODEL" = "Trimui Smart Pro" ]; then
-	export DEVICE="smartpro"
+	export LESSUI_VARIANT="wide"
+	export LESSUI_DEVICE="smartpro"
 elif [ "$TRIMUI_MODEL" = "Trimui Brick" ]; then
-	export DEVICE="brick"
+	export LESSUI_VARIANT="4x3"
+	export LESSUI_DEVICE="brick"
+else
+	# Default to Smart Pro for unknown models
+	export LESSUI_VARIANT="wide"
+	export LESSUI_DEVICE="smartpro"
 fi
 
 # Rumble motor GPIO (PH3)

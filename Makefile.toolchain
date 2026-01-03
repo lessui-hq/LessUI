@@ -76,20 +76,20 @@ pull:
 	@echo "Pulling latest $(PLATFORM) toolchain..."
 	@docker pull $(CONTAINER_IMAGE) || \
 		(echo "" && \
-		 echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
-		 echo "" && \
-		 echo "To add support for $(PLATFORM):" && \
-		 echo "  Option A: Reuse existing toolchain" && \
-		 echo "    1. Add \"toolchain\": \"<chipset>\" to toolchains.json" && \
-		 echo "    2. Specify platform architecture (linux/amd64 or linux/arm64)" && \
-		 echo "" && \
-		 echo "  Option B: Create new toolchain" && \
-		 echo "    1. Fork union-<chipset>-toolchain to lessui-hq org" && \
-		 echo "    2. Add .github/workflows/build-container.yml" && \
-		 echo "    3. Trigger workflow to build and publish container" && \
-		 echo "    4. Add platform entry to toolchains.json" && \
-		 echo "" && \
-		 exit 1)
+		echo "❌ Container not found: $(CONTAINER_IMAGE)" && \
+		echo "" && \
+		echo "To add support for $(PLATFORM):" && \
+		echo "  Option A: Reuse existing toolchain" && \
+		echo "    1. Add \"toolchain\": \"<chipset>\" to toolchains.json" && \
+		echo "    2. Specify platform architecture (linux/amd64 or linux/arm64)" && \
+		echo "" && \
+		echo "  Option B: Create new toolchain" && \
+		echo "    1. Fork union-<chipset>-toolchain to lessui-hq org" && \
+		echo "    2. Add .github/workflows/build-container.yml" && \
+		echo "    3. Trigger workflow to build and publish container" && \
+		echo "    4. Add platform entry to toolchains.json" && \
+		echo "" && \
+		exit 1)
 	@echo "✓ Updated to latest"
 
 # Remove cached Docker image

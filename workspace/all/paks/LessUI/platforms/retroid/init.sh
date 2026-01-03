@@ -3,10 +3,30 @@
 # Devices: Pocket 5, Pocket Flip 2, Pocket Mini V1, Pocket Mini V2
 # OS: LessOS (ROCKNIX-based)
 
-# Detect device variant from LESSOS_DEVICE (set by LessOS)
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="retroid"
+
 case "$LESSOS_DEVICE" in
-	*"Mini V1"*) export DEVICE="miniv1" ;;
-	*"Mini V2"*) export DEVICE="miniv2" ;;
+	*"Pocket 5"*)
+		export LESSUI_VARIANT="fhd"
+		export LESSUI_DEVICE="pocket5"
+		;;
+	*"Flip 2"*)
+		export LESSUI_VARIANT="fhd"
+		export LESSUI_DEVICE="flip2"
+		;;
+	*"Mini V1"*)
+		export LESSUI_VARIANT="4x3"
+		export LESSUI_DEVICE="miniv1"
+		;;
+	*"Mini V2"*)
+		export LESSUI_VARIANT="tall"
+		export LESSUI_DEVICE="miniv2"
+		;;
+	*)
+		export LESSUI_VARIANT="fhd"
+		export LESSUI_DEVICE="pocket5"
+		;;
 esac
 
 # CPU governor (speed controlled by frontend)

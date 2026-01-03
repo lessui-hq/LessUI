@@ -75,10 +75,10 @@
 // Platform Variant Detection
 ///////////////////////////////
 
-// Retroid Pocket SM8250 family variants
-#define VARIANT_RETROID_FHD (VARIANT_PLATFORM_BASE + 0) // 1920x1080 (Pocket 5, Flip 2)
-#define VARIANT_RETROID_MINI_V1 (VARIANT_PLATFORM_BASE + 1) // 1280x960 (Mini V1)
-#define VARIANT_RETROID_MINI_V2 (VARIANT_PLATFORM_BASE + 2) // 1240x1080 (Mini V2)
+// Retroid Pocket SM8250 family variants (aspect-based naming)
+#define VARIANT_RETROID_FHD (VARIANT_PLATFORM_BASE + 0) // 1920x1080 (16:9)
+#define VARIANT_RETROID_4X3 (VARIANT_PLATFORM_BASE + 1) // 1280x960 (4:3)
+#define VARIANT_RETROID_TALL (VARIANT_PLATFORM_BASE + 2) // 1240x1080 (narrow)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings

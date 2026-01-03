@@ -42,11 +42,13 @@ PLATFORMS = {
     "retroid":      (1920, 1080, 5.5),  # Pocket 5, Flip 2 (FHD)
 }
 
-# Device variants (platform -> variant -> screen info)
-VARIANTS = {
+# Device-specific overrides (platform -> LESSUI_DEVICE -> screen info)
+# These generate device-{device}.cfg files
+DEVICES = {
     "rg35xxplus": {
-        "cube": (720, 720, 3.95),   # Square
-        "wide": (720, 480, 3.4),
+        "rgcubexx": (720, 720, 3.95),   # Square
+        "rg34xx": (720, 480, 3.4),      # Widescreen
+        "rg28xx": (640, 480, 2.8),      # Small screen VGA
     },
     "tg5040": {
         "brick": (1024, 768, 3.2),
@@ -55,10 +57,13 @@ VARIANTS = {
         "miniv1": (1280, 960, 3.7),    # 4:3 aspect ratio
         "miniv2": (1240, 1080, 3.92),  # Nearly square (~31:27)
     },
+    "miyoomini": {
+        "miyoomini": (640, 480, 2.8),   # Small screen VGA
+    },
 }
 
 # Square screens get Sharp sharpness, others get Sharp too when Native
-SQUARE_SCREENS = {"cube", "rgb30", "miniv2"}
+SQUARE_SCREENS = {"rgcubexx", "rgb30", "miniv2"}
 
 # =============================================================================
 # CORE DATA
@@ -116,12 +121,12 @@ EXTRA_CONFIG_LINES = {
     ("trimuismart", "PS", None): ["bind L2 Button = NONE:L2", "bind R2 Button = NONE:R2"],
 }
 
-# Scaling overrides (platform, core, variant) -> scaling value
+# Scaling overrides (platform, core, device) -> scaling value
 # Use this for cases where math says one thing but experience says another
 SCALING_OVERRIDES = {
     # Square screens: FC/SFC only get 71% fill with Native, use Cropped instead
-    ("rg35xxplus", "FC", "cube"): "Cropped",
-    ("rg35xxplus", "SFC", "cube"): "Cropped",
+    ("rg35xxplus", "FC", "rgcubexx"): "Cropped",
+    ("rg35xxplus", "SFC", "rgcubexx"): "Cropped",
     ("rgb30", "FC", None): "Cropped",
     ("rgb30", "SFC", None): "Cropped",
     ("retroid", "FC", "miniv2"): "Cropped",
@@ -156,9 +161,9 @@ def should_use_native(fill, screen_inches):
     return fill >= FILL_THRESHOLD_LARGE_SCREEN
 
 
-def is_square_screen(platform, variant):
+def is_square_screen(platform, device):
     """Check if this is a square screen."""
-    if variant in SQUARE_SCREENS:
+    if device in SQUARE_SCREENS:
         return True
     if platform in SQUARE_SCREENS:
         return True
@@ -169,7 +174,7 @@ def is_square_screen(platform, variant):
 # CONFIG GENERATION
 # =============================================================================
 
-def generate_config_content(platform, core, variant, scaling, fill):
+def generate_config_content(platform, core, device, scaling, fill):
     """Generate the content for a config file."""
     if scaling == "Cropped":
         lines = ["# Auto-generated: Cropped fills screen by scaling up and trimming edges"]
@@ -179,7 +184,7 @@ def generate_config_content(platform, core, variant, scaling, fill):
     # Note: Sharpness is automatic - player forces Sharp for Native/Cropped modes
 
     # Add any extra lines for this combo
-    key = (platform, core, variant)
+    key = (platform, core, device)
     if key in EXTRA_CONFIG_LINES:
         lines.append("")
         lines.extend(EXTRA_CONFIG_LINES[key])
@@ -203,7 +208,7 @@ def get_recommendations():
                 recommendations.append({
                     "platform": platform,
                     "core": core,
-                    "variant": None,
+                    "device": None,
                     "scaling": scaling,
                     "fill": fill,
                     "scale": scale,
@@ -215,7 +220,7 @@ def get_recommendations():
                 recommendations.append({
                     "platform": platform,
                     "core": core,
-                    "variant": None,
+                    "device": None,
                     "scaling": "Native",
                     "fill": fill,
                     "scale": scale,
@@ -224,20 +229,20 @@ def get_recommendations():
                     "reason": "calculated",
                 })
 
-    # Variants
-    for platform, variants in VARIANTS.items():
-        for variant, (screen_w, screen_h, inches) in variants.items():
+    # Device-specific overrides
+    for platform, devices in DEVICES.items():
+        for device, (screen_w, screen_h, inches) in devices.items():
             for core, (core_w, core_h) in CORES.items():
                 fill, scale = calc_fill(screen_w, screen_h, core_w, core_h)
 
                 # Check for scaling override
-                override_key = (platform, core, variant)
+                override_key = (platform, core, device)
                 if override_key in SCALING_OVERRIDES:
                     scaling = SCALING_OVERRIDES[override_key]
                     recommendations.append({
                         "platform": platform,
                         "core": core,
-                        "variant": variant,
+                        "device": device,
                         "scaling": scaling,
                         "fill": fill,
                         "scale": scale,
@@ -249,7 +254,7 @@ def get_recommendations():
                     recommendations.append({
                         "platform": platform,
                         "core": core,
-                        "variant": variant,
+                        "device": device,
                         "scaling": "Native",
                         "fill": fill,
                         "scale": scale,
@@ -259,16 +264,16 @@ def get_recommendations():
                     })
 
     # Also add configs that only have extra lines (no scaling change needed)
-    for (platform, core, variant), extra_lines in EXTRA_CONFIG_LINES.items():
+    for (platform, core, device), extra_lines in EXTRA_CONFIG_LINES.items():
         # Check if we already have a recommendation for this combo
         existing = any(
-            r["platform"] == platform and r["core"] == core and r["variant"] == variant
+            r["platform"] == platform and r["core"] == core and r["device"] == device
             for r in recommendations
         )
         if not existing:
             # Get screen info
-            if variant and platform in VARIANTS and variant in VARIANTS[platform]:
-                screen_w, screen_h, inches = VARIANTS[platform][variant]
+            if device and platform in DEVICES and device in DEVICES[platform]:
+                screen_w, screen_h, inches = DEVICES[platform][device]
             else:
                 screen_w, screen_h, inches = PLATFORMS.get(platform, (0, 0, 0))
 
@@ -278,7 +283,7 @@ def get_recommendations():
             recommendations.append({
                 "platform": platform,
                 "core": core,
-                "variant": variant,
+                "device": device,
                 "scaling": None,  # No scaling override, just extra lines
                 "fill": fill,
                 "scale": scale,
@@ -294,9 +299,9 @@ def get_recommendations():
 # FILE OPERATIONS
 # =============================================================================
 
-def get_config_path(base_dir, platform, core, variant):
+def get_config_path(base_dir, platform, core, device):
     """Get the path for a config file."""
-    filename = f"default-{variant}.cfg" if variant else "default.cfg"
+    filename = f"device-{device}.cfg" if device else "default.cfg"
     return base_dir / platform / core / filename
 
 
@@ -314,19 +319,19 @@ def write_configs(base_dir, recommendations):
     """Write config files for all recommendations."""
     written = []
     for rec in recommendations:
-        path = get_config_path(base_dir, rec["platform"], rec["core"], rec["variant"])
+        path = get_config_path(base_dir, rec["platform"], rec["core"], rec["device"])
         path.parent.mkdir(parents=True, exist_ok=True)
 
         # Generate content
         if rec["scaling"]:
             content = generate_config_content(
-                rec["platform"], rec["core"], rec["variant"],
+                rec["platform"], rec["core"], rec["device"],
                 rec["scaling"], rec["fill"]
             )
         else:
             # Extra lines only, no scaling
             lines = EXTRA_CONFIG_LINES.get(
-                (rec["platform"], rec["core"], rec["variant"]), []
+                (rec["platform"], rec["core"], rec["device"]), []
             )
             content = "\n".join(lines) + "\n"
 
@@ -348,10 +353,10 @@ def print_analysis(recommendations):
     print(f"  Small screens (<  {MIN_SCREEN_INCHES}\"): {FILL_THRESHOLD_SMALL_SCREEN}%+ fill -> Native")
     print(f"{'=' * 70}\n")
 
-    # Group by platform
+    # Group by platform/device
     by_platform = {}
     for rec in recommendations:
-        key = rec["platform"] + (f"-{rec['variant']}" if rec["variant"] else "")
+        key = rec["platform"] + (f"-{rec['device']}" if rec["device"] else "")
         if key not in by_platform:
             by_platform[key] = []
         by_platform[key].append(rec)
