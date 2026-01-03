@@ -190,7 +190,7 @@ main() {
 	chmod +x "$PAK_DIR/bin/service-is-running"
 	chmod +x "$PAK_DIR/bin/on-boot"
 
-	allowed_platforms="miyoomini my282 my355 rg35xxplus tg5040"
+	allowed_platforms="miyoomini my282 my355 rg35xxplus tg5040 rgb30 retroid"
 	if ! echo "$allowed_platforms" | grep -q "$PLATFORM"; then
 		show_message "$PLATFORM is not a supported platform"
 		return 1
