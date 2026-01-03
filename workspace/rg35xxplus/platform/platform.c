@@ -177,17 +177,12 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	}
 
 	// Set variant name for LESSUI_VARIANT export
-	switch (v->variant) {
-	case VARIANT_RG35XX_SQUARE:
+	if (v->variant == VARIANT_RG35XX_SQUARE)
 		v->variant_name = "square";
-		break;
-	case VARIANT_RG35XX_WIDE:
+	else if (v->variant == VARIANT_RG35XX_WIDE)
 		v->variant_name = "wide";
-		break;
-	default:
+	else
 		v->variant_name = "vga";
-		break;
-	}
 
 	// Check for HDMI connection (runtime override)
 	v->hdmi_active = getInt(HDMI_STATE_PATH);
