@@ -66,8 +66,8 @@ int exactMatch(char* str1, char* str2) {
 
 static int is_brick = 0;
 
-void InitSettings(void) {	
-	char* device = getenv("DEVICE");
+void InitSettings(void) {
+	char* device = getenv("LESSUI_DEVICE");
 	is_brick = exactMatch("brick", device);
 	
 	sprintf(SettingsPath, "%s/msettings.bin", getenv("USERDATA_PATH"));

@@ -69,7 +69,8 @@ typedef struct {
 typedef struct {
 	const char* platform; // Platform identifier (matches PLATFORM define)
 	VariantType variant; // Detected variant type
-	const char* variant_name; // Short string for LESSUI_VARIANT export (e.g., "vga", "4x3")
+	const char*
+	    variant_name; // Short string for LESSUI_VARIANT export and logging (e.g., "vga", "4x3")
 	const DeviceInfo* device; // Detected device info (from platform's device registry)
 
 	// Display capabilities (runtime-determined)

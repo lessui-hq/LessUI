@@ -4,7 +4,7 @@
  * REFACTORED VERSION - Uses shared render_sdl2 backend
  *
  * Supports Trimui Smart Pro and Brick variant. Hardware differences
- * detected via DEVICE environment variable.
+ * detected via LESSUI_DEVICE environment variable.
  *
  * Hardware features:
  * - SDL2-based video with sharpness control (via render_sdl2)
@@ -81,7 +81,7 @@ static const VariantConfig tg5040_variants[] = {
 
 // Device-to-variant mapping
 typedef struct {
-	const char* device_string; // What to look for in DEVICE env var
+	const char* device_string; // What to look for in LESSUI_DEVICE env var
 	VariantType variant;
 	const DeviceInfo* device;
 } DeviceVariantMap;
@@ -109,7 +109,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	v->has_hdmi = 0;
 
 	// Read device string from environment
-	char* device = getenv("DEVICE");
+	char* device = getenv("LESSUI_DEVICE");
 
 	// Look up device in mapping table
 	const DeviceVariantMap* map = NULL;
@@ -124,7 +124,8 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Fallback to default if not found
 	if (!map) {
-		LOG_warn("Unknown DEVICE '%s', defaulting to Smart Pro\n", device ? device : "(unset)");
+		LOG_warn("Unknown LESSUI_DEVICE '%s', defaulting to Smart Pro\n",
+		         device ? device : "(unset)");
 		map = &tg5040_device_map[0]; // Smart Pro
 	}
 
