@@ -348,12 +348,6 @@ endif
 # Backward compatibility for platforms that were merged
 # Only copies files if the source platform was actually built
 tidy:
-ifneq (,$(findstring rg35xxplus, $(PLATFORMS)))
-	@if [ -f ./build/SYSTEM/rg35xxplus/bin/install.sh ]; then \
-		mkdir -p ./build/SYSTEM/rg40xxcube/bin/; \
-		rsync -a ./build/SYSTEM/rg35xxplus/bin/install.sh ./build/SYSTEM/rg40xxcube/bin/; \
-	fi
-endif
 ifneq (,$(findstring tg5040, $(PLATFORMS)))
 	@if [ -f ./build/SYSTEM/tg5040/bin/install.sh ]; then \
 		mkdir -p ./build/SYSTEM/tg3040/paks/LessUI.pak/; \

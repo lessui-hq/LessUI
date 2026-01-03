@@ -259,20 +259,7 @@ To update LessUI on device:
 2. Reboot device
 3. Boot script auto-detects archive, determines variant, and performs update
 4. Archive is deleted after successful extraction
-5. `install.sh` finalizes update (copies dmenu.bin, migrates old configs)
-
-### Migration from RG40XXCUBE
-
-The install script handles automatic migration from the deprecated `rg40xxcube` platform:
-
-1. Detects old `.system/rg40xxcube` directory
-2. Deletes old system folder
-3. Migrates user configs from `.userdata/rg40xxcube` to `.userdata/rg35xxplus`
-4. Renames config files with `-cube.cfg` suffix to preserve variant-specific settings
-5. Deletes old userdata folder
-6. Reboots to apply changes
-
-This ensures users can seamlessly upgrade from the older platform naming.
+5. `install.sh` finalizes update (copies dmenu.bin)
 
 ## Platform-Specific Features
 
@@ -384,8 +371,7 @@ Tools are provided via the shared LessUI .pak system:
 1. **No L3/R3**: Platform lacks clickable analog sticks
 2. **Joystick-Only Input**: No SDL keyboard support - must use joystick API exclusively
 3. **MENU Button Duality**: Kernel reports code 312 AND 354 for MENU button
-4. **Platform Consolidation**: Replaces older `rg40xxcube` platform (migration handled automatically)
-5. **NEON Optimizations**: Platform supports ARM NEON SIMD - use `HAS_NEON` define for optimized code paths
+4. **NEON Optimizations**: Platform supports ARM NEON SIMD - use `HAS_NEON` define for optimized code paths
 
 ### Volume/Brightness Quirks
 - Brightness control uses non-linear exponential curve for better perceptual response
@@ -409,8 +395,7 @@ When testing changes:
 5. Verify volume/brightness controls with variant-specific behavior
 6. Test boot splash screens for all variants (standard, -r, -s, -w)
 7. Confirm TF1/TF2 symlink fallback works when TF2 is removed
-8. Test migration from `rg40xxcube` platform (if applicable)
-9. Verify `dmenu.bin` update mechanism
+8. Verify `dmenu.bin` update mechanism
 
 ## Related Documentation
 
@@ -427,10 +412,7 @@ This platform demonstrates LessUI's **advanced runtime adaptation**:
 - Runtime display resolution and UI layout configuration
 - Hot-plug HDMI detection with automatic routing
 - Multi-resolution boot asset selection
-- Automatic migration from deprecated platforms
 - Dual SD card architecture with intelligent fallback
-
-The consolidation of RG35XX Plus, H, and SP into a single platform (replacing the older separate `rg40xxcube` platform) significantly reduces code duplication and simplifies maintenance.
 
 **Key Design Patterns**:
 - Use of `extern int` flags for runtime configuration
