@@ -10,4 +10,4 @@ if ! shui message "Apply panel timing fix?" \
 	exit 0
 fi
 
-bash ./apply.sh >./log.txt 2>&1
+./apply.sh

@@ -6,11 +6,6 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR" .pak)"
 cd "$PAK_DIR" || exit 1
 
-# Logging
-rm -f "$LOGS_PATH/$PAK_NAME.txt"
-exec >>"$LOGS_PATH/$PAK_NAME.txt" 2>&1
-echo "$0" "$@"
-
 # Setup paths
 mkdir -p "$USERDATA_PATH/$PAK_NAME"
 export HOME="$USERDATA_PATH/$PAK_NAME"

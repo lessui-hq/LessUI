@@ -22,53 +22,46 @@ case "$PLATFORM" in
 			exit 0
 		fi
 
-		{
-			shui progress "Checking firmware..." --value 0
+		shui progress "Checking firmware..." --value 0
 
-			SUPPORTED_VERSION="202304280000"
-			if [ "$MIYOO_VERSION" -gt "$SUPPORTED_VERSION" ]; then
-				echo "Unknown firmware version. Aborted."
-				shui message "Unsupported firmware version." \
-					--subtext "Your device is unchanged." --confirm "Dismiss"
-				exit 1
-			fi
+		SUPPORTED_VERSION="202304280000"
+		if [ "$MIYOO_VERSION" -gt "$SUPPORTED_VERSION" ]; then
+			shui message "Unsupported firmware version." \
+				--subtext "Your device is unchanged." --confirm "Dismiss"
+			exit 1
+		fi
 
-			shui progress "Reading current logo..." --value 20
-			./bin/logoread.elf
+		shui progress "Reading current logo..." --value 20
+		./bin/logoread.elf
 
-			if [ -f ./logo.jpg ]; then
-				cp ./logo.jpg ./image1.jpg
-			else
-				cp "$SYSTEM_PATH/dat/image1.jpg" ./
-			fi
+		if [ -f ./logo.jpg ]; then
+			cp ./logo.jpg ./image1.jpg
+		else
+			cp "$SYSTEM_PATH/dat/image1.jpg" ./
+		fi
 
-			shui progress "Preparing new logo..." --value 40
+		shui progress "Preparing new logo..." --value 40
 
-			if ! ./bin/logomake.elf; then
-				echo "Preparing bootlogo failed. Aborted."
-				shui message "Failed to prepare boot logo." \
-					--subtext "Your device is unchanged." --confirm "Dismiss"
-				exit 1
-			fi
+		if ! ./bin/logomake.elf; then
+			shui message "Failed to prepare boot logo." \
+				--subtext "Your device is unchanged." --confirm "Dismiss"
+			exit 1
+		fi
 
-			shui progress "Flashing to device..." --value 70
+		shui progress "Flashing to device..." --value 70
 
-			if ! ./bin/logowrite.elf; then
-				echo "Flashing bootlogo failed. Aborted."
-				shui message "Failed to flash boot logo." \
-					--subtext "Check logs for details." --confirm "Dismiss"
-				exit 1
-			fi
+		if ! ./bin/logowrite.elf; then
+			shui message "Failed to flash boot logo." \
+				--subtext "Check logs for details." --confirm "Dismiss"
+			exit 1
+		fi
 
-			shui progress "Cleaning up..." --value 90
+		shui progress "Cleaning up..." --value 90
 
-			rm -f image1.jpg image2.jpg image3.jpg logo.img
+		rm -f image1.jpg image2.jpg image3.jpg logo.img
 
-			shui progress "Complete!" --value 100
-			sleep 0.5
-
-			echo "Done."
-		} >./log.txt 2>&1
+		shui progress "Complete!" --value 100
+		sleep 0.5
 
 		shui message "Boot logo flashed!" --confirm "Done"
 
@@ -96,17 +89,13 @@ case "$PLATFORM" in
 			exit 0
 		fi
 
-		{
-			shui progress "Flashing boot logo..." --indeterminate
-			dd if=$LOGO_PATH of=/dev/by-name/bootlogo bs=65536
-			echo "Done."
-		} >./log.txt 2>&1
+		shui progress "Flashing boot logo..." --indeterminate
 
-		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
+		if dd if=$LOGO_PATH of=/dev/by-name/bootlogo bs=65536; then
 			shui message "Boot logo flashed!" --confirm "Done"
 		else
 			shui message "Failed to flash boot logo." \
-				--subtext "Check log.txt for details." --confirm "Dismiss"
+				--subtext "Check logs for details." --confirm "Dismiss"
 		fi
 
 		# Self-destruct
@@ -191,7 +180,7 @@ case "$PLATFORM" in
 		fi
 
 		cd "$DIR"
-		./apply.sh >./log.txt 2>&1 &
+		./apply.sh &
 		APPLY_PID=$!
 
 		# Show progress messages based on timing
@@ -248,38 +237,36 @@ case "$PLATFORM" in
 			exit 0
 		fi
 
-		{
-			shui progress "Mounting boot partition..." --value 20
+		shui progress "Mounting boot partition..." --value 20
 
-			BOOT_PATH=/mnt/boot/
-			mkdir -p "$BOOT_PATH"
-			mount -t vfat /dev/mmcblk0p1 "$BOOT_PATH"
-
-			shui progress "Copying boot logo..." --value 60
-
-			cp "$LOGO_PATH" "$BOOT_PATH/bootlogo.bmp"
-			sync
-
-			shui progress "Unmounting..." --value 90
-
-			umount "$BOOT_PATH"
-
-			shui progress "Complete!" --value 100
-			sleep 0.5
-
-			echo "Done."
-		} >./log.txt 2>&1
-
-		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			# Self-destruct before reboot
-			mv "$DIR" "$DIR.disabled"
-			rm -f /tmp/launcher_exec
-			shui message "Boot logo flashed!" --confirm "Reboot"
-			reboot
-		else
-			shui message "Failed to flash boot logo." \
-				--subtext "Check log.txt for details." --confirm "Dismiss"
+		BOOT_PATH=/mnt/boot/
+		mkdir -p "$BOOT_PATH"
+		if ! mount -t vfat /dev/mmcblk0p1 "$BOOT_PATH"; then
+			shui message "Failed to mount boot partition." --confirm "Dismiss"
+			exit 1
 		fi
+
+		shui progress "Copying boot logo..." --value 60
+
+		if ! cp "$LOGO_PATH" "$BOOT_PATH/bootlogo.bmp"; then
+			umount "$BOOT_PATH" 2>/dev/null
+			shui message "Failed to copy boot logo." --confirm "Dismiss"
+			exit 1
+		fi
+		sync
+
+		shui progress "Unmounting..." --value 90
+
+		umount "$BOOT_PATH"
+
+		shui progress "Complete!" --value 100
+		sleep 0.5
+
+		# Self-destruct before reboot
+		mv "$DIR" "$DIR.disabled"
+		rm -f /tmp/launcher_exec
+		shui message "Boot logo flashed!" --confirm "Reboot"
+		reboot
 		;;
 
 	zero28)
@@ -339,84 +326,77 @@ case "$PLATFORM" in
 			exit 0
 		fi
 
-		{
-			shui progress "Reading logo size..." --value 10
+		shui progress "Reading logo size..." --value 10
 
-			# Read new bitmap size
-			HEX=$(dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p)
-			BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
-			BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
-			BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
-			BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
-			COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
-			if [ $COUNT -gt 32768 ]; then
-				echo "logo.bmp too large ($COUNT). Aborted."
-				shui message "Logo file too large." \
-					--subtext "Maximum size is 32KB." --confirm "Dismiss"
-				exit 1
-			fi
+		# Read new bitmap size
+		HEX=$(dd if=$LOGO_PATH bs=1 skip=2 count=4 status=none | xxd -g4 -p)
+		BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
+		BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
+		BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
+		BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
+		COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
+		if [ $COUNT -gt 32768 ]; then
+			shui message "Logo file too large." \
+				--subtext "Maximum size is 32KB." --confirm "Dismiss"
+			exit 1
+		fi
 
-			shui progress "Detecting boot partition..." --value 25
+		shui progress "Detecting boot partition..." --value 25
 
-			# Detect boot partition revision
-			OFFSET=4044800 # rev A
+		# Detect boot partition revision
+		OFFSET=4044800 # rev A
+		SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
+
+		if [ "$SIGNATURE" = "BM" ]; then
+			echo "Rev A"
+		else
+			OFFSET=4045312 # rev B
 			SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
-
 			if [ "$SIGNATURE" = "BM" ]; then
-				echo "Rev A"
+				echo "Rev B"
 			else
-				OFFSET=4045312 # rev B
+				OFFSET=4046848 # rev C
 				SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
 				if [ "$SIGNATURE" = "BM" ]; then
-					echo "Rev B"
+					echo "Rev C"
 				else
-					OFFSET=4046848 # rev C
-					SIGNATURE=$(dd if=/dev/block/by-name/boot bs=1 skip=$OFFSET count=2 status=none)
-					if [ "$SIGNATURE" = "BM" ]; then
-						echo "Rev C"
-					else
-						echo "Rev unknown. Aborted."
-						shui message "Unknown boot partition format." \
-							--subtext "Your device is unchanged." --confirm "Dismiss"
-						exit 1
-					fi
+					shui message "Unknown boot partition format." \
+						--subtext "Your device is unchanged." --confirm "Dismiss"
+					exit 1
 				fi
 			fi
-
-			shui progress "Creating backup..." --value 50
-
-			# Create backup
-			DT=$(date +'%Y%m%d%H%M%S')
-			HEX=$(dd if=/dev/block/by-name/boot bs=1 skip=$(($OFFSET + 2)) count=4 status=none | xxd -g4 -p)
-			BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
-			BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
-			BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
-			BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
-			COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
-			echo "copying $COUNT bytes from $OFFSET to backup-$DT.bmp"
-			dd if=/dev/block/by-name/boot of=./backup-$DT.bmp bs=1 skip=$OFFSET count=$COUNT
-
-			shui progress "Flashing new logo..." --value 75
-
-			# Inject new logo
-			echo "injecting $LOGO_PATH"
-			dd conv=notrunc if=$LOGO_PATH of=/dev/block/by-name/boot bs=1 seek=$OFFSET
-
-			sync
-
-			shui progress "Complete!" --value 100
-			sleep 0.5
-
-			echo "Done."
-		} >./log.txt 2>&1
-
-		if [ -f ./log.txt ] && grep -q "Done." ./log.txt; then
-			shui message "Boot logo flashed!" \
-				--subtext "A backup was saved to the pak folder." --confirm "Done"
-		else
-			shui message "Failed to flash boot logo." \
-				--subtext "Check log.txt for details." --confirm "Dismiss"
 		fi
+
+		shui progress "Creating backup..." --value 50
+
+		# Create backup
+		DT=$(date +'%Y%m%d%H%M%S')
+		HEX=$(dd if=/dev/block/by-name/boot bs=1 skip=$(($OFFSET + 2)) count=4 status=none | xxd -g4 -p)
+		BYTE0=$(printf "%s" "$HEX" | dd bs=1 skip=0 count=2 2>/dev/null)
+		BYTE1=$(printf "%s" "$HEX" | dd bs=1 skip=2 count=2 2>/dev/null)
+		BYTE2=$(printf "%s" "$HEX" | dd bs=1 skip=4 count=2 2>/dev/null)
+		BYTE3=$(printf "%s" "$HEX" | dd bs=1 skip=6 count=2 2>/dev/null)
+		COUNT=$((0x${BYTE3}${BYTE2}${BYTE1}${BYTE0}))
+		echo "copying $COUNT bytes from $OFFSET to backup-$DT.bmp"
+		dd if=/dev/block/by-name/boot of=./backup-$DT.bmp bs=1 skip=$OFFSET count=$COUNT
+
+		shui progress "Flashing new logo..." --value 75
+
+		# Inject new logo
+		echo "injecting $LOGO_PATH"
+		if ! dd conv=notrunc if=$LOGO_PATH of=/dev/block/by-name/boot bs=1 seek=$OFFSET; then
+			shui message "Failed to flash boot logo." \
+				--subtext "Check logs for details." --confirm "Dismiss"
+			exit 1
+		fi
+
+		sync
+
+		shui progress "Complete!" --value 100
+		sleep 0.5
+
+		shui message "Boot logo flashed!" \
+			--subtext "A backup was saved to the pak folder." --confirm "Done"
 
 		# Self-destruct
 		mv "$DIR" "$DIR.disabled"
