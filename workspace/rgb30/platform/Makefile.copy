@@ -1,6 +1,6 @@
 $(PLATFORM):
 	# $@
-	cp ./workspace/$@/keymon/keymon.elf ./build/SYSTEM/$@/bin/
+	# keymon.elf already installed by workspace/all/utils install target
 	# show.elf (platform-specific build)
 	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
 	# LessOS provides SDL2 natively - no sdl12-compat needed
