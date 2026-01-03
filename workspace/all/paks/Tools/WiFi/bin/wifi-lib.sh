@@ -3,6 +3,16 @@
 # Source this file: . "$BIN_DIR/wifi-lib.sh"
 
 # ============================================================================
+# String Utilities
+# ============================================================================
+
+# Trim leading and trailing whitespace (POSIX-compatible, no xargs needed)
+# Usage: trimmed=$(trim "  hello world  ")
+trim() {
+	echo "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+# ============================================================================
 # Environment Setup
 # ============================================================================
 
@@ -106,6 +116,28 @@ wait_for_service() {
 
 	while [ $timeout -lt "$max_wait" ]; do
 		systemctl is-active --quiet "$service_name" && return 0
+		sleep 0.1
+		timeout=$((timeout + 1))
+	done
+
+	return 1
+}
+
+# Wait for IWD device to be powered on
+# Usage: wait_for_iwd_powered "interface" [max_deciseconds]
+# Default timeout: 50 deciseconds (5 seconds)
+# Returns: 0 if powered on, 1 if timeout
+wait_for_iwd_powered() {
+	iface="$1"
+	max_wait="${2:-50}"
+	timeout=0
+	# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+	esc=$(printf '\033')
+
+	while [ $timeout -lt "$max_wait" ]; do
+		# Strip ANSI color codes and check Powered status
+		powered="$(iwctl device "$iface" show 2>/dev/null | sed "s/${esc}\[[0-9;]*m//g" | grep -i 'Powered' | awk '{print $NF}')"
+		[ "$powered" = "on" ] && return 0
 		sleep 0.1
 		timeout=$((timeout + 1))
 	done

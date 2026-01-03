@@ -52,13 +52,15 @@ get_ssid_and_ip() {
 
 	ssid=""
 	ip_address=""
+	# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+	ESC=$(printf '\033')
 
 	for _ in 1 2 3 4 5; do
 		case "$PLATFORM" in
 			rgb30 | retroid)
 				# IWD-based platforms (LessOS) - use iwctl
 				# Strip ANSI color codes from output
-				ssid="$(iwctl station "$WIFI_DEV" show 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep 'Connected network' | sed 's/.*Connected network[[:space:]]*//' | xargs)"
+				ssid="$(iwctl station "$WIFI_DEV" show 2>/dev/null | sed "s/${ESC}\[[0-9;]*m//g" | grep 'Connected network' | sed 's/.*Connected network[[:space:]]*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 				ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
 				;;
 			my355)
@@ -120,11 +122,11 @@ has_credentials() {
 	[ ! -s "$SDCARD_PATH/wifi.txt" ] && return 1
 
 	while read -r line; do
-		line="$(echo "$line" | xargs)"
+		line="$(trim "$line")"
 		[ -z "$line" ] && continue
 		echo "$line" | grep -q "^#" && continue
 		echo "$line" | grep -q ":" || continue
-		ssid="$(echo "$line" | cut -d: -f1 | xargs)"
+		ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 		[ -n "$ssid" ] && return 0
 	done <"$SDCARD_PATH/wifi.txt"
 
@@ -172,13 +174,13 @@ write_config() {
 		echo "" >>"$SDCARD_PATH/wifi.txt"
 
 		while read -r line; do
-			line="$(echo "$line" | xargs)"
+			line="$(trim "$line")"
 			[ -z "$line" ] && continue
 			echo "$line" | grep -q "^#" && continue
 			echo "$line" | grep -q ":" || continue
 
-			ssid="$(echo "$line" | cut -d: -f1 | xargs)"
-			psk="$(echo "$line" | cut -d: -f2- | xargs)"
+			ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+			psk="$(echo "$line" | cut -d: -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 			[ -z "$ssid" ] && continue
 
 			has_passwords=true
@@ -246,13 +248,13 @@ write_config() {
 			if [ "$ENABLING_WIFI" = "true" ]; then
 				# Read credentials from wifi.txt and create IWD network files
 				while read -r line; do
-					line="$(echo "$line" | xargs)"
+					line="$(trim "$line")"
 					[ -z "$line" ] && continue
 					echo "$line" | grep -q "^#" && continue
 					echo "$line" | grep -q ":" || continue
 
-					ssid="$(echo "$line" | cut -d: -f1 | xargs)"
-					psk="$(echo "$line" | cut -d: -f2- | xargs)"
+					ssid="$(echo "$line" | cut -d: -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+					psk="$(echo "$line" | cut -d: -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 					[ -z "$ssid" ] && continue
 
 					# Sanitize SSID for filename
@@ -403,33 +405,41 @@ networks_screen() {
 			# Try wifictl first (LessOS native tool), then fall back to iwctl
 			if command -v wifictl >/dev/null 2>&1; then
 				wifictl scan 2>/dev/null || true
+				# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+				ESC=$(printf '\033')
 				for _ in $(seq 1 "$DELAY"); do
 					shui progress "Scanning for networks..." --indeterminate
-					# wifictl scanlist outputs one SSID per line
-					wifictl scanlist 2>/dev/null | sort -u >"$scan_temp"
+					# wifictl scanlist outputs one SSID per line, but stderr may have colored error messages
+					# Filter: strip ANSI codes, remove blank lines, remove IWD error message, sort unique
+					wifictl scanlist 2>&1 \
+						| sed "s/${ESC}\[[0-9;]*m//g" \
+						| sed '/^[[:space:]]*$/d' \
+						| grep -Fxv "Operation already in progress" \
+						| sort -u >"$scan_temp"
 					[ -s "$scan_temp" ] && break
 					sleep 1
 				done
 			else
 				# Fall back to iwctl
-				iwctl station "$WIFI_DEV" scan 2>/dev/null || true
+				# Scan once, then poll for results
+				iwctl station "$WIFI_DEV" scan >/dev/null 2>&1 || true
 				for _ in $(seq 1 "$DELAY"); do
 					shui progress "Scanning for networks..." --indeterminate
-					# iwctl get-networks output is tabular with ANSI colors
-					# Format: "    NetworkName                psk    ****"
-					# Strip ANSI escape codes and parse network names
-					iwctl station "$WIFI_DEV" get-networks 2>/dev/null \
-						| sed 's/\x1b\[[0-9;]*m//g' \
-						| tail -n +5 \
+
+					# iwctl get-networks outputs a table with columns: Network name, Security, Signal
+					# Only parse lines that have the security field (psk|open|8021x|wep) to avoid error messages
+					iwctl station "$WIFI_DEV" get-networks 2>&1 \
+						| sed "s/${ESC}\[[0-9;]*m//g" \
 						| awk '{
-							# Skip empty lines and header separators
-							if (NF == 0 || /^-+$/) next
-							# Extract network name (everything before security type)
-							gsub(/^[[:space:]]+/, "")
-							gsub(/[[:space:]]+(psk|open|8021x|wep).*$/, "")
-							if (length($0) > 0) print
+							# Only process lines that contain security types - these are actual network entries
+							if (/(psk|open|8021x|wep)[[:space:]]/) {
+								# Remove leading/trailing whitespace
+								gsub(/^[[:space:]]+/, "")
+								# Extract network name (everything before security type)
+								sub(/[[:space:]]+(psk|open|8021x|wep).*$/, "")
+								if (length($0) > 0) print
+							}
 						}' \
-						| grep -v '^$' \
 						| sort -u >"$scan_temp"
 					[ -s "$scan_temp" ] && break
 					sleep 1
@@ -500,7 +510,7 @@ password_screen() {
 
 	initial_password=""
 	if grep -q "^$SSID:" "$SDCARD_PATH/wifi.txt" 2>/dev/null; then
-		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | xargs)"
+		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
 	fi
 
 	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/launcher-output

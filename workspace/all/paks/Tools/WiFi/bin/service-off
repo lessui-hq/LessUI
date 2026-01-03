@@ -78,17 +78,14 @@ main() {
 	if is_iwd_platform; then
 		WIFI_DEV="$(get_wifi_interface)"
 
-		# Try wifictl first (LessOS native tool)
-		if command -v wifictl >/dev/null 2>&1; then
-			wifictl disconnect 2>/dev/null || true
-			wifictl disable 2>/dev/null || true
-		else
-			# Fall back to manual IWD control
-			# Disconnect from current network
-			iwctl station "$WIFI_DEV" disconnect 2>/dev/null || true
+		# Disconnect and power off via iwctl
+		# Note: wifictl disable only does rfkill block, doesn't power off device
+		iwctl station "$WIFI_DEV" disconnect 2>/dev/null || true
+		iwctl device "$WIFI_DEV" set-property Powered off 2>/dev/null || true
 
-			# Power off the WiFi adapter
-			iwctl device "$WIFI_DEV" set-property Powered off 2>/dev/null || true
+		# Block WiFi via rfkill
+		if command -v rfkill >/dev/null 2>&1; then
+			rfkill block wifi 2>/dev/null || true
 		fi
 	fi
 

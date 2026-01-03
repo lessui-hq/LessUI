@@ -146,57 +146,66 @@ main() {
 
 		rgb30 | retroid)
 			# IWD-based platforms (LessOS)
+			# IWD is a D-Bus service that auto-activates when iwctl is used
 			echo "Starting IWD WiFi..."
 
 			WIFI_DEV="$(get_wifi_interface)"
 
-			# Try wifictl first (LessOS native tool)
-			if command -v wifictl >/dev/null 2>&1; then
-				echo "Using wifictl..."
-				wifictl enable 2>/dev/null || true
-				sleep 1
-				wifictl connect 2>/dev/null || true
-			else
-				# Fall back to manual IWD control
-				echo "Using iwctl..."
-
-				# Bring up the interface
-				ip link set "$WIFI_DEV" up 2>/dev/null || true
-
-				# Unblock WiFi via rfkill if available
-				if command -v rfkill >/dev/null 2>&1; then
-					rfkill unblock wifi 2>/dev/null || true
-				fi
-
-				# Disable power save if iw is available
-				if command -v iw >/dev/null 2>&1; then
-					iw dev "$WIFI_DEV" set power_save off 2>/dev/null || true
-				fi
-
-				# Ensure IWD is running (should already be started by system)
-				if ! pgrep -x iwd >/dev/null 2>&1; then
-					echo "Starting IWD daemon..."
-					if ! systemctl start iwd 2>/dev/null; then
-						/usr/lib/iwd &
-						sleep 1  # Allow daemon to initialize after background start
-					fi
-				fi
-
-				# Wait for IWD to be ready
-				if ! wait_for_process iwd 50; then
-					echo "Failed to start IWD"
-					return 1
-				fi
-
-				# Power on the WiFi adapter via iwctl
-				iwctl device "$WIFI_DEV" set-property Powered on 2>/dev/null || true
-
-				# Trigger a scan to find networks
-				iwctl station "$WIFI_DEV" scan 2>/dev/null || true
+			# Unblock WiFi via rfkill first (this is what wifictl enable does)
+			if command -v rfkill >/dev/null 2>&1; then
+				echo "Unblocking rfkill..."
+				rfkill unblock wifi 2>/dev/null || true
 			fi
 
+			# Use iwctl to interact with IWD (this auto-activates IWD via D-Bus)
+			echo "Checking IWD device list..."
+			iwctl device list 2>&1 || true
+
+			# Wait for device to appear
+			echo "Waiting for WiFi device $WIFI_DEV..."
+			for _ in $(seq 1 10); do
+				if iwctl device list 2>/dev/null | grep -q "$WIFI_DEV"; then
+					echo "Device $WIFI_DEV found in IWD"
+					break
+				fi
+				sleep 0.5
+			done
+
+			# Power on the device
+			echo "Powering on WiFi device..."
+			iwctl device "$WIFI_DEV" set-property Powered on 2>&1 || true
+
+			# Check device status
+			echo "Device status:"
+			iwctl device "$WIFI_DEV" show 2>&1 || true
+
+			# Wait for device to be powered on
+			if ! wait_for_iwd_powered "$WIFI_DEV" 50; then
+				echo "Failed to power on WiFi device"
+				echo "Checking if IWD process exists:"
+				pgrep -a iwd 2>&1 || echo "No IWD process found"
+				ps aux | grep -i iwd 2>&1 || true
+				return 1
+			fi
+			echo "WiFi device powered on successfully"
+
+			# Set station mode
+			iwctl device "$WIFI_DEV" set-property Mode station 2>/dev/null || true
+
+			# Disable power save if iw is available
+			if command -v iw >/dev/null 2>&1; then
+				iw dev "$WIFI_DEV" set power_save off 2>/dev/null || true
+			fi
+
+			# Give device a moment to fully initialize before first scan
+			echo "Waiting for device to be ready for scanning..."
+			sleep 2
+
+			# Trigger initial scan so networks are available faster
+			echo "Triggering network scan..."
+			iwctl station "$WIFI_DEV" scan 2>/dev/null || true
+
 			# IWD handles DHCP internally via EnableNetworkConfiguration=true
-			# No need to start systemd-networkd or external DHCP client
 			;;
 
 		*)
