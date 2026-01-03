@@ -37,37 +37,36 @@ early: $(REQUIRES_SDL2) $(REQUIRES_DTC) $(REQUIRES_FBSET)
 	@mkdir -p other
 	@cd $(REQUIRES_DTC) && CC=${CROSS_COMPILE}gcc $(MAKE) -s NO_PYTHON=1 dtc
 	@cd $(REQUIRES_FBSET) && $(MAKE) -s
-	@cd $(REQUIRES_SDL2) && MAKEFLAGS=--no-print-directory CFLAGS="-O2 -marm -mtune=cortex-a53 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
-		./configure CC=${CROSS_COMPILE}gcc --host=arm-buildroot-linux-gnueabihf \
-		  --enable-arm-neon \
-		  --disable-oss \
-		  --disable-rpath \
-		  --disable-arts \
-		  --disable-esd \
-		  --disable-dbus \
-		  --disable-diskaudio \
-		  --disable-dummyaudio \
-		  --disable-pulseaudio \
-		  --disable-video-kmsdrm \
-		  --disable-video-vivante \
-		  --disable-video-cocoa \
-		  --disable-video-metal \
-		  --disable-video-dummy \
-		  --disable-video-offscreen \
-		  --disable-video-x11 \
-		  --disable-video-vulkan \
-		  --disable-ime \
-		  --disable-ibus \
-		  --disable-fcitx \
-		  --disable-joystick-mfi \
-		  --disable-directx \
-		  --disable-xinput \
-		  --disable-wasapi \
-		  --disable-hidapi-joystick \
-		  --disable-hidapi-libusb \
-		  --disable-joystick-virtual \
-		  --enable-video-mali \
-		  --disable-libsamplerate >/dev/null && $(MAKE) -s
+	@cd $(REQUIRES_SDL2) && MAKEFLAGS=--no-print-directory CFLAGS="-O2 -mcpu=cortex-a53 -ffast-math -ftree-vectorize" \
+		./configure CC=${CROSS_COMPILE}gcc --host=aarch64-buildroot-linux-gnu \
+		--disable-oss \
+		--disable-rpath \
+		--disable-arts \
+		--disable-esd \
+		--disable-dbus \
+		--disable-diskaudio \
+		--disable-dummyaudio \
+		--disable-pulseaudio \
+		--disable-video-kmsdrm \
+		--disable-video-vivante \
+		--disable-video-cocoa \
+		--disable-video-metal \
+		--disable-video-dummy \
+		--disable-video-offscreen \
+		--disable-video-x11 \
+		--disable-video-vulkan \
+		--disable-ime \
+		--disable-ibus \
+		--disable-fcitx \
+		--disable-joystick-mfi \
+		--disable-directx \
+		--disable-xinput \
+		--disable-wasapi \
+		--disable-hidapi-joystick \
+		--disable-hidapi-libusb \
+		--disable-joystick-virtual \
+		--enable-video-mali \
+		--disable-libsamplerate >/dev/null && $(MAKE) -s
 	@# copy libs from toolchain (later moved to build)
 	@cp $(PREFIX)/lib/libSDL2_image-2.0.so.0.0.1 ../libSDL2_image-2.0.so.0
 	@cp $(PREFIX)/lib/libSDL2_ttf-2.0.so.0.14.0 ../libSDL2_ttf-2.0.so.0

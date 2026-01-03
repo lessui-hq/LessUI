@@ -25,6 +25,12 @@
 #define PLATFORM "tg5040"
 
 ///////////////////////////////
+// Hardware Capabilities
+///////////////////////////////
+
+#define HAS_OPENGLES 1 // Mali GPU supports OpenGL ES 2.0
+
+///////////////////////////////
 // Audio Configuration
 ///////////////////////////////
 
@@ -54,9 +60,9 @@
 // Platform Variant Detection
 ///////////////////////////////
 
-// TG5040 family variants
-#define VARIANT_TG5040_STANDARD (VARIANT_PLATFORM_BASE + 0) // 1280x720 widescreen
-#define VARIANT_TG5040_BRICK (VARIANT_PLATFORM_BASE + 1) // 1024x768 (4:3)
+// TG5040 family variants (aspect-based naming)
+#define VARIANT_TG5040_WIDE (VARIANT_PLATFORM_BASE + 0) // 1280x720 (16:9)
+#define VARIANT_TG5040_4X3 (VARIANT_PLATFORM_BASE + 1) // 1024x768 (4:3)
 
 ///////////////////////////////
 // SDL Keyboard Button Mappings
@@ -143,13 +149,13 @@
 #define JOY_R1 5
 #define JOY_L2 JOY_NA // Analog trigger (handled via axis)
 #define JOY_R2 JOY_NA // Analog trigger (handled via axis)
-#define JOY_L3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 9 : JOY_NA)
-#define JOY_R3 (VARIANT_IS(VARIANT_TG5040_BRICK) ? 10 : JOY_NA)
+#define JOY_L3 (VARIANT_IS(VARIANT_TG5040_4X3) ? 9 : JOY_NA)
+#define JOY_R3 (VARIANT_IS(VARIANT_TG5040_4X3) ? 10 : JOY_NA)
 
 #define JOY_MENU 8
 #define JOY_POWER 102 // Matches CODE_POWER
-#define JOY_PLUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 14 : 128)
-#define JOY_MINUS (VARIANT_IS(VARIANT_TG5040_BRICK) ? 13 : 129)
+#define JOY_PLUS (VARIANT_IS(VARIANT_TG5040_4X3) ? 14 : 128)
+#define JOY_MINUS (VARIANT_IS(VARIANT_TG5040_4X3) ? 13 : 129)
 
 ///////////////////////////////
 // Analog Stick and Trigger Axis Mappings

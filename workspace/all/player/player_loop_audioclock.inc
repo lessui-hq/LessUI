@@ -70,8 +70,12 @@ static void run_main_loop(void) {
 		// blocking audio writes for timing, not the PI rate controller.
 
 		// Measure frame execution time for auto CPU scaling
+		// Don't run core while menu is active
 		uint64_t frame_start = getMicroseconds();
-		core.run();
+		if (!show_menu) {
+			GLVideo_bindFBO();
+			core.run();
+		}
 		uint64_t frame_time = getMicroseconds() - frame_start;
 
 		// Store frame time for auto CPU scaling analysis
@@ -85,16 +89,19 @@ static void run_main_loop(void) {
 		// Present frame
 		// During FF: throttle vsync to avoid blocking (limitFF controls speed instead)
 		// Normal: present every frame (may or may not wait for vsync depending on platform)
-		if (fast_forward) {
-			uint32_t now = SDL_GetTicks();
-			if (now - last_ff_flip >= 30) { // Visual update every 30ms
+		// Skip for HW rendering - frame already presented via GLVideo_present()
+		if (!GLVideo_isEnabled()) {
+			if (fast_forward) {
+				uint32_t now = SDL_GetTicks();
+				if (now - last_ff_flip >= 30) { // Visual update every 30ms
+					GFX_present(&renderer);
+					frame_ready_for_flip = 0;
+					last_ff_flip = now;
+				}
+			} else {
 				GFX_present(&renderer);
 				frame_ready_for_flip = 0;
-				last_ff_flip = now;
 			}
-		} else {
-			GFX_present(&renderer);
-			frame_ready_for_flip = 0;
 		}
 
 		limitFF();

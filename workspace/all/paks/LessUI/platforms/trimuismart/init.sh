@@ -1,6 +1,11 @@
 #!/bin/sh
 # trimuismart initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="trimuismart"
+export LESSUI_VARIANT="qvga"
+export LESSUI_DEVICE="trimuismart"
+
 # Extra paths (appended so system paths have priority)
 export PATH="$PATH:/usr/trimui/bin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
@@ -8,15 +13,9 @@ export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/trimui/lib"
 # Button configuration
 echo A,B,X,Y,L,R >/sys/module/gpio_keys_polled/parameters/button_config
 
-# CPU setup
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 CPU_PATH=/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed
-CPU_SPEED_PERF=1536000
-
-cpu_restore() {
-	echo $CPU_SPEED_PERF >$CPU_PATH
-}
-cpu_restore
 
 # LED off
 leds_off

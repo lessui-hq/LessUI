@@ -3,11 +3,6 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR")"
 PAK_NAME="${PAK_NAME%.*}"
 
-rm -f "$LOGS_PATH/$PAK_NAME.txt"
-exec >>"$LOGS_PATH/$PAK_NAME.txt"
-exec 2>&1
-
-echo "$0" "$@"
 cd "$PAK_DIR" || exit 1
 mkdir -p "$USERDATA_PATH/$PAK_NAME"
 
@@ -164,8 +159,10 @@ cleanup() {
 main() {
 	trap "cleanup" EXIT INT TERM HUP QUIT
 
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$DEVICE" ]; then
-		export DEVICE="brick"
+	# Handle platform aliases (legacy: tg3040 was the original name for tg5040+brick)
+	if [ "$PLATFORM" = "tg3040" ] && [ -z "$LESSUI_DEVICE" ]; then
+		export LESSUI_DEVICE="brick"
+		export LESSUI_PLATFORM="tg5040"
 		export PLATFORM="tg5040"
 	fi
 
@@ -188,7 +185,7 @@ main() {
 	chmod +x "$PAK_DIR/bin/service-is-running"
 	chmod +x "$PAK_DIR/bin/on-boot"
 
-	allowed_platforms="miyoomini my282 my355 rg35xxplus tg5040"
+	allowed_platforms="miyoomini my282 my355 rg35xxplus tg5040 rgb30 retroid"
 	if ! echo "$allowed_platforms" | grep -q "$PLATFORM"; then
 		show_message "$PLATFORM is not a supported platform"
 		return 1

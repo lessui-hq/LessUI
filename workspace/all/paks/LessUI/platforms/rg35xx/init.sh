@@ -1,17 +1,13 @@
 #!/bin/sh
 # rg35xx initialization
 
-# CPU setup
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="rg35xx"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="rg35xx"
+
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-
-export CPU_SPEED_MENU=504000
-export CPU_SPEED_GAME=1296000
-export CPU_SPEED_PERF=1488000
-
-cpu_restore() {
-	overclock.elf $CPU_SPEED_PERF
-}
-cpu_restore
 
 # Storage scheduler optimization
 echo noop >/sys/devices/b0238000.mmc/mmc_host/mmc0/emmc_boot_card/block/mmcblk0/queue/scheduler

@@ -54,8 +54,9 @@ static void run_main_loop(void) {
 
 		for (int run = 0; run < runs_this_vsync; run++) {
 			// First run uses frame pacer, subsequent FF runs always execute
-			bool should_run_core = (run == 0) ? (fast_forward || FramePacer_step(&frame_pacer))
-			                                   : fast_forward;
+			// Don't run core while menu is active
+			bool should_run_core = !show_menu && ((run == 0) ? (fast_forward || FramePacer_step(&frame_pacer))
+			                                                   : fast_forward);
 
 			if (should_run_core) {
 				// Call frame time callback if registered (per libretro spec)
@@ -96,6 +97,7 @@ static void run_main_loop(void) {
 
 				// Measure frame execution time for auto CPU scaling
 				uint64_t frame_start = getMicroseconds();
+				GLVideo_bindFBO();
 				core.run();
 				uint64_t frame_time = getMicroseconds() - frame_start;
 
@@ -109,8 +111,11 @@ static void run_main_loop(void) {
 		}
 
 		// Always present for vsync timing - when !should_run_core, re-presents previous frame
-		GFX_present(&renderer);
-		frame_ready_for_flip = 0;
+		// Skip for HW rendering - frame already presented via GLVideo_present()
+		if (!GLVideo_isEnabled()) {
+			GFX_present(&renderer);
+			frame_ready_for_flip = 0;
+		}
 
 		// Track performance (only once per vsync, not per FF run)
 		limitFF();
@@ -123,9 +128,12 @@ static void run_main_loop(void) {
 		input_poll_callback();
 
 		if (show_menu) {
-			LOG_debug("Main loop: show_menu=1, entering Menu_loop");
 			Menu_loop();
-			LOG_debug("Main loop: returned from Menu_loop");
+
+			// Rebind FBO for HW cores after menu (menu uses FBO 0)
+			if (GLVideo_isEnabled()) {
+				GLVideo_bindFBO();
+			}
 		}
 
 		hdmimon();

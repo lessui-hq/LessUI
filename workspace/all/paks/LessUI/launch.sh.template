@@ -8,7 +8,8 @@
 
 export PLATFORM="{{PLATFORM}}"
 export PLATFORM_ARCH="{{PLATFORM_ARCH}}"
-export SDCARD_PATH="{{SDCARD_PATH}}"
+# Use LESSOS_STORAGE if set (LessOS), otherwise use build-time default
+export SDCARD_PATH="${LESSOS_STORAGE:-{{SDCARD_PATH}}}"
 export BIOS_PATH="$SDCARD_PATH/Bios"
 export SAVES_PATH="$SDCARD_PATH/Saves"
 export SYSTEM_PATH="$SDCARD_PATH/.system/$PLATFORM"
@@ -44,9 +45,11 @@ export LD_LIBRARY_PATH="$SYSTEM_PATH/lib:$LD_LIBRARY_PATH"
 if [ -f "$SDCARD_PATH/.system/common/log.sh" ]; then
 	. "$SDCARD_PATH/.system/common/log.sh"
 	log_init "$LOGS_PATH/shell.log"
+	log_info "LessUI starting for $PLATFORM"
 fi
 
 {{HOOK:init}}
+type log_info >/dev/null 2>&1 && log_info "Platform init complete"
 #######################################
 # User auto.sh
 
@@ -64,11 +67,16 @@ EXEC_PATH="/tmp/launcher_exec"
 NEXT_PATH="/tmp/next"
 touch "$EXEC_PATH" && sync
 
+type log_info >/dev/null 2>&1 && log_info "Entering main loop"
+
 while [ -f "$EXEC_PATH" ]; do
 	cpu_restore 2>/dev/null || true
 	type pre_launcher_hook >/dev/null 2>&1 && pre_launcher_hook
 
+	type log_info >/dev/null 2>&1 && log_info "Starting launcher.elf"
 	LOG_FILE="$LOGS_PATH/launcher.log" launcher.elf
+	LAUNCHER_EXIT=$?
+	type log_info >/dev/null 2>&1 && log_info "launcher.elf exited with code: $LAUNCHER_EXIT"
 
 	echo "$(date +'%F %T')" > "$DATETIME_PATH"
 	sync

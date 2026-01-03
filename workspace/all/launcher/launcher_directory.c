@@ -7,6 +7,7 @@
 
 #include "launcher_directory.h"
 #include "launcher_file_utils.h"
+#include "log.h"
 #include "utils.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -68,15 +69,18 @@ int LauncherDir_determineEntryType(const char* filename, int is_dir, const char*
 int LauncherDir_hasRoms(const char* dir_name, const char* roms_path, const char* paks_path,
                         const char* sdcard_path, const char* platform) {
 	if (!dir_name || !roms_path || !paks_path || !sdcard_path || !platform) {
+		LOG_debug("hasRoms: NULL param for '%s'", dir_name ? dir_name : "(null)");
 		return 0;
 	}
 
 	// Get emulator name from directory name
 	char emu_name[256];
 	getEmuName(dir_name, emu_name);
+	LOG_debug("hasRoms: dir='%s' -> emu='%s'", dir_name, emu_name);
 
 	// Check for emulator pak
 	if (!Launcher_hasEmu(emu_name, paks_path, sdcard_path, platform)) {
+		LOG_debug("hasRoms: No emu pak for '%s'", emu_name);
 		return 0;
 	}
 
@@ -84,7 +88,9 @@ int LauncherDir_hasRoms(const char* dir_name, const char* roms_path, const char*
 	char rom_path[LAUNCHER_DIR_MAX_PATH];
 	(void)snprintf(rom_path, sizeof(rom_path), "%s/%s", roms_path, dir_name);
 
-	return Launcher_hasNonHiddenFiles(rom_path);
+	int has_files = Launcher_hasNonHiddenFiles(rom_path);
+	LOG_debug("hasRoms: path='%s' hasFiles=%d", rom_path, has_files);
+	return has_files;
 }
 
 /**

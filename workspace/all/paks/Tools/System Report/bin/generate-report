@@ -1520,6 +1520,80 @@ fn_sdl_libraries() {
 		echo "| SDL_$mod | $sdl1_mod | $sdl2_mod |"
 	done
 
+	log_h2 "OpenGL ES / EGL Libraries"
+
+	# Search for GLES and EGL libraries
+	found_gl=0
+	echo "| Library | Path |"
+	echo "|---------|------|"
+
+	for searchdir in $SEARCH_PATHS; do
+		if [ -d "$searchdir" ]; then
+			for lib in "$searchdir"/libEGL*.so* "$searchdir"/libGLES*.so* "$searchdir"/libGL.so* "$searchdir"/libOpenGL*.so*; do
+				if [ -f "$lib" ] && [ ! -L "$lib" ]; then
+					found_gl=1
+					libname=$(basename "$lib")
+					echo "| \`$libname\` | \`$searchdir\` |"
+				fi
+			done 2>/dev/null
+		fi
+	done
+
+	if [ "$found_gl" = "0" ]; then
+		echo "| *No OpenGL/GLES libraries found* | - |"
+	fi
+
+	# Summarize GLES support
+	log_h3 "OpenGL ES Version Support"
+	echo "| API | Status |"
+	echo "|-----|--------|"
+
+	gles1_found="✗"
+	gles2_found="✗"
+	gles3_found="✗"
+	egl_found="✗"
+
+	for searchdir in $SEARCH_PATHS; do
+		if [ -d "$searchdir" ]; then
+			ls "$searchdir"/libGLESv1*.so* >/dev/null 2>&1 && gles1_found="✓"
+			ls "$searchdir"/libGLESv2*.so* >/dev/null 2>&1 && gles2_found="✓"
+			ls "$searchdir"/libGLESv3*.so* >/dev/null 2>&1 && gles3_found="✓"
+			ls "$searchdir"/libEGL*.so* >/dev/null 2>&1 && egl_found="✓"
+		fi
+	done 2>/dev/null
+
+	echo "| EGL | $egl_found |"
+	echo "| GLES 1.x | $gles1_found |"
+	echo "| GLES 2.0 | $gles2_found |"
+	echo "| GLES 3.x | $gles3_found |"
+
+	# Check for Mali-specific libraries (common on ARM SoCs)
+	mali_found=0
+	for searchdir in $SEARCH_PATHS; do
+		if [ -d "$searchdir" ]; then
+			if ls "$searchdir"/libmali*.so* >/dev/null 2>&1; then
+				mali_found=1
+				break
+			fi
+		fi
+	done 2>/dev/null
+
+	if [ "$mali_found" = "1" ]; then
+		log_h3 "Mali GPU Libraries"
+		echo "| Library | Path |"
+		echo "|---------|------|"
+		for searchdir in $SEARCH_PATHS; do
+			if [ -d "$searchdir" ]; then
+				for lib in "$searchdir"/libmali*.so*; do
+					if [ -f "$lib" ] && [ ! -L "$lib" ]; then
+						libname=$(basename "$lib")
+						echo "| \`$libname\` | \`$searchdir\` |"
+					fi
+				done 2>/dev/null
+			fi
+		done
+	fi
+
 	# Try pkg-config for detailed version info
 	log_h2 "pkg-config SDL Info"
 	if command -v pkg-config >/dev/null 2>&1; then
@@ -1575,6 +1649,89 @@ fn_arch_test() {
 			done
 		fi
 	done 2>/dev/null
+
+	log_h2 "C Library Detection"
+
+	# Detect glibc vs musl
+	libc_type="unknown"
+	libc_version=""
+
+	# Build search paths including multiarch directories (Debian/Ubuntu style)
+	LIBC_PATHS="/lib /lib64 /usr/lib /usr/lib64"
+	for arch_dir in /lib/*-linux-gnu* /usr/lib/*-linux-gnu*; do
+		[ -d "$arch_dir" ] && LIBC_PATHS="$LIBC_PATHS $arch_dir"
+	done 2>/dev/null
+
+	# Check for musl (look for ld-musl-* which is the musl dynamic linker)
+	musl_linker=""
+	for libdir in $LIBC_PATHS; do
+		found=$(find "$libdir" -maxdepth 1 -name 'ld-musl-*.so*' 2>/dev/null | head -1)
+		if [ -n "$found" ]; then
+			musl_linker="$found"
+			break
+		fi
+	done
+	if [ -n "$musl_linker" ]; then
+		libc_type="musl"
+		# musl embeds version in the linker itself
+		if [ -x "$musl_linker" ]; then
+			libc_version=$("$musl_linker" 2>&1 | grep -i "version" | head -1 || echo "")
+		fi
+		if [ -z "$libc_version" ] && command -v strings >/dev/null 2>&1; then
+			libc_version=$(strings "$musl_linker" 2>/dev/null | grep -i "^musl libc" | head -1 || echo "")
+		fi
+	fi
+
+	# Check for glibc (libc.so.6 is the standard glibc library)
+	if [ "$libc_type" = "unknown" ]; then
+		for libdir in $LIBC_PATHS; do
+			glibc_lib="$libdir/libc.so.6"
+			if [ -f "$glibc_lib" ]; then
+				libc_type="glibc"
+				# Try to get version from the library
+				if command -v strings >/dev/null 2>&1; then
+					libc_version=$(strings "$glibc_lib" 2>/dev/null | grep "GNU C Library" | head -1 || echo "")
+				fi
+				# Fallback: try ldd --version
+				if [ -z "$libc_version" ] && command -v ldd >/dev/null 2>&1; then
+					libc_version=$(ldd --version 2>&1 | head -1 || echo "")
+				fi
+				break
+			fi
+		done
+	fi
+
+	echo "| Property | Value |"
+	echo "|----------|-------|"
+	echo "| libc type | \`$libc_type\` |"
+	if [ -n "$libc_version" ]; then
+		echo "| libc version | \`$libc_version\` |"
+	else
+		echo "| libc version | *not detected* |"
+	fi
+	if [ -n "$musl_linker" ]; then
+		echo "| musl linker | \`$musl_linker\` |"
+	fi
+
+	# List actual libc files found
+	log_h3 "C Library Files"
+	found_libc=0
+	echo "| Library | Path |"
+	echo "|---------|------|"
+	for libdir in $LIBC_PATHS; do
+		if [ -d "$libdir" ]; then
+			for lib in "$libdir"/libc.so* "$libdir"/libc-*.so "$libdir"/ld-musl-*.so*; do
+				if [ -f "$lib" ] && [ ! -L "$lib" ]; then
+					found_libc=1
+					libname=$(basename "$lib")
+					echo "| \`$libname\` | \`$libdir\` |"
+				fi
+			done 2>/dev/null
+		fi
+	done
+	if [ "$found_libc" = "0" ]; then
+		echo "| *No libc files found* | - |"
+	fi
 
 	log_h2 "Architecture Detection (System Introspection)"
 

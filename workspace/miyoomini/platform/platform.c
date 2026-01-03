@@ -87,22 +87,22 @@ typedef struct {
 } VariantConfig;
 
 static const VariantConfig miyoomini_variants[] = {
-    {.variant = VARIANT_MINI_STANDARD,
+    {.variant = VARIANT_MIYOOMINI_VGA,
      .screen_width = 640,
      .screen_height = 480,
      .screen_diagonal_default = 2.8f,
      .hw_features = HW_FEATURE_NEON},
-    {.variant = VARIANT_MINI_PLUS,
+    {.variant = VARIANT_MIYOOMINI_VGA_PMIC,
      .screen_width = 640,
      .screen_height = 480,
      .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
-    {.variant = VARIANT_MINI_PLUS_560P,
+    {.variant = VARIANT_MIYOOMINI_560P_PMIC,
      .screen_width = 752,
      .screen_height = 560,
      .screen_diagonal_default = 3.5f,
      .hw_features = HW_FEATURE_NEON | HW_FEATURE_PMIC | HW_FEATURE_VOLUME_HW},
-    {.variant = VARIANT_MINI_STANDARD_560P,
+    {.variant = VARIANT_MIYOOMINI_560P,
      .screen_width = 752,
      .screen_height = 560,
      .screen_diagonal_default = 2.8f,
@@ -119,10 +119,10 @@ typedef struct {
 } DeviceVariantMap;
 
 static const DeviceVariantMap miyoomini_device_map[] = {
-    {0, 0, VARIANT_MINI_STANDARD, &miyoomini_devices[0]}, // Standard Mini (480p)
-    {0, 1, VARIANT_MINI_STANDARD_560P, &miyoomini_devices[4]}, // Standard Mini (560p)
-    {1, 0, VARIANT_MINI_PLUS, &miyoomini_devices[1]}, // Plus (480p)
-    {1, 1, VARIANT_MINI_PLUS_560P, &miyoomini_devices[2]}, // Plus (560p)
+    {0, 0, VARIANT_MIYOOMINI_VGA, &miyoomini_devices[0]}, // Standard Mini (480p)
+    {0, 1, VARIANT_MIYOOMINI_560P, &miyoomini_devices[4]}, // Standard Mini (560p)
+    {1, 0, VARIANT_MIYOOMINI_VGA_PMIC, &miyoomini_devices[1]}, // Plus (480p)
+    {1, 1, VARIANT_MIYOOMINI_560P_PMIC, &miyoomini_devices[2]}, // Plus (560p)
     {-1, -1, VARIANT_NONE, NULL} // Sentinel
 };
 
@@ -154,9 +154,10 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	// MY285 is a clamshell variant of the original Miyoo Mini (R16/SSD202D)
 	char* model = getenv("MY_MODEL");
 	if (exactMatch(model, "MY285")) {
-		// Flip uses standard Mini variant but different screen size
+		// Flip uses VGA variant but different screen size (3.5" vs 2.8")
 		v->device = &miyoomini_devices[3]; // Mini Flip
-		v->variant = VARIANT_MINI_STANDARD;
+		v->variant = VARIANT_MIYOOMINI_VGA;
+		v->variant_name = "vga";
 		const VariantConfig* config = getVariantConfig(v->variant);
 		if (config) {
 			v->screen_width = config->screen_width;
@@ -164,8 +165,9 @@ void PLAT_detectVariant(PlatformVariant* v) {
 			v->screen_diagonal = 3.5f; // Mini Flip has 3.5" screen (vs 2.8" Mini)
 			v->hw_features = config->hw_features;
 		}
-		LOG_info("Detected device: %s %s (%dx%d, %.1f\")\n", v->device->manufacturer,
-		         v->device->display_name, v->screen_width, v->screen_height, v->screen_diagonal);
+		LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
+		         v->device->display_name, v->variant_name, v->screen_width, v->screen_height,
+		         v->screen_diagonal);
 		return;
 	}
 
@@ -205,8 +207,16 @@ void PLAT_detectVariant(PlatformVariant* v) {
 		v->hw_features = config->hw_features;
 	}
 
-	LOG_info("Detected device: %s %s (%dx%d, %.1f\")\n", v->device->manufacturer,
-	         v->device->display_name, v->screen_width, v->screen_height, v->screen_diagonal);
+	// Set variant name for LESSUI_VARIANT export
+	if (v->variant == VARIANT_MIYOOMINI_560P || v->variant == VARIANT_MIYOOMINI_560P_PMIC) {
+		v->variant_name = "560p";
+	} else {
+		v->variant_name = "vga";
+	}
+
+	LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
+	         v->device->display_name, v->variant_name, v->screen_width, v->screen_height,
+	         v->screen_diagonal);
 }
 
 // SDL surface extension: stores physical address for MI_GFX

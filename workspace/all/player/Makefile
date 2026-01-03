@@ -25,10 +25,12 @@ INCDIR = -I. -I./libretro-common/include/ -I../common/ -I../launcher/ -isystem .
 SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_parser.c \
          ../common/api.c ../common/ui_layout.c ../common/log.c ../common/pad.c \
          ../common/gfx_text.c ../launcher/launcher_file_utils.c ../common/platform_variant.c \
+         ../common/paths.c \
          player_archive.c player_memory.c player_state.c \
          player_paths.c player_cpu.c player_input.c player_mappings.c \
          player_video_convert.c player_rotation.c player_config.c player_context.c \
          player_menu.c player_env.c player_game.c player_scaler.c player_core.c \
+         ../common/gl_video.c \
          frame_pacer.c \
          ../../$(PLATFORM)/platform/platform.c
 
@@ -40,6 +42,12 @@ ifeq ($(SDL),SDL2)
 SOURCE += ../common/render_sdl2.c ../common/effect_utils.c
 else
 SOURCE += ../common/effect_surface.c
+endif
+
+# Add libudev support for dynamic input device discovery (retroid, rgb30)
+ifeq ($(HAS_LIBUDEV),1)
+SOURCE += ../common/udev_input.c
+LIBS += -ludev
 endif
 HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../launcher/*.h) $(wildcard ../../$(PLATFORM)/platform/*.h)
 

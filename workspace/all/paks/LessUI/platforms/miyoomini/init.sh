@@ -1,18 +1,8 @@
 #!/bin/sh
 # miyoomini initialization
 
-# CPU governor
+# CPU governor (speed controlled by frontend)
 echo userspace >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-
-# CPU speeds for player
-export CPU_SPEED_MENU=504000
-export CPU_SPEED_GAME=1296000
-export CPU_SPEED_PERF=1488000
-
-cpu_restore() {
-	overclock.elf $CPU_SPEED_PERF
-}
-cpu_restore
 
 # Detect Mini Plus
 if [ -f /customer/app/axp_test ]; then
@@ -25,6 +15,26 @@ export IS_PLUS
 # Detect model
 MY_MODEL=$(strings -n 5 /customer/app/MainUI | grep MY)
 export MY_MODEL
+
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="miyoomini"
+
+# 560p detection
+if [ -f /sys/class/graphics/fb0/modes ] && grep -q "752x560" /sys/class/graphics/fb0/modes; then
+	export LESSUI_VARIANT="560p"
+	if $IS_PLUS; then
+		export LESSUI_DEVICE="miyoominiplus560p"
+	else
+		export LESSUI_DEVICE="miyoomini560p"
+	fi
+else
+	export LESSUI_VARIANT="vga"
+	if $IS_PLUS; then
+		export LESSUI_DEVICE="miyoominiplus"
+	else
+		export LESSUI_DEVICE="miyoomini"
+	fi
+fi
 
 # Detect firmware version
 MIYOO_VERSION=$(/etc/fw_printenv miyoo_version)

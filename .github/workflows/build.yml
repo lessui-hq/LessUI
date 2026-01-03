@@ -8,8 +8,12 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build ${{ matrix.platform }}
     runs-on: sprinters:aws:ubuntu-24.04-arm:c7gd.xlarge
+    strategy:
+      matrix:
+        platform: [miyoomini, tg5040]
+      fail-fast: false
 
     steps:
       - name: Checkout code
@@ -28,8 +32,5 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Build miyoomini (arm64 native)
-        run: make PLATFORM=miyoomini build
-
-      - name: Build trimuismart (amd64 emulation verification)
-        run: make PLATFORM=trimuismart build
+      - name: Build ${{ matrix.platform }}
+        run: make PLATFORM=${{ matrix.platform }} build

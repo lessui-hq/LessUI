@@ -115,9 +115,10 @@ typedef struct PlayerButtonMapping PlayerButtonMapping;
  */
 struct Config {
 	char* system_cfg; // system.cfg based on system limitations
-	char* default_cfg; // pak.cfg based on platform limitations
+	char* default_cfg; // pak.cfg based on platform limitations (cascaded)
 	char* user_cfg; // player.cfg or game.cfg
-	char* device_tag;
+	const char* device_tag; // LESSUI_DEVICE - specific hardware model
+	const char* variant_tag; // LESSUI_VARIANT - screen resolution/aspect group
 	PlayerOptionList frontend; // Frontend settings
 	PlayerOptionList core; // Core-specific options
 	PlayerButtonMapping* controls; // Button mappings

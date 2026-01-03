@@ -10,33 +10,19 @@ endif
 
 ###########################################################
 
-REQUIRES_COMMANDER = other/DinguxCommander
-REQUIRES_SDLCOMPAT = other/sdl12-compat
+# LessOS provides SDL2 natively - no sdl12-compat needed
 
 # keymon.elf is now built in workspace/all/utils
+# LessOS doesn't need DinguxCommander (file manager for stock firmware)
 all: readmes show
 
 .PHONY: show
 show:
 	@$(MAKE) -C show
 
-early: $(REQUIRES_COMMANDER) $(REQUIRES_SDLCOMPAT)/build
-	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s
-	@cd $(REQUIRES_SDLCOMPAT) && cmake --build build >/dev/null
+# No early dependencies for rgb30
+early:
 
 clean:
-	@cd $(REQUIRES_COMMANDER) && $(MAKE) -s clean
-	@cd $(REQUIRES_SDLCOMPAT) && rm -rf build
-
-###########################################################
-
-$(REQUIRES_COMMANDER):
-	git clone --depth 1 --branch minui-rgb30 https://github.com/shauninman/DinguxCommander.git $(REQUIRES_COMMANDER)
-
-$(REQUIRES_SDLCOMPAT):
-	git clone --depth 1 --branch minui-rgb30 https://github.com/shauninman/sdl12-compat.git $(REQUIRES_SDLCOMPAT)
-
-$(REQUIRES_SDLCOMPAT)/build: $(REQUIRES_SDLCOMPAT)
-	cd $(REQUIRES_SDLCOMPAT) && cmake --toolchain ./toolchain.cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .
 
 include ../all/readmes/Makefile

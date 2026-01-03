@@ -57,8 +57,10 @@
 #include "api.h"
 #include "defines.h"
 #include "frame_pacer.h"
+#include "gl_video.h"
 #include "launcher_file_utils.h"
 #include "libretro.h"
+#include "paths.h"
 #include "player_archive.h"
 #include "player_config.h"
 #include "player_context.h"
@@ -420,8 +422,6 @@ void SRAM_write(void) {
 	if (result != PLAYER_MEM_OK && result != PLAYER_MEM_NO_SUPPORT) {
 		LOG_error("Error writing SRAM: %s", PlayerMemory_resultString(result));
 	}
-
-	sync();
 }
 
 ///////////////////////////////////////
@@ -467,8 +467,6 @@ void RTC_write(void) {
 	if (result != PLAYER_MEM_OK && result != PLAYER_MEM_NO_SUPPORT) {
 		LOG_error("Error writing RTC: %s", PlayerMemory_resultString(result));
 	}
-
-	sync();
 }
 
 ///////////////////////////////////////
@@ -547,8 +545,6 @@ void State_write(void) {
 		LOG_error("Error writing state: %s (%s)", filename, PlayerState_resultString(result));
 	}
 
-	sync();
-
 	fast_forward = was_ff;
 }
 
@@ -624,6 +620,7 @@ static struct Config config =
         .default_cfg = NULL,
         .user_cfg = NULL,
         .device_tag = NULL,
+        .variant_tag = NULL,
         .frontend =
             {
                 // (PlayerOptionList)
@@ -1438,12 +1435,17 @@ static void Config_syncFrontend(char* key, int value) {
 		else
 			GFX_setSharpness(screen_sharpness);
 
-		renderer.dst_p = 0;
+		// Only force scaler recalc for software rendering
+		// HW rendering handles scaling directly in GLVideo_present()
+		if (!GLVideo_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_SCALING;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_EFFECT].key)) {
 		screen_effect = value;
 		GFX_setEffect(value);
-		renderer.dst_p = 0;
+		// Effects only apply to software rendering
+		if (!GLVideo_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_EFFECT;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_SHARPNESS].key)) {
 		screen_sharpness = value;
@@ -1454,7 +1456,9 @@ static void Config_syncFrontend(char* key, int value) {
 		else
 			GFX_setSharpness(screen_sharpness);
 
-		renderer.dst_p = 0;
+		// Only force scaler recalc for software rendering
+		if (!GLVideo_isEnabled())
+			renderer.dst_p = 0;
 		i = FE_OPT_SHARPNESS;
 	} else if (exactMatch(key, config.frontend.options[FE_OPT_OVERCLOCK].key)) {
 		overclock = value;
@@ -1677,11 +1681,54 @@ static void Config_readControlsString(char* cfg) {
 		mapping->modifier = mod;
 	}
 }
+/**
+ * Appends a config file's contents to an existing string buffer.
+ * Used for building cascaded config (base + variant + device).
+ *
+ * @param buffer Existing buffer (will be reallocated)
+ * @param path Path to config file to append
+ * @return New buffer with appended content (caller owns), or original buffer if file missing
+ */
+static char* Config_appendFile(char* buffer, const char* path) {
+	if (!exists(path))
+		return buffer;
+
+	char* content = allocFile(path);
+	if (!content)
+		return buffer;
+
+	LOG_debug("Config cascade: appending %s", path);
+
+	if (!buffer) {
+		return content;
+	}
+
+	size_t old_len = strlen(buffer);
+	size_t new_len = strlen(content);
+	char* combined = malloc(old_len + new_len + 2); // +2 for newline and null
+	if (!combined) {
+		free(content);
+		return buffer;
+	}
+
+	memcpy(combined, buffer, old_len);
+	combined[old_len] = '\n';
+	memcpy(combined + old_len + 1, content, new_len + 1);
+
+	free(buffer);
+	free(content);
+	return combined;
+}
+
 static void Config_load(void) {
 	LOG_info("Config_load");
 
-	config.device_tag = getenv("DEVICE");
-	LOG_debug("config.device_tag %s", config.device_tag);
+	// Read LESSUI_* environment variables (set by init.sh)
+	config.device_tag = getenv("LESSUI_DEVICE");
+	config.variant_tag = getenv("LESSUI_VARIANT");
+	LOG_debug("config.device_tag=%s config.variant_tag=%s",
+	          config.device_tag ? config.device_tag : "(null)",
+	          config.variant_tag ? config.variant_tag : "(null)");
 
 	// update for crop overscan support
 	PlayerOption* scaling_option = &config.frontend.options[FE_OPT_SCALING];
@@ -1691,12 +1738,13 @@ static void Config_load(void) {
 		player_scaling_labels[3] = NULL;
 	}
 
-	char* system_path = SYSTEM_PATH "/system.cfg";
+	char system_path[MAX_PATH];
+	(void)snprintf(system_path, sizeof(system_path), "%s/system.cfg", g_system_path);
 
 	char device_system_path[MAX_PATH] = {0};
 	if (config.device_tag)
-		(void)snprintf(device_system_path, sizeof(device_system_path), SYSTEM_PATH "/system-%s.cfg",
-		               config.device_tag);
+		(void)snprintf(device_system_path, sizeof(device_system_path), "%s/system-%s.cfg",
+		               g_system_path, config.device_tag);
 
 	if (config.device_tag && exists(device_system_path)) {
 		LOG_debug("Using device_system_path: %s", device_system_path);
@@ -1708,27 +1756,40 @@ static void Config_load(void) {
 
 	// LOG_info("config.system_cfg: %s", config.system_cfg);
 
-	char default_path[MAX_PATH];
-	getEmuPath((char*)core.tag, default_path);
-	char* tmp = strrchr(default_path, '/');
-	safe_strcpy(tmp, "/default.cfg", MAX_PATH - (tmp - default_path));
+	// Build base path for config files (e.g., /path/to/pak/)
+	char emu_path[MAX_PATH];
+	getEmuPath((char*)core.tag, emu_path);
+	char* path_end = strrchr(emu_path, '/');
+	if (path_end)
+		*path_end = '\0';
 
-	char device_default_path[MAX_PATH] = {0};
-	if (config.device_tag) {
-		getEmuPath((char*)core.tag, device_default_path);
-		tmp = strrchr(device_default_path, '/');
-		char filename[64];
-		(void)snprintf(filename, sizeof(filename), "/default-%s.cfg", config.device_tag);
-		safe_strcpy(tmp, filename, MAX_PATH - (tmp - device_default_path));
+	// Config cascade: default.cfg → variant-{variant}.cfg → device-{device}.cfg
+	// Each layer can override settings from previous layers
+
+	// 1. Base config (always loaded if exists)
+	char default_path[MAX_PATH];
+	(void)snprintf(default_path, sizeof(default_path), "%s/default.cfg", emu_path);
+	config.default_cfg = NULL;
+	if (exists(default_path)) {
+		config.default_cfg = allocFile(default_path);
+		LOG_debug("Config cascade: loaded base %s", default_path);
 	}
 
-	if (config.device_tag && exists(device_default_path)) {
-		LOG_debug("Using device_default_path: %s", device_default_path);
-		config.default_cfg = allocFile(device_default_path);
-	} else if (exists(default_path))
-		config.default_cfg = allocFile(default_path);
-	else
-		config.default_cfg = NULL;
+	// 2. Variant config (e.g., variant-vga.cfg, variant-square.cfg)
+	if (config.variant_tag) {
+		char variant_path[MAX_PATH];
+		(void)snprintf(variant_path, sizeof(variant_path), "%s/variant-%s.cfg", emu_path,
+		               config.variant_tag);
+		config.default_cfg = Config_appendFile(config.default_cfg, variant_path);
+	}
+
+	// 3. Device config (e.g., device-rg28xx.cfg, device-brick.cfg)
+	if (config.device_tag) {
+		char device_path[MAX_PATH];
+		(void)snprintf(device_path, sizeof(device_path), "%s/device-%s.cfg", emu_path,
+		               config.device_tag);
+		config.default_cfg = Config_appendFile(config.default_cfg, device_path);
+	}
 
 	// LOG_info("config.default_cfg: %s", config.default_cfg);
 
@@ -1814,7 +1875,6 @@ static void Config_write(int override) {
 	}
 
 	(void)fclose(file); // Config file opened for writing
-	sync();
 }
 static void Config_restore(void) {
 	char path[MAX_PATH];
@@ -2443,12 +2503,12 @@ static void retro_log_callback(enum retro_log_level level, const char* fmt, ...)
 	va_end(args);
 
 	// Map libretro levels to our levels and log
+	// Note: Core DEBUG/INFO logs are demoted to LOG_debug to avoid huge log files
+	// in release builds. Only WARN/ERROR from cores are shown in release logs.
 	switch (level) {
 	case RETRO_LOG_DEBUG:
-		LOG_debug("%s", msg_buffer);
-		break;
 	case RETRO_LOG_INFO:
-		LOG_info("%s", msg_buffer);
+		LOG_debug("%s", msg_buffer);
 		break;
 	case RETRO_LOG_WARN:
 		LOG_warn("%s", msg_buffer);
@@ -2623,12 +2683,37 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		break;
 	}
 	case RETRO_ENVIRONMENT_SET_HW_RENDER: { /* 14 */
-		const struct retro_hw_render_callback* cb = (const struct retro_hw_render_callback*)data;
-		if (cb) {
-			LOG_info("Core requested HW render (type=%d, v%d.%d) - not supported, using software",
-			         cb->context_type, cb->version_major, cb->version_minor);
+		LOG_debug("RETRO_ENVIRONMENT_SET_HW_RENDER called");
+		struct retro_hw_render_callback* cb = (struct retro_hw_render_callback*)data;
+		if (!cb) {
+			LOG_error("SET_HW_RENDER: NULL callback");
+			return false;
 		}
-		return false; // Tell core we don't support hardware rendering
+
+		LOG_info("Core requested HW render (type=%d, v%d.%d, depth=%d, stencil=%d)",
+		         cb->context_type, cb->version_major, cb->version_minor, cb->depth, cb->stencil);
+
+		// Check if platform supports this context type
+		if (!GLVideo_isContextSupported(cb->context_type)) {
+			LOG_info("Core requested HW render - not supported on this platform, using software");
+			return false;
+		}
+		LOG_debug("SET_HW_RENDER: context type supported");
+
+		// Initialize hardware rendering with reasonable default size
+		// FBO will be resized when we get actual geometry from core
+		LOG_debug("SET_HW_RENDER: calling GLVideo_init");
+		if (!GLVideo_init(cb, 1024, 1024)) {
+			LOG_error("Failed to initialize HW render - falling back to software");
+			return false;
+		}
+
+		// Log actual context version created (may differ from requested due to fallback)
+		unsigned actual_major = 0, actual_minor = 0;
+		GLVideo_getContextVersion(&actual_major, &actual_minor);
+		LOG_info("HW render initialized (GLES %u.%u) - core will use GPU rendering", actual_major,
+		         actual_minor);
+		return true;
 	}
 
 	// TODO: this is called whether using variables or options
@@ -2789,9 +2874,32 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 	}
 	case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: { /* 56 */
 		unsigned* out = (unsigned*)data;
-		if (out)
-			*out = RETRO_HW_CONTEXT_NONE; // We prefer software rendering
+		if (out) {
+			if (HAS_OPENGLES) {
+				// Report GLES2 as our preferred/baseline context.
+				// We also support GLES3 - cores can request it via SET_HW_RENDER
+				// and we'll provide it if available, with fallback to lower versions.
+				*out = RETRO_HW_CONTEXT_OPENGLES2;
+				LOG_debug("GET_PREFERRED_HW_RENDER: OPENGLES2 (also support GLES3 with fallback)");
+			} else {
+				*out = RETRO_HW_CONTEXT_NONE; // Software rendering only
+			}
+		}
 		break;
+	}
+	case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: { /* (44 | RETRO_ENVIRONMENT_EXPERIMENTAL) */
+		// Core requests shared GL context between core and frontend.
+		// We acknowledge the request but don't implement shared contexts -
+		// our simple frontend doesn't need them.
+		LOG_debug("SET_HW_SHARED_CONTEXT: acknowledged (not implemented)");
+		break;
+	}
+	case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE: { /* (41 | RETRO_ENVIRONMENT_EXPERIMENTAL) */
+		// Core requests extended render interface (Vulkan, D3D9/10/11/12, PS2 GSKit).
+		// OpenGL/GLES has no interface defined in libretro spec - RetroArch's gl2/gl3
+		// drivers also return NULL for this. Cores use the basic hw_render callback instead.
+		LOG_debug("GET_HW_RENDER_INTERFACE: not available (no GL/GLES interface in libretro spec)");
+		return false;
 	}
 	case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: { /* 57 */
 		unsigned* out = (unsigned*)data;
@@ -3292,8 +3400,84 @@ static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int strid
 	memset(row - 1, 0, (size_t)(w + 2) * 2);
 }
 
+/**
+ * Render bitmap text to an RGBA8888 buffer with transparency.
+ *
+ * Similar to blitBitmapText but for RGBA format used by HW rendering HUD overlay.
+ * White text (0xFFFFFFFF) with black outline (0xFF000000), transparent background.
+ *
+ * @param text Text to render
+ * @param ox X position (negative = right-align from edge)
+ * @param oy Y position (negative = bottom-align from edge)
+ * @param data RGBA8888 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width
+ * @param height Total buffer height
+ */
+static void blitBitmapTextRGBA(char* text, int ox, int oy, uint32_t* data, int stride, int width,
+                               int height) {
+	int len = strlen(text);
+	int w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int h = CHAR_HEIGHT;
+
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need 1px margin for outline
+	if (ox < 1 || oy < 1 || ox + w + 1 > width || oy + h + 1 > height)
+		return;
+
+	// RGBA colors: 0xAABBGGRR format (little-endian RGBA8888)
+	const uint32_t RGBA_WHITE = 0xFFFFFFFF; // Fully opaque white
+	const uint32_t RGBA_BLACK = 0xFF000000; // Fully opaque black
+
+	data += oy * stride + ox;
+
+	// Draw black outline (1px around text)
+	// Top outline row
+	uint32_t* row = data - stride;
+	for (int x = -1; x <= w; x++) {
+		row[x] = RGBA_BLACK;
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < CHAR_HEIGHT; y++) {
+		row = data + (ptrdiff_t)y * stride;
+		row[-1] = RGBA_BLACK; // Left outline
+		int col = 0;
+		for (int i = 0; i < len; i++) {
+			const char* c = bitmap_font[(unsigned char)text[i]];
+			if (!c)
+				c = bitmap_font[' ']; // Fallback for unknown chars
+			for (int x = 0; x < CHAR_WIDTH; x++) {
+				int j = y * CHAR_WIDTH + x;
+				if (c[j] == '1') {
+					row[col] = RGBA_WHITE;
+				} else {
+					row[col] = RGBA_BLACK; // Background within text area is black for outline
+				}
+				col++;
+			}
+			// Letter spacing
+			for (int s = 0; s < LETTERSPACING && col < w; s++) {
+				row[col] = RGBA_BLACK;
+				col++;
+			}
+		}
+		row[w] = RGBA_BLACK; // Right outline
+	}
+
+	// Bottom outline row
+	row = data + (ptrdiff_t)CHAR_HEIGHT * stride;
+	for (int x = -1; x <= w; x++) {
+		row[x] = RGBA_BLACK;
+	}
+}
+
 ///////////////////////////////////////
-// Video Processing
+// Performance Counters (needed by HW HUD before video processing section)
 ///////////////////////////////////////
 
 // Performance counters for debug overlay and monitoring
@@ -3304,6 +3488,136 @@ static double fps_double = 0;
 static double cpu_double = 0;
 static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
+
+///////////////////////////////////////
+// HW Debug HUD
+///////////////////////////////////////
+
+// HUD buffer for HW rendering (allocated once, reused)
+static uint32_t* hw_hud_buffer = NULL;
+static int hw_hud_width = 0;
+static int hw_hud_height = 0;
+
+/**
+ * Render debug HUD overlay for hardware-rendered frames.
+ *
+ * Creates an RGBA surface with the same debug info as the software path
+ * (FPS, CPU usage, resolution, etc.) and passes it to the HW render module
+ * for compositing over the game frame.
+ *
+ * @param src_w Source (game) width in pixels
+ * @param src_h Source (game) height in pixels
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ */
+static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
+	// Allocate or resize HUD buffer if needed
+	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
+		free(hw_hud_buffer);
+		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+		if (!hw_hud_buffer) {
+			LOG_error("Failed to allocate HW HUD buffer");
+			return;
+		}
+		hw_hud_width = screen_w;
+		hw_hud_height = screen_h;
+	}
+
+	// Clear to fully transparent
+	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+
+	int x = 2;
+	int y = 2;
+	char debug_text[128];
+
+	// Calculate scale factor for HW rendering (approximate)
+	int scale = 1;
+	if (src_w > 0 && src_h > 0) {
+		int scale_x = screen_w / src_w;
+		int scale_y = screen_h / src_h;
+		scale = (scale_x < scale_y) ? scale_x : scale_y;
+		if (scale < 1)
+			scale = 1;
+	}
+
+	// Get buffer fill (sampled every 15 frames for readability)
+	static unsigned fill_display = 0;
+	static int sample_count = 0;
+	if (++sample_count >= 15) {
+		sample_count = 0;
+		fill_display = SND_getBufferOccupancy();
+	}
+
+	// Top-left: FPS and system CPU %
+#ifdef SYNC_MODE_AUDIOCLOCK
+	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double, (int)use_double);
+#else
+	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double, (int)use_double);
+#endif
+	blitBitmapTextRGBA(debug_text, x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Top-right: Source resolution and scale factor
+	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", src_w, src_h, scale);
+	blitBitmapTextRGBA(debug_text, -x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Bottom-left: CPU info + buffer fill
+	if (overclock == 3) {
+		// Auto CPU mode: show frequency/level, utilization, and buffer fill
+		pthread_mutex_lock(&auto_cpu_mutex);
+		int current_idx = auto_cpu_state.current_index;
+		int level = auto_cpu_state.current_level;
+		pthread_mutex_unlock(&auto_cpu_mutex);
+
+		// Calculate current utilization from most recent frame times
+		unsigned util = 0;
+		int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
+		                  ? auto_cpu_state.frame_time_index
+		                  : auto_cpu_config.window_frames;
+		if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
+			uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
+			util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
+			if (util > 200)
+				util = 200;
+		}
+
+		if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		    current_idx < auto_cpu_state.freq_count) {
+			// Granular mode: show frequency in MHz
+			int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
+			(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
+			               fill_display);
+		} else {
+			// Fallback mode: show level
+			(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
+			               fill_display);
+		}
+	} else {
+		// Manual mode: show level and buffer fill
+		(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
+	}
+	blitBitmapTextRGBA(debug_text, x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Bottom-right: Output resolution
+	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", screen_w, screen_h);
+	blitBitmapTextRGBA(debug_text, -x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+
+	// Pass HUD to HW renderer for compositing
+	GLVideo_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
+}
+
+/**
+ * Clean up HW HUD resources.
+ */
+static void cleanupHWDebugHUD(void) {
+	free(hw_hud_buffer);
+	hw_hud_buffer = NULL;
+	hw_hud_width = 0;
+	hw_hud_height = 0;
+}
+
+///////////////////////////////////////
+// Video Processing
+///////////////////////////////////////
 
 #ifdef USES_SWSCALER
 static int fit = 1; // Use software scaler (fit to screen)
@@ -3623,6 +3937,32 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
  * @note This is a libretro callback, invoked by core after rendering a frame
  */
 void video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch) {
+	// Handle hardware-rendered frames
+	// NOLINTNEXTLINE(performance-no-int-to-ptr) - libretro standard: RETRO_HW_FRAME_BUFFER_VALID is ((void*)-1)
+	if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+		LOG_debug("video_refresh: HW frame (RETRO_HW_FRAME_BUFFER_VALID), enabled=%d",
+		          GLVideo_isEnabled());
+		if (GLVideo_isEnabled()) {
+			// Count frames for FPS calculation
+			fps_ticks += 1;
+
+			// Render game frame to backbuffer with scaling and filtering
+			GLVideo_present(width, height, video_state.rotation, screen_scaling, screen_sharpness,
+			                core.aspect_ratio, renderer.visual_scale);
+
+			// Render debug HUD overlay if enabled
+			if (show_debug) {
+				renderHWDebugHUD((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			}
+
+			// Swap buffers to display the frame
+			GLVideo_swapBuffers();
+
+			frame_ready_for_flip = 1;
+		}
+		return;
+	}
+
 	if (!data)
 		return;
 
@@ -3702,11 +4042,14 @@ void Core_getName(char* in_name, char* out_name) {
  * @param bios_dir Output buffer for selected BIOS directory path
  */
 void Player_selectBiosPath(const char* tag, char* bios_dir) {
+	char bios_root[MAX_PATH];
+	(void)snprintf(bios_root, sizeof(bios_root), "%s/Bios", g_sdcard_path);
+
 	char tag_bios_dir[MAX_PATH];
-	PlayerPaths_getTagBios(SDCARD_PATH "/Bios", tag, tag_bios_dir);
+	PlayerPaths_getTagBios(bios_root, tag, tag_bios_dir);
 
 	int has_files = Launcher_hasNonHiddenFiles(tag_bios_dir);
-	PlayerPaths_chooseBios(SDCARD_PATH "/Bios", tag, bios_dir, has_files);
+	PlayerPaths_chooseBios(bios_root, tag, bios_dir, has_files);
 
 	if (has_files) {
 		LOG_info("Using tag-specific BIOS directory: %s", bios_dir);
@@ -3786,11 +4129,11 @@ void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("core: %s version: %s tag: %s (valid_extensions: %s need_fullpath: %i)", core.name,
 	         core.version, core.tag, info.valid_extensions, info.need_fullpath);
 
-	(void)snprintf((char*)core.config_dir, sizeof(core.config_dir), USERDATA_PATH "/%s-%s",
+	(void)snprintf((char*)core.config_dir, sizeof(core.config_dir), "%s/%s-%s", g_userdata_path,
 	               core.tag, core.name);
-	(void)snprintf((char*)core.states_dir, sizeof(core.states_dir), SHARED_USERDATA_PATH "/%s-%s",
-	               core.tag, core.name);
-	(void)snprintf((char*)core.saves_dir, sizeof(core.saves_dir), SDCARD_PATH "/Saves/%s",
+	(void)snprintf((char*)core.states_dir, sizeof(core.states_dir), "%s/%s-%s",
+	               g_shared_userdata_path, core.tag, core.name);
+	(void)snprintf((char*)core.saves_dir, sizeof(core.saves_dir), "%s/Saves/%s", g_sdcard_path,
 	               core.tag);
 	Player_selectBiosPath(core.tag, (char*)core.bios_dir);
 
@@ -3893,18 +4236,22 @@ bool Core_load(void) {
 	         av_info.geometry.base_width, av_info.geometry.base_height, av_info.geometry.max_width,
 	         av_info.geometry.max_height, av_info.geometry.aspect_ratio, av_info.timing.fps,
 	         av_info.timing.sample_rate);
+
 	return true;
 }
 void Core_reset(void) {
 	core.reset();
 }
-void Core_unload(void) {
-	SND_quit();
-}
 void Core_quit(void) {
 	if (core.initialized) {
 		SRAM_write();
 		RTC_write();
+		sync();
+
+		// Notify core that GL context is going away (calls context_destroy)
+		// but keep GL context alive for core's dlclose() destructors
+		GLVideo_prepareShutdown();
+
 		core.unload_game();
 		core.deinit();
 		core.initialized = 0;
@@ -3919,6 +4266,9 @@ void Core_close(void) {
 
 	// Free rotation buffer
 	PlayerRotation_freeBuffer();
+
+	// Free HW HUD buffer
+	cleanupHWDebugHUD();
 
 	// Reset pixel format to default for next core
 	pixel_format = RETRO_PIXEL_FORMAT_0RGB1555;
@@ -4406,11 +4756,13 @@ static int OptionSaveChanges_onConfirm(MenuList* list, int i) {
 	switch (i) {
 	case 0: {
 		Config_write(CONFIG_WRITE_ALL);
+		sync();
 		message = "Saved for console.";
 		break;
 	}
 	case 1: {
 		Config_write(CONFIG_WRITE_GAME);
+		sync();
 		message = "Saved for game.";
 		break;
 	}
@@ -5358,6 +5710,9 @@ int main(int argc, char* argv[]) {
 	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
 	log_open(NULL);
 
+	// Initialize runtime paths (reads LESSOS_STORAGE from environment)
+	Paths_init();
+
 	LOG_info("Player");
 
 	// Initialize context with pointers to globals
@@ -5508,6 +5863,10 @@ int main(int argc, char* argv[]) {
 		goto finish;
 	}
 
+	// Call context_reset AFTER load_game returns (per libretro spec)
+	// This signals to HW cores that they can now create GL resources
+	GLVideo_contextReset();
+
 	LOG_debug("Input_init");
 	Input_init(NULL);
 
@@ -5536,11 +5895,14 @@ int main(int argc, char* argv[]) {
 	Menu_quit();
 
 finish:
+	if (screen) {
+		GFX_clear(screen);
+		GFX_present(NULL);
+	}
 
 	QuitSettings();
 
 	Game_close();
-	Core_unload();
 
 	Core_quit();
 	Core_close();
@@ -5556,7 +5918,7 @@ finish:
 	PAD_quit();
 	GFX_quit();
 
-	PlayerVideoConvert_freeBuffer();
+	sync();
 
 	// Close log file (flushes and syncs to disk)
 	log_close();

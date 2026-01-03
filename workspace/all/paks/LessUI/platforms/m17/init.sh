@@ -1,6 +1,11 @@
 #!/bin/sh
 # m17 initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="m17"
+export LESSUI_VARIANT="wide"
+export LESSUI_DEVICE="m17"
+
 # Extra paths (appended so system paths have priority)
 export PATH="$PATH:/usr/bin"
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib"

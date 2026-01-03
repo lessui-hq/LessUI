@@ -1,22 +1,15 @@
 #!/bin/sh
-# rgb30 initialization
+# RGB30 platform initialization (LessOS)
+# Device: PowKiddy RGB30 (Rockchip RK3566)
+# OS: LessOS (ROCKNIX-based)
 
-# CPU setup
-echo userspace >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
-CPU_PATH=/sys/devices/system/cpu/cpufreq/policy0/scaling_setspeed
-CPU_SPEED_PERF=1992000
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="rgb30"
+export LESSUI_VARIANT="square"
+export LESSUI_DEVICE="rgb30"
 
-cpu_restore() {
-	echo $CPU_SPEED_PERF >$CPU_PATH
-}
-cpu_restore
-
-# Clean up JELOS filesystem check litter
-rm -f "$SDCARD_PATH"/FSCK*.REC
-
-# SDL environment for sdl12-compat
-export SDL_VIDEODRIVER=kmsdrm
-export SDL_AUDIODRIVER=alsa
+# CPU governor (speed controlled by frontend)
+echo userspace >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null
 
 # Start keymon
 LOG_FILE="$LOGS_PATH/keymon.log" keymon.elf &

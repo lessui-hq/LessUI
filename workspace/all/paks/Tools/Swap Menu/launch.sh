@@ -9,4 +9,4 @@ if ! shui message "Swap Menu and Select buttons?" \
 	exit 0
 fi
 
-bash ./apply.sh >./log.txt 2>&1
+./apply.sh

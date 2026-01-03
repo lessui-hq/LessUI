@@ -1,19 +1,22 @@
 /**
- * platform.c - Powkiddy RGB30 platform implementation
+ * platform.c - PowKiddy RGB30 platform implementation
  *
  * REFACTORED VERSION - Uses shared render_sdl2 backend
  *
- * Platform-specific code for the Powkiddy RGB30 handheld device.
+ * Platform-specific code for PowKiddy RGB30 handheld.
+ * Device: PowKiddy RGB30 (Rockchip RK3566, Cortex-A55)
+ * OS: LessOS (ROCKNIX-based)
+ *
  * Key features:
+ * - 720x720 square display
  * - Dual analog sticks with swapped right stick axes (X/Y reversed)
  * - WiFi support with status monitoring
  * - Grid and line visual effects for retro aesthetics
- * - Rotation support for display output
- * - Dynamic device model detection from device tree
+ * - HDMI output with rotation support
+ * - Uses rocknix-singleadc-joypad kernel driver
  * - Overscan support (PLAT_supportsOverscan returns 1)
  *
- * The RGB30 uses the Rockchip RK3566 SoC with 720x720 display.
- * Input events are read directly from /dev/input/event* devices.
+ * Input is read directly from /dev/input/event* devices via evdev.
  */
 
 #include <linux/fb.h>
@@ -33,8 +36,10 @@
 #include "platform.h"
 #include "utils.h"
 
+#include "gl_video.h"
 #include "render_sdl2.h"
 #include "scaler.h"
+#include "udev_input.h"
 
 ///////////////////////////////
 // Video - Using shared SDL2 backend
@@ -80,11 +85,13 @@ void PLAT_setSharpness(int sharpness) {
 }
 
 void PLAT_setEffect(int effect) {
-	SDL2_setEffect(&vid_ctx, effect);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffect(effect);
 }
 
 void PLAT_setEffectColor(int color) {
-	SDL2_setEffectColor(&vid_ctx, color);
+	// Only GL path is used on GLES platforms (SDL2 effect state is unused)
+	GLVideo_setEffectColor(color);
 }
 
 void PLAT_vsync(int remaining) {
@@ -97,6 +104,14 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 
 void PLAT_present(GFX_Renderer* renderer) {
 	SDL2_present(&vid_ctx, renderer);
+}
+
+SDL_Window* PLAT_getWindow(void) {
+	return SDL2_getWindow(&vid_ctx);
+}
+
+int PLAT_getRotation(void) {
+	return SDL2_getRotation(&vid_ctx);
 }
 
 int PLAT_supportsOverscan(void) {
@@ -137,25 +152,25 @@ int PLAT_supportsOverscan(void) {
 #define RAW_MENU1 RAW_L3
 #define RAW_MENU2 RAW_R3
 
-#define INPUT_COUNT 4
-static int inputs[INPUT_COUNT];
+// Input devices discovered via libudev
+static int inputs[UDEV_MAX_DEVICES];
+static int input_count = 0;
 
 void PLAT_initInput(void) {
-	inputs[0] = open("/dev/input/event0", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[1] = open("/dev/input/event1", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[2] = open("/dev/input/event2", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	inputs[3] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-
-	for (int i = 0; i < INPUT_COUNT; i++) {
-		if (inputs[i] < 0)
-			LOG_warn("Failed to open /dev/input/event%d\n", i);
+	// Use libudev to discover all input devices dynamically.
+	// This is more robust than hardcoding event device paths and handles
+	// devices appearing in any order during boot.
+	input_count = udev_open_all_inputs(inputs);
+	if (input_count == 0) {
+		LOG_warn("No input devices found via udev\n");
+	} else {
+		LOG_info("Opened %d input devices via udev\n", input_count);
 	}
 }
 
 void PLAT_quitInput(void) {
-	for (int i = 0; i < INPUT_COUNT; i++) {
-		close(inputs[i]);
-	}
+	udev_close_all(inputs, UDEV_MAX_DEVICES);
+	input_count = 0;
 }
 
 struct input_event {
@@ -174,7 +189,7 @@ void PLAT_pollInput(void) {
 
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type != EV_KEY && event.type != EV_ABS)
@@ -261,7 +276,7 @@ void PLAT_pollInput(void) {
 int PLAT_shouldWake(void) {
 	int input;
 	static struct input_event event;
-	for (int i = 0; i < INPUT_COUNT; i++) {
+	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
 			if (event.type == EV_KEY && event.code == RAW_POWER && event.value == 0)

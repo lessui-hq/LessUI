@@ -29,7 +29,7 @@ endif
 
 # Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
-PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini
+PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini retroid
 endif
 
 ###########################################################
@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special tidy stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
 
 export MAKEFLAGS=--no-print-directory
 
@@ -208,26 +208,35 @@ dev-run-16x9:
 # Usage: make dev-deploy              - Deploy all platforms
 #        make dev-deploy PLATFORM=X   - Deploy single platform
 dev-deploy:
-	@if [ -n "$(PLATFORM)" ]; then \
-		./scripts/dev-deploy.sh --platform $(PLATFORM); \
+	@DEPLOY_ARGS=""; \
+	if [ -n "$(DEPLOY_PATH)" ]; then \
+		DEPLOY_ARGS="--path $(DEPLOY_PATH)"; \
+	fi; \
+	if [ -n "$(PLATFORM)" ]; then \
+		./scripts/dev-deploy.sh --platform $(PLATFORM) $$DEPLOY_ARGS; \
 	else \
-		./scripts/dev-deploy.sh; \
+		./scripts/dev-deploy.sh $$DEPLOY_ARGS; \
 	fi
 
 # Build and deploy in one shot for dev iteration (always debug build)
 # Uses 'stage' to prepare files without compression (faster than full 'all')
-# Usage: make dev-build-deploy                    - Build all platforms and deploy
-#        make dev-build-deploy PLATFORM=miyoomini - Build and deploy single platform
+# Usage: make dev-build-deploy                              - Build all platforms and deploy
+#        make dev-build-deploy PLATFORM=miyoomini           - Build and deploy single platform
+#        make dev-build-deploy DEPLOY_PATH=/Volumes/LESSUI  - Override SD card path
 # Note: Single-platform requires 'make setup' to have been run first
 dev-build-deploy:
-	@if [ -n "$(PLATFORM)" ]; then \
+	@DEPLOY_ARGS=""; \
+	if [ -n "$(DEPLOY_PATH)" ]; then \
+		DEPLOY_ARGS="--path $(DEPLOY_PATH)"; \
+	fi; \
+	if [ -n "$(PLATFORM)" ]; then \
 		if [ ! -d ./build/SYSTEM ]; then \
 			echo "Error: build/SYSTEM not found. Run 'make setup' first."; \
 			exit 1; \
 		fi; \
-		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && $(MAKE) stage && ./scripts/dev-deploy.sh --platform $(PLATFORM); \
+		$(MAKE) common PLATFORM=$(PLATFORM) DEBUG=1 && $(MAKE) stage && ./scripts/dev-deploy.sh --platform $(PLATFORM) $$DEPLOY_ARGS; \
 	else \
-		$(MAKE) setup DEBUG=1 && $(MAKE) $(PLATFORMS) DEBUG=1 && $(MAKE) special && $(MAKE) stage && ./scripts/dev-deploy.sh; \
+		$(MAKE) setup DEBUG=1 && $(MAKE) $(PLATFORMS) DEBUG=1 && $(MAKE) special && $(MAKE) stage && ./scripts/dev-deploy.sh $$DEPLOY_ARGS; \
 	fi
 
 # Build all components for a specific platform (in Docker)
@@ -274,7 +283,7 @@ clean:
 	@find workspace -type d -name "output" -path "*/squashfs/output" -exec rm -rf {} + 2>/dev/null || true
 	@find workspace -type f -name "*.bmp" -path "*/boot/*.bmp" -delete 2>/dev/null || true
 	@find workspace -type f -name "boot_logo.png" -path "*/boot/boot_logo.png" -delete 2>/dev/null || true
-	@rm -rf workspace/all/paks/Emus/cores/
+	@rm -rf workspace/all/paks/Emus/cores/extracted/
 
 # Prepare fresh build directory and skeleton
 setup: name
@@ -313,7 +322,7 @@ setup: name
 	@echo "Generating emulator paks..."
 	@./scripts/generate-paks.sh all
 
-# Platform-specific packaging for Miyoo/Trimui family
+# Platform-specific packaging for Miyoo/Trimui/LessOS families
 special:
 	@mkdir -p ./build/BOOT/common/install
 	@rsync -a ./skeleton/SYSTEM/common/log.sh ./build/BOOT/common/install/
@@ -323,9 +332,11 @@ special:
 	@mv ./build/BOOT/miyoo ./build/BASE/
 	@mv ./build/BOOT/trimui ./build/BASE/
 	@mv ./build/BOOT/magicx ./build/BASE/
+	@if [ -d ./build/BOOT/lessos ]; then mv ./build/BOOT/lessos ./build/BASE/; fi
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/miyoo/app/.tmp_update/
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/trimui/app/.tmp_update/
 	@rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/magicx/.tmp_update/
+	@if [ -d ./build/BASE/lessos ]; then rsync -a ./build/BOOT/.tmp_update/ ./build/BASE/lessos/.tmp_update/; fi
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo354/
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo355/
 	@rsync -a ./build/BASE/miyoo/ ./build/BASE/miyoo285/
@@ -389,7 +400,7 @@ compress:
 		cd ./build/PAYLOAD && 7z a -t7z -mx=9 -md=16m -mmt=on LessUI.7z .system; \
 	fi
 	@mv ./build/PAYLOAD/LessUI.7z ./build/BASE
-	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 em_ui.sh LessUI.7z README.txt
+	@cd ./build/BASE && 7z a -tzip -mmt=on -mx=5 ../../releases/$(RELEASE_NAME).zip Tools Bios Roms Saves bin miyoo miyoo354 trimui rg35xx rg35xxplus miyoo355 magicx miyoo285 lessos em_ui.sh LessUI.7z README.txt
 	@echo "$(RELEASE_NAME)" > ./build/latest.txt
 
 # Package: full release build (stage + compress)

@@ -6,11 +6,6 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR" .pak)"
 cd "$PAK_DIR" || exit 1
 
-# Logging
-rm -f "$LOGS_PATH/$PAK_NAME.txt"
-exec >>"$LOGS_PATH/$PAK_NAME.txt" 2>&1
-echo "$0" "$@"
-
 # Setup paths
 mkdir -p "$USERDATA_PATH/$PAK_NAME"
 export HOME="$USERDATA_PATH/$PAK_NAME"
@@ -18,6 +13,9 @@ export HOME="$USERDATA_PATH/$PAK_NAME"
 # Add pak binaries to PATH (platform-specific tools like iw)
 export PATH="$PAK_DIR/bin/$PLATFORM:$PAK_DIR/bin:$PATH"
 export LD_LIBRARY_PATH="$PAK_DIR/lib/$PLATFORM:$PAK_DIR/lib:$LD_LIBRARY_PATH"
+
+# shellcheck source=bin/wifi-lib.sh
+. "$PAK_DIR/bin/wifi-lib.sh"
 
 # ============================================================================
 # Utility Functions
@@ -37,27 +35,44 @@ show_message_wait() {
 	shui message "$message" --confirm "OK"
 }
 
+# get_wifi_interface() is provided by wifi-lib.sh
+
 get_ssid_and_ip() {
-	# Check if wlan0 interface exists and is not down
-	operstate="$(cat /sys/class/net/wlan0/operstate 2>/dev/null)"
+	WIFI_DEV="$(get_wifi_interface)"
+
+	# Check if interface exists and is not down
+	operstate="$(cat "/sys/class/net/$WIFI_DEV/operstate" 2>/dev/null)"
 	[ "$operstate" = "down" ] && return
 	[ -z "$operstate" ] && return
 
 	ssid=""
 	ip_address=""
+	# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+	ESC=$(printf '\033')
 
 	for _ in 1 2 3 4 5; do
-		if [ "$PLATFORM" = "my355" ]; then
-			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
-			ip_address="$(wpa_cli -i wlan0 status 2>/dev/null | grep ip_address= | cut -d'=' -f2)"
-		elif command -v iw >/dev/null 2>&1; then
-			ssid="$(iw dev wlan0 link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')"
-			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
-		else
-			# Fallback to wpa_cli if iw is not available
-			ssid="$(wpa_cli -i wlan0 status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
-			ip_address="$(ip addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
-		fi
+		case "$PLATFORM" in
+			rgb30 | retroid)
+				# IWD-based platforms (LessOS) - use iwctl
+				# Strip ANSI color codes from output
+				ssid="$(iwctl station "$WIFI_DEV" show 2>/dev/null | sed "s/${ESC}\[[0-9;]*m//g" | grep 'Connected network' | sed 's/.*Connected network[[:space:]]*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+				ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				;;
+			my355)
+				ssid="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
+				ip_address="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ip_address= | cut -d'=' -f2)"
+				;;
+			*)
+				if command -v iw >/dev/null 2>&1; then
+					ssid="$(iw dev "$WIFI_DEV" link 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//')"
+					ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				else
+					# Fallback to wpa_cli if iw is not available
+					ssid="$(wpa_cli -i "$WIFI_DEV" status 2>/dev/null | grep ssid= | grep -v bssid= | cut -d'=' -f2)"
+					ip_address="$(ip addr show "$WIFI_DEV" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1)"
+				fi
+				;;
+		esac
 
 		[ -n "$ip_address" ] && [ -n "$ssid" ] && break
 		sleep 1
@@ -102,11 +117,12 @@ has_credentials() {
 	[ ! -s "$SDCARD_PATH/wifi.txt" ] && return 1
 
 	while read -r line; do
-		line="$(echo "$line" | xargs)"
+		line="$(trim "$line")"
 		[ -z "$line" ] && continue
 		echo "$line" | grep -q "^#" && continue
 		echo "$line" | grep -q ":" || continue
-		ssid="$(echo "$line" | cut -d: -f1 | xargs)"
+		ssid="$(echo "$line" | cut -d: -f1)"
+		ssid="$(trim "$ssid")"
 		[ -n "$ssid" ] && return 0
 	done <"$SDCARD_PATH/wifi.txt"
 
@@ -154,13 +170,15 @@ write_config() {
 		echo "" >>"$SDCARD_PATH/wifi.txt"
 
 		while read -r line; do
-			line="$(echo "$line" | xargs)"
+			line="$(trim "$line")"
 			[ -z "$line" ] && continue
 			echo "$line" | grep -q "^#" && continue
 			echo "$line" | grep -q ":" || continue
 
-			ssid="$(echo "$line" | cut -d: -f1 | xargs)"
-			psk="$(echo "$line" | cut -d: -f2- | xargs)"
+			ssid="$(echo "$line" | cut -d: -f1)"
+			ssid="$(trim "$ssid")"
+			psk="$(echo "$line" | cut -d: -f2-)"
+			psk="$(trim "$psk")"
 			[ -z "$ssid" ] && continue
 
 			has_passwords=true
@@ -215,8 +233,56 @@ write_config() {
 		tg5040)
 			cp "$PAK_DIR/res/wpa_supplicant.conf" /etc/wifi/wpa_supplicant.conf
 			;;
+		rgb30 | retroid)
+			# IWD-based platforms (LessOS) - generate IWD config files
+			# LessOS stores IWD state in /storage/.cache/iwd
+			IWD_DIR="/storage/.cache/iwd"
+			if ! mkdir -p "$IWD_DIR"; then
+				echo "Failed to create IWD config directory: $IWD_DIR"
+				show_message_wait "Cannot write WiFi config (disk full?)"
+				return 1
+			fi
+
+			if [ "$ENABLING_WIFI" = "true" ]; then
+				# Read credentials from wifi.txt and create IWD network files
+				while read -r line; do
+					line="$(trim "$line")"
+					[ -z "$line" ] && continue
+					echo "$line" | grep -q "^#" && continue
+					echo "$line" | grep -q ":" || continue
+
+					ssid="$(echo "$line" | cut -d: -f1)"
+					ssid="$(trim "$ssid")"
+					psk="$(echo "$line" | cut -d: -f2-)"
+					psk="$(trim "$psk")"
+					[ -z "$ssid" ] && continue
+
+					# Sanitize SSID for filename
+					# IWD uses the SSID as filename with = for spaces
+					# Also escape filesystem-unsafe characters (/, \, ?, *, etc.)
+					safe_ssid="$(printf '%s' "$ssid" | sed 's/ /=/g; s/[\/\\?*|<>:]/_/g')"
+
+					if [ -z "$psk" ]; then
+						# Open network
+						{
+							echo "[Settings]"
+							echo "AutoConnect=true"
+						} >"$IWD_DIR/$safe_ssid.open"
+					else
+						# PSK network
+						{
+							echo "[Security]"
+							echo "Passphrase=$psk"
+							echo ""
+							echo "[Settings]"
+							echo "AutoConnect=true"
+						} >"$IWD_DIR/$safe_ssid.psk"
+					fi
+				done <"$SDCARD_PATH/wifi.txt"
+			fi
+			;;
 		*)
-			show_message_wait "$PLATFORM is not a supported platform"
+			# Unsupported platforms caught by is_supported_platform() in main()
 			return 1
 			;;
 	esac
@@ -246,8 +312,9 @@ wifi_on() {
 	fi
 
 	# Wait for connection (up to 30 seconds)
+	WIFI_DEV="$(get_wifi_interface)"
 	for _ in $(seq 1 30); do
-		STATUS=$(cat "/sys/class/net/wlan0/operstate" 2>/dev/null)
+		STATUS=$(cat "/sys/class/net/$WIFI_DEV/operstate" 2>/dev/null)
 		[ "$STATUS" = "up" ] && break
 		sleep 1
 	done
@@ -328,34 +395,88 @@ networks_screen() {
 	touch "$launcher_list_file"
 
 	DELAY=30
+	WIFI_DEV="$(get_wifi_interface)"
 
-	# my355 uses wpa_cli, others use iw (with wpa_cli fallback)
 	scan_temp="/tmp/wifi-scan-results"
-	if [ "$PLATFORM" = "my355" ]; then
-		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	elif command -v iw >/dev/null 2>&1; then
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 10 iw dev wlan0 scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	else
-		# Fallback to wpa_cli if iw is not available
-		timeout 10 wpa_cli -i wlan0 scan 2>/dev/null || true
-		for _ in $(seq 1 "$DELAY"); do
-			shui progress "Scanning for networks..." --indeterminate
-			timeout 5 wpa_cli -i wlan0 scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
-			[ -s "$scan_temp" ] && break
-			sleep 1
-		done
-	fi
+
+	# Use printf to generate literal ESC char (busybox sed doesn't support \x1b)
+	ESC=$(printf '\033')
+
+	case "$PLATFORM" in
+		rgb30 | retroid)
+			# IWD-based platforms (LessOS)
+			# Try wifictl first (LessOS native tool), then fall back to iwctl
+			if command -v wifictl >/dev/null 2>&1; then
+				wifictl scan 2>/dev/null || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					# wifictl scanlist outputs one SSID per line, but stderr may have colored error messages
+					# Filter: strip ANSI codes, remove blank lines, remove IWD error message, sort unique
+					wifictl scanlist 2>&1 \
+						| sed "s/${ESC}\[[0-9;]*m//g" \
+						| sed '/^[[:space:]]*$/d' \
+						| grep -Fxv "Operation already in progress" \
+						| sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			else
+				# Fall back to iwctl
+				# Scan once, then poll for results
+				iwctl station "$WIFI_DEV" scan >/dev/null 2>&1 || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+
+					# iwctl get-networks outputs a table with columns: Network name, Security, Signal
+					# Only parse lines that have the security field (psk|open|8021x|wep) to avoid error messages
+					iwctl station "$WIFI_DEV" get-networks 2>&1 \
+						| sed "s/${ESC}\[[0-9;]*m//g" \
+						| awk '{
+							# Only process lines that contain security types - these are actual network entries
+							if (/(psk|open|8021x|wep)[[:space:]]/) {
+								# Remove leading/trailing whitespace
+								gsub(/^[[:space:]]+/, "")
+								# Extract network name (everything before security type)
+								sub(/[[:space:]]+(psk|open|8021x|wep).*$/, "")
+								if (length($0) > 0) print
+							}
+						}' \
+						| sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			fi
+			;;
+		my355)
+			timeout 10 wpa_cli -i "$WIFI_DEV" scan 2>/dev/null || true
+			for _ in $(seq 1 "$DELAY"); do
+				shui progress "Scanning for networks..." --indeterminate
+				timeout 5 wpa_cli -i "$WIFI_DEV" scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+				[ -s "$scan_temp" ] && break
+				sleep 1
+			done
+			;;
+		*)
+			if command -v iw >/dev/null 2>&1; then
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					timeout 10 iw dev "$WIFI_DEV" scan 2>/dev/null | grep SSID: | cut -d':' -f2- | sed -e 's/^[ \t]*//' -e 's/[ \t]*$//' | sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			else
+				# Fallback to wpa_cli if iw is not available
+				timeout 10 wpa_cli -i "$WIFI_DEV" scan 2>/dev/null || true
+				for _ in $(seq 1 "$DELAY"); do
+					shui progress "Scanning for networks..." --indeterminate
+					timeout 5 wpa_cli -i "$WIFI_DEV" scan_results 2>/dev/null | grep -v "ssid" | cut -f 5 | sort -u >"$scan_temp"
+					[ -s "$scan_temp" ] && break
+					sleep 1
+				done
+			fi
+			;;
+	esac
+
 	mv "$scan_temp" "$launcher_list_file" 2>/dev/null || touch "$launcher_list_file"
 
 	shui list --file "$launcher_list_file" --format text --confirm "Connect" --title "WiFi Networks" --write-location /tmp/launcher-output
@@ -390,7 +511,8 @@ password_screen() {
 
 	initial_password=""
 	if grep -q "^$SSID:" "$SDCARD_PATH/wifi.txt" 2>/dev/null; then
-		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2- | xargs)"
+		initial_password="$(grep "^$SSID:" "$SDCARD_PATH/wifi.txt" | cut -d':' -f2-)"
+		initial_password="$(trim "$initial_password")"
 	fi
 
 	shui keyboard --title "Enter Password" --initial-value "$initial_password" --write-location /tmp/launcher-output
@@ -534,18 +656,7 @@ main() {
 	echo "1" >/tmp/stay_awake
 	trap "cleanup" EXIT INT TERM HUP QUIT
 
-	# Handle platform aliases
-	if [ "$PLATFORM" = "tg3040" ] && [ -z "$DEVICE" ]; then
-		export DEVICE="brick"
-		export PLATFORM="tg5040"
-	fi
-
-	if [ "$PLATFORM" = "miyoomini" ] && [ -z "$DEVICE" ]; then
-		export DEVICE="miyoomini"
-		if [ -f /customer/app/axp_test ]; then
-			export DEVICE="miyoominiplus"
-		fi
-	fi
+	normalize_platform
 
 	# Check required tools
 	if ! command -v shui >/dev/null 2>&1; then
@@ -554,13 +665,10 @@ main() {
 	fi
 
 	# Platform validation
-	case "$PLATFORM" in
-		miyoomini | my282 | my355 | tg5040 | rg35xxplus) ;;
-		*)
-			show_message_wait "$PLATFORM is not a supported platform"
-			return 1
-			;;
-	esac
+	if ! is_supported_platform; then
+		show_message_wait "$PLATFORM is not a supported platform"
+		return 1
+	fi
 
 	# Platform-specific checks
 	if [ "$PLATFORM" = "miyoomini" ]; then

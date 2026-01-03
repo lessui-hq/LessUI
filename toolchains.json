@@ -5,6 +5,14 @@
     },
     "tg5040": {
       "platform": "linux/amd64"
+    },
+    "rgb30": {
+      "platform": "linux/amd64",
+      "toolchain": "rk3566"
+    },
+    "retroid": {
+      "platform": "linux/amd64",
+      "toolchain": "sm8250"
     }
   }
 }

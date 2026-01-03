@@ -31,6 +31,14 @@ EXTRA_LDFLAGS = -lpthread
 # Skip build for miyoomini (uses platform-specific implementation in workspace/miyoomini/keymon)
 ifneq ($(PLATFORM),miyoomini)
 include ../../common/build.mk
+
+# Add libudev support for dynamic input device discovery (retroid, rgb30)
+# NOTE: This must be after include to access HAS_LIBUDEV from Makefile.env
+ifeq ($(HAS_LIBUDEV),1)
+SOURCE += ../../../all/common/udev_input.c
+EXTRA_LDFLAGS += -ludev
+endif
+
 else
 # Dummy targets for miyoomini
 .PHONY: setup build install clean

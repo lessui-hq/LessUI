@@ -102,6 +102,43 @@
         }
       ]
     },
+    "SWST": {
+      "name": "Sony PlayStation (SwanStation)",
+      "core": "swanstation_libretro",
+      "resolution": "320x240",
+      "extensions": [
+        "bin",
+        "cue",
+        "img",
+        "iso",
+        "pbp",
+        "chd",
+        "m3u",
+        "mdf",
+        "ccd",
+        "exe"
+      ],
+      "bios": [
+        {
+          "name": "scph5501.bin",
+          "md5": "490f666e1afb15b7362b406ed1cea246",
+          "required": true
+        },
+        { "name": "scph5500.bin", "md5": null, "required": false },
+        { "name": "scph5502.bin", "md5": null, "required": false },
+        {
+          "name": "scph1001.bin",
+          "md5": "924e392ed05558ffdb115408c263dccf",
+          "required": false
+        },
+        {
+          "name": "scph7001.bin",
+          "md5": "1e68c231d0896b7eadcad1d7d8e76129",
+          "required": false
+        }
+      ],
+      "arm64_only": true
+    },
     "GG": {
       "name": "Sega Game Gear",
       "core": "picodrive_libretro",
@@ -339,6 +376,53 @@
           "required": false
         }
       ]
+    },
+    "N64": {
+      "name": "Nintendo 64",
+      "core": "mupen64plus_next_libretro",
+      "resolution": "320x240",
+      "extensions": ["z64", "n64", "v64", "zip", "7z"],
+      "bios": [],
+      "arm64_only": true
+    },
+    "PSP": {
+      "name": "PlayStation Portable",
+      "core": "ppsspp_libretro",
+      "resolution": "480x272",
+      "extensions": ["elf", "iso", "cso", "prx", "pbp"],
+      "bios": [],
+      "arm64_only": true
+    },
+    "DC": {
+      "name": "Sega Dreamcast",
+      "core": "flycast_libretro",
+      "resolution": "640x480",
+      "extensions": [
+        "chd",
+        "cdi",
+        "iso",
+        "elf",
+        "bin",
+        "cue",
+        "gdi",
+        "lst",
+        "zip",
+        "7z",
+        "dat"
+      ],
+      "bios": [
+        {
+          "name": "dc/dc_boot.bin",
+          "md5": null,
+          "required": true
+        },
+        {
+          "name": "dc/dc_flash.bin",
+          "md5": null,
+          "required": false
+        }
+      ],
+      "arm64_only": true
     }
   }
 }

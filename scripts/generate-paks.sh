@@ -183,36 +183,36 @@ generate_pak() {
     # Generate default.cfg: merge base + platform override
     merge_configs "$base_default" "$cfg_platform_dir/default.cfg" "$output_dir/default.cfg"
 
-    # Generate device-variant configs (default-{device}.cfg)
+    # Generate device-specific configs (device-{device}.cfg)
     # These inherit from base/default.cfg, then apply platform device-specific overrides
-    # Check both base and platform for device variants
+    # Check both base and platform for device configs
     local device_cfgs=""
-    [ -d "$cfg_base_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_base_dir"/default-*.cfg 2>/dev/null || true)"
-    [ -d "$cfg_platform_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_platform_dir"/default-*.cfg 2>/dev/null || true)"
+    [ -d "$cfg_base_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_base_dir"/device-*.cfg 2>/dev/null || true)"
+    [ -d "$cfg_platform_dir" ] && device_cfgs="$device_cfgs $(ls "$cfg_platform_dir"/device-*.cfg 2>/dev/null || true)"
 
-    # Get unique device variant names
+    # Get unique device config names
     for cfg_path in $device_cfgs; do
         [ -z "$cfg_path" ] && continue
         local cfg_name=$(basename "$cfg_path")
-        local device_tag="${cfg_name#default-}"
+        local device_tag="${cfg_name#device-}"
         device_tag="${device_tag%.cfg}"
 
         # Skip if already processed (dedup)
         [ -f "$output_dir/$cfg_name" ] && continue
 
-        # Device variants inherit from base/default.cfg, then apply device-specific overrides
-        # Priority: base/default.cfg -> base/default-{device}.cfg -> platform/default-{device}.cfg
+        # Device configs inherit from base/default.cfg, then apply device-specific overrides
+        # Priority: base/default.cfg -> base/device-{device}.cfg -> platform/device-{device}.cfg
         local base_device="$cfg_base_dir/$cfg_name"
         local platform_device="$cfg_platform_dir/$cfg_name"
 
         if [ -f "$base_device" ]; then
-            # Base has device variant - merge base/default.cfg + base/default-{device}.cfg first
+            # Base has device config - merge base/default.cfg + base/device-{device}.cfg first
             merge_configs "$base_default" "$base_device" "$output_dir/$cfg_name.tmp"
             # Then merge platform override if exists
             merge_configs "$output_dir/$cfg_name.tmp" "$platform_device" "$output_dir/$cfg_name"
             rm -f "$output_dir/$cfg_name.tmp"
         else
-            # No base device variant - merge base/default.cfg + platform/default-{device}.cfg
+            # No base device config - merge base/default.cfg + platform/device-{device}.cfg
             merge_configs "$base_default" "$platform_device" "$output_dir/$cfg_name"
         fi
     done

@@ -19,7 +19,7 @@ main() {
         port=80
     fi
 
-    dufs --allow-all --bind 0.0.0.0 --port "$port" --log-file "$LOGS_PATH/$PAK_NAME.service.txt" "$SDCARD_PATH" &
+    dufs --allow-all --bind 0.0.0.0 --port "$port" --log-file "$LOGS_PATH/$PAK_NAME.service.log" "$SDCARD_PATH" &
 }
 
 main "$@"

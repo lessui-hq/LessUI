@@ -1,14 +1,16 @@
 #!/bin/sh
 # my282 initialization
 
+# Export LESSUI_* variables for device identification
+export LESSUI_PLATFORM="my282"
+export LESSUI_VARIANT="vga"
+export LESSUI_DEVICE="my282"
+
 # LED off
 echo 0 >/sys/class/leds/led1/brightness
 
-# CPU speed control via reclock
-cpu_restore() {
-	overclock.elf userspace 2 1344 384 1080 0
-}
-cpu_restore
+# CPU governor (speed controlled by frontend)
+overclock.elf userspace 2 1344 384 1080 0
 
 # Clean up tee and update log
 killall -9 tee

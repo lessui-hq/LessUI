@@ -24,8 +24,8 @@
 
 typedef enum {
 	VARIANT_NONE = 0, // Not applicable / unknown
-	VARIANT_STANDARD, // Base/standard variant
-	VARIANT_ALTERNATE, // Single alternate variant
+	VARIANT_STANDARD = 1, // Base/standard variant
+	VARIANT_ALTERNATE = 2, // Single alternate variant
 	VARIANT_PLATFORM_BASE = 100 // Platform-specific variants start here
 } VariantType;
 
@@ -69,6 +69,8 @@ typedef struct {
 typedef struct {
 	const char* platform; // Platform identifier (matches PLATFORM define)
 	VariantType variant; // Detected variant type
+	const char*
+	    variant_name; // Short string for LESSUI_VARIANT export and logging (e.g., "vga", "4x3")
 	const DeviceInfo* device; // Detected device info (from platform's device registry)
 
 	// Display capabilities (runtime-determined)
