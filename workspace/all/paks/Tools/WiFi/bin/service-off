@@ -9,8 +9,6 @@ PAK_DIR="$(dirname "$BIN_DIR")"
 setup_wifi_paths "$PAK_DIR"
 
 main() {
-	normalize_platform
-
 	echo "Preparing to disable wifi..."
 
 	# Update system.json for platforms that use it

@@ -10,8 +10,6 @@ PAK_DIR="$(dirname "$BIN_DIR")"
 setup_wifi_paths "$PAK_DIR"
 
 main() {
-	normalize_platform
-
 	# IWD-based platforms (LessOS) - check if device is powered on
 	if is_iwd_platform; then
 		WIFI_DEV="$(get_wifi_interface)"

@@ -656,8 +656,6 @@ main() {
 	echo "1" >/tmp/stay_awake
 	trap "cleanup" EXIT INT TERM HUP QUIT
 
-	normalize_platform
-
 	# Check required tools
 	if ! command -v shui >/dev/null 2>&1; then
 		echo "shui not found"
