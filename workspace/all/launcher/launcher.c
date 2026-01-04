@@ -57,6 +57,7 @@
 #include "launcher_str_compare.h"
 #include "launcher_thumbnail.h"
 #include "paths.h"
+#include "platform_variant.h"
 #include "recent_file.h"
 #include "utils.h"
 
@@ -1699,6 +1700,9 @@ int main(int argc, char* argv[]) {
 
 	// Initialize runtime paths from environment (supports LessOS dynamic storage)
 	Paths_init();
+
+	// Detect platform variant early (before any code that may need variant info)
+	PLAT_detectVariant(&platform_variant);
 
 	// Check for auto-resume first (fast path)
 	if (autoResume()) {

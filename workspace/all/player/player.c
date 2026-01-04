@@ -61,6 +61,7 @@
 #include "launcher_file_utils.h"
 #include "libretro.h"
 #include "paths.h"
+#include "platform_variant.h"
 #include "player_archive.h"
 #include "player_config.h"
 #include "player_context.h"
@@ -5712,6 +5713,9 @@ int main(int argc, char* argv[]) {
 
 	// Initialize runtime paths (reads LESSOS_STORAGE from environment)
 	Paths_init();
+
+	// Detect platform variant early (before any code that may need variant info)
+	PLAT_detectVariant(&platform_variant);
 
 	LOG_info("Player");
 
