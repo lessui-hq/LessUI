@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -44,22 +45,23 @@ static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER; // Protects g_lo
 ///////////////////////////////
 
 /**
- * Get current time as compact formatted string (HH:MM:SS).
+ * Get current time as compact formatted string (HH:MM:SS.mmm).
  *
  * Uses local time for readability. Falls back to zeros if time unavailable.
  */
 int log_get_timestamp(char* buf, size_t size) {
-	time_t now = time(NULL);
-	if (now == (time_t)-1) {
-		return snprintf(buf, size, "00:00:00");
+	struct timeval tv;
+	if (gettimeofday(&tv, NULL) != 0) {
+		return snprintf(buf, size, "00:00:00.000");
 	}
 
-	struct tm* tm = localtime(&now);
+	struct tm* tm = localtime(&tv.tv_sec);
 	if (!tm) {
-		return snprintf(buf, size, "00:00:00");
+		return snprintf(buf, size, "00:00:00.000");
 	}
 
-	return snprintf(buf, size, "%02d:%02d:%02d", tm->tm_hour, tm->tm_min, tm->tm_sec);
+	int ms = (int)(tv.tv_usec / 1000);
+	return snprintf(buf, size, "%02d:%02d:%02d.%03d", tm->tm_hour, tm->tm_min, tm->tm_sec, ms);
 }
 
 ///////////////////////////////

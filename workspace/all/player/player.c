@@ -1994,12 +1994,10 @@ static const char* getOptionNameFromKey(const char* key, const char* name) {
 
 // the following 3 functions always touch config.core, the rest can operate on arbitrary PlayerOptionLists
 static void PlayerOptionList_init(const struct retro_core_option_definition* defs) {
-	LOG_debug("PlayerOptionList_init");
+	LOG_debug("PlayerOptionList_init: start");
 	int count;
 	for (count = 0; defs[count].key; count++)
 		;
-
-	// LOG_info("count: %i", count);
 
 	// TODO: add frontend options to this? so the can use the same override method? eg. player_*
 
@@ -2075,6 +2073,7 @@ static void PlayerOptionList_init(const struct retro_core_option_definition* def
 			// LOG_info("\tINIT %s (%s) TO %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
 		}
 	}
+	LOG_debug("PlayerOptionList_init: done");
 	// fflush(stdout);
 }
 static void PlayerOptionList_vars(const struct retro_variable* vars) {
@@ -2620,7 +2619,6 @@ static struct retro_perf_callback perf_cb = {
 };
 
 static bool environment_callback(unsigned cmd, void* data) { // copied from picoarch initially
-	// LOG_info("environment_callback: %i", cmd);
 	EnvResult result;
 
 	switch (cmd) {
@@ -2973,7 +2971,6 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		// };
 
 	default:
-		// LOG_debug("Unsupported environment cmd: %u", cmd);
 		return false;
 	}
 	return true;
@@ -4076,7 +4073,10 @@ void Player_selectBiosPath(const char* tag, char* bios_dir) {
  */
 void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("Core_open");
+
+	LOG_debug("Core_open: dlopen start");
 	core.handle = dlopen(core_path, RTLD_LAZY);
+	LOG_debug("Core_open: dlopen done");
 
 	if (!core.handle) {
 		const char* error = dlerror();
@@ -4085,6 +4085,7 @@ void Core_open(const char* core_path, const char* tag_name) {
 		return;
 	}
 
+	LOG_debug("Core_open: dlsym start");
 	core.init = dlsym(core.handle, "retro_init");
 	core.deinit = dlsym(core.handle, "retro_deinit");
 	core.get_system_info = dlsym(core.handle, "retro_get_system_info");
@@ -4115,9 +4116,12 @@ void Core_open(const char* core_path, const char* tag_name) {
 	set_audio_sample_batch_callback = dlsym(core.handle, "retro_set_audio_sample_batch");
 	set_input_poll_callback = dlsym(core.handle, "retro_set_input_poll");
 	set_input_state_callback = dlsym(core.handle, "retro_set_input_state");
+	LOG_debug("Core_open: dlsym done");
 
+	LOG_debug("Core_open: get_system_info start");
 	struct retro_system_info info = {};
 	core.get_system_info(&info);
+	LOG_debug("Core_open: get_system_info done");
 
 	Core_getName((char*)core_path, (char*)core.name);
 	(void)snprintf((char*)core.version, sizeof(core.version), "%s (%s)", info.library_name,
@@ -4138,21 +4142,30 @@ void Core_open(const char* core_path, const char* tag_name) {
 	               core.tag);
 	Player_selectBiosPath(core.tag, (char*)core.bios_dir);
 
+	LOG_debug("Core_open: mkdir start");
 	char cmd[512];
 	(void)snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir,
 	               core.states_dir);
 	system(cmd);
+	LOG_debug("Core_open: mkdir done");
 
+	LOG_debug("Core_open: set_environment_callback start");
 	set_environment_callback(environment_callback);
+	LOG_debug("Core_open: set_environment_callback done");
+
+	LOG_debug("Core_open: set other callbacks start");
 	set_video_refresh_callback(video_refresh_callback);
 	set_audio_sample_callback(audio_sample_callback);
 	set_audio_sample_batch_callback(audio_sample_batch_callback);
 	set_input_poll_callback(input_poll_callback);
 	set_input_state_callback(input_state_callback);
+	LOG_debug("Core_open: set other callbacks done");
 }
 void Core_init(void) {
 	LOG_info("Core_init");
+	LOG_debug("Core_init: calling core.init()");
 	core.init();
+	LOG_debug("Core_init: core.init() done");
 	core.initialized = 1;
 }
 
@@ -4217,8 +4230,12 @@ bool Core_load(void) {
 		return false;
 	}
 
+	LOG_debug("Core_load: calling SRAM_read");
 	SRAM_read();
+	LOG_debug("Core_load: SRAM_read done");
+	LOG_debug("Core_load: calling RTC_read");
 	RTC_read();
+	LOG_debug("Core_load: RTC_read done");
 
 	// NOTE: must be called after core.load_game!
 	struct retro_system_av_info av_info = {};

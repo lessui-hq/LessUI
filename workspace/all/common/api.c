@@ -583,7 +583,11 @@ SDL_Surface* GFX_init(int mode) {
 		LOG_error("GFX_init: TTF_Init failed: %s", SDL_GetError());
 		return NULL;
 	}
-	LOG_debug("GFX_init: Loading fonts from %s", g_font_path);
+	const SDL_version* ttf_version = TTF_Linked_Version();
+	LOG_debug("GFX_init: SDL_ttf version %d.%d.%d", ttf_version->major, ttf_version->minor,
+	          ttf_version->patch);
+	LOG_debug("GFX_init: Loading fonts from %s (sizes: %d/%d/%d/%d px)", g_font_path,
+	          DP(FONT_LARGE), DP(FONT_MEDIUM), DP(FONT_SMALL), DP(FONT_TINY));
 	font.large = TTF_OpenFont(g_font_path, DP(FONT_LARGE));
 	if (!font.large)
 		LOG_error("GFX_init: Failed to load large font: %s", SDL_GetError());
@@ -597,6 +601,16 @@ SDL_Surface* GFX_init(int mode) {
 	if (!font.tiny)
 		LOG_error("GFX_init: Failed to load tiny font: %s", SDL_GetError());
 	LOG_debug("GFX_init: Fonts loaded successfully");
+
+	// Disable font hinting for all fonts.
+	// SDL_ttf 2.0.18's NORMAL hinting has a major performance regression in
+	// TTF_SizeUTF8 (~5x slower than 2.0.15). NONE hinting restores fast
+	// performance and looks fine on handheld LCD screens.
+	TTF_SetFontHinting(font.large, TTF_HINTING_NONE);
+	TTF_SetFontHinting(font.medium, TTF_HINTING_NONE);
+	TTF_SetFontHinting(font.small, TTF_HINTING_NONE);
+	TTF_SetFontHinting(font.tiny, TTF_HINTING_NONE);
+	LOG_debug("GFX_init: Font hinting set to NONE (performance workaround)");
 
 	// ============================================================================
 	// PIXEL-PERFECT TEXT CENTERING
@@ -2019,7 +2033,9 @@ size_t SND_batchSamples(const SND_Frame* frames,
 void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	LOG_info("SND_init\n");
 
+	LOG_debug("SND_init: SDL_InitSubSystem start");
 	SDL_InitSubSystem(SDL_INIT_AUDIO);
+	LOG_debug("SND_init: SDL_InitSubSystem done");
 
 #if defined(USE_SDL2)
 	LOG_debug("Available audio drivers:\n");
@@ -2041,8 +2057,10 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	spec_in.samples = SND_CHUNK_SAMPLES;
 	spec_in.callback = SND_audioCallback;
 
+	LOG_debug("SND_init: SDL_OpenAudio start (freq=%d)", spec_in.freq);
 	if (SDL_OpenAudio(&spec_in, &spec_out) < 0)
 		LOG_error("SDL_OpenAudio error: %s", SDL_GetError());
+	LOG_debug("SND_init: SDL_OpenAudio done");
 
 	snd.sample_rate_in = sample_rate;
 	snd.sample_rate_out = spec_out.freq;
@@ -2051,7 +2069,9 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	AudioResampler_init(&snd.resampler, snd.sample_rate_in, snd.sample_rate_out);
 	SND_resizeBuffer();
 
+	LOG_debug("SND_init: SDL_PauseAudio(0) start");
 	SDL_PauseAudio(0);
+	LOG_debug("SND_init: SDL_PauseAudio(0) done");
 
 	LOG_info("sample rate: %i (req) %i (rec) [chunk %i]\n", snd.sample_rate_in, snd.sample_rate_out,
 	         SND_CHUNK_SAMPLES);
