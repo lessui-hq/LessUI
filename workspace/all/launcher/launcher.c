@@ -737,10 +737,28 @@ static int hasCollections(void) {
 
 /**
  * Checks if a ROM system directory has any playable ROMs.
- * Wrapper around LauncherDir_hasRoms with platform-specific paths.
+ *
+ * Uses cached emulator lookup (O(1) hash) instead of filesystem checks.
+ * The EmuCache is initialized at startup and contains all available emulator paks.
  */
 static int hasRoms(char* dir_name) {
-	return LauncherDir_hasRoms(dir_name, g_roms_path, g_paks_path, g_sdcard_path, PLATFORM);
+	// Get emulator name from directory name
+	char emu_name[256];
+	getEmuName(dir_name, emu_name);
+	LOG_debug("hasRoms: dir='%s' -> emu='%s'", dir_name, emu_name);
+
+	// Use cached emu check (O(1) hash lookup instead of 2 filesystem calls)
+	if (!hasEmu(emu_name)) {
+		LOG_debug("hasRoms: No emu pak for '%s'", emu_name);
+		return 0;
+	}
+
+	// Check for at least one non-hidden file in the ROM directory
+	char rom_path[512];
+	(void)snprintf(rom_path, sizeof(rom_path), "%s/%s", g_roms_path, dir_name);
+	int has_files = Launcher_hasNonHiddenFiles(rom_path);
+	LOG_debug("hasRoms: path='%s' hasFiles=%d", rom_path, has_files);
+	return has_files;
 }
 
 ///////////////////////////////
@@ -786,8 +804,9 @@ static Entry** getRoot(void) {
 		int total_entries = 0;
 		while ((dp = readdir(dh)) != NULL) {
 			total_entries++;
-			LOG_debug("getRoot: readdir entry='%s' d_type=%d", dp->d_name, dp->d_type);
-			if (hide(dp->d_name))
+			// Skip hidden entries and non-directories
+			// Allow DT_UNKNOWN through - hasRoms() validates via opendir()
+			if (hide(dp->d_name) || (dp->d_type != DT_DIR && dp->d_type != DT_UNKNOWN))
 				continue;
 			dir_count++;
 			int has = hasRoms(dp->d_name);
