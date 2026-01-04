@@ -6,6 +6,10 @@
     "tg5040": {
       "platform": "linux/amd64"
     },
+    "tg5050": {
+      "platform": "linux/amd64",
+      "toolchain": "tg5040"
+    },
     "rgb30": {
       "platform": "linux/amd64",
       "toolchain": "rk3566"
