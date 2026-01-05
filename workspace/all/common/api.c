@@ -21,6 +21,9 @@
  * - Font resources managed through TTF_CloseFont
  */
 
+// Enable GNU extensions for CPU affinity macros (must be before any includes)
+#define _GNU_SOURCE
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -3327,6 +3330,329 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz\n", freq_khz);
 	return -1;
 }
+
+///////////////////////////////
+// Multi-cluster CPU topology support
+///////////////////////////////
+
+// Include player_cpu.h for topology types
+#include "../player/player_cpu.h"
+
+// Base path for cpufreq policies
+#define CPUFREQ_BASE_PATH "/sys/devices/system/cpu/cpufreq"
+
+/**
+ * Comparison function for sorting clusters by max_khz ascending.
+ */
+static int compare_cluster_by_max_khz(const void* a, const void* b) {
+	const PlayerCPUCluster* ca = (const PlayerCPUCluster*)a;
+	const PlayerCPUCluster* cb = (const PlayerCPUCluster*)b;
+	return ca->max_khz - cb->max_khz;
+}
+
+/**
+ * Reads an integer from a sysfs file.
+ *
+ * @param path Full path to sysfs file
+ * @return Value read, or 0 on failure
+ */
+static int read_sysfs_int(const char* path) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	int value = 0;
+	if (fscanf(fp, "%d", &value) != 1) {
+		value = 0;
+	}
+	(void)fclose(fp);
+	return value;
+}
+
+/**
+ * Reads available frequencies from a sysfs file into a cluster.
+ *
+ * @param path Path to scaling_available_frequencies
+ * @param cluster Cluster to populate
+ * @return Number of frequencies read
+ */
+static int read_cluster_frequencies(const char* path, PlayerCPUCluster* cluster) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	char buffer[256];
+	int count = 0;
+
+	if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+		char* token = strtok(buffer, " \t\n");
+		while (token != NULL && count < PLAYER_CPU_MAX_FREQS_PER_CLUSTER) {
+			int freq = atoi(token);
+			if (freq > 0) {
+				cluster->frequencies[count++] = freq;
+			}
+			token = strtok(NULL, " \t\n");
+		}
+	}
+	(void)fclose(fp);
+
+	// Sort frequencies ascending
+	if (count > 1) {
+		qsort(cluster->frequencies, count, sizeof(int), compare_int_asc);
+	}
+
+	cluster->freq_count = count;
+	return count;
+}
+
+/**
+ * Parses related_cpus file to get CPU mask and count.
+ *
+ * Format can be: "0 1 2 3" or "0-3" or "0-3 5 7-8"
+ *
+ * @param path Path to related_cpus file
+ * @param cpu_mask Output: bitmask of CPUs
+ * @param cpu_count Output: number of CPUs
+ * @return 1 on success, 0 on failure
+ */
+static int parse_related_cpus(const char* path, int* cpu_mask, int* cpu_count) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	char buffer[128];
+	*cpu_mask = 0;
+	*cpu_count = 0;
+
+	if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+		char* ptr = buffer;
+		while (*ptr) {
+			// Skip whitespace
+			while (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
+				ptr++;
+			if (!*ptr)
+				break;
+
+			// Parse number
+			int start = atoi(ptr);
+			while (*ptr >= '0' && *ptr <= '9')
+				ptr++;
+
+			int end = start;
+			if (*ptr == '-') {
+				// Range: "0-3"
+				ptr++;
+				end = atoi(ptr);
+				while (*ptr >= '0' && *ptr <= '9')
+					ptr++;
+			}
+
+			// Add CPUs to mask
+			for (int cpu = start; cpu <= end && cpu < 32; cpu++) {
+				*cpu_mask |= (1 << cpu);
+				(*cpu_count)++;
+			}
+
+			// Skip comma if present
+			if (*ptr == ',')
+				ptr++;
+		}
+	}
+	(void)fclose(fp);
+	return (*cpu_count > 0) ? 1 : 0;
+}
+
+int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
+	PlayerCPUTopology* topo = topology; // Use typedef for internal code
+	if (!topo) {
+		return 0;
+	}
+
+	// Initialize topology
+	memset(topo, 0, sizeof(*topo));
+
+	// Enumerate policies (0, 1, 2, ... up to 15)
+	// Policies may not be contiguous (e.g., policy0, policy4, policy7)
+	char path[256];
+	int cluster_count = 0;
+
+	for (int policy_id = 0; policy_id < 16 && cluster_count < PLAYER_CPU_MAX_CLUSTERS;
+	     policy_id++) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d", CPUFREQ_BASE_PATH, policy_id);
+
+		// Check if policy directory exists by trying to read cpuinfo_max_freq
+		char max_freq_path[256];
+		(void)snprintf(max_freq_path, sizeof(max_freq_path), "%s/cpuinfo_max_freq", path);
+		int max_khz = read_sysfs_int(max_freq_path);
+		if (max_khz <= 0) {
+			continue; // Policy doesn't exist
+		}
+
+		PlayerCPUCluster* cluster = &topo->clusters[cluster_count];
+		cluster->policy_id = policy_id;
+		cluster->max_khz = max_khz;
+
+		// Read min freq
+		char min_freq_path[256];
+		(void)snprintf(min_freq_path, sizeof(min_freq_path), "%s/cpuinfo_min_freq", path);
+		cluster->min_khz = read_sysfs_int(min_freq_path);
+
+		// Read related_cpus
+		char cpus_path[256];
+		(void)snprintf(cpus_path, sizeof(cpus_path), "%s/related_cpus", path);
+		if (!parse_related_cpus(cpus_path, &cluster->cpu_mask, &cluster->cpu_count)) {
+			LOG_warn("PWR_detectCPUTopology: failed to parse related_cpus for policy%d\n",
+			         policy_id);
+			continue;
+		}
+
+		// Read available frequencies
+		char freqs_path[256];
+		(void)snprintf(freqs_path, sizeof(freqs_path), "%s/scaling_available_frequencies", path);
+		read_cluster_frequencies(freqs_path, cluster);
+
+		// If no frequencies available, use min/max as fallback
+		if (cluster->freq_count == 0 && cluster->min_khz > 0 && cluster->max_khz > 0) {
+			cluster->frequencies[0] = cluster->min_khz;
+			cluster->frequencies[1] = (cluster->min_khz + cluster->max_khz) / 2;
+			cluster->frequencies[2] = cluster->max_khz;
+			cluster->freq_count = 3;
+		}
+
+		LOG_debug("PWR_detectCPUTopology: policy%d: cpus=%d (mask=0x%x), %d-%d kHz, %d freqs\n",
+		          policy_id, cluster->cpu_count, cluster->cpu_mask, cluster->min_khz,
+		          cluster->max_khz, cluster->freq_count);
+
+		cluster_count++;
+	}
+
+	if (cluster_count == 0) {
+		LOG_info("PWR_detectCPUTopology: no clusters detected\n");
+		return 0;
+	}
+
+	// Sort clusters by max_khz ascending (LITTLE → BIG → PRIME)
+	if (cluster_count > 1) {
+		qsort(topo->clusters, cluster_count, sizeof(PlayerCPUCluster), compare_cluster_by_max_khz);
+	}
+
+	// Classify clusters using shared logic from player_cpu.c
+	PlayerCPU_classifyClusters(topo->clusters, cluster_count);
+
+	// Log classification results
+	const char* type_names[] = {"LITTLE", "BIG", "PRIME"};
+	for (int i = 0; i < cluster_count; i++) {
+		PlayerCPUCluster* cluster = &topo->clusters[i];
+		LOG_info("PWR_detectCPUTopology: cluster %d (policy%d): %s, %d CPUs, %d-%d kHz\n", i,
+		         cluster->policy_id, type_names[cluster->type], cluster->cpu_count,
+		         cluster->min_khz, cluster->max_khz);
+	}
+
+	topo->cluster_count = cluster_count;
+	topo->topology_detected = 1;
+
+	LOG_info("PWR_detectCPUTopology: detected %d cluster(s), multi-cluster=%s\n", cluster_count,
+	         (cluster_count > 1) ? "yes" : "no");
+
+	return cluster_count;
+}
+
+int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz) {
+	char path[256];
+	int result = 0;
+
+	// Write min_freq if specified
+	if (min_khz > 0) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_min_freq", CPUFREQ_BASE_PATH,
+		               policy_id);
+		FILE* fp = fopen(path, "w");
+		if (fp) {
+			(void)fprintf(fp, "%d\n", min_khz);
+			(void)fclose(fp);
+		} else {
+			LOG_warn("PWR_setCPUClusterBounds: failed to write min_freq for policy%d\n", policy_id);
+			result = -1;
+		}
+	}
+
+	// Write max_freq if specified
+	if (max_khz > 0) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_max_freq", CPUFREQ_BASE_PATH,
+		               policy_id);
+		FILE* fp = fopen(path, "w");
+		if (fp) {
+			(void)fprintf(fp, "%d\n", max_khz);
+			(void)fclose(fp);
+		} else {
+			LOG_warn("PWR_setCPUClusterBounds: failed to write max_freq for policy%d\n", policy_id);
+			result = -1;
+		}
+	}
+
+	return result;
+}
+
+int PWR_setCPUGovernor(int policy_id, const char* governor) {
+	if (!governor) {
+		return -1;
+	}
+
+	char path[256];
+	(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_governor", CPUFREQ_BASE_PATH,
+	               policy_id);
+
+	FILE* fp = fopen(path, "w");
+	if (!fp) {
+		LOG_warn("PWR_setCPUGovernor: failed to open %s\n", path);
+		return -1;
+	}
+
+	int written = fprintf(fp, "%s\n", governor);
+	int close_result = fclose(fp);
+
+	if (written < 0 || close_result != 0) {
+		LOG_warn("PWR_setCPUGovernor: write failed for policy%d governor %s\n", policy_id,
+		         governor);
+		return -1;
+	}
+
+	LOG_debug("PWR_setCPUGovernor: set policy%d governor to %s\n", policy_id, governor);
+	return 0;
+}
+
+#if defined(__linux__)
+#include <sched.h>
+
+int PWR_setThreadAffinity(int cpu_mask) {
+	if (cpu_mask <= 0) {
+		return -1;
+	}
+
+	cpu_set_t set;
+	CPU_ZERO(&set);
+
+	for (int cpu = 0; cpu < 32; cpu++) {
+		if (cpu_mask & (1 << cpu)) {
+			CPU_SET(cpu, &set);
+		}
+	}
+
+	// Set affinity for current thread
+	if (sched_setaffinity(0, sizeof(set), &set) != 0) {
+		LOG_warn("PWR_setThreadAffinity: sched_setaffinity failed: %s\n", strerror(errno));
+		return -1;
+	}
+
+	LOG_debug("PWR_setThreadAffinity: set affinity mask to 0x%x\n", cpu_mask);
+	return 0;
+}
+#else
+// Non-Linux platforms: no-op
+int PWR_setThreadAffinity(int cpu_mask) {
+	(void)cpu_mask;
+	return 0;
+}
+#endif
 
 ///////////////////////////////
 // Platform utility functions

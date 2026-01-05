@@ -18,6 +18,42 @@
 
 #include <string.h>
 
+///////////////////////////////
+// Stubs for API functions called by player_cpu.c
+// These allow unit testing without linking api.c
+///////////////////////////////
+
+// Track calls for verification in tests
+static int stub_governor_calls = 0;
+static int stub_last_policy_id = -1;
+static char stub_last_governor[32] = {0};
+static int stub_affinity_calls = 0;
+static int stub_last_affinity_mask = 0;
+
+int PWR_setCPUGovernor(int policy_id, const char* governor) {
+	stub_governor_calls++;
+	stub_last_policy_id = policy_id;
+	if (governor) {
+		strncpy(stub_last_governor, governor, sizeof(stub_last_governor) - 1);
+		stub_last_governor[sizeof(stub_last_governor) - 1] = '\0';
+	}
+	return 0; // Success
+}
+
+int PWR_setThreadAffinity(int cpu_mask) {
+	stub_affinity_calls++;
+	stub_last_affinity_mask = cpu_mask;
+	return 0; // Success
+}
+
+static void reset_stubs(void) {
+	stub_governor_calls = 0;
+	stub_last_policy_id = -1;
+	stub_last_governor[0] = '\0';
+	stub_affinity_calls = 0;
+	stub_last_affinity_mask = 0;
+}
+
 // Test state and config
 static PlayerCPUState state;
 static PlayerCPUConfig config;
@@ -29,6 +65,7 @@ static PlayerCPUConfig config;
 void setUp(void) {
 	PlayerCPU_initState(&state);
 	PlayerCPU_initConfig(&config);
+	reset_stubs();
 }
 
 void tearDown(void) {
@@ -571,6 +608,363 @@ void test_update_sweet_spot_resets_counters(void) {
 }
 
 ///////////////////////////////
+// Topology Tests
+///////////////////////////////
+
+void test_initTopology_zeros_topology(void) {
+	PlayerCPUTopology t;
+	memset(&t, 0xFF, sizeof(t)); // Fill with garbage
+	PlayerCPU_initTopology(&t);
+
+	TEST_ASSERT_EQUAL(0, t.cluster_count);
+	TEST_ASSERT_EQUAL(0, t.state_count);
+	TEST_ASSERT_EQUAL(0, t.topology_detected);
+}
+
+void test_parseCPUList_single_cpu(void) {
+	int count = 0;
+	int mask = PlayerCPU_parseCPUList("0", &count);
+	TEST_ASSERT_EQUAL(1, count);
+	TEST_ASSERT_EQUAL(0x1, mask); // CPU 0
+}
+
+void test_parseCPUList_range(void) {
+	int count = 0;
+	int mask = PlayerCPU_parseCPUList("0-3", &count);
+	TEST_ASSERT_EQUAL(4, count);
+	TEST_ASSERT_EQUAL(0xF, mask); // CPUs 0-3
+}
+
+void test_parseCPUList_mixed(void) {
+	int count = 0;
+	int mask = PlayerCPU_parseCPUList("0-3,7", &count);
+	TEST_ASSERT_EQUAL(5, count);
+	TEST_ASSERT_EQUAL(0x8F, mask); // CPUs 0-3 and 7
+}
+
+void test_parseCPUList_single_high_cpu(void) {
+	int count = 0;
+	int mask = PlayerCPU_parseCPUList("7", &count);
+	TEST_ASSERT_EQUAL(1, count);
+	TEST_ASSERT_EQUAL(0x80, mask); // CPU 7
+}
+
+void test_parseCPUList_empty_string(void) {
+	int count = 0;
+	int mask = PlayerCPU_parseCPUList("", &count);
+	TEST_ASSERT_EQUAL(0, count);
+	TEST_ASSERT_EQUAL(0, mask);
+}
+
+void test_classifyClusters_single_is_little(void) {
+	PlayerCPUCluster clusters[1];
+	clusters[0].max_khz = 1800000;
+	clusters[0].cpu_count = 4;
+
+	PlayerCPU_classifyClusters(clusters, 1);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
+}
+
+void test_classifyClusters_dual_little_big(void) {
+	PlayerCPUCluster clusters[2];
+	// Sorted by max_khz ascending
+	// Use frequencies with <10% gap to get BIG (not PRIME) classification
+	clusters[0].max_khz = 1800000;
+	clusters[0].cpu_count = 4;
+	clusters[1].max_khz = 1900000; // ~5.5% higher, should be BIG
+	clusters[1].cpu_count = 4;
+
+	PlayerCPU_classifyClusters(clusters, 2);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_BIG, clusters[1].type);
+}
+
+void test_classifyClusters_tri_little_big_prime(void) {
+	PlayerCPUCluster clusters[3];
+	// SD865-like: Silver, Gold, Prime
+	clusters[0].max_khz = 1800000;
+	clusters[0].cpu_count = 4;
+	clusters[1].max_khz = 2420000;
+	clusters[1].cpu_count = 3;
+	clusters[2].max_khz = 2840000;
+	clusters[2].cpu_count = 1; // Prime is single-core
+
+	PlayerCPU_classifyClusters(clusters, 3);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_BIG, clusters[1].type);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_PRIME, clusters[2].type);
+}
+
+void test_classifyClusters_dual_prime_by_frequency_gap(void) {
+	PlayerCPUCluster clusters[2];
+	// >10% frequency gap makes highest PRIME even with multiple cores
+	clusters[0].max_khz = 1800000;
+	clusters[0].cpu_count = 4;
+	clusters[1].max_khz = 2200000; // >10% higher
+	clusters[1].cpu_count = 4;
+
+	PlayerCPU_classifyClusters(clusters, 2);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_PRIME, clusters[1].type);
+}
+
+void test_pickRepresentativeFreqs_single_freq(void) {
+	PlayerCPUCluster c;
+	c.frequencies[0] = 1800000;
+	c.freq_count = 1;
+
+	int low, mid, high;
+	PlayerCPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
+
+	TEST_ASSERT_EQUAL(1800000, low);
+	TEST_ASSERT_EQUAL(1800000, mid);
+	TEST_ASSERT_EQUAL(1800000, high);
+}
+
+void test_pickRepresentativeFreqs_multiple_freqs(void) {
+	PlayerCPUCluster c;
+	c.frequencies[0] = 400000;
+	c.frequencies[1] = 800000;
+	c.frequencies[2] = 1200000;
+	c.frequencies[3] = 1600000;
+	c.frequencies[4] = 2000000;
+	c.freq_count = 5;
+
+	int low, mid, high;
+	PlayerCPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
+
+	TEST_ASSERT_EQUAL(400000, low);
+	TEST_ASSERT_EQUAL(1200000, mid); // freqs[5/2] = freqs[2]
+	TEST_ASSERT_EQUAL(2000000, high);
+}
+
+// Helper to set up a dual-cluster topology
+static void setup_dual_cluster_topology(PlayerCPUState* s) {
+	s->topology.cluster_count = 2;
+	s->topology.topology_detected = 1; // Mark as detected so buildPerfStates works
+
+	// LITTLE cluster (policy 0, CPUs 0-3)
+	s->topology.clusters[0].policy_id = 0;
+	s->topology.clusters[0].cpu_mask = 0x0F;
+	s->topology.clusters[0].cpu_count = 4;
+	s->topology.clusters[0].frequencies[0] = 600000;
+	s->topology.clusters[0].frequencies[1] = 1200000;
+	s->topology.clusters[0].frequencies[2] = 1800000;
+	s->topology.clusters[0].freq_count = 3;
+	s->topology.clusters[0].min_khz = 600000;
+	s->topology.clusters[0].max_khz = 1800000;
+	s->topology.clusters[0].type = PLAYER_CPU_CLUSTER_LITTLE;
+
+	// BIG cluster (policy 4, CPUs 4-7)
+	s->topology.clusters[1].policy_id = 4;
+	s->topology.clusters[1].cpu_mask = 0xF0;
+	s->topology.clusters[1].cpu_count = 4;
+	s->topology.clusters[1].frequencies[0] = 800000;
+	s->topology.clusters[1].frequencies[1] = 1600000;
+	s->topology.clusters[1].frequencies[2] = 2400000;
+	s->topology.clusters[1].freq_count = 3;
+	s->topology.clusters[1].min_khz = 800000;
+	s->topology.clusters[1].max_khz = 2400000;
+	s->topology.clusters[1].type = PLAYER_CPU_CLUSTER_BIG;
+}
+
+void test_buildPerfStates_dual_cluster_creates_six_states(void) {
+	setup_dual_cluster_topology(&state);
+
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	TEST_ASSERT_EQUAL(6, state.topology.state_count);
+	TEST_ASSERT_EQUAL(1, state.use_topology);
+}
+
+void test_buildPerfStates_dual_cluster_state_progression(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	// State 0: LITTLE powersave, BIG powersave, affinity = LITTLE
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(0, state.topology.states[0].active_cluster_idx);
+	TEST_ASSERT_EQUAL(0x0F, state.topology.states[0].cpu_affinity_mask); // LITTLE CPUs
+
+	// State 1: LITTLE schedutil, BIG powersave
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_SCHEDUTIL, state.topology.states[1].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[1].cluster_governor[1]);
+
+	// State 2: LITTLE performance, BIG powersave
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_PERFORMANCE, state.topology.states[2].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[2].cluster_governor[1]);
+
+	// State 3: BIG powersave, LITTLE powersave, affinity = BIG
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(1, state.topology.states[3].active_cluster_idx);
+	TEST_ASSERT_EQUAL(0xF0, state.topology.states[3].cpu_affinity_mask); // BIG CPUs
+
+	// State 5: BIG performance (highest state)
+	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_PERFORMANCE, state.topology.states[5].cluster_governor[1]);
+}
+
+void test_buildPerfStates_single_cluster_skips_topology(void) {
+	state.topology.cluster_count = 1;
+
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	TEST_ASSERT_EQUAL(0, state.topology.state_count);
+	TEST_ASSERT_EQUAL(0, state.use_topology);
+}
+
+void test_applyPerfState_calls_governors(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.target_state = 0;
+	state.current_state = -1;
+
+	int result = PlayerCPU_applyPerfState(&state);
+
+	TEST_ASSERT_EQUAL(0, result);
+	// Should call governor for each cluster (2 clusters = 2 calls)
+	TEST_ASSERT_EQUAL(2, stub_governor_calls);
+}
+
+void test_applyPerfState_does_not_set_affinity_directly(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.target_state = 0;
+	state.current_state = -1;
+	state.pending_affinity = 0;
+
+	PlayerCPU_applyPerfState(&state);
+
+	// applyPerfState should NOT set pending_affinity or call PWR_setThreadAffinity
+	// The caller is responsible for setting pending_affinity under mutex
+	TEST_ASSERT_EQUAL(0, state.pending_affinity);
+	TEST_ASSERT_EQUAL(0, stub_affinity_calls);
+}
+
+void test_applyPerfState_updates_current_state(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.target_state = 3;
+	state.current_state = -1;
+
+	PlayerCPU_applyPerfState(&state);
+
+	TEST_ASSERT_EQUAL(3, state.current_state);
+}
+
+void test_update_topology_boost_increments_state(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 2;
+	state.current_state = 2;
+	state.frame_count = config.window_frames - 1;
+	state.high_util_windows = config.boost_windows - 1;
+
+	// High utilization frames (>85%)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		PlayerCPU_recordFrameTime(&state, 15000); // ~90%
+	}
+
+	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(3, state.target_state);
+}
+
+void test_update_topology_reduce_decrements_state(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 4;
+	state.current_state = 4;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Low utilization frames (<55%)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		PlayerCPU_recordFrameTime(&state, 6667); // ~40%
+	}
+
+	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_LESS_THAN(4, state.target_state);
+}
+
+void test_update_topology_panic_jumps_states(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 1;
+	state.current_state = 1;
+	state.last_underrun = 0;
+
+	// Underrun detected
+	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 1, NULL);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_GREATER_THAN(1, state.target_state);
+}
+
+void test_update_topology_no_boost_at_max_state(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 5; // Already at max
+	state.current_state = 5;
+	state.frame_count = config.window_frames - 1;
+	state.high_util_windows = config.boost_windows - 1;
+
+	// High utilization frames
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		PlayerCPU_recordFrameTime(&state, 15000);
+	}
+
+	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(5, state.target_state);
+}
+
+void test_update_topology_no_reduce_at_min_state(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 0; // Already at min
+	state.current_state = 0;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Low utilization frames
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		PlayerCPU_recordFrameTime(&state, 6667);
+	}
+
+	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+
+	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(0, state.target_state);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -646,6 +1040,43 @@ int main(void) {
 	RUN_TEST(test_update_boost_fallback_mode);
 	RUN_TEST(test_update_reduce_fallback_mode);
 	RUN_TEST(test_update_sweet_spot_resets_counters);
+
+	// Topology - initialization
+	RUN_TEST(test_initTopology_zeros_topology);
+
+	// Topology - CPU list parsing
+	RUN_TEST(test_parseCPUList_single_cpu);
+	RUN_TEST(test_parseCPUList_range);
+	RUN_TEST(test_parseCPUList_mixed);
+	RUN_TEST(test_parseCPUList_single_high_cpu);
+	RUN_TEST(test_parseCPUList_empty_string);
+
+	// Topology - cluster classification
+	RUN_TEST(test_classifyClusters_single_is_little);
+	RUN_TEST(test_classifyClusters_dual_little_big);
+	RUN_TEST(test_classifyClusters_tri_little_big_prime);
+	RUN_TEST(test_classifyClusters_dual_prime_by_frequency_gap);
+
+	// Topology - representative frequencies
+	RUN_TEST(test_pickRepresentativeFreqs_single_freq);
+	RUN_TEST(test_pickRepresentativeFreqs_multiple_freqs);
+
+	// Topology - PerfState building
+	RUN_TEST(test_buildPerfStates_dual_cluster_creates_six_states);
+	RUN_TEST(test_buildPerfStates_dual_cluster_state_progression);
+	RUN_TEST(test_buildPerfStates_single_cluster_skips_topology);
+
+	// Topology - PerfState application
+	RUN_TEST(test_applyPerfState_calls_governors);
+	RUN_TEST(test_applyPerfState_does_not_set_affinity_directly);
+	RUN_TEST(test_applyPerfState_updates_current_state);
+
+	// Topology - update decisions
+	RUN_TEST(test_update_topology_boost_increments_state);
+	RUN_TEST(test_update_topology_reduce_decrements_state);
+	RUN_TEST(test_update_topology_panic_jumps_states);
+	RUN_TEST(test_update_topology_no_boost_at_max_state);
+	RUN_TEST(test_update_topology_no_reduce_at_min_state);
 
 	return UNITY_END();
 }

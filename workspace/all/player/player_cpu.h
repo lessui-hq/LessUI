@@ -5,9 +5,18 @@
  * performance. Uses frame timing (core.run() execution time) to determine
  * optimal CPU frequency.
  *
- * Two modes are supported:
- * - Granular mode: Uses all available CPU frequencies (linear scaling)
- * - Fallback mode: Uses 3 fixed levels (powersave/normal/performance)
+ * Three modes are supported:
+ * - Topology mode: Multi-cluster SoCs (big.LITTLE, etc.) using PerfState ladder
+ * - Granular mode: Single-cluster with all available frequencies (linear scaling)
+ * - Fallback mode: 3 fixed levels (powersave/normal/performance)
+ *
+ * Topology mode:
+ * - Detects CPU clusters via sysfs and builds a performance state ladder
+ * - Uses GOVERNORS (powersave/schedutil/performance) rather than frequency bounds
+ * - Works WITH the kernel's frequency scaling instead of fighting it
+ * - Creates a gradient: 3 states per cluster tier (powersave/schedutil/performance)
+ * - Progresses: LITTLE tier → BIG tier → PRIME tier (if available)
+ * - Uses CPU affinity to guide which cluster the emulation thread runs on
  *
  * Designed for testability with injectable state and callbacks.
  * Extracted from player.c.
@@ -46,6 +55,13 @@
 #define PLAYER_CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
 
 /**
+ * Multi-cluster topology constants.
+ */
+#define PLAYER_CPU_MAX_CLUSTERS 8 // Maximum CPU clusters (policies)
+#define PLAYER_CPU_MAX_PERF_STATES 16 // Maximum performance states in ladder
+#define PLAYER_CPU_MAX_FREQS_PER_CLUSTER 16 // Maximum frequencies per cluster
+
+/**
  * Preset level indices.
  */
 typedef enum {
@@ -53,6 +69,75 @@ typedef enum {
 	PLAYER_CPU_LEVEL_NORMAL = 1,
 	PLAYER_CPU_LEVEL_PERFORMANCE = 2
 } PlayerCPULevel;
+
+/**
+ * Cluster type classification based on relative performance.
+ * Determined by sorting clusters by max_khz and analyzing the distribution.
+ */
+typedef enum {
+	PLAYER_CPU_CLUSTER_LITTLE = 0, // Efficiency cores (lowest max_khz)
+	PLAYER_CPU_CLUSTER_BIG = 1, // Performance cores (middle)
+	PLAYER_CPU_CLUSTER_PRIME = 2, // Premium core (highest max_khz, often single)
+} PlayerCPUClusterType;
+
+/**
+ * Governor types for PerfState ladder.
+ *
+ * Instead of manipulating frequency bounds, we use governors to create
+ * a gradient of performance levels within each cluster tier:
+ * - POWERSAVE: runs at minimum frequency (very efficient)
+ * - SCHEDUTIL: dynamic scaling based on load (balanced)
+ * - PERFORMANCE: runs at maximum frequency (full power)
+ */
+typedef enum {
+	PLAYER_CPU_GOV_POWERSAVE = 0, // Min frequency - for light workloads
+	PLAYER_CPU_GOV_SCHEDUTIL = 1, // Dynamic scaling - kernel finds sweet spot
+	PLAYER_CPU_GOV_PERFORMANCE = 2, // Max frequency - for demanding workloads
+} PlayerCPUGovernor;
+
+/**
+ * Information about a single CPU cluster (cpufreq policy).
+ * Each cluster represents a group of CPUs that share a frequency.
+ */
+typedef struct {
+	int policy_id; // Policy number (0, 4, 7, etc. from policyN)
+	int cpu_mask; // Bitmask of CPUs in this cluster
+	int cpu_count; // Number of CPUs in cluster
+	int frequencies
+	    [PLAYER_CPU_MAX_FREQS_PER_CLUSTER]; // Available frequencies (kHz, sorted ascending)
+	int freq_count; // Number of frequencies
+	int min_khz; // cpuinfo_min_freq
+	int max_khz; // cpuinfo_max_freq
+	PlayerCPUClusterType type; // LITTLE/BIG/PRIME classification
+} PlayerCPUCluster;
+
+/**
+ * A performance state represents one step in the autoscaler's ladder.
+ *
+ * Instead of manipulating frequency bounds, each state specifies:
+ * - Which cluster is "active" (where the emulation thread should run)
+ * - What governor to use on each cluster
+ * - CPU affinity to guide the scheduler
+ *
+ * This works WITH the kernel's frequency scaling rather than against it.
+ */
+typedef struct {
+	PlayerCPUGovernor cluster_governor[PLAYER_CPU_MAX_CLUSTERS]; // Governor per cluster
+	int cpu_affinity_mask; // Bitmask of CPUs for emulation thread
+	int active_cluster_idx; // Which cluster is the "active" one
+} PlayerCPUPerfState;
+
+/**
+ * Complete CPU topology information detected from sysfs.
+ * Populated by PWR_detectCPUTopology() at initialization.
+ */
+typedef struct {
+	PlayerCPUCluster clusters[PLAYER_CPU_MAX_CLUSTERS]; // Detected clusters (sorted by max_khz)
+	int cluster_count; // Number of clusters detected
+	PlayerCPUPerfState states[PLAYER_CPU_MAX_PERF_STATES]; // Performance state ladder
+	int state_count; // Number of states in ladder
+	int topology_detected; // 1 if detection completed successfully
+} PlayerCPUTopology;
 
 /**
  * Decision type returned by PlayerCPU_update().
@@ -119,6 +204,13 @@ typedef struct {
 
 	// Per-frequency panic tracking (failsafe for problematic frequencies)
 	int panic_count[PLAYER_CPU_MAX_FREQUENCIES]; // Count of panics at each frequency
+
+	// Multi-cluster topology support
+	PlayerCPUTopology topology; // Detected CPU topology
+	int target_state; // Target PerfState index (multi-cluster mode)
+	int current_state; // Currently applied PerfState index
+	int use_topology; // 1 = multi-cluster mode active
+	int pending_affinity; // CPU mask to apply from main thread (0 = none pending)
 } PlayerCPUState;
 
 /**
@@ -239,5 +331,82 @@ int PlayerCPU_getPresetPercentage(PlayerCPULevel level);
  * @return 90th percentile value
  */
 uint64_t PlayerCPU_percentile90(const uint64_t* frame_times, int count);
+
+///////////////////////////////
+// Multi-cluster topology functions
+///////////////////////////////
+
+/**
+ * Initializes topology structure to empty state.
+ *
+ * @param topology Topology to initialize
+ */
+void PlayerCPU_initTopology(PlayerCPUTopology* topology);
+
+/**
+ * Builds the PerfState ladder from detected topology.
+ *
+ * Creates a progression of performance states using governors:
+ * - Single-cluster: No states built (use existing frequency array)
+ * - Dual-cluster: 6 states (LITTLE powersave/schedutil/performance,
+ *                           BIG powersave/schedutil/performance)
+ * - Tri-cluster: 9 states (add PRIME powersave/schedutil/performance)
+ *
+ * Each state sets:
+ * - Active cluster's governor (powersave/schedutil/performance)
+ * - Inactive clusters to powersave (let them idle)
+ * - CPU affinity to guide emulation thread to active cluster
+ *
+ * @param state CPU state with populated topology.clusters
+ * @param config Configuration
+ */
+void PlayerCPU_buildPerfStates(PlayerCPUState* state, const PlayerCPUConfig* config);
+
+/**
+ * Applies a PerfState by setting cluster governors and thread affinity.
+ *
+ * Called by background thread when target_state != current_state.
+ * Sets governors on all clusters and queues affinity change for main thread.
+ *
+ * @param state CPU state with target_state set
+ * @return 0 on success, -1 on failure
+ */
+int PlayerCPU_applyPerfState(PlayerCPUState* state);
+
+/**
+ * Parses a CPU list string (e.g., "0-3" or "0 1 2 3") into a bitmask.
+ *
+ * @param str CPU list string from sysfs (e.g., "0-3,5,7-8")
+ * @param cpu_count Output: number of CPUs in the list
+ * @return Bitmask of CPUs
+ */
+int PlayerCPU_parseCPUList(const char* str, int* cpu_count);
+
+/**
+ * Classifies clusters based on their relative performance.
+ *
+ * After clusters are sorted by max_khz, this assigns LITTLE/BIG/PRIME types:
+ * - clusters[0] = LITTLE
+ * - clusters[N-1] = PRIME if single CPU or >10% faster than next
+ * - Middle clusters = BIG
+ *
+ * @param clusters Array of clusters (must be sorted by max_khz ascending)
+ * @param count Number of clusters
+ */
+void PlayerCPU_classifyClusters(PlayerCPUCluster* clusters, int count);
+
+/**
+ * Picks 3 representative frequencies from a cluster's available frequencies.
+ *
+ * Selects low (min), mid (middle), and high (max) frequencies for building
+ * the PerfState ladder.
+ *
+ * @param cluster Cluster with populated frequencies
+ * @param low_khz Output: low frequency (freqs[0])
+ * @param mid_khz Output: mid frequency (freqs[count/2])
+ * @param high_khz Output: high frequency (freqs[count-1])
+ */
+void PlayerCPU_pickRepresentativeFreqs(const PlayerCPUCluster* cluster, int* low_khz, int* mid_khz,
+                                       int* high_khz);
 
 #endif // __PLAYER_CPU_H__

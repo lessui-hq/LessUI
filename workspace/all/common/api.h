@@ -1521,6 +1521,61 @@ int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count);
  */
 int PWR_setCPUFrequency_sysfs(int freq_khz);
 
+///////////////////////////////
+// Multi-cluster CPU topology support
+///////////////////////////////
+
+// Forward declarations from player_cpu.h (avoid circular include)
+struct PlayerCPUTopology;
+
+/**
+ * Detects CPU topology from sysfs.
+ *
+ * Enumerates /sys/devices/system/cpu/cpufreq/policy{0,1,...} and reads:
+ * - related_cpus: Which CPUs belong to this cluster
+ * - cpuinfo_min_freq / cpuinfo_max_freq: Frequency bounds
+ * - scaling_available_frequencies: Available frequency steps
+ *
+ * Clusters are sorted by max_khz ascending (LITTLE → BIG → PRIME).
+ *
+ * @param topology Output structure to populate
+ * @return Number of clusters found (0 on failure, 1 for single-cluster)
+ */
+int PWR_detectCPUTopology(struct PlayerCPUTopology* topology);
+
+/**
+ * Sets frequency bounds for a CPU cluster.
+ *
+ * For multi-cluster mode with schedutil governor, writes to:
+ * - /sys/devices/system/cpu/cpufreq/policy{N}/scaling_min_freq
+ * - /sys/devices/system/cpu/cpufreq/policy{N}/scaling_max_freq
+ *
+ * @param policy_id Policy number (0, 4, 7, etc.)
+ * @param min_khz Minimum frequency in kHz
+ * @param max_khz Maximum frequency in kHz (0 = don't change)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz);
+
+/**
+ * Sets CPU governor for a cluster.
+ *
+ * @param policy_id Policy number (0, 4, 7, etc.)
+ * @param governor Governor name ("userspace", "schedutil", etc.)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUGovernor(int policy_id, const char* governor);
+
+/**
+ * Sets CPU affinity for the current thread.
+ *
+ * Uses pthread_setaffinity_np() to restrict thread to specific CPUs.
+ *
+ * @param cpu_mask Bitmask of allowed CPUs (bit 0 = CPU0, bit 1 = CPU1, etc.)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setThreadAffinity(int cpu_mask);
+
 /**
  * Platform-specific rumble/vibration control.
  *

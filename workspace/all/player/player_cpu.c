@@ -194,8 +194,8 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
 		result->p90_time = 0;
 	}
 
-	// Skip if scaling is disabled (0 or 1 frequency available)
-	if (state->scaling_disabled) {
+	// Skip if scaling is disabled (0 or 1 frequency available) AND not using topology mode
+	if (state->scaling_disabled && !state->use_topology) {
 		if (result)
 			result->decision = PLAYER_CPU_DECISION_SKIP;
 		return PLAYER_CPU_DECISION_SKIP;
@@ -216,20 +216,40 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
 		return PLAYER_CPU_DECISION_SKIP;
 	}
 
-	// Get current indices (target_index is always 0..freq_count-1)
+	// Get current indices based on mode
 	int current_idx = state->target_index;
 	int current_level = state->target_level;
+	int current_state_idx = state->target_state;
 	int max_idx = state->freq_count - 1;
 	if (max_idx < 0)
 		max_idx = 0;
+	int max_state = state->topology.state_count - 1;
+	if (max_state < 0)
+		max_state = 0;
 
-	// Check if at max
-	bool at_max = state->use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+	// Check if at max based on mode
+	bool at_max;
+	if (state->use_topology) {
+		at_max = (current_state_idx >= max_state);
+	} else if (state->use_granular) {
+		at_max = (current_idx >= max_idx);
+	} else {
+		at_max = (current_level >= 2);
+	}
 
 	// Emergency: check for underruns (panic path)
 	if (current_underruns > state->last_underrun && !at_max) {
 		// Underrun detected - boost by panic_step_up
-		if (state->use_granular) {
+		if (state->use_topology) {
+			int new_state = current_state_idx + config->panic_step_up;
+			if (new_state > max_state)
+				new_state = max_state;
+			state->target_state = new_state;
+			if (result) {
+				result->decision = PLAYER_CPU_DECISION_PANIC;
+				result->new_index = new_state; // Use new_index for state index
+			}
+		} else if (state->use_granular) {
 			int new_idx = current_idx + config->panic_step_up;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
@@ -298,7 +318,64 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
 
 	PlayerCPUDecision decision = PLAYER_CPU_DECISION_NONE;
 
-	if (state->use_granular) {
+	if (state->use_topology) {
+		// Topology mode: multi-cluster PerfState scaling
+		// Decrement panic cooldown
+		if (state->panic_cooldown > 0) {
+			state->panic_cooldown--;
+		}
+
+		if (util > config->util_high) {
+			// Need more performance
+			state->high_util_windows++;
+			state->low_util_windows = 0;
+
+			if (state->high_util_windows >= config->boost_windows &&
+			    current_state_idx < max_state) {
+				// Step up one state at a time (conservative approach for multi-cluster)
+				int new_state = current_state_idx + 1;
+				if (new_state > max_state)
+					new_state = max_state;
+
+				state->target_state = new_state;
+				state->high_util_windows = 0;
+				decision = PLAYER_CPU_DECISION_BOOST;
+
+				if (result) {
+					result->decision = PLAYER_CPU_DECISION_BOOST;
+					result->new_index = new_state;
+				}
+			}
+		} else if (util < config->util_low) {
+			// Can reduce power
+			state->low_util_windows++;
+			state->high_util_windows = 0;
+
+			// Only reduce if enough windows AND panic cooldown expired
+			bool reduce_ok = (state->low_util_windows >= config->reduce_windows) &&
+			                 (state->panic_cooldown == 0) && (current_state_idx > 0);
+
+			if (reduce_ok) {
+				// Step down one state at a time
+				int new_state = current_state_idx - config->max_step_down;
+				if (new_state < 0)
+					new_state = 0;
+
+				state->target_state = new_state;
+				state->low_util_windows = 0;
+				decision = PLAYER_CPU_DECISION_REDUCE;
+
+				if (result) {
+					result->decision = PLAYER_CPU_DECISION_REDUCE;
+					result->new_index = new_state;
+				}
+			}
+		} else {
+			// In sweet spot - reset counters
+			state->high_util_windows = 0;
+			state->low_util_windows = 0;
+		}
+	} else if (state->use_granular) {
 		// Granular mode: linear frequency scaling
 		int current_freq = state->frequencies[current_idx];
 
@@ -419,4 +496,275 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
 	state->frame_count = 0;
 
 	return decision;
+}
+
+///////////////////////////////
+// Multi-cluster topology functions
+///////////////////////////////
+
+// Forward declaration for PWR functions (defined in api.c)
+extern int PWR_setCPUGovernor(int policy_id, const char* governor);
+extern int PWR_setThreadAffinity(int cpu_mask);
+
+/**
+ * Returns the governor string for a given governor type.
+ */
+static const char* governor_name(PlayerCPUGovernor gov) {
+	switch (gov) {
+	case PLAYER_CPU_GOV_POWERSAVE:
+		return "powersave";
+	case PLAYER_CPU_GOV_SCHEDUTIL:
+		return "schedutil";
+	case PLAYER_CPU_GOV_PERFORMANCE:
+		return "performance";
+	default:
+		return "schedutil";
+	}
+}
+
+void PlayerCPU_initTopology(PlayerCPUTopology* topology) {
+	memset(topology, 0, sizeof(PlayerCPUTopology));
+}
+
+int PlayerCPU_parseCPUList(const char* str, int* cpu_count) {
+	if (!str || !cpu_count) {
+		if (cpu_count)
+			*cpu_count = 0;
+		return 0;
+	}
+
+	int mask = 0;
+	*cpu_count = 0;
+
+	const char* ptr = str;
+	while (*ptr) {
+		// Skip whitespace and commas
+		while (*ptr == ' ' || *ptr == '\t' || *ptr == '\n' || *ptr == ',')
+			ptr++;
+		if (!*ptr)
+			break;
+
+		// Parse number
+		int start = 0;
+		while (*ptr >= '0' && *ptr <= '9') {
+			start = start * 10 + (*ptr - '0');
+			ptr++;
+		}
+
+		int end = start;
+		if (*ptr == '-') {
+			// Range: "0-3"
+			ptr++;
+			end = 0;
+			while (*ptr >= '0' && *ptr <= '9') {
+				end = end * 10 + (*ptr - '0');
+				ptr++;
+			}
+		}
+
+		// Add CPUs to mask
+		for (int cpu = start; cpu <= end && cpu < 32; cpu++) {
+			if (!(mask & (1 << cpu))) {
+				mask |= (1 << cpu);
+				(*cpu_count)++;
+			}
+		}
+	}
+
+	return mask;
+}
+
+void PlayerCPU_classifyClusters(PlayerCPUCluster* clusters, int count) {
+	if (!clusters || count <= 0)
+		return;
+
+	for (int i = 0; i < count; i++) {
+		PlayerCPUCluster* cluster = &clusters[i];
+
+		if (i == 0) {
+			// First cluster (lowest max_khz) is always LITTLE
+			cluster->type = PLAYER_CPU_CLUSTER_LITTLE;
+		} else if (i == count - 1) {
+			// Last cluster might be PRIME if single CPU or significantly faster
+			int prev_max = clusters[i - 1].max_khz;
+			int freq_gap_percent = 0;
+			if (prev_max > 0) {
+				freq_gap_percent = ((cluster->max_khz - prev_max) * 100) / prev_max;
+			}
+
+			if (cluster->cpu_count == 1 || freq_gap_percent > 10) {
+				cluster->type = PLAYER_CPU_CLUSTER_PRIME;
+			} else {
+				cluster->type = PLAYER_CPU_CLUSTER_BIG;
+			}
+		} else {
+			// Middle clusters are BIG
+			cluster->type = PLAYER_CPU_CLUSTER_BIG;
+		}
+	}
+}
+
+void PlayerCPU_pickRepresentativeFreqs(const PlayerCPUCluster* cluster, int* low_khz, int* mid_khz,
+                                       int* high_khz) {
+	if (!cluster || cluster->freq_count <= 0) {
+		if (low_khz)
+			*low_khz = 0;
+		if (mid_khz)
+			*mid_khz = 0;
+		if (high_khz)
+			*high_khz = 0;
+		return;
+	}
+
+	// Low: first frequency
+	if (low_khz) {
+		*low_khz = cluster->frequencies[0];
+	}
+
+	// Mid: middle frequency
+	if (mid_khz) {
+		int mid_idx = cluster->freq_count / 2;
+		*mid_khz = cluster->frequencies[mid_idx];
+	}
+
+	// High: last frequency
+	if (high_khz) {
+		*high_khz = cluster->frequencies[cluster->freq_count - 1];
+	}
+}
+
+/**
+ * Builds a single PerfState entry using governors instead of frequency bounds.
+ *
+ * @param state PerfState to populate
+ * @param cluster_count Number of clusters in topology
+ * @param active_cluster_idx Index of the active cluster for this state
+ * @param clusters Array of cluster info
+ * @param governor_level 0=powersave, 1=schedutil, 2=performance for active cluster
+ */
+static void build_perf_state(PlayerCPUPerfState* state, int cluster_count, int active_cluster_idx,
+                             const PlayerCPUCluster* clusters, int governor_level) {
+	memset(state, 0, sizeof(*state));
+
+	state->active_cluster_idx = active_cluster_idx;
+	state->cpu_affinity_mask = 0;
+
+	// Set governors for all clusters
+	for (int i = 0; i < cluster_count && i < PLAYER_CPU_MAX_CLUSTERS; i++) {
+		const PlayerCPUCluster* cluster = &clusters[i];
+
+		if (i == active_cluster_idx) {
+			// Active cluster: use the specified governor level
+			switch (governor_level) {
+			case 0:
+				state->cluster_governor[i] = PLAYER_CPU_GOV_POWERSAVE;
+				break;
+			case 1:
+				state->cluster_governor[i] = PLAYER_CPU_GOV_SCHEDUTIL;
+				break;
+			case 2:
+			default:
+				state->cluster_governor[i] = PLAYER_CPU_GOV_PERFORMANCE;
+				break;
+			}
+			// Add active cluster to affinity
+			state->cpu_affinity_mask |= cluster->cpu_mask;
+		} else {
+			// Inactive clusters: powersave (let them idle/sleep)
+			state->cluster_governor[i] = PLAYER_CPU_GOV_POWERSAVE;
+		}
+	}
+}
+
+void PlayerCPU_buildPerfStates(PlayerCPUState* state, const PlayerCPUConfig* config) {
+	(void)config; // Reserved for future configuration
+
+	PlayerCPUTopology* topo = &state->topology;
+
+	if (!topo->topology_detected || topo->cluster_count <= 1) {
+		// Single-cluster or no topology: don't use PerfState mode
+		topo->state_count = 0;
+		state->use_topology = 0;
+		return;
+	}
+
+	int cluster_count = topo->cluster_count;
+	int state_idx = 0;
+
+	// Build states for each cluster tier using governors
+	// Structure: 3 governor levels per cluster (powersave/schedutil/performance)
+	//
+	// Dual-cluster (LITTLE + BIG):
+	//   0: LITTLE powersave, BIG powersave - lightest workloads
+	//   1: LITTLE schedutil, BIG powersave - light workloads (kernel finds sweet spot)
+	//   2: LITTLE performance, BIG powersave - moderate workloads
+	//   3: BIG powersave, LITTLE powersave - heavier workloads (conserve power)
+	//   4: BIG schedutil, LITTLE powersave - heavy workloads (kernel scales)
+	//   5: BIG performance, LITTLE powersave - demanding workloads
+	//
+	// Tri-cluster adds 3 more states for PRIME (6-8)
+
+	for (int cluster_idx = 0; cluster_idx < cluster_count && state_idx < PLAYER_CPU_MAX_PERF_STATES;
+	     cluster_idx++) {
+		// 3 governor levels per cluster
+		for (int gov_level = 0; gov_level < 3 && state_idx < PLAYER_CPU_MAX_PERF_STATES;
+		     gov_level++) {
+			PlayerCPUPerfState* ps = &topo->states[state_idx];
+			build_perf_state(ps, cluster_count, cluster_idx, topo->clusters, gov_level);
+
+			// For PRIME cluster, include BIG in affinity (allow scheduler some flexibility)
+			if (cluster_idx == cluster_count - 1 && cluster_count >= 3 &&
+			    topo->clusters[cluster_idx].type == PLAYER_CPU_CLUSTER_PRIME) {
+				// Add BIG cluster(s) to affinity
+				for (int i = 1; i < cluster_idx; i++) {
+					if (topo->clusters[i].type == PLAYER_CPU_CLUSTER_BIG) {
+						ps->cpu_affinity_mask |= topo->clusters[i].cpu_mask;
+					}
+				}
+			}
+
+			state_idx++;
+		}
+	}
+
+	topo->state_count = state_idx;
+	state->use_topology = 1;
+	state->target_state = state_idx - 1; // Start at highest (performance on fastest cluster)
+	state->current_state = -1; // Not yet applied
+}
+
+int PlayerCPU_applyPerfState(PlayerCPUState* state) {
+	PlayerCPUTopology* topo = &state->topology;
+
+	if (!state->use_topology || topo->state_count <= 0) {
+		return -1;
+	}
+
+	int target = state->target_state;
+	if (target < 0)
+		target = 0;
+	if (target >= topo->state_count)
+		target = topo->state_count - 1;
+
+	PlayerCPUPerfState* ps = &topo->states[target];
+	int result = 0;
+
+	// Apply governors to each cluster
+	for (int i = 0; i < topo->cluster_count; i++) {
+		int policy_id = topo->clusters[i].policy_id;
+		const char* gov = governor_name(ps->cluster_governor[i]);
+
+		if (PWR_setCPUGovernor(policy_id, gov) != 0) {
+			result = -1;
+		}
+	}
+
+	// Note: pending_affinity is NOT set here to avoid race conditions.
+	// The caller is responsible for setting pending_affinity under mutex
+	// after this function returns. See auto_cpu_scaling_thread().
+
+	// Update current state
+	state->current_state = target;
+
+	return result;
 }

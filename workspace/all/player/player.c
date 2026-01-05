@@ -843,11 +843,37 @@ static struct Config config =
  * Thread safety: Uses auto_cpu_mutex to protect shared state.
  */
 static void* auto_cpu_scaling_thread(void* arg) {
-	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n",
-	          auto_cpu_state.use_granular, auto_cpu_state.freq_count);
+	LOG_debug("Auto CPU thread: started (topology=%d, granular=%d, freq_count=%d)\n",
+	          auto_cpu_state.use_topology, auto_cpu_state.use_granular, auto_cpu_state.freq_count);
 
 	while (auto_cpu_thread_running) {
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			// Multi-cluster topology mode: apply PerfState changes
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int target_state = auto_cpu_state.target_state;
+			int current_state = auto_cpu_state.current_state;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target_state != current_state && target_state >= 0 &&
+			    target_state < auto_cpu_state.topology.state_count) {
+				LOG_debug("Auto CPU: applying PerfState %d/%d\n", target_state,
+				          auto_cpu_state.topology.state_count - 1);
+
+				int result = PlayerCPU_applyPerfState(&auto_cpu_state);
+				if (result != 0) {
+					LOG_warn("Auto CPU: failed to apply PerfState %d\n", target_state);
+				}
+
+				// Set pending_affinity under mutex (main thread will apply it)
+				// This avoids race condition with main thread reading pending_affinity
+				PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[target_state];
+				pthread_mutex_lock(&auto_cpu_mutex);
+				if (ps->cpu_affinity_mask > 0) {
+					auto_cpu_state.pending_affinity = ps->cpu_affinity_mask;
+				}
+				pthread_mutex_unlock(&auto_cpu_mutex);
+			}
+		} else if (auto_cpu_state.use_granular) {
 			// Granular frequency mode
 			pthread_mutex_lock(&auto_cpu_mutex);
 			int target_idx = auto_cpu_state.target_index;
@@ -981,6 +1007,23 @@ static void auto_cpu_setTargetIndex(int index) {
 }
 
 /**
+ * Requests a PerfState change (non-blocking, topology mode).
+ *
+ * @param state Target PerfState index
+ */
+static void auto_cpu_setTargetState(int state) {
+	int max_state = auto_cpu_state.topology.state_count - 1;
+	if (state < 0)
+		state = 0;
+	if (state > max_state)
+		state = max_state;
+
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_state.target_state = state;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+/**
  * Gets the current frequency index (thread-safe).
  */
 static int auto_cpu_getCurrentIndex(void) {
@@ -1022,6 +1065,54 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
+	// First, try topology detection for multi-cluster SoCs
+	int cluster_count = PWR_detectCPUTopology(&auto_cpu_state.topology);
+
+	if (cluster_count >= 2) {
+		// Multi-cluster detected - use topology mode
+		auto_cpu_state.use_topology = 1;
+		auto_cpu_state.use_granular = 0;
+
+		// Build the PerfState ladder (3 governor levels per cluster tier)
+		PlayerCPU_buildPerfStates(&auto_cpu_state, &auto_cpu_config);
+
+		// Note: governors are now set by applyPerfState(), not upfront
+		// This lets each PerfState control its own governor configuration
+
+		LOG_info("Auto CPU: topology mode enabled, %d clusters, %d PerfStates\n", cluster_count,
+		         auto_cpu_state.topology.state_count);
+
+		// Log cluster info
+		for (int c = 0; c < cluster_count; c++) {
+			PlayerCPUCluster* cluster = &auto_cpu_state.topology.clusters[c];
+			const char* type_str = cluster->type == PLAYER_CPU_CLUSTER_PRIME    ? "PRIME"
+			                       : cluster->type == PLAYER_CPU_CLUSTER_BIG    ? "BIG"
+			                       : cluster->type == PLAYER_CPU_CLUSTER_LITTLE ? "LITTLE"
+			                                                                    : "?";
+			LOG_debug("Auto CPU: cluster %d (policy%d): %s, %d CPUs, %d-%d MHz\n", c,
+			          cluster->policy_id, type_str, cluster->cpu_count, cluster->min_khz / 1000,
+			          cluster->max_khz / 1000);
+		}
+
+		// Log PerfState ladder (governor-based)
+		static const char* gov_names[] = {"powersave", "schedutil", "performance"};
+		for (int s = 0; s < auto_cpu_state.topology.state_count; s++) {
+			PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[s];
+			LOG_debug("Auto CPU: PerfState %d: cluster %d, affinity=0x%x\n", s,
+			          ps->active_cluster_idx, ps->cpu_affinity_mask);
+			for (int c = 0; c < cluster_count; c++) {
+				int gov = ps->cluster_governor[c];
+				const char* gov_str = (gov >= 0 && gov <= 2) ? gov_names[gov] : "?";
+				LOG_debug("  cluster %d: %s\n", c, gov_str);
+			}
+		}
+
+		return;
+	}
+
+	// Single-cluster or no topology - fall back to traditional mode
+	auto_cpu_state.use_topology = 0;
+
 	int raw_count =
 	    PLAT_getAvailableCPUFrequencies(auto_cpu_state.frequencies, CPU_MAX_FREQUENCIES);
 
@@ -1103,9 +1194,16 @@ static void resetAutoCPUState(void) {
 
 	// Note: target/current frequency set by setOverclock() after this call
 
-	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
-	         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
-	         auto_cpu_state.use_granular);
+	if (auto_cpu_state.use_topology) {
+		LOG_info("Auto CPU: enabled (topology mode), frame budget=%lluus (%.2f fps), "
+		         "clusters=%d, states=%d\n",
+		         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+		         auto_cpu_state.topology.cluster_count, auto_cpu_state.topology.state_count);
+	} else {
+		LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
+		         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+		         auto_cpu_state.use_granular);
+	}
 	LOG_debug(
 	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
 	    auto_cpu_config.util_high, auto_cpu_config.util_low, auto_cpu_config.boost_windows,
@@ -1133,7 +1231,21 @@ void setOverclock(int i) {
 		resetAutoCPUState();
 		// Start at max frequency to avoid startup stutter during grace period
 		// Background thread will scale down as needed after grace period
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			// Multi-cluster mode: start at highest PerfState
+			int start_state = auto_cpu_state.topology.state_count - 1;
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_state.target_state = start_state;
+			auto_cpu_state.current_state = -1; // Force apply on first thread iteration
+			pthread_mutex_unlock(&auto_cpu_mutex);
+			// Apply initial state immediately (thread will maintain it)
+			PlayerCPU_applyPerfState(&auto_cpu_state);
+			// Apply affinity directly since we're on the main (emulation) thread
+			PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[start_state];
+			if (ps->cpu_affinity_mask > 0) {
+				PWR_setThreadAffinity(ps->cpu_affinity_mask);
+			}
+		} else if (auto_cpu_state.use_granular) {
 			int start_idx = auto_cpu_state.preset_indices[2]; // PERFORMANCE - start high
 			int start_freq = auto_cpu_state.frequencies[start_idx];
 			PLAT_setCPUFrequency(start_freq);
@@ -1192,12 +1304,28 @@ static void updateAutoCPU(void) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	int current_idx = auto_cpu_state.target_index;
 	int current_level = auto_cpu_state.target_level;
+	int current_state = auto_cpu_state.target_state;
+	int pending_affinity = auto_cpu_state.pending_affinity;
+	auto_cpu_state.pending_affinity = 0; // Clear after reading
 	pthread_mutex_unlock(&auto_cpu_mutex);
+
+	// Apply pending affinity from background thread (must be done from main thread)
+	if (pending_affinity > 0) {
+		PWR_setThreadAffinity(pending_affinity);
+	}
 
 	// Emergency: check for actual underruns (panic path)
 	unsigned underruns = SND_getUnderrunCount();
 	int max_idx = auto_cpu_state.freq_count - 1;
-	int at_max = auto_cpu_state.use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+	int max_state = auto_cpu_state.topology.state_count - 1;
+	int at_max;
+	if (auto_cpu_state.use_topology) {
+		at_max = (current_state >= max_state);
+	} else if (auto_cpu_state.use_granular) {
+		at_max = (current_idx >= max_idx);
+	} else {
+		at_max = (current_level >= 2);
+	}
 
 	if (underruns > auto_cpu_state.last_underrun && !at_max) {
 		// Underrun detected - track panic and boost
@@ -1222,7 +1350,14 @@ static void updateAutoCPU(void) {
 			}
 		}
 
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			int new_state = current_state + auto_cpu_config.panic_step_up;
+			if (new_state > max_state)
+				new_state = max_state;
+			auto_cpu_setTargetState(new_state);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting state %d→%d (audio=%u%%)\n",
+			         current_state, new_state, audio_fill);
+		} else if (auto_cpu_state.use_granular) {
 			int new_idx = current_idx + auto_cpu_config.panic_step_up;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
@@ -1276,7 +1411,64 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			// Topology mode: step through PerfStates one at a time
+			// Unlike granular mode, we don't predict - just step conservatively
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
+			}
+
+			if (util > auto_cpu_config.util_high) {
+				// Need more performance - step up
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
+
+				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+				    current_state < max_state) {
+					int new_state = current_state + 1;
+					auto_cpu_setTargetState(new_state);
+					auto_cpu_state.high_util_windows = 0;
+					LOG_debug("Auto CPU: BOOST state %d→%d (util=%u%%)\n", current_state, new_state,
+					          util);
+				}
+			} else if (util < auto_cpu_config.util_low) {
+				// Can reduce power - step down
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
+
+				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				int reduce_ok =
+				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
+				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0);
+
+				if (reduce_ok) {
+					// Step down by max_step_down (usually 1)
+					int new_state = current_state - auto_cpu_config.max_step_down;
+					if (new_state < 0)
+						new_state = 0;
+					auto_cpu_setTargetState(new_state);
+					auto_cpu_state.low_util_windows = 0;
+					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
+					          new_state, util);
+				}
+			} else {
+				// In sweet spot - reset counters
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
+			}
+
+			// Sampled debug logging (every 4th window = ~2 seconds)
+			static int debug_window_count_topo = 0;
+			if (++debug_window_count_topo >= 4) {
+				debug_window_count_topo = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% state=%d/%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_state,
+				          max_state);
+			}
+		} else if (auto_cpu_state.use_granular) {
 			// Granular mode: use linear performance scaling to find optimal frequency
 			// Performance scales linearly with frequency, so:
 			// new_util = current_util * (current_freq / new_freq)
