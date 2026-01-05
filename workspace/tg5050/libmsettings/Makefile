@@ -14,8 +14,8 @@ CC = $(CROSS_COMPILE)gcc
 
 # OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
 OPT_FLAGS ?= -O3
-CFLAGS = $(OPT_FLAGS)
-LDFLAGS = -ldl -lrt -s
+CFLAGS += $(OPT_FLAGS) -Wno-unused-result
+LDFLAGS += -ltinyalsa -ldl -lrt -s
 
 build:
 	@$(CC) -c -Werror -fpic "$(TARGET).c" $(CFLAGS) -Wl,--no-as-needed $(LDFLAGS)

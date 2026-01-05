@@ -2,7 +2,7 @@
 //
 // Key differences from tg5040:
 // - Backlight via sysfs /sys/class/backlight/backlight0/brightness (0-255)
-// - Volume via amixer "DAC Volume" control
+// - Volume via tinyalsa "DAC Volume" control
 // - Speaker mute via /sys/class/speaker/mute sysfs
 // - Audio initialization unmutes HPOUT, SPK, LINEOUTL, LINEOUTR
 
@@ -15,6 +15,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <string.h>
+
+#include <tinyalsa/mixer.h>
 
 #include "msettings.h"
 
@@ -208,10 +210,25 @@ void SetRawVolume(int val) { // 0-100
 	if (settings->mute)
 		val = 0;
 
-	// A523 uses 'DAC Volume' control via amixer
-	char cmd[256];
-	sprintf(cmd, "amixer sset 'DAC Volume' %d%% &> /dev/null", val);
-	system(cmd);
+	// A523 uses 'DAC Volume' control via tinyalsa
+	struct mixer* mixer = mixer_open(0);
+	if (mixer) {
+		struct mixer_ctl* ctl = mixer_get_ctl_by_name(mixer, "DAC Volume");
+		if (ctl) {
+			mixer_ctl_set_percent(ctl, 0, val);
+		} else {
+			printf("SetRawVolume: DAC Volume control not found\n");
+			fflush(stdout);
+		}
+		mixer_close(mixer);
+	} else {
+		// Fallback to amixer if tinyalsa fails
+		printf("SetRawVolume: mixer_open failed, using amixer fallback\n");
+		fflush(stdout);
+		char cmd[256];
+		snprintf(cmd, sizeof(cmd), "amixer sset 'DAC Volume' %d%% &> /dev/null", val);
+		system(cmd);
+	}
 
 	// Full mute requires speaker mute sysfs
 	putInt(SPEAKER_MUTE_PATH, val == 0 ? 1 : 0);
