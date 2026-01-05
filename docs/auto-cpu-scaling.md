@@ -8,7 +8,7 @@ Dynamic CPU frequency scaling for libretro emulation based on frame timing.
 
 Add an "Auto" CPU speed option that dynamically scales between existing power levels (POWERSAVE/NORMAL/PERFORMANCE) based on real-time emulation performance, saving battery when possible and boosting when needed.
 
-**Status:** ✅ Granular frequency scaling implemented. Auto mode now uses all available CPU frequencies detected from the system.
+**Status:** ✅ Topology-aware scaling implemented. Supports multi-cluster ARM SoCs (big.LITTLE, tri-cluster) with governor-based PerfState ladder, plus granular frequency scaling for single-cluster devices.
 
 ## Design Approach
 
@@ -255,10 +255,16 @@ Auto CPU scaling uses a **two-thread design** to keep the main emulation loop re
 ### Background Thread (CPU Applier)
 
 - Polls every 50ms checking for target changes
-- When target ≠ current, applies the change
-- Calls `PWR_setCPUSpeed()` which may fork `system("overclock.elf")`
-- Updates current level after successful application
+- When target ≠ current, applies the change:
+  - **Topology mode**: Calls `PlayerCPU_applyPerfState()` to set governors on all clusters, queues affinity change for main thread
+  - **Granular mode**: Calls `PLAT_setCPUFrequency()` to set frequency via sysfs
+  - **Fallback mode**: Calls `PWR_setCPUSpeed()` which may fork `system("overclock.elf")`
+- Updates current level/state after successful application
 - Stops cleanly when exiting auto mode
+
+**Topology mode thread safety:**
+
+CPU affinity must be set from the emulation thread (not background thread) because `sched_setaffinity(0, ...)` affects the calling thread. The background thread sets `pending_affinity` under mutex, and the main thread applies it on next frame.
 
 ### Thread Safety
 
@@ -510,9 +516,11 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 - [Dynamic Rate Control for Retro Game Emulators](https://docs.libretro.com/guides/ratecontrol.pdf) - Hans-Kristian Arntzen, 2012
 - [docs/audio-rate-control.md](audio-rate-control.md) - Our rate control implementation
-- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`
+- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`, `PWR_detectCPUTopology()`, `PWR_setCPUGovernor()`, `PWR_setThreadAffinity()`
 - [workspace/all/common/api.h](../workspace/all/common/api.h) - `PLAT_getAvailableCPUFrequencies()`, `PLAT_setCPUFrequency()` API
 - [workspace/all/player/player.c](../workspace/all/player/player.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
+- [workspace/all/player/player_cpu.c](../workspace/all/player/player_cpu.c) - CPU scaling algorithm, `PlayerCPU_buildPerfStates()`, `PlayerCPU_applyPerfState()`, `PlayerCPU_getPerformancePercent()`
+- [workspace/all/player/player_cpu.h](../workspace/all/player/player_cpu.h) - CPU scaling types and API
 - [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status
@@ -528,7 +536,8 @@ The discovered frequency steps and performance data come from a custom CPU bench
 | Utilization high        | 85%                 | Frame time >85% of budget = boost                 |
 | Utilization low         | 55%                 | Frame time <55% of budget = reduce                |
 | Target util             | 70%                 | Target utilization after frequency change         |
-| Max step (reduce/panic) | 2                   | Max frequency steps down (boost unlimited)        |
+| Max step down           | 1                   | Max frequency steps when reducing                 |
+| Panic step up           | 2                   | Frequency steps on underrun emergency             |
 | Min frequency           | 400 MHz             | Floor for frequency scaling                       |
 | Boost windows           | 2 (~1s)             | Fast response to performance issues               |
 | Reduce windows          | 4 (~2s)             | Conservative to prevent oscillation               |
@@ -574,11 +583,14 @@ The debug overlay uses all 4 corners to show performance and scaling info:
 - Manual mode: `L1 b:48%` (level + buffer fill)
 - Auto mode (fallback): `L1 u:52% b:48%` (level + utilization + buffer fill)
 - Auto mode (granular): `1200 u:52% b:48%` (frequency in MHz + utilization + buffer fill)
+- Auto mode (topology): `T3/5 60% u:52% b:48%` (state/max + perf% + utilization + buffer fill)
 
 **Key metrics:**
 
 - `L0/L1/L2` = CPU level (POWERSAVE/NORMAL/PERFORMANCE) - used in manual and fallback modes
 - `1200` = CPU frequency in MHz (e.g., 1200 = 1.2 GHz) - used in granular auto mode
+- `T3/5` = PerfState index / max (e.g., state 3 of 5) - used in topology auto mode
+- `60%` = Normalized performance level (0-100%) - topology mode only
 - `u:XX%` = Frame timing utilization (90th percentile, % of frame budget)
 - `b:XX%` = Audio buffer fill (should converge to ~50%)
 
@@ -612,14 +624,81 @@ After implementing the unified RateMeter system with dual clock correction (disp
 | Rate control | Audio/video sync     | Per-frame (~16ms)  | Buffer fill     | Resampler ratio adjustment |
 | CPU scaling  | Performance headroom | Per-second (~1-2s) | Frame timing    | CPU frequency              |
 
-### Granular Frequency Scaling (Implemented)
+### Multi-Cluster Topology Mode (Implemented)
 
-Auto mode now uses **all available CPU frequencies** detected from the system via `scaling_available_frequencies` sysfs interface.
+Modern ARM SoCs use heterogeneous CPU clusters (big.LITTLE, tri-cluster) where different cores have different performance/power characteristics. Auto mode now detects and leverages this topology.
+
+**How it works:**
+
+1. **Detection**: Enumerates `/sys/devices/system/cpu/cpufreq/policy{0,1,...}` at startup
+2. **Classification**: Sorts clusters by max frequency, assigns LITTLE/BIG/PRIME types
+3. **PerfState Ladder**: Builds a progression of performance states using governors
+4. **Application**: Sets governors and CPU affinity to guide the emulation thread
+
+**Governor-based approach (not frequency bounds):**
+
+Instead of manipulating `scaling_min_freq`/`scaling_max_freq`, we use governors:
+
+| Governor      | Behavior                                    | Use Case                |
+| ------------- | ------------------------------------------- | ----------------------- |
+| `powersave`   | Runs at minimum frequency                   | Inactive clusters, idle |
+| `schedutil`   | Kernel dynamically scales based on load     | Balanced workloads      |
+| `performance` | Runs at maximum frequency                   | Demanding workloads     |
+
+**Why governors instead of frequency bounds:**
+
+- Works WITH the kernel's frequency scaling intelligence
+- `schedutil` finds optimal frequency automatically
+- Inactive clusters truly idle at `powersave` (power savings)
+- No fighting between our algorithm and the kernel
+
+**PerfState Ladder Structure:**
+
+```
+Dual-cluster (LITTLE + BIG):
+  State 0: LITTLE powersave (active), BIG powersave    ← lightest
+  State 1: LITTLE schedutil (active), BIG powersave
+  State 2: LITTLE performance (active), BIG powersave
+  State 3: BIG powersave (active), LITTLE powersave
+  State 4: BIG schedutil (active), LITTLE powersave
+  State 5: BIG performance (active), LITTLE powersave  ← heaviest
+
+Tri-cluster adds 3 more states for PRIME (6-8)
+```
+
+**CPU Affinity:**
+
+Each PerfState sets CPU affinity to guide the emulation thread to the active cluster:
+
+```c
+// State 0-2: Run on LITTLE cores (mask 0x0F for CPUs 0-3)
+// State 3-5: Run on BIG cores (mask 0xF0 for CPUs 4-7)
+sched_setaffinity(0, sizeof(set), &set);
+```
+
+**Cluster Classification:**
+
+- `LITTLE`: First cluster (lowest max frequency)
+- `BIG`: Middle clusters
+- `PRIME`: Last cluster if single-core OR >10% faster than previous
+
+**Example SoC configurations:**
+
+| SoC           | Clusters                  | PerfStates |
+| ------------- | ------------------------- | ---------- |
+| Allwinner A53 | 4×A53 (single)            | 0 (granular mode) |
+| Allwinner H700| 4×A53 (single)            | 0 (granular mode) |
+| Allwinner A523| 4×A55 + 4×A76             | 6          |
+| SD865         | 4×A55 + 3×A77 + 1×A77     | 9          |
+
+### Granular Frequency Scaling (Single-Cluster Fallback)
+
+For single-cluster devices, auto mode uses **all available CPU frequencies** detected from the system via `scaling_available_frequencies` sysfs interface.
 
 **Key features:**
 
 - Runtime frequency detection via `PLAT_getAvailableCPUFrequencies()`
-- Direct frequency setting via `PLAT_setCPUFrequency()`
+- Direct frequency setting via `PLAT_setCPUFrequency()` with `userspace` governor
 - Linear performance scaling for intelligent frequency selection
 - Minimum frequency floor (400 MHz) filters out unusably slow frequencies
 - Automatic fallback to 3-level mode if detection fails
@@ -629,14 +708,14 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 - Performance scales linearly with frequency: `new_util = current_util × (current_freq / new_freq)`
 - Target 70% utilization after frequency changes
 - **Boost**: Uses linear prediction, no step limit (aggressive is safe)
-- **Reduce**: Uses linear prediction, max 2 steps (conservative to avoid underruns)
+- **Reduce**: Uses linear prediction, max 1 step (conservative to avoid underruns)
 - **Panic**: Boost by max 2 steps on underrun, 4s cooldown
 - **Startup**: Begin at max frequency during 5s grace period
 
 **Preset mapping for manual modes:**
 
-- POWERSAVE: ~25% up from minimum frequency
-- NORMAL: ~75% of max frequency
+- POWERSAVE: ~55% of max frequency
+- NORMAL: ~80% of max frequency
 - PERFORMANCE: max frequency
 
 **Example on miyoomini (6 frequencies detected: 400, 600, 800, 1000, 1100, 1600 kHz):**
@@ -645,6 +724,25 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 Old: POWERSAVE → NORMAL → PERFORMANCE (3 steps)
 New: 400 → 600 → 800 → 1000 → 1100 → 1600 (6 steps, granular)
 ```
+
+### Unified API
+
+Helper functions provide a consistent interface regardless of scaling mode:
+
+```c
+// Get normalized performance level (0-100%)
+int PlayerCPU_getPerformancePercent(const PlayerCPUState* state);
+// - Topology: (current_state / max_state) * 100
+// - Granular: (current_index / max_index) * 100
+// - Fallback: level * 50 (0=0%, 1=50%, 2=100%)
+// - Returns -1 if scaling disabled
+
+// Get mode name for logging/debugging
+const char* PlayerCPU_getModeName(const PlayerCPUState* state);
+// - Returns: "topology", "granular", "fallback", or "disabled"
+```
+
+These functions enable mode-agnostic debugging, logging, and potential future UI elements.
 
 ### Frequency Band Analysis
 

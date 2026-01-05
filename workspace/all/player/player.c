@@ -3761,9 +3761,10 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 
 	// Bottom-left: CPU info + buffer fill
 	if (overclock == 3) {
-		// Auto CPU mode: show frequency/level, utilization, and buffer fill
+		// Auto CPU mode: show mode-specific info, utilization, and buffer fill
 		pthread_mutex_lock(&auto_cpu_mutex);
 		int current_idx = auto_cpu_state.current_index;
+		int current_state = auto_cpu_state.current_state;
 		int level = auto_cpu_state.current_level;
 		pthread_mutex_unlock(&auto_cpu_mutex);
 
@@ -3779,8 +3780,14 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 				util = 200;
 		}
 
-		if (auto_cpu_state.use_granular && current_idx >= 0 &&
-		    current_idx < auto_cpu_state.freq_count) {
+		if (auto_cpu_state.use_topology) {
+			// Topology mode: show state/max and performance %
+			int perf_pct = PlayerCPU_getPerformancePercent(&auto_cpu_state);
+			int max_state = auto_cpu_state.topology.state_count - 1;
+			(void)snprintf(debug_text, sizeof(debug_text), "T%i/%i %i%% u:%u%% b:%u%%",
+			               current_state, max_state, perf_pct, util, fill_display);
+		} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		           current_idx < auto_cpu_state.freq_count) {
 			// Granular mode: show frequency in MHz
 			int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
 			(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
