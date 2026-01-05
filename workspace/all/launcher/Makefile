@@ -51,10 +51,10 @@ HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../../$(PLATFORM)
 CC = $(CROSS_COMPILE)gcc
 # OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
 OPT_FLAGS ?= -O3
-CFLAGS = $(ARCH) -fomit-frame-pointer
+CFLAGS += $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
-CFLAGS += $(WARN_FLAGS)
-LDFLAGS = -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+CFLAGS += $(WARN_FLAGS) $(EXTRA_CFLAGS)
+LDFLAGS += -ldl -lmsettings $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 
 PRODUCT = build/$(PLATFORM)/$(TARGET).elf
 

@@ -1338,7 +1338,7 @@ static void openRom(char* path, char* last) {
  * @param auto_launch 1 to auto-launch contents, 0 to browse
  */
 static void openDirectory_ctx(LauncherContext* ctx, char* path, int auto_launch) {
-	char auto_path[256];
+	char auto_path[MAX_PATH];
 	// Auto-launch .cue file if present
 	if (hasCue(path, auto_path) && auto_launch) {
 		openRom_ctx(ctx, auto_path, path);
@@ -1346,7 +1346,7 @@ static void openDirectory_ctx(LauncherContext* ctx, char* path, int auto_launch)
 	}
 
 	// Auto-launch .m3u playlist if present
-	char m3u_path[256];
+	char m3u_path[MAX_PATH];
 	safe_strcpy(m3u_path, auto_path, sizeof(m3u_path));
 	char* tmp = strrchr(m3u_path, '.') + 1; // extension
 	safe_strcpy(tmp, "m3u", sizeof(m3u_path) - (tmp - m3u_path)); // replace with m3u
