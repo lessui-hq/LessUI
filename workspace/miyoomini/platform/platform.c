@@ -152,17 +152,17 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Check for Miyoo Mini Flip (MY285) - NOTE: This is NOT the RK3566 Miyoo Flip!
 	// MY285 is a clamshell variant of the original Miyoo Mini (R16/SSD202D)
+	// Flip always has 560p (752x560) screen and PMIC (AXP223)
 	char* model = getenv("MY_MODEL");
 	if (exactMatch(model, "MY285")) {
-		// Flip uses VGA variant but different screen size (3.5" vs 2.8")
 		v->device = &miyoomini_devices[3]; // Mini Flip
-		v->variant = VARIANT_MIYOOMINI_VGA;
-		v->variant_name = "vga";
+		v->variant = VARIANT_MIYOOMINI_560P_PMIC;
+		v->variant_name = "560p";
 		const VariantConfig* config = getVariantConfig(v->variant);
 		if (config) {
 			v->screen_width = config->screen_width;
 			v->screen_height = config->screen_height;
-			v->screen_diagonal = 3.5f; // Mini Flip has 3.5" screen (vs 2.8" Mini)
+			v->screen_diagonal = 2.8f; // Mini Flip has 2.8" screen
 			v->hw_features = config->hw_features;
 		}
 		LOG_info("Detected device: %s %s (%s variant, %dx%d, %.1f\")\n", v->device->manufacturer,
