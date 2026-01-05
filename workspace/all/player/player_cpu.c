@@ -182,6 +182,52 @@ int PlayerCPU_getPresetPercentage(PlayerCPULevel level) {
 	}
 }
 
+int PlayerCPU_getPerformancePercent(const PlayerCPUState* state) {
+	if (!state)
+		return -1;
+
+	if (state->scaling_disabled && !state->use_topology) {
+		return -1;
+	}
+
+	if (state->use_topology) {
+		// Topology mode: normalize state index to 0-100
+		int max_state = state->topology.state_count - 1;
+		if (max_state <= 0)
+			return 100;
+		int current = state->current_state;
+		if (current < 0)
+			current = state->target_state;
+		return (current * 100) / max_state;
+	} else if (state->use_granular) {
+		// Granular mode: normalize frequency index to 0-100
+		int max_idx = state->freq_count - 1;
+		if (max_idx <= 0)
+			return 100;
+		return (state->current_index * 100) / max_idx;
+	} else {
+		// Fallback mode: 0=0%, 1=50%, 2=100%
+		return state->current_level * 50;
+	}
+}
+
+const char* PlayerCPU_getModeName(const PlayerCPUState* state) {
+	if (!state)
+		return "disabled";
+
+	if (state->scaling_disabled && !state->use_topology) {
+		return "disabled";
+	}
+
+	if (state->use_topology) {
+		return "topology";
+	} else if (state->use_granular) {
+		return "granular";
+	} else {
+		return "fallback";
+	}
+}
+
 PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig* config,
                                    bool fast_forward, bool show_menu, unsigned current_underruns,
                                    PlayerCPUResult* result) {

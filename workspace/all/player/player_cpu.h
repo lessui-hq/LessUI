@@ -324,6 +324,27 @@ int PlayerCPU_predictFrequency(int current_freq, int current_util, int target_ut
 int PlayerCPU_getPresetPercentage(PlayerCPULevel level);
 
 /**
+ * Returns the current performance level as a normalized percentage (0-100).
+ *
+ * Provides a unified view of CPU scaling state regardless of mode:
+ * - Topology mode: (current_state / (state_count - 1)) * 100
+ * - Granular mode: (current_index / (freq_count - 1)) * 100
+ * - Fallback mode: current_level * 50 (0=0%, 1=50%, 2=100%)
+ *
+ * @param state CPU state to query
+ * @return Performance level 0-100, or -1 if scaling disabled
+ */
+int PlayerCPU_getPerformancePercent(const PlayerCPUState* state);
+
+/**
+ * Returns a string describing the current CPU scaling mode.
+ *
+ * @param state CPU state to query
+ * @return "topology", "granular", "fallback", or "disabled"
+ */
+const char* PlayerCPU_getModeName(const PlayerCPUState* state);
+
+/**
  * Calculates the 90th percentile of frame times.
  *
  * @param frame_times Array of frame times

@@ -58,6 +58,9 @@ static void reset_stubs(void) {
 static PlayerCPUState state;
 static PlayerCPUConfig config;
 
+// Forward declaration for helper function (defined later with topology tests)
+static void setup_dual_cluster_topology(PlayerCPUState* s);
+
 ///////////////////////////////
 // Test Setup/Teardown
 ///////////////////////////////
@@ -351,6 +354,98 @@ void test_getPresetPercentage_normal(void) {
 
 void test_getPresetPercentage_performance(void) {
 	TEST_ASSERT_EQUAL(100, PlayerCPU_getPresetPercentage(PLAYER_CPU_LEVEL_PERFORMANCE));
+}
+
+///////////////////////////////
+// Unified Performance Level Tests
+///////////////////////////////
+
+void test_getPerformancePercent_topology_mode(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+
+	// At state 0 of 5 (0%)
+	state.current_state = 0;
+	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+
+	// At state 3 of 5 (60%)
+	state.current_state = 3;
+	TEST_ASSERT_EQUAL(60, PlayerCPU_getPerformancePercent(&state));
+
+	// At state 5 of 5 (100%)
+	state.current_state = 5;
+	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+}
+
+void test_getPerformancePercent_granular_mode(void) {
+	int raw[] = {600000, 800000, 1000000, 1200000, 1400000};
+	PlayerCPU_detectFrequencies(&state, &config, raw, 5);
+
+	// At index 0 of 4 (0%)
+	state.current_index = 0;
+	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+
+	// At index 2 of 4 (50%)
+	state.current_index = 2;
+	TEST_ASSERT_EQUAL(50, PlayerCPU_getPerformancePercent(&state));
+
+	// At index 4 of 4 (100%)
+	state.current_index = 4;
+	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+}
+
+void test_getPerformancePercent_fallback_mode(void) {
+	state.use_topology = 0;
+	state.use_granular = 0;
+	state.scaling_disabled = 0;
+
+	state.current_level = 0;
+	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+
+	state.current_level = 1;
+	TEST_ASSERT_EQUAL(50, PlayerCPU_getPerformancePercent(&state));
+
+	state.current_level = 2;
+	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+}
+
+void test_getPerformancePercent_disabled_returns_negative(void) {
+	state.scaling_disabled = 1;
+	state.use_topology = 0;
+	TEST_ASSERT_EQUAL(-1, PlayerCPU_getPerformancePercent(&state));
+}
+
+void test_getPerformancePercent_null_returns_negative(void) {
+	TEST_ASSERT_EQUAL(-1, PlayerCPU_getPerformancePercent(NULL));
+}
+
+void test_getModeName_topology(void) {
+	setup_dual_cluster_topology(&state);
+	PlayerCPU_buildPerfStates(&state, &config);
+	TEST_ASSERT_EQUAL_STRING("topology", PlayerCPU_getModeName(&state));
+}
+
+void test_getModeName_granular(void) {
+	int raw[] = {600000, 800000, 1000000};
+	PlayerCPU_detectFrequencies(&state, &config, raw, 3);
+	TEST_ASSERT_EQUAL_STRING("granular", PlayerCPU_getModeName(&state));
+}
+
+void test_getModeName_fallback(void) {
+	state.use_topology = 0;
+	state.use_granular = 0;
+	state.scaling_disabled = 0;
+	TEST_ASSERT_EQUAL_STRING("fallback", PlayerCPU_getModeName(&state));
+}
+
+void test_getModeName_disabled(void) {
+	state.scaling_disabled = 1;
+	state.use_topology = 0;
+	TEST_ASSERT_EQUAL_STRING("disabled", PlayerCPU_getModeName(&state));
+}
+
+void test_getModeName_null(void) {
+	TEST_ASSERT_EQUAL_STRING("disabled", PlayerCPU_getModeName(NULL));
 }
 
 ///////////////////////////////
@@ -1017,6 +1112,20 @@ int main(void) {
 	RUN_TEST(test_getPresetPercentage_powersave);
 	RUN_TEST(test_getPresetPercentage_normal);
 	RUN_TEST(test_getPresetPercentage_performance);
+
+	// getPerformancePercent (unified)
+	RUN_TEST(test_getPerformancePercent_topology_mode);
+	RUN_TEST(test_getPerformancePercent_granular_mode);
+	RUN_TEST(test_getPerformancePercent_fallback_mode);
+	RUN_TEST(test_getPerformancePercent_disabled_returns_negative);
+	RUN_TEST(test_getPerformancePercent_null_returns_negative);
+
+	// getModeName (unified)
+	RUN_TEST(test_getModeName_topology);
+	RUN_TEST(test_getModeName_granular);
+	RUN_TEST(test_getModeName_fallback);
+	RUN_TEST(test_getModeName_disabled);
+	RUN_TEST(test_getModeName_null);
 
 	// update - skip conditions
 	RUN_TEST(test_update_skips_during_fast_forward);
