@@ -284,6 +284,12 @@ clean:
 	@find workspace -type f -name "*.bmp" -path "*/boot/*.bmp" -delete 2>/dev/null || true
 	@find workspace -type f -name "boot_logo.png" -path "*/boot/boot_logo.png" -delete 2>/dev/null || true
 	@rm -rf workspace/all/paks/Emus/cores/extracted/
+	@echo "Cleaning platform-specific build artifacts..."
+	@find workspace -type f -name "*.o" -delete 2>/dev/null || true
+	@find workspace -type f -name "*.elf" -delete 2>/dev/null || true
+	@find workspace -path "*/other/*/DinguxCommander" -type f -delete 2>/dev/null || true
+	@find workspace -path "*/other/*/351files" -type f -delete 2>/dev/null || true
+	@echo "Clean complete"
 
 # Prepare fresh build directory and skeleton
 setup: name
