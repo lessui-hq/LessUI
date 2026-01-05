@@ -37,7 +37,7 @@ get_system_json_path() {
 		miyoomini) echo "/appconfigs/system.json" ;;
 		my282) echo "/config/system.json" ;;
 		my355) echo "/userdata/system.json" ;;
-		tg5040) echo "/mnt/UDISK/system.json" ;;
+		tg5040 | tg5050) echo "/mnt/UDISK/system.json" ;;
 		*) echo "" ;;
 	esac
 }
@@ -51,7 +51,7 @@ is_iwd_platform() {
 }
 
 # List of supported platforms for validation
-WIFI_SUPPORTED_PLATFORMS="miyoomini my282 my355 tg5040 rg35xxplus rgb30 retroid"
+WIFI_SUPPORTED_PLATFORMS="miyoomini my282 my355 tg5040 tg5050 rg35xxplus rgb30 retroid"
 
 is_supported_platform() {
 	for p in $WIFI_SUPPORTED_PLATFORMS; do

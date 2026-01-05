@@ -142,6 +142,11 @@ $MAGICK $SRC/logo.png -filter Point -resize 128x128! -background black -gravity 
     -extent 128x128 -define bmp3:alpha=true BMP3:workspace/all/paks/Bootlogo/tg5040/bootlogo.bmp
 echo "  ✓ tg5040 bootlogo.bmp (128×128, 32-bit)"
 
+# tg5050: 128×128, 32-bit, bottom-up (same as tg5040)
+$MAGICK $SRC/logo.png -filter Point -resize 128x128! -background black -gravity center \
+    -extent 128x128 -define bmp3:alpha=true BMP3:workspace/all/paks/Bootlogo/tg5050/bootlogo.bmp
+echo "  ✓ tg5050 bootlogo.bmp (128×128, 32-bit)"
+
 # tg5040 brick: 216×237, 24-bit, bottom-up
 $MAGICK $SRC/logo.png -filter Point -resize 216x216! -background black -gravity center \
     -extent 216x237 -type TrueColor -define bmp:format=bmp3 \

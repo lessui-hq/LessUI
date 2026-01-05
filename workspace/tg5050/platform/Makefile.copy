@@ -1,0 +1,13 @@
+$(PLATFORM):
+	# $@
+	# show.elf (platform-specific build)
+	cp ./workspace/$@/show/show.elf ./build/SYSTEM/$@/bin/
+	# installer
+	rsync -a ./workspace/$@/install/boot.sh ./build/BOOT/common/$@.sh
+	rsync -a ./workspace/$@/install/update.sh ./build/SYSTEM/$@/bin/install.sh
+	rsync -a ./build/BOOT/trimui/app/runtrimui.sh ./build/SYSTEM/$@/dat/
+	mkdir -p ./build/BOOT/common/$@/
+	cp ./workspace/$@/show/show.elf ./build/BOOT/common/$@/
+	# boot assets (single variant - using 2x assets for 720p)
+	rsync -a ./skeleton/SYSTEM/res/installing@2x.png ./build/BOOT/common/$@/installing.png
+	rsync -a ./skeleton/SYSTEM/res/updating@2x.png ./build/BOOT/common/$@/updating.png

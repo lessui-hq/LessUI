@@ -25,7 +25,7 @@
  * @param paks_path Path to shared paks (e.g., PAKS_PATH)
  * @param sdcard_path Path to SD card root (e.g., SDCARD_PATH)
  * @param platform Platform identifier (e.g., "miyoomini")
- * @return Number of emulators found, or -1 on error
+ * @return Number of emulators found (0 if directories don't exist or are empty)
  */
 int EmuCache_init(const char* paks_path, const char* sdcard_path, const char* platform);
 

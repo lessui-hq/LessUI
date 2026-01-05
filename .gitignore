@@ -58,3 +58,4 @@ coverage/
 
 # Emus pak cache (cores/ directory contains downloaded and override cores)
 workspace/all/paks/Emus/cores/
+workspace/tg5050/libmsettings/*.so*

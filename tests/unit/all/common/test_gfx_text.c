@@ -491,6 +491,113 @@ void test_sizeText_integration_dialog_box(void) {
 }
 
 ///////////////////////////////
+// Word-Based Wrapping Tests
+///////////////////////////////
+
+void test_wrapText_word_based_efficiency(void) {
+	char text[256] = "The quick brown fox jumps over the lazy dog";
+
+	// With 10px per char, each word:
+	// "The"(30) "quick"(50) "brown"(50) "fox"(30) "jumps"(50) "over"(40) "the"(30) "lazy"(40)
+	// "dog"(30) Max width: 100px (10 chars)
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Verify it wrapped (should have newlines)
+	TEST_ASSERT_TRUE(strchr(text, '\n') != NULL);
+
+	// With word-based wrapping, we should have relatively few calls
+	// (one per word + overhead, not one per character)
+	// For 9 words, expect ~15-20 calls, not 44+ (one per char)
+	TEST_ASSERT_LESS_THAN(30, TTF_SizeUTF8_fake.call_count);
+}
+
+void test_wrapText_partial_word_fit_enabled(void) {
+	char text[256] = "Word verylongwordthatdoesnotfitanywhere";
+
+	// "Word" = 40px fits on first line (max 100px)
+	// "verylongwordthatdoesnotfitanywhere" = 340px doesn't fit
+	// With 50px remaining on line 1 (100 - 40 - 10 for space), should try partial fit
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Should have attempted wrapping/truncation
+	TEST_ASSERT_TRUE(strchr(text, '\n') != NULL || strstr(text, "...") != NULL);
+
+	// Efficiency: word-based should use fewer calls than character-based
+	// 4 chars + 34 chars = 38 total, character-based would be 38+ calls
+	// Word-based + binary search should be < 20 calls
+	TEST_ASSERT_LESS_THAN(25, TTF_SizeUTF8_fake.call_count);
+}
+
+void test_wrapText_partial_word_fit_skipped_when_space_too_small(void) {
+	char text[256] = "Verylongword anotherverylongword";
+
+	// "Verylongword" = 120px, doesn't fit in 100px max width
+	// Will wrap before it, leaving no room for partial fit of next word
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Should have wrapped normally without partial fitting
+	TEST_ASSERT_TRUE(strchr(text, '\n') != NULL);
+}
+
+void test_wrapText_binary_search_in_truncateText(void) {
+	char text[256] =
+	    "Thisisaverylongwordwithoutanyspacesthatneedstruncationbecauseitistoolong";
+
+	// 75 chars * 10px = 750px, max width = 100px
+	// Binary search should find truncation in ~log2(75) ≈ 7-10 iterations
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Result should be truncated with "..."
+	TEST_ASSERT_TRUE(strstr(text, "...") != NULL);
+
+	// Binary search should use far fewer calls than linear (75 iterations)
+	// Expect ~15-20 calls total (binary search + overhead)
+	TEST_ASSERT_LESS_THAN(25, TTF_SizeUTF8_fake.call_count);
+}
+
+void test_wrapText_character_precise_wrapping(void) {
+	char text[256] = "One two threeverylongword four";
+
+	// "One two " = 80px
+	// "threeverylongword" = 170px, doesn't fit
+	// With 20px remaining, should fit "th..." if space allows
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Verify wrapping occurred
+	TEST_ASSERT_TRUE(strchr(text, '\n') != NULL);
+
+	// Should try to maximize text per line (character-precise)
+	// First line should have "One two" + partial "threeverylongword..."
+	char* first_line = text;
+	char* newline = strchr(text, '\n');
+	if (newline) {
+		*newline = '\0';
+		// First line should contain start of text and attempt partial fit or wrap
+		TEST_ASSERT_TRUE(strstr(first_line, "One two") != NULL);
+		*newline = '\n';
+	}
+}
+
+void test_wrapText_multiple_partial_fits(void) {
+	char text[256] =
+	    "Short verylongword1 medium verylongword2 tiny verylongword3";
+
+	// Multiple lines where each might attempt partial word fitting
+	GFX_wrapText(&mock_font, text, 100, 0);
+
+	// Should have multiple newlines (multiple wraps)
+	int newline_count = 0;
+	for (char* p = text; *p; p++) {
+		if (*p == '\n')
+			newline_count++;
+	}
+	TEST_ASSERT_GREATER_THAN(0, newline_count);
+
+	// Should have some "..." from partial fits
+	TEST_ASSERT_TRUE(strstr(text, "...") != NULL);
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -547,6 +654,14 @@ int main(void) {
 
 	// Regression tests
 	RUN_TEST(test_wrapText_returned_width_excludes_overflow);
+
+	// Word-based wrapping and optimization tests
+	RUN_TEST(test_wrapText_word_based_efficiency);
+	RUN_TEST(test_wrapText_partial_word_fit_enabled);
+	RUN_TEST(test_wrapText_partial_word_fit_skipped_when_space_too_small);
+	RUN_TEST(test_wrapText_binary_search_in_truncateText);
+	RUN_TEST(test_wrapText_character_precise_wrapping);
+	RUN_TEST(test_wrapText_multiple_partial_fits);
 
 	return UNITY_END();
 }

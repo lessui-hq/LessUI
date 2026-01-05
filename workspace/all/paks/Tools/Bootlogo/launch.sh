@@ -269,6 +269,55 @@ case "$PLATFORM" in
 		reboot
 		;;
 
+	tg5050)
+		# tg5050 - single device, no variants
+		LOGO_PATH="$DIR/tg5050/bootlogo.bmp"
+
+		if [ ! -f "$LOGO_PATH" ]; then
+			shui message "No bootlogo.bmp file found!" \
+				--subtext "Place it in the pak folder." --confirm "Dismiss"
+			exit 1
+		fi
+
+		# Confirm before flashing
+		if ! shui message "Flash boot logo to device?" \
+			--subtext "This will copy the logo and reboot." \
+			--confirm "Flash" --cancel "Cancel"; then
+			exit 0
+		fi
+
+		shui progress "Mounting boot partition..." --value 20
+
+		BOOT_PATH=/mnt/boot/
+		mkdir -p "$BOOT_PATH"
+		if ! mount -t vfat /dev/mmcblk0p1 "$BOOT_PATH"; then
+			shui message "Failed to mount boot partition." --confirm "Dismiss"
+			exit 1
+		fi
+
+		shui progress "Copying boot logo..." --value 60
+
+		if ! cp "$LOGO_PATH" "$BOOT_PATH/bootlogo.bmp"; then
+			umount "$BOOT_PATH" 2>/dev/null
+			shui message "Failed to copy boot logo." --confirm "Dismiss"
+			exit 1
+		fi
+		sync
+
+		shui progress "Unmounting..." --value 90
+
+		umount "$BOOT_PATH"
+
+		shui progress "Complete!" --value 100
+		sleep 0.5
+
+		# Self-destruct before reboot
+		mv "$DIR" "$DIR.disabled"
+		rm -f /tmp/launcher_exec
+		shui message "Boot logo flashed!" --confirm "Reboot"
+		reboot
+		;;
+
 	zero28)
 		BOOT_DEV=/dev/mmcblk0p1
 		BOOT_PATH=/mnt/boot

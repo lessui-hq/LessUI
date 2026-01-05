@@ -7,7 +7,7 @@
  *
  * Features:
  * - Four log levels: ERROR, WARN, INFO, DEBUG
- * - Automatic timestamps (HH:MM:SS format)
+ * - Automatic timestamps (HH:MM:SS.mmm format with milliseconds)
  * - Automatic errno translation with LOG_errno()
  * - Optional file:line context for errors
  * - Thread-safe file logging with rotation
