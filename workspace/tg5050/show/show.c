@@ -121,8 +121,8 @@ int main(int argc, char* argv[]) {
 	// Render with rotation if needed
 	SDL_RenderClear(renderer);
 	if (rotate) {
-		SDL_RenderCopyEx(renderer, texture, NULL, &(SDL_Rect){0, w, w, h}, rotate * 90,
-		                 &(SDL_Point){0, 0}, SDL_FLIP_NONE);
+		// Rotate around center, fill screen
+		SDL_RenderCopyEx(renderer, texture, NULL, NULL, rotate * 90, NULL, SDL_FLIP_NONE);
 	} else {
 		SDL_RenderCopy(renderer, texture, NULL, NULL);
 	}

@@ -26,7 +26,7 @@ if [ -f "$UPDATE_PATH" ]; then
 	# Turn off LEDs
 	echo 0 >/sys/class/led_anim/max_scale 2>/dev/null
 
-	cd $(dirname "$0")/$PLATFORM
+	cd "$(dirname "$0")/$PLATFORM"
 	if [ -d "$SYSTEM_PATH" ]; then
 		ACTION=updating
 		ACTION_NOUN="update"

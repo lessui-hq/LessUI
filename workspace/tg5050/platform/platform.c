@@ -327,7 +327,7 @@ void PLAT_setRumble(int strength) {
 	}
 
 	// Set intensity level first
-	if (strength > 0 && strength < RUMBLE_MAX_STRENGTH) {
+	if (strength > 0 && strength <= RUMBLE_MAX_STRENGTH) {
 		putInt(RUMBLE_LEVEL_PATH, strength);
 	} else {
 		putInt(RUMBLE_LEVEL_PATH, 0);

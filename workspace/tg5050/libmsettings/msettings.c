@@ -76,18 +76,43 @@ static void putInt(char* path, int value) {
 }
 
 void InitSettings(void) {
-	sprintf(SettingsPath, "%s/msettings.bin", getenv("USERDATA_PATH"));
+	char* userdata = getenv("USERDATA_PATH");
+	if (!userdata) {
+		printf("InitSettings: USERDATA_PATH not set, using default\n");
+		fflush(stdout);
+		userdata = "/mnt/SDCARD/.userdata/tg5050";
+	}
+	sprintf(SettingsPath, "%s/msettings.bin", userdata);
 
 	shm_fd = shm_open(SHM_KEY, O_RDWR | O_CREAT | O_EXCL, 0644);
 	if (shm_fd == -1 && errno == EEXIST) {
 		// Already exists - we're a client
 		shm_fd = shm_open(SHM_KEY, O_RDWR, 0644);
+		if (shm_fd == -1) {
+			perror("InitSettings: shm_open (client)");
+			return;
+		}
 		settings = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+		if (settings == MAP_FAILED) {
+			perror("InitSettings: mmap (client)");
+			close(shm_fd);
+			return;
+		}
+	} else if (shm_fd == -1) {
+		// shm_open failed for other reason
+		perror("InitSettings: shm_open (host)");
+		return;
 	} else {
 		// We created it - we're the host (keymon)
 		is_host = 1;
 		ftruncate(shm_fd, shm_size);
 		settings = mmap(NULL, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+		if (settings == MAP_FAILED) {
+			perror("InitSettings: mmap (host)");
+			close(shm_fd);
+			shm_unlink(SHM_KEY);
+			return;
+		}
 
 		int fd = open(SettingsPath, O_RDONLY);
 		if (fd >= 0) {
