@@ -430,20 +430,20 @@ All extracted Player modules follow a standardized naming pattern where the modu
 | player_core    | `PlayerCore_`    | `PlayerCore_buildGameInfo()`, `PlayerCore_processAVInfo()`   |
 | player_menu    | `PlayerMenu_`    | `PlayerMenu_init()`, `PlayerMenuNav_navigate()`              |
 | player_env     | `PlayerEnv_`     | `PlayerEnv_setRotation()`, `PlayerEnv_handleGeometry()`      |
-| player_cpu     | `PlayerCPU_`     | `PlayerCPU_update()`, `PlayerCPU_detectFrequencies()`        |
+| cpu            | `CPU_`           | `CPU_update()`, `CPU_detectFrequencies()`                    |
 | player_game    | `PlayerGame_`    | `PlayerGame_parseExtensions()`, `PlayerGame_detectM3uPath()` |
 | player_scaler  | `PlayerScaler_`  | `PlayerScaler_calculate()`                                   |
 
 **Type naming:** Types follow the same pattern with `Player[Module]TypeName`:
 
-- `PlayerCPUState`, `PlayerCPUConfig`, `PlayerCPUDecision`
+- `CPUState`, `CPUConfig`, `CPUDecision`
 - `PlayerOption`, `PlayerOptionList`
 - `PlayerMemoryResult`, `PlayerStateResult`
 
 **Constants:** Module-specific constants use `PLAYER_MODULE_` prefix:
 
-- `PLAYER_CPU_MAX_FREQUENCIES`
-- `PLAYER_CPU_DEFAULT_WINDOW_FRAMES`
+- `CPU_MAX_FREQUENCIES`
+- `CPU_DEFAULT_WINDOW_FRAMES`
 - `PLAYER_MEM_OK`, `PLAYER_STATE_OK`
 
 This standardization makes it immediately clear which module owns each function and prevents naming collisions as the codebase grows.
@@ -517,7 +517,7 @@ See `.clang-format` for complete style definition.
 | Player core AV processing     | `workspace/all/player/player_core.c`           |
 | Player memory persistence     | `workspace/all/player/player_memory.c`         |
 | Player save states            | `workspace/all/player/player_state.c`          |
-| Player CPU scaling            | `workspace/all/player/player_cpu.c`            |
+| CPU scaling                   | `workspace/all/common/cpu.c`            |
 | Player input handling         | `workspace/all/player/player_input.c`          |
 | Player save paths             | `workspace/all/player/player_paths.c`          |
 | Launcher Entry type           | `workspace/all/launcher/launcher_entry.c`      |
@@ -569,7 +569,7 @@ To enable comprehensive testing, complex logic has been extracted from large fil
 | player_scaler.c                | 26    | player.c            | Video scaling geometry calculations                               |
 | player_core.c                  | 23    | player.c            | Core AV info processing, aspect ratio calculation                 |
 | effect_system.c                | 43    | platform files      | Visual effect state management                                    |
-| player_cpu.c                   | 42    | player.c            | Auto CPU scaling algorithm                                        |
+| cpu.c                          | 42    | player.c            | CPU topology + auto scaling algorithm                             |
 | player_utils.c                 | 41    | player.c            | Core name extraction, string utilities                            |
 | player_menu.c                  | 41    | player.c            | In-game menu, context pattern validation                          |
 | nointro_parser.c               | 39    | (original)          | No-Intro ROM naming conventions                                   |

@@ -1,11 +1,11 @@
 /**
- * player_cpu.h - Auto CPU scaling utilities
+ * cpu.h - CPU scaling and topology utilities
  *
- * Provides functions for dynamic CPU frequency scaling based on emulation
- * performance. Uses frame timing (core.run() execution time) to determine
- * optimal CPU frequency.
+ * Provides types and functions for CPU topology detection and dynamic
+ * frequency scaling. Used by both the launcher (for topology detection)
+ * and player (for performance-based autoscaling).
  *
- * Three modes are supported:
+ * Three scaling modes are supported:
  * - Topology mode: Multi-cluster SoCs (big.LITTLE, etc.) using PerfState ladder
  * - Granular mode: Single-cluster with all available frequencies (linear scaling)
  * - Fallback mode: 3 fixed levels (powersave/normal/performance)
@@ -19,11 +19,10 @@
  * - Uses CPU affinity to guide which cluster the emulation thread runs on
  *
  * Designed for testability with injectable state and callbacks.
- * Extracted from player.c.
  */
 
-#ifndef __PLAYER_CPU_H__
-#define __PLAYER_CPU_H__
+#ifndef __CPU_H__
+#define __CPU_H__
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,54 +30,50 @@
 /**
  * Maximum number of CPU frequencies that can be detected.
  */
-#define PLAYER_CPU_MAX_FREQUENCIES 32
+#define CPU_MAX_FREQUENCIES 32
 
 /**
  * Ring buffer size for frame timing samples.
  */
-#define PLAYER_CPU_FRAME_BUFFER_SIZE 64
+#define CPU_FRAME_BUFFER_SIZE 64
 
 /**
  * Default tuning constants.
- * These can be overridden via PlayerCPUConfig.
+ * These can be overridden via CPUConfig.
  */
-#define PLAYER_CPU_DEFAULT_WINDOW_FRAMES 30 // ~500ms at 60fps
-#define PLAYER_CPU_DEFAULT_UTIL_HIGH 85 // Boost threshold (%)
-#define PLAYER_CPU_DEFAULT_UTIL_LOW 55 // Reduce threshold (%)
-#define PLAYER_CPU_DEFAULT_BOOST_WINDOWS 2 // Windows before boost (~1s)
-#define PLAYER_CPU_DEFAULT_REDUCE_WINDOWS 4 // Windows before reduce (~2s)
-#define PLAYER_CPU_DEFAULT_STARTUP_GRACE 300 // Frames to skip (~5s at 60fps)
-#define PLAYER_CPU_DEFAULT_MIN_FREQ_KHZ 0 // No minimum (panic failsafe handles problematic freqs)
-#define PLAYER_CPU_DEFAULT_TARGET_UTIL 70 // Target utilization after change
-#define PLAYER_CPU_DEFAULT_MAX_STEP_DOWN 1 // Max frequency steps when reducing
-#define PLAYER_CPU_DEFAULT_PANIC_STEP_UP 2 // Frequency steps on panic (underrun)
-#define PLAYER_CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
+#define CPU_DEFAULT_WINDOW_FRAMES 30 // ~500ms at 60fps
+#define CPU_DEFAULT_UTIL_HIGH 85 // Boost threshold (%)
+#define CPU_DEFAULT_UTIL_LOW 55 // Reduce threshold (%)
+#define CPU_DEFAULT_BOOST_WINDOWS 2 // Windows before boost (~1s)
+#define CPU_DEFAULT_REDUCE_WINDOWS 4 // Windows before reduce (~2s)
+#define CPU_DEFAULT_STARTUP_GRACE 300 // Frames to skip (~5s at 60fps)
+#define CPU_DEFAULT_MIN_FREQ_KHZ 0 // No minimum (panic failsafe handles problematic freqs)
+#define CPU_DEFAULT_TARGET_UTIL 70 // Target utilization after change
+#define CPU_DEFAULT_MAX_STEP_DOWN 1 // Max frequency steps when reducing
+#define CPU_DEFAULT_PANIC_STEP_UP 2 // Frequency steps on panic (underrun)
+#define CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
 
 /**
  * Multi-cluster topology constants.
  */
-#define PLAYER_CPU_MAX_CLUSTERS 8 // Maximum CPU clusters (policies)
-#define PLAYER_CPU_MAX_PERF_STATES 16 // Maximum performance states in ladder
-#define PLAYER_CPU_MAX_FREQS_PER_CLUSTER 16 // Maximum frequencies per cluster
+#define CPU_MAX_CLUSTERS 8 // Maximum CPU clusters (policies)
+#define CPU_MAX_PERF_STATES 16 // Maximum performance states in ladder
+#define CPU_MAX_FREQS_PER_CLUSTER 16 // Maximum frequencies per cluster
 
 /**
  * Preset level indices.
  */
-typedef enum {
-	PLAYER_CPU_LEVEL_POWERSAVE = 0,
-	PLAYER_CPU_LEVEL_NORMAL = 1,
-	PLAYER_CPU_LEVEL_PERFORMANCE = 2
-} PlayerCPULevel;
+typedef enum { CPU_LEVEL_POWERSAVE = 0, CPU_LEVEL_NORMAL = 1, CPU_LEVEL_PERFORMANCE = 2 } CPULevel;
 
 /**
  * Cluster type classification based on relative performance.
  * Determined by sorting clusters by max_khz and analyzing the distribution.
  */
 typedef enum {
-	PLAYER_CPU_CLUSTER_LITTLE = 0, // Efficiency cores (lowest max_khz)
-	PLAYER_CPU_CLUSTER_BIG = 1, // Performance cores (middle)
-	PLAYER_CPU_CLUSTER_PRIME = 2, // Premium core (highest max_khz, often single)
-} PlayerCPUClusterType;
+	CPU_CLUSTER_LITTLE = 0, // Efficiency cores (lowest max_khz)
+	CPU_CLUSTER_BIG = 1, // Performance cores (middle)
+	CPU_CLUSTER_PRIME = 2, // Premium core (highest max_khz, often single)
+} CPUClusterType;
 
 /**
  * Governor types for PerfState ladder.
@@ -90,10 +85,10 @@ typedef enum {
  * - PERFORMANCE: runs at maximum frequency (full power)
  */
 typedef enum {
-	PLAYER_CPU_GOV_POWERSAVE = 0, // Min frequency - for light workloads
-	PLAYER_CPU_GOV_SCHEDUTIL = 1, // Dynamic scaling - kernel finds sweet spot
-	PLAYER_CPU_GOV_PERFORMANCE = 2, // Max frequency - for demanding workloads
-} PlayerCPUGovernor;
+	CPU_GOV_POWERSAVE = 0, // Min frequency - for light workloads
+	CPU_GOV_SCHEDUTIL = 1, // Dynamic scaling - kernel finds sweet spot
+	CPU_GOV_PERFORMANCE = 2, // Max frequency - for demanding workloads
+} CPUGovernor;
 
 /**
  * Information about a single CPU cluster (cpufreq policy).
@@ -103,13 +98,12 @@ typedef struct {
 	int policy_id; // Policy number (0, 4, 7, etc. from policyN)
 	int cpu_mask; // Bitmask of CPUs in this cluster
 	int cpu_count; // Number of CPUs in cluster
-	int frequencies
-	    [PLAYER_CPU_MAX_FREQS_PER_CLUSTER]; // Available frequencies (kHz, sorted ascending)
+	int frequencies[CPU_MAX_FREQS_PER_CLUSTER]; // Available frequencies (kHz, sorted ascending)
 	int freq_count; // Number of frequencies
 	int min_khz; // cpuinfo_min_freq
 	int max_khz; // cpuinfo_max_freq
-	PlayerCPUClusterType type; // LITTLE/BIG/PRIME classification
-} PlayerCPUCluster;
+	CPUClusterType type; // LITTLE/BIG/PRIME classification
+} CPUCluster;
 
 /**
  * A performance state represents one step in the autoscaler's ladder.
@@ -122,33 +116,33 @@ typedef struct {
  * This works WITH the kernel's frequency scaling rather than against it.
  */
 typedef struct {
-	PlayerCPUGovernor cluster_governor[PLAYER_CPU_MAX_CLUSTERS]; // Governor per cluster
+	CPUGovernor cluster_governor[CPU_MAX_CLUSTERS]; // Governor per cluster
 	int cpu_affinity_mask; // Bitmask of CPUs for emulation thread
 	int active_cluster_idx; // Which cluster is the "active" one
-} PlayerCPUPerfState;
+} CPUPerfState;
 
 /**
  * Complete CPU topology information detected from sysfs.
  * Populated by PWR_detectCPUTopology() at initialization.
  */
-typedef struct PlayerCPUTopology {
-	PlayerCPUCluster clusters[PLAYER_CPU_MAX_CLUSTERS]; // Detected clusters (sorted by max_khz)
+typedef struct CPUTopology {
+	CPUCluster clusters[CPU_MAX_CLUSTERS]; // Detected clusters (sorted by max_khz)
 	int cluster_count; // Number of clusters detected
-	PlayerCPUPerfState states[PLAYER_CPU_MAX_PERF_STATES]; // Performance state ladder
+	CPUPerfState states[CPU_MAX_PERF_STATES]; // Performance state ladder
 	int state_count; // Number of states in ladder
 	int topology_detected; // 1 if detection completed successfully
-} PlayerCPUTopology;
+} CPUTopology;
 
 /**
- * Decision type returned by PlayerCPU_update().
+ * Decision type returned by CPU_update().
  */
 typedef enum {
-	PLAYER_CPU_DECISION_NONE = 0, // No change needed
-	PLAYER_CPU_DECISION_BOOST, // Increase frequency/level
-	PLAYER_CPU_DECISION_REDUCE, // Decrease frequency/level
-	PLAYER_CPU_DECISION_PANIC, // Emergency boost (underrun detected)
-	PLAYER_CPU_DECISION_SKIP // Skipped (grace period, menu, etc.)
-} PlayerCPUDecision;
+	CPU_DECISION_NONE = 0, // No change needed
+	CPU_DECISION_BOOST, // Increase frequency/level
+	CPU_DECISION_REDUCE, // Decrease frequency/level
+	CPU_DECISION_PANIC, // Emergency boost (underrun detected)
+	CPU_DECISION_SKIP // Skipped (grace period, menu, etc.)
+} CPUDecision;
 
 /**
  * Configuration constants for auto CPU scaling.
@@ -164,7 +158,7 @@ typedef struct {
 	unsigned int target_util; // Target utilization after frequency change
 	int max_step_down; // Max frequency steps when reducing
 	int panic_step_up; // Frequency steps on panic (underrun)
-} PlayerCPUConfig;
+} CPUConfig;
 
 /**
  * State for auto CPU scaling.
@@ -172,7 +166,7 @@ typedef struct {
  */
 typedef struct {
 	// Frequency array (populated by detectFrequencies)
-	int frequencies[PLAYER_CPU_MAX_FREQUENCIES]; // Available frequencies (kHz, sorted low→high)
+	int frequencies[CPU_MAX_FREQUENCIES]; // Available frequencies (kHz, sorted low→high)
 	int freq_count; // Number of valid frequencies
 
 	// Granular mode state
@@ -194,7 +188,7 @@ typedef struct {
 	int panic_cooldown; // Windows to wait after panic
 
 	// Frame timing data
-	uint64_t frame_times[PLAYER_CPU_FRAME_BUFFER_SIZE]; // Ring buffer of frame times (us)
+	uint64_t frame_times[CPU_FRAME_BUFFER_SIZE]; // Ring buffer of frame times (us)
 	int frame_time_index; // Current ring buffer position
 	uint64_t frame_budget_us; // Target frame time (from fps)
 
@@ -203,40 +197,40 @@ typedef struct {
 	int scaling_disabled; // 1 if scaling is disabled (0 or 1 frequency available)
 
 	// Per-frequency panic tracking (failsafe for problematic frequencies)
-	int panic_count[PLAYER_CPU_MAX_FREQUENCIES]; // Count of panics at each frequency
+	int panic_count[CPU_MAX_FREQUENCIES]; // Count of panics at each frequency
 
 	// Multi-cluster topology support
-	PlayerCPUTopology topology; // Detected CPU topology
+	CPUTopology topology; // Detected CPU topology
 	int target_state; // Target PerfState index (multi-cluster mode)
 	int current_state; // Currently applied PerfState index
 	int use_topology; // 1 = multi-cluster mode active
 	int pending_affinity; // CPU mask to apply from main thread (0 = none pending)
-} PlayerCPUState;
+} CPUState;
 
 /**
  * Result of an update operation (for detailed testing).
  */
 typedef struct {
-	PlayerCPUDecision decision; // What decision was made
+	CPUDecision decision; // What decision was made
 	int new_index; // New frequency index (if granular)
 	int new_level; // New level (if fallback)
 	unsigned utilization; // Calculated utilization (%)
 	uint64_t p90_time; // 90th percentile frame time
-} PlayerCPUResult;
+} CPUResult;
 
 /**
  * Initializes config with default values.
  *
  * @param config Config to initialize
  */
-void PlayerCPU_initConfig(PlayerCPUConfig* config);
+void CPU_initConfig(CPUConfig* config);
 
 /**
  * Initializes state to empty/zero state.
  *
  * @param state State to initialize
  */
-void PlayerCPU_initState(PlayerCPUState* state);
+void CPU_initState(CPUState* state);
 
 /**
  * Finds the index of the nearest frequency to the target.
@@ -246,7 +240,7 @@ void PlayerCPU_initState(PlayerCPUState* state);
  * @param target_khz Target frequency to find
  * @return Index of nearest frequency (0 if count <= 0)
  */
-int PlayerCPU_findNearestIndex(const int* frequencies, int count, int target_khz);
+int CPU_findNearestIndex(const int* frequencies, int count, int target_khz);
 
 /**
  * Detects available CPU frequencies and initializes granular scaling.
@@ -259,8 +253,8 @@ int PlayerCPU_findNearestIndex(const int* frequencies, int count, int target_khz
  * @param raw_frequencies Array of frequencies from platform
  * @param raw_count Number of frequencies from platform
  */
-void PlayerCPU_detectFrequencies(PlayerCPUState* state, const PlayerCPUConfig* config,
-                                 const int* raw_frequencies, int raw_count);
+void CPU_detectFrequencies(CPUState* state, const CPUConfig* config, const int* raw_frequencies,
+                           int raw_count);
 
 /**
  * Resets auto CPU state for a new session.
@@ -272,8 +266,7 @@ void PlayerCPU_detectFrequencies(PlayerCPUState* state, const PlayerCPUConfig* c
  * @param fps Game's target FPS (for frame budget calculation)
  * @param current_underruns Current underrun count from audio system
  */
-void PlayerCPU_reset(PlayerCPUState* state, const PlayerCPUConfig* config, double fps,
-                     unsigned current_underruns);
+void CPU_reset(CPUState* state, const CPUConfig* config, double fps, unsigned current_underruns);
 
 /**
  * Records a frame time sample.
@@ -283,7 +276,7 @@ void PlayerCPU_reset(PlayerCPUState* state, const PlayerCPUConfig* config, doubl
  * @param state State to update
  * @param frame_time_us Frame execution time in microseconds
  */
-void PlayerCPU_recordFrameTime(PlayerCPUState* state, uint64_t frame_time_us);
+void CPU_recordFrameTime(CPUState* state, uint64_t frame_time_us);
 
 /**
  * Main update function - determines if CPU frequency should change.
@@ -299,9 +292,8 @@ void PlayerCPU_recordFrameTime(PlayerCPUState* state, uint64_t frame_time_us);
  * @param result Optional output for detailed result info
  * @return Decision type (NONE, BOOST, REDUCE, PANIC, SKIP)
  */
-PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig* config,
-                                   bool fast_forward, bool show_menu, unsigned current_underruns,
-                                   PlayerCPUResult* result);
+CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forward, bool show_menu,
+                       unsigned current_underruns, CPUResult* result);
 
 /**
  * Calculates the recommended frequency for a target utilization.
@@ -313,7 +305,7 @@ PlayerCPUDecision PlayerCPU_update(PlayerCPUState* state, const PlayerCPUConfig*
  * @param target_util Target utilization percentage
  * @return Recommended frequency in kHz
  */
-int PlayerCPU_predictFrequency(int current_freq, int current_util, int target_util);
+int CPU_predictFrequency(int current_freq, int current_util, int target_util);
 
 /**
  * Returns the percentage of max frequency for a preset level.
@@ -321,7 +313,7 @@ int PlayerCPU_predictFrequency(int current_freq, int current_util, int target_ut
  * @param level Preset level (0=POWERSAVE, 1=NORMAL, 2=PERFORMANCE)
  * @return Percentage of max frequency (55, 80, or 100)
  */
-int PlayerCPU_getPresetPercentage(PlayerCPULevel level);
+int CPU_getPresetPercentage(CPULevel level);
 
 /**
  * Returns the current performance level as a normalized percentage (0-100).
@@ -334,7 +326,7 @@ int PlayerCPU_getPresetPercentage(PlayerCPULevel level);
  * @param state CPU state to query
  * @return Performance level 0-100, or -1 if scaling disabled
  */
-int PlayerCPU_getPerformancePercent(const PlayerCPUState* state);
+int CPU_getPerformancePercent(const CPUState* state);
 
 /**
  * Returns a string describing the current CPU scaling mode.
@@ -342,7 +334,7 @@ int PlayerCPU_getPerformancePercent(const PlayerCPUState* state);
  * @param state CPU state to query
  * @return "topology", "granular", "fallback", or "disabled"
  */
-const char* PlayerCPU_getModeName(const PlayerCPUState* state);
+const char* CPU_getModeName(const CPUState* state);
 
 /**
  * Calculates the 90th percentile of frame times.
@@ -351,7 +343,7 @@ const char* PlayerCPU_getModeName(const PlayerCPUState* state);
  * @param count Number of samples (uses min of count and buffer size)
  * @return 90th percentile value
  */
-uint64_t PlayerCPU_percentile90(const uint64_t* frame_times, int count);
+uint64_t CPU_percentile90(const uint64_t* frame_times, int count);
 
 ///////////////////////////////
 // Multi-cluster topology functions
@@ -362,7 +354,7 @@ uint64_t PlayerCPU_percentile90(const uint64_t* frame_times, int count);
  *
  * @param topology Topology to initialize
  */
-void PlayerCPU_initTopology(PlayerCPUTopology* topology);
+void CPU_initTopology(CPUTopology* topology);
 
 /**
  * Builds the PerfState ladder from detected topology.
@@ -381,7 +373,7 @@ void PlayerCPU_initTopology(PlayerCPUTopology* topology);
  * @param state CPU state with populated topology.clusters
  * @param config Configuration
  */
-void PlayerCPU_buildPerfStates(PlayerCPUState* state, const PlayerCPUConfig* config);
+void CPU_buildPerfStates(CPUState* state, const CPUConfig* config);
 
 /**
  * Applies a PerfState by setting cluster governors and thread affinity.
@@ -392,7 +384,7 @@ void PlayerCPU_buildPerfStates(PlayerCPUState* state, const PlayerCPUConfig* con
  * @param state CPU state with target_state set
  * @return 0 on success, -1 on failure
  */
-int PlayerCPU_applyPerfState(PlayerCPUState* state);
+int CPU_applyPerfState(CPUState* state);
 
 /**
  * Parses a CPU list string (e.g., "0-3" or "0 1 2 3") into a bitmask.
@@ -401,7 +393,7 @@ int PlayerCPU_applyPerfState(PlayerCPUState* state);
  * @param cpu_count Output: number of CPUs in the list
  * @return Bitmask of CPUs
  */
-int PlayerCPU_parseCPUList(const char* str, int* cpu_count);
+int CPU_parseCPUList(const char* str, int* cpu_count);
 
 /**
  * Classifies clusters based on their relative performance.
@@ -414,7 +406,7 @@ int PlayerCPU_parseCPUList(const char* str, int* cpu_count);
  * @param clusters Array of clusters (must be sorted by max_khz ascending)
  * @param count Number of clusters
  */
-void PlayerCPU_classifyClusters(PlayerCPUCluster* clusters, int count);
+void CPU_classifyClusters(CPUCluster* clusters, int count);
 
 /**
  * Picks 3 representative frequencies from a cluster's available frequencies.
@@ -427,7 +419,7 @@ void PlayerCPU_classifyClusters(PlayerCPUCluster* clusters, int count);
  * @param mid_khz Output: mid frequency (freqs[count/2])
  * @param high_khz Output: high frequency (freqs[count-1])
  */
-void PlayerCPU_pickRepresentativeFreqs(const PlayerCPUCluster* cluster, int* low_khz, int* mid_khz,
-                                       int* high_khz);
+void CPU_pickRepresentativeFreqs(const CPUCluster* cluster, int* low_khz, int* mid_khz,
+                                 int* high_khz);
 
-#endif // __PLAYER_CPU_H__
+#endif // __CPU_H__

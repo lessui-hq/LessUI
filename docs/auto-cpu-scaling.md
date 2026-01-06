@@ -256,7 +256,7 @@ Auto CPU scaling uses a **two-thread design** to keep the main emulation loop re
 
 - Polls every 50ms checking for target changes
 - When target ≠ current, applies the change:
-  - **Topology mode**: Calls `PlayerCPU_applyPerfState()` to set governors on all clusters, queues affinity change for main thread
+  - **Topology mode**: Calls `CPU_applyPerfState()` to set governors on all clusters, queues affinity change for main thread
   - **Granular mode**: Calls `PLAT_setCPUFrequency()` to set frequency via sysfs
   - **Fallback mode**: Calls `PWR_setCPUSpeed()` which may fork `system("overclock.elf")`
 - Updates current level/state after successful application
@@ -519,8 +519,8 @@ The discovered frequency steps and performance data come from a custom CPU bench
 - [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`, `PWR_detectCPUTopology()`, `PWR_setCPUGovernor()`, `PWR_setThreadAffinity()`
 - [workspace/all/common/api.h](../workspace/all/common/api.h) - `PLAT_getAvailableCPUFrequencies()`, `PLAT_setCPUFrequency()` API
 - [workspace/all/player/player.c](../workspace/all/player/player.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
-- [workspace/all/player/player_cpu.c](../workspace/all/player/player_cpu.c) - CPU scaling algorithm, `PlayerCPU_buildPerfStates()`, `PlayerCPU_applyPerfState()`, `PlayerCPU_getPerformancePercent()`
-- [workspace/all/player/player_cpu.h](../workspace/all/player/player_cpu.h) - CPU scaling types and API
+- [workspace/all/common/cpu.c](../workspace/all/common/cpu.c) - CPU scaling algorithm, `CPU_buildPerfStates()`, `CPU_applyPerfState()`, `CPU_getPerformancePercent()`
+- [workspace/all/common/cpu.h](../workspace/all/common/cpu.h) - CPU scaling types and API
 - [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status
@@ -731,14 +731,14 @@ Helper functions provide a consistent interface regardless of scaling mode:
 
 ```c
 // Get normalized performance level (0-100%)
-int PlayerCPU_getPerformancePercent(const PlayerCPUState* state);
+int CPU_getPerformancePercent(const CPUState* state);
 // - Topology: (current_state / max_state) * 100
 // - Granular: (current_index / max_index) * 100
 // - Fallback: level * 50 (0=0%, 1=50%, 2=100%)
 // - Returns -1 if scaling disabled
 
 // Get mode name for logging/debugging
-const char* PlayerCPU_getModeName(const PlayerCPUState* state);
+const char* CPU_getModeName(const CPUState* state);
 // - Returns: "topology", "granular", "fallback", or "disabled"
 ```
 

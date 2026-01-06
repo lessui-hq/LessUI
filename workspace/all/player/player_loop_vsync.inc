@@ -104,7 +104,7 @@ static void run_main_loop(void) {
 				// Store frame time for auto CPU scaling analysis
 				if (overclock == 3 && !fast_forward && !show_menu) {
 					auto_cpu_state.frame_times[auto_cpu_state.frame_time_index %
-					                            PLAYER_CPU_FRAME_BUFFER_SIZE] = frame_time;
+					                            CPU_FRAME_BUFFER_SIZE] = frame_time;
 					auto_cpu_state.frame_time_index++;
 				}
 			}

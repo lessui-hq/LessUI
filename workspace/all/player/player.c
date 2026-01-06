@@ -54,6 +54,7 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#include "../common/cpu.h"
 #include "api.h"
 #include "defines.h"
 #include "frame_pacer.h"
@@ -66,7 +67,6 @@
 #include "player_config.h"
 #include "player_context.h"
 #include "player_core.h"
-#include "player_cpu.h"
 #include "player_env.h"
 #include "player_game.h"
 #include "player_input.h"
@@ -151,9 +151,9 @@ static int overclock = 3; // CPU speed (0=powersave, 1=normal, 2=performance, 3=
 
 // Auto CPU Scaling State (when overclock == 3)
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
-// State and config are managed via player_cpu.h structs for testability.
-static PlayerCPUState auto_cpu_state;
-static PlayerCPUConfig auto_cpu_config;
+// State and config are managed via cpu.h structs for testability.
+static CPUState auto_cpu_state;
+static CPUConfig auto_cpu_config;
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
 // Frame Pacing State
@@ -859,14 +859,14 @@ static void* auto_cpu_scaling_thread(void* arg) {
 				LOG_debug("Auto CPU: applying PerfState %d/%d\n", target_state,
 				          auto_cpu_state.topology.state_count - 1);
 
-				int result = PlayerCPU_applyPerfState(&auto_cpu_state);
+				int result = CPU_applyPerfState(&auto_cpu_state);
 				if (result != 0) {
 					LOG_warn("Auto CPU: failed to apply PerfState %d\n", target_state);
 				}
 
 				// Set pending_affinity under mutex (main thread will apply it)
 				// This avoids race condition with main thread reading pending_affinity
-				PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[target_state];
+				CPUPerfState* ps = &auto_cpu_state.topology.states[target_state];
 				pthread_mutex_lock(&auto_cpu_mutex);
 				if (ps->cpu_affinity_mask > 0) {
 					auto_cpu_state.pending_affinity = ps->cpu_affinity_mask;
@@ -1049,8 +1049,7 @@ static int auto_cpu_getCurrentFrequency(void) {
  * Wrapper around module function for convenience.
  */
 static int auto_cpu_findNearestIndex(int target_khz) {
-	return PlayerCPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count,
-	                                  target_khz);
+	return CPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count, target_khz);
 }
 
 /**
@@ -1074,7 +1073,7 @@ static void auto_cpu_detectFrequencies(void) {
 		auto_cpu_state.use_granular = 0;
 
 		// Build the PerfState ladder (3 governor levels per cluster tier)
-		PlayerCPU_buildPerfStates(&auto_cpu_state, &auto_cpu_config);
+		CPU_buildPerfStates(&auto_cpu_state, &auto_cpu_config);
 
 		// Note: governors are now set by applyPerfState(), not upfront
 		// This lets each PerfState control its own governor configuration
@@ -1084,11 +1083,11 @@ static void auto_cpu_detectFrequencies(void) {
 
 		// Log cluster info
 		for (int c = 0; c < cluster_count; c++) {
-			PlayerCPUCluster* cluster = &auto_cpu_state.topology.clusters[c];
-			const char* type_str = cluster->type == PLAYER_CPU_CLUSTER_PRIME    ? "PRIME"
-			                       : cluster->type == PLAYER_CPU_CLUSTER_BIG    ? "BIG"
-			                       : cluster->type == PLAYER_CPU_CLUSTER_LITTLE ? "LITTLE"
-			                                                                    : "?";
+			CPUCluster* cluster = &auto_cpu_state.topology.clusters[c];
+			const char* type_str = cluster->type == CPU_CLUSTER_PRIME    ? "PRIME"
+			                       : cluster->type == CPU_CLUSTER_BIG    ? "BIG"
+			                       : cluster->type == CPU_CLUSTER_LITTLE ? "LITTLE"
+			                                                             : "?";
 			LOG_debug("Auto CPU: cluster %d (policy%d): %s, %d CPUs, %d-%d MHz\n", c,
 			          cluster->policy_id, type_str, cluster->cpu_count, cluster->min_khz / 1000,
 			          cluster->max_khz / 1000);
@@ -1097,7 +1096,7 @@ static void auto_cpu_detectFrequencies(void) {
 		// Log PerfState ladder (governor-based)
 		static const char* gov_names[] = {"powersave", "schedutil", "performance"};
 		for (int s = 0; s < auto_cpu_state.topology.state_count; s++) {
-			PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[s];
+			CPUPerfState* ps = &auto_cpu_state.topology.states[s];
 			LOG_debug("Auto CPU: PerfState %d: cluster %d, affinity=0x%x\n", s,
 			          ps->active_cluster_idx, ps->cpu_affinity_mask);
 			for (int c = 0; c < cluster_count; c++) {
@@ -1239,9 +1238,9 @@ void setOverclock(int i) {
 			auto_cpu_state.current_state = -1; // Force apply on first thread iteration
 			pthread_mutex_unlock(&auto_cpu_mutex);
 			// Apply initial state immediately (thread will maintain it)
-			PlayerCPU_applyPerfState(&auto_cpu_state);
+			CPU_applyPerfState(&auto_cpu_state);
 			// Apply affinity directly since we're on the main (emulation) thread
-			PlayerCPUPerfState* ps = &auto_cpu_state.topology.states[start_state];
+			CPUPerfState* ps = &auto_cpu_state.topology.states[start_state];
 			if (ps->cpu_affinity_mask > 0) {
 				PWR_setThreadAffinity(ps->cpu_affinity_mask);
 			}
@@ -1334,18 +1333,17 @@ static void updateAutoCPU(void) {
 		// Track panic at current frequency (for failsafe blocking).
 		// If a frequency can't keep up, all lower frequencies are also blocked
 		// because lower freq = less CPU throughput = guaranteed worse performance.
-		if (auto_cpu_state.use_granular && current_idx >= 0 &&
-		    current_idx < PLAYER_CPU_MAX_FREQUENCIES) {
+		if (auto_cpu_state.use_granular && current_idx >= 0 && current_idx < CPU_MAX_FREQUENCIES) {
 			auto_cpu_state.panic_count[current_idx]++;
 
-			if (auto_cpu_state.panic_count[current_idx] >= PLAYER_CPU_PANIC_THRESHOLD) {
+			if (auto_cpu_state.panic_count[current_idx] >= CPU_PANIC_THRESHOLD) {
 				LOG_warn("Auto CPU: BLOCKING %d kHz and below after %d panics (audio=%u%%)\n",
 				         auto_cpu_state.frequencies[current_idx],
 				         auto_cpu_state.panic_count[current_idx], audio_fill);
 				// Block this frequency and all below - they can't possibly work
 				// if this one failed (lower freq = strictly less performance)
 				for (int i = 0; i <= current_idx; i++) {
-					auto_cpu_state.panic_count[i] = PLAYER_CPU_PANIC_THRESHOLD;
+					auto_cpu_state.panic_count[i] = CPU_PANIC_THRESHOLD;
 				}
 			}
 		}
@@ -1536,7 +1534,7 @@ static void updateAutoCPU(void) {
 					// Skip blocked frequencies - find first unblocked one above new_idx.
 					// Frequencies get blocked when they cause repeated panics.
 					while (new_idx >= 0 &&
-					       auto_cpu_state.panic_count[new_idx] >= PLAYER_CPU_PANIC_THRESHOLD) {
+					       auto_cpu_state.panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
 						new_idx++;
 						if (new_idx >= current_idx) {
 							// All lower frequencies blocked - stay at current
@@ -3782,7 +3780,7 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 
 		if (auto_cpu_state.use_topology) {
 			// Topology mode: show state/max and performance %
-			int perf_pct = PlayerCPU_getPerformancePercent(&auto_cpu_state);
+			int perf_pct = CPU_getPerformancePercent(&auto_cpu_state);
 			int max_state = auto_cpu_state.topology.state_count - 1;
 			(void)snprintf(debug_text, sizeof(debug_text), "T%i/%i %i%% u:%u%% b:%u%%",
 			               current_state, max_state, perf_pct, util, fill_display);
@@ -4103,7 +4101,7 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 
 			if (auto_cpu_state.use_topology) {
 				// Topology mode: show state/max and performance %
-				int perf_pct = PlayerCPU_getPerformancePercent(&auto_cpu_state);
+				int perf_pct = CPU_getPerformancePercent(&auto_cpu_state);
 				int max_state = auto_cpu_state.topology.state_count - 1;
 				(void)snprintf(debug_text, sizeof(debug_text), "T%i/%i %i%% u:%u%% b:%u%%",
 				               current_state, max_state, perf_pct, util, fill_display);
@@ -6006,8 +6004,8 @@ int main(int argc, char* argv[]) {
 	PlayerContext_initCallbacks(ctx, &callbacks);
 
 	// Initialize auto CPU scaling config with defaults
-	PlayerCPU_initConfig(&auto_cpu_config);
-	PlayerCPU_initState(&auto_cpu_state);
+	CPU_initConfig(&auto_cpu_config);
+	CPU_initState(&auto_cpu_state);
 
 	setOverclock(overclock); // default to normal
 	// force a stack overflow to ensure asan is linked and actually working

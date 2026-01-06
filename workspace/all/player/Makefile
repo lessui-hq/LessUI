@@ -27,7 +27,7 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          ../common/gfx_text.c ../launcher/launcher_file_utils.c ../common/platform_variant.c \
          ../common/paths.c \
          player_archive.c player_memory.c player_state.c \
-         player_paths.c player_cpu.c player_input.c player_mappings.c \
+         player_paths.c ../common/cpu.c player_input.c player_mappings.c \
          player_video_convert.c player_rotation.c player_config.c player_context.c \
          player_menu.c player_env.c player_game.c player_scaler.c player_core.c \
          ../common/gl_video.c \

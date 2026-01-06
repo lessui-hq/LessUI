@@ -1,5 +1,5 @@
 /**
- * test_player_cpu.c - Unit tests for auto CPU scaling
+ * test_cpu.c - Unit tests for auto CPU scaling
  *
  * Tests the CPU frequency scaling algorithm including:
  * - Frequency detection and preset calculation
@@ -14,12 +14,12 @@
  */
 
 #include "unity.h"
-#include "player_cpu.h"
+#include "cpu.h"
 
 #include <string.h>
 
 ///////////////////////////////
-// Stubs for API functions called by player_cpu.c
+// Stubs for API functions called by cpu.c
 // These allow unit testing without linking api.c
 ///////////////////////////////
 
@@ -55,19 +55,19 @@ static void reset_stubs(void) {
 }
 
 // Test state and config
-static PlayerCPUState state;
-static PlayerCPUConfig config;
+static CPUState state;
+static CPUConfig config;
 
 // Forward declaration for helper function (defined later with topology tests)
-static void setup_dual_cluster_topology(PlayerCPUState* s);
+static void setup_dual_cluster_topology(CPUState* s);
 
 ///////////////////////////////
 // Test Setup/Teardown
 ///////////////////////////////
 
 void setUp(void) {
-	PlayerCPU_initState(&state);
-	PlayerCPU_initConfig(&config);
+	CPU_initState(&state);
+	CPU_initConfig(&config);
 	reset_stubs();
 }
 
@@ -80,8 +80,8 @@ void tearDown(void) {
 ///////////////////////////////
 
 void test_initConfig_sets_defaults(void) {
-	PlayerCPUConfig c;
-	PlayerCPU_initConfig(&c);
+	CPUConfig c;
+	CPU_initConfig(&c);
 
 	// Verify values are sensible (not testing exact defaults)
 	TEST_ASSERT_GREATER_THAN(0, c.window_frames);
@@ -99,9 +99,9 @@ void test_initConfig_sets_defaults(void) {
 }
 
 void test_initState_zeros_state(void) {
-	PlayerCPUState s;
+	CPUState s;
 	memset(&s, 0xFF, sizeof(s)); // Fill with garbage
-	PlayerCPU_initState(&s);
+	CPU_initState(&s);
 
 	TEST_ASSERT_EQUAL(0, s.freq_count);
 	TEST_ASSERT_EQUAL(0, s.target_index);
@@ -115,39 +115,39 @@ void test_initState_zeros_state(void) {
 ///////////////////////////////
 
 void test_findNearestIndex_empty_array(void) {
-	int result = PlayerCPU_findNearestIndex(NULL, 0, 1000000);
+	int result = CPU_findNearestIndex(NULL, 0, 1000000);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_findNearestIndex_exact_match(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	int result = PlayerCPU_findNearestIndex(freqs, 4, 800000);
+	int result = CPU_findNearestIndex(freqs, 4, 800000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
 void test_findNearestIndex_nearest_lower(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
 	// 750000 is closer to 800000 than 600000
-	int result = PlayerCPU_findNearestIndex(freqs, 4, 750000);
+	int result = CPU_findNearestIndex(freqs, 4, 750000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
 void test_findNearestIndex_nearest_higher(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
 	// 650000 is closer to 600000 than 800000
-	int result = PlayerCPU_findNearestIndex(freqs, 4, 650000);
+	int result = CPU_findNearestIndex(freqs, 4, 650000);
 	TEST_ASSERT_EQUAL(1, result);
 }
 
 void test_findNearestIndex_below_min(void) {
 	int freqs[] = {400000, 600000, 800000};
-	int result = PlayerCPU_findNearestIndex(freqs, 3, 100000);
+	int result = CPU_findNearestIndex(freqs, 3, 100000);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_findNearestIndex_above_max(void) {
 	int freqs[] = {400000, 600000, 800000};
-	int result = PlayerCPU_findNearestIndex(freqs, 3, 2000000);
+	int result = CPU_findNearestIndex(freqs, 3, 2000000);
 	TEST_ASSERT_EQUAL(2, result);
 }
 
@@ -159,7 +159,7 @@ void test_detectFrequencies_filters_below_minimum(void) {
 	// Set explicit min_freq_khz to test filtering behavior
 	config.min_freq_khz = 400000;
 	int raw[] = {100000, 200000, 300000, 400000, 600000, 800000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 6);
+	CPU_detectFrequencies(&state, &config, raw, 6);
 
 	// Should only keep 400000, 600000, 800000 (at or above min_freq_khz)
 	TEST_ASSERT_EQUAL(3, state.freq_count);
@@ -170,7 +170,7 @@ void test_detectFrequencies_filters_below_minimum(void) {
 
 void test_detectFrequencies_enables_granular_mode(void) {
 	int raw[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 4);
+	CPU_detectFrequencies(&state, &config, raw, 4);
 
 	TEST_ASSERT_EQUAL(1, state.use_granular);
 	TEST_ASSERT_EQUAL(1, state.frequencies_detected);
@@ -178,7 +178,7 @@ void test_detectFrequencies_enables_granular_mode(void) {
 
 void test_detectFrequencies_disables_scaling_with_one_freq(void) {
 	int raw[] = {800000}; // Only one frequency
-	PlayerCPU_detectFrequencies(&state, &config, raw, 1);
+	CPU_detectFrequencies(&state, &config, raw, 1);
 
 	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Scaling disabled
 	TEST_ASSERT_EQUAL(0, state.use_granular);
@@ -187,7 +187,7 @@ void test_detectFrequencies_disables_scaling_with_one_freq(void) {
 }
 
 void test_detectFrequencies_disables_scaling_with_zero_freqs(void) {
-	PlayerCPU_detectFrequencies(&state, &config, NULL, 0);
+	CPU_detectFrequencies(&state, &config, NULL, 0);
 
 	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Scaling disabled
 	TEST_ASSERT_EQUAL(0, state.use_granular);
@@ -197,7 +197,7 @@ void test_detectFrequencies_disables_scaling_with_zero_freqs(void) {
 
 void test_detectFrequencies_enables_scaling_with_multiple_freqs(void) {
 	int raw[] = {400000, 600000, 800000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 3);
+	CPU_detectFrequencies(&state, &config, raw, 3);
 
 	TEST_ASSERT_EQUAL(0, state.scaling_disabled); // Scaling enabled
 	TEST_ASSERT_EQUAL(1, state.use_granular);
@@ -211,11 +211,11 @@ void test_detectFrequencies_calculates_preset_indices(void) {
 	// NORMAL (80%): 800000 -> exact match (index 2)
 	// PERFORMANCE (100%): 1000000 (index 3)
 	int raw[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 4);
+	CPU_detectFrequencies(&state, &config, raw, 4);
 
-	TEST_ASSERT_EQUAL(1, state.preset_indices[PLAYER_CPU_LEVEL_POWERSAVE]);
-	TEST_ASSERT_EQUAL(2, state.preset_indices[PLAYER_CPU_LEVEL_NORMAL]);
-	TEST_ASSERT_EQUAL(3, state.preset_indices[PLAYER_CPU_LEVEL_PERFORMANCE]);
+	TEST_ASSERT_EQUAL(1, state.preset_indices[CPU_LEVEL_POWERSAVE]);
+	TEST_ASSERT_EQUAL(2, state.preset_indices[CPU_LEVEL_NORMAL]);
+	TEST_ASSERT_EQUAL(3, state.preset_indices[CPU_LEVEL_PERFORMANCE]);
 }
 
 ///////////////////////////////
@@ -228,7 +228,7 @@ void test_reset_clears_monitoring_state(void) {
 	state.low_util_windows = 3;
 	state.panic_cooldown = 8;
 
-	PlayerCPU_reset(&state, &config, 60.0, 0);
+	CPU_reset(&state, &config, 60.0, 0);
 
 	TEST_ASSERT_EQUAL(0, state.frame_count);
 	TEST_ASSERT_EQUAL(0, state.high_util_windows);
@@ -238,22 +238,22 @@ void test_reset_clears_monitoring_state(void) {
 }
 
 void test_reset_calculates_frame_budget_60fps(void) {
-	PlayerCPU_reset(&state, &config, 60.0, 0);
+	CPU_reset(&state, &config, 60.0, 0);
 	TEST_ASSERT_EQUAL(16666, state.frame_budget_us); // 1000000/60
 }
 
 void test_reset_calculates_frame_budget_50fps(void) {
-	PlayerCPU_reset(&state, &config, 50.0, 0);
+	CPU_reset(&state, &config, 50.0, 0);
 	TEST_ASSERT_EQUAL(20000, state.frame_budget_us); // 1000000/50
 }
 
 void test_reset_defaults_to_60fps_on_zero(void) {
-	PlayerCPU_reset(&state, &config, 0.0, 0);
+	CPU_reset(&state, &config, 0.0, 0);
 	TEST_ASSERT_EQUAL(16667, state.frame_budget_us);
 }
 
 void test_reset_stores_initial_underruns(void) {
-	PlayerCPU_reset(&state, &config, 60.0, 42);
+	CPU_reset(&state, &config, 60.0, 42);
 	TEST_ASSERT_EQUAL(42, state.last_underrun);
 }
 
@@ -262,9 +262,9 @@ void test_reset_stores_initial_underruns(void) {
 ///////////////////////////////
 
 void test_recordFrameTime_stores_in_ring_buffer(void) {
-	PlayerCPU_recordFrameTime(&state, 15000);
-	PlayerCPU_recordFrameTime(&state, 16000);
-	PlayerCPU_recordFrameTime(&state, 17000);
+	CPU_recordFrameTime(&state, 15000);
+	CPU_recordFrameTime(&state, 16000);
+	CPU_recordFrameTime(&state, 17000);
 
 	TEST_ASSERT_EQUAL(15000, state.frame_times[0]);
 	TEST_ASSERT_EQUAL(16000, state.frame_times[1]);
@@ -274,14 +274,14 @@ void test_recordFrameTime_stores_in_ring_buffer(void) {
 
 void test_recordFrameTime_wraps_at_buffer_size(void) {
 	// Fill buffer
-	for (int i = 0; i < PLAYER_CPU_FRAME_BUFFER_SIZE; i++) {
-		PlayerCPU_recordFrameTime(&state, 10000 + i);
+	for (int i = 0; i < CPU_FRAME_BUFFER_SIZE; i++) {
+		CPU_recordFrameTime(&state, 10000 + i);
 	}
 	// Add one more - should wrap to index 0
-	PlayerCPU_recordFrameTime(&state, 99999);
+	CPU_recordFrameTime(&state, 99999);
 
 	TEST_ASSERT_EQUAL(99999, state.frame_times[0]);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_FRAME_BUFFER_SIZE + 1, state.frame_time_index);
+	TEST_ASSERT_EQUAL(CPU_FRAME_BUFFER_SIZE + 1, state.frame_time_index);
 }
 
 ///////////////////////////////
@@ -289,20 +289,20 @@ void test_recordFrameTime_wraps_at_buffer_size(void) {
 ///////////////////////////////
 
 void test_percentile90_empty_returns_zero(void) {
-	uint64_t result = PlayerCPU_percentile90(NULL, 0);
+	uint64_t result = CPU_percentile90(NULL, 0);
 	TEST_ASSERT_EQUAL(0, result);
 }
 
 void test_percentile90_single_value(void) {
 	uint64_t times[] = {12345};
-	uint64_t result = PlayerCPU_percentile90(times, 1);
+	uint64_t result = CPU_percentile90(times, 1);
 	TEST_ASSERT_EQUAL(12345, result);
 }
 
 void test_percentile90_ten_values(void) {
 	// Values 1-10, 90th percentile index = (10 * 90) / 100 = 9, sorted[9] = 10
 	uint64_t times[] = {5, 3, 8, 1, 9, 2, 7, 4, 10, 6};
-	uint64_t result = PlayerCPU_percentile90(times, 10);
+	uint64_t result = CPU_percentile90(times, 10);
 	TEST_ASSERT_EQUAL(10, result);
 }
 
@@ -312,7 +312,7 @@ void test_percentile90_ignores_outliers(void) {
 	// 90% of 10 = 9, so index 9 = 1000000
 	// But we want the frame times to show typical load, not spikes
 	uint64_t times[] = {10, 11, 12, 13, 14, 15, 16, 17, 18, 1000000};
-	uint64_t result = PlayerCPU_percentile90(times, 10);
+	uint64_t result = CPU_percentile90(times, 10);
 	// Index 9 (90%) is the outlier
 	TEST_ASSERT_EQUAL(1000000, result);
 }
@@ -324,19 +324,19 @@ void test_percentile90_ignores_outliers(void) {
 void test_predictFrequency_boost_case(void) {
 	// At 1000MHz with 90% util, want 70% util
 	// new_freq = 1000 * 90 / 70 = 1285
-	int result = PlayerCPU_predictFrequency(1000000, 90, 70);
+	int result = CPU_predictFrequency(1000000, 90, 70);
 	TEST_ASSERT_EQUAL(1285714, result);
 }
 
 void test_predictFrequency_reduce_case(void) {
 	// At 1000MHz with 40% util, want 70% util
 	// new_freq = 1000 * 40 / 70 = 571
-	int result = PlayerCPU_predictFrequency(1000000, 40, 70);
+	int result = CPU_predictFrequency(1000000, 40, 70);
 	TEST_ASSERT_EQUAL(571428, result);
 }
 
 void test_predictFrequency_zero_target_returns_current(void) {
-	int result = PlayerCPU_predictFrequency(1000000, 50, 0);
+	int result = CPU_predictFrequency(1000000, 50, 0);
 	TEST_ASSERT_EQUAL(1000000, result);
 }
 
@@ -345,15 +345,15 @@ void test_predictFrequency_zero_target_returns_current(void) {
 ///////////////////////////////
 
 void test_getPresetPercentage_powersave(void) {
-	TEST_ASSERT_EQUAL(55, PlayerCPU_getPresetPercentage(PLAYER_CPU_LEVEL_POWERSAVE));
+	TEST_ASSERT_EQUAL(55, CPU_getPresetPercentage(CPU_LEVEL_POWERSAVE));
 }
 
 void test_getPresetPercentage_normal(void) {
-	TEST_ASSERT_EQUAL(80, PlayerCPU_getPresetPercentage(PLAYER_CPU_LEVEL_NORMAL));
+	TEST_ASSERT_EQUAL(80, CPU_getPresetPercentage(CPU_LEVEL_NORMAL));
 }
 
 void test_getPresetPercentage_performance(void) {
-	TEST_ASSERT_EQUAL(100, PlayerCPU_getPresetPercentage(PLAYER_CPU_LEVEL_PERFORMANCE));
+	TEST_ASSERT_EQUAL(100, CPU_getPresetPercentage(CPU_LEVEL_PERFORMANCE));
 }
 
 ///////////////////////////////
@@ -362,36 +362,36 @@ void test_getPresetPercentage_performance(void) {
 
 void test_getPerformancePercent_topology_mode(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	// At state 0 of 5 (0%)
 	state.current_state = 0;
-	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(0, CPU_getPerformancePercent(&state));
 
 	// At state 3 of 5 (60%)
 	state.current_state = 3;
-	TEST_ASSERT_EQUAL(60, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(60, CPU_getPerformancePercent(&state));
 
 	// At state 5 of 5 (100%)
 	state.current_state = 5;
-	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(100, CPU_getPerformancePercent(&state));
 }
 
 void test_getPerformancePercent_granular_mode(void) {
 	int raw[] = {600000, 800000, 1000000, 1200000, 1400000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 5);
+	CPU_detectFrequencies(&state, &config, raw, 5);
 
 	// At index 0 of 4 (0%)
 	state.current_index = 0;
-	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(0, CPU_getPerformancePercent(&state));
 
 	// At index 2 of 4 (50%)
 	state.current_index = 2;
-	TEST_ASSERT_EQUAL(50, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(50, CPU_getPerformancePercent(&state));
 
 	// At index 4 of 4 (100%)
 	state.current_index = 4;
-	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(100, CPU_getPerformancePercent(&state));
 }
 
 void test_getPerformancePercent_fallback_mode(void) {
@@ -400,52 +400,52 @@ void test_getPerformancePercent_fallback_mode(void) {
 	state.scaling_disabled = 0;
 
 	state.current_level = 0;
-	TEST_ASSERT_EQUAL(0, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(0, CPU_getPerformancePercent(&state));
 
 	state.current_level = 1;
-	TEST_ASSERT_EQUAL(50, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(50, CPU_getPerformancePercent(&state));
 
 	state.current_level = 2;
-	TEST_ASSERT_EQUAL(100, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(100, CPU_getPerformancePercent(&state));
 }
 
 void test_getPerformancePercent_disabled_returns_negative(void) {
 	state.scaling_disabled = 1;
 	state.use_topology = 0;
-	TEST_ASSERT_EQUAL(-1, PlayerCPU_getPerformancePercent(&state));
+	TEST_ASSERT_EQUAL(-1, CPU_getPerformancePercent(&state));
 }
 
 void test_getPerformancePercent_null_returns_negative(void) {
-	TEST_ASSERT_EQUAL(-1, PlayerCPU_getPerformancePercent(NULL));
+	TEST_ASSERT_EQUAL(-1, CPU_getPerformancePercent(NULL));
 }
 
 void test_getModeName_topology(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
-	TEST_ASSERT_EQUAL_STRING("topology", PlayerCPU_getModeName(&state));
+	CPU_buildPerfStates(&state, &config);
+	TEST_ASSERT_EQUAL_STRING("topology", CPU_getModeName(&state));
 }
 
 void test_getModeName_granular(void) {
 	int raw[] = {600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, raw, 3);
-	TEST_ASSERT_EQUAL_STRING("granular", PlayerCPU_getModeName(&state));
+	CPU_detectFrequencies(&state, &config, raw, 3);
+	TEST_ASSERT_EQUAL_STRING("granular", CPU_getModeName(&state));
 }
 
 void test_getModeName_fallback(void) {
 	state.use_topology = 0;
 	state.use_granular = 0;
 	state.scaling_disabled = 0;
-	TEST_ASSERT_EQUAL_STRING("fallback", PlayerCPU_getModeName(&state));
+	TEST_ASSERT_EQUAL_STRING("fallback", CPU_getModeName(&state));
 }
 
 void test_getModeName_disabled(void) {
 	state.scaling_disabled = 1;
 	state.use_topology = 0;
-	TEST_ASSERT_EQUAL_STRING("disabled", PlayerCPU_getModeName(&state));
+	TEST_ASSERT_EQUAL_STRING("disabled", CPU_getModeName(&state));
 }
 
 void test_getModeName_null(void) {
-	TEST_ASSERT_EQUAL_STRING("disabled", PlayerCPU_getModeName(NULL));
+	TEST_ASSERT_EQUAL_STRING("disabled", CPU_getModeName(NULL));
 }
 
 ///////////////////////////////
@@ -453,34 +453,34 @@ void test_getModeName_null(void) {
 ///////////////////////////////
 
 void test_update_skips_during_fast_forward(void) {
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, true, false, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, true, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, decision);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, result.decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, result.decision);
 }
 
 void test_update_skips_during_menu(void) {
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, true, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, true, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 }
 
 void test_update_skips_during_grace_period(void) {
 	config.startup_grace = 300;
 	state.startup_frames = 100; // Not yet at grace period
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(101, state.startup_frames); // Incremented
 }
 
 void test_update_skips_when_scaling_disabled(void) {
 	// Simulate M17-like single-frequency device
 	int raw[] = {1200000}; // Only one frequency (like M17)
-	PlayerCPU_detectFrequencies(&state, &config, raw, 1);
+	CPU_detectFrequencies(&state, &config, raw, 1);
 
 	TEST_ASSERT_EQUAL(1, state.scaling_disabled); // Pre-condition: scaling disabled
 
@@ -489,26 +489,26 @@ void test_update_skips_when_scaling_disabled(void) {
 	state.frame_count = config.window_frames - 1;
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 15000); // High utilization
+		CPU_recordFrameTime(&state, 15000); // High utilization
 	}
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, decision);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, result.decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, result.decision);
 }
 
 void test_update_skips_when_no_frequencies(void) {
 	// Edge case: no frequencies at all
-	PlayerCPU_detectFrequencies(&state, &config, NULL, 0);
+	CPU_detectFrequencies(&state, &config, NULL, 0);
 
 	TEST_ASSERT_EQUAL(1, state.scaling_disabled);
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_SKIP, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 }
 
 ///////////////////////////////
@@ -518,15 +518,15 @@ void test_update_skips_when_no_frequencies(void) {
 void test_update_panic_on_underrun_granular(void) {
 	// Setup: granular mode, not at max
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace; // Past grace
 	state.target_index = 1; // At 600MHz
 	state.last_underrun = 0;
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 1, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index); // Boosted by panic_step_up=2 (1+2=3)
 	TEST_ASSERT_EQUAL(8, state.panic_cooldown);
 }
@@ -538,24 +538,24 @@ void test_update_panic_on_underrun_fallback(void) {
 	state.target_level = 0; // At powersave
 	state.last_underrun = 0;
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 1, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_EQUAL(2, state.target_level); // Boosted to max
 }
 
 void test_update_no_panic_when_at_max(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3; // Already at max
 	state.last_underrun = 0;
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 1, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, NULL);
 
 	// Should not panic, just update underrun tracking
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index); // Still at max
 }
 
@@ -565,13 +565,13 @@ void test_update_no_panic_when_at_max(void) {
 
 void test_update_waits_for_full_window(void) {
 	int freqs[] = {400000, 600000, 800000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 3);
+	CPU_detectFrequencies(&state, &config, freqs, 3);
 	state.startup_frames = config.startup_grace;
 	state.frame_count = 10; // Not yet at window_frames (30)
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(11, state.frame_count); // Incremented
 }
 
@@ -581,7 +581,7 @@ void test_update_waits_for_full_window(void) {
 
 void test_update_boost_on_high_util_granular(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 1;                  // 600MHz
 	state.frame_count = config.window_frames - 1;
@@ -590,19 +590,19 @@ void test_update_boost_on_high_util_granular(void) {
 	// Add frame times that result in high utilization (~90%)
 	state.frame_budget_us = 16667; // 60fps
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 15000); // 90% of 16667
+		CPU_recordFrameTime(&state, 15000); // 90% of 16667
 	}
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_TRUE(state.target_index > 1); // Moved up
 }
 
 void test_update_reduce_on_low_util_granular(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3;                  // 1000MHz
 	state.frame_count = config.window_frames - 1;
@@ -612,19 +612,19 @@ void test_update_reduce_on_low_util_granular(void) {
 	// Add frame times that result in low utilization (~40%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 6667); // 40% of 16667
+		CPU_recordFrameTime(&state, 6667); // 40% of 16667
 	}
 
-	PlayerCPUResult result;
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, &result);
+	CPUResult result;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_TRUE(state.target_index < 3); // Moved down
 }
 
 void test_update_no_reduce_during_cooldown(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 3;
 	state.frame_count = config.window_frames - 1;
@@ -633,13 +633,13 @@ void test_update_no_reduce_during_cooldown(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 6667); // Low util
+		CPU_recordFrameTime(&state, 6667); // Low util
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
 	// Should NOT reduce due to cooldown
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(3, state.target_index);
 	TEST_ASSERT_EQUAL(4, state.panic_cooldown); // Decremented
 }
@@ -653,12 +653,12 @@ void test_update_boost_fallback_mode(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 15000);
+		CPU_recordFrameTime(&state, 15000);
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
 }
 
@@ -671,18 +671,18 @@ void test_update_reduce_fallback_mode(void) {
 
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 6667);
+		CPU_recordFrameTime(&state, 6667);
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
 }
 
 void test_update_sweet_spot_resets_counters(void) {
 	int freqs[] = {400000, 600000, 800000, 1000000};
-	PlayerCPU_detectFrequencies(&state, &config, freqs, 4);
+	CPU_detectFrequencies(&state, &config, freqs, 4);
 	state.startup_frames = config.startup_grace;
 	state.target_index = 2;
 	state.frame_count = config.window_frames - 1;
@@ -692,10 +692,10 @@ void test_update_sweet_spot_resets_counters(void) {
 	// Add frame times that result in sweet spot utilization (~70%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 11667); // ~70% of 16667
+		CPU_recordFrameTime(&state, 11667); // ~70% of 16667
 	}
 
-	PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPU_update(&state, &config, false, false, 0, NULL);
 
 	// Counters should be reset
 	TEST_ASSERT_EQUAL(0, state.high_util_windows);
@@ -707,9 +707,9 @@ void test_update_sweet_spot_resets_counters(void) {
 ///////////////////////////////
 
 void test_initTopology_zeros_topology(void) {
-	PlayerCPUTopology t;
+	CPUTopology t;
 	memset(&t, 0xFF, sizeof(t)); // Fill with garbage
-	PlayerCPU_initTopology(&t);
+	CPU_initTopology(&t);
 
 	TEST_ASSERT_EQUAL(0, t.cluster_count);
 	TEST_ASSERT_EQUAL(0, t.state_count);
@@ -718,51 +718,51 @@ void test_initTopology_zeros_topology(void) {
 
 void test_parseCPUList_single_cpu(void) {
 	int count = 0;
-	int mask = PlayerCPU_parseCPUList("0", &count);
+	int mask = CPU_parseCPUList("0", &count);
 	TEST_ASSERT_EQUAL(1, count);
 	TEST_ASSERT_EQUAL(0x1, mask); // CPU 0
 }
 
 void test_parseCPUList_range(void) {
 	int count = 0;
-	int mask = PlayerCPU_parseCPUList("0-3", &count);
+	int mask = CPU_parseCPUList("0-3", &count);
 	TEST_ASSERT_EQUAL(4, count);
 	TEST_ASSERT_EQUAL(0xF, mask); // CPUs 0-3
 }
 
 void test_parseCPUList_mixed(void) {
 	int count = 0;
-	int mask = PlayerCPU_parseCPUList("0-3,7", &count);
+	int mask = CPU_parseCPUList("0-3,7", &count);
 	TEST_ASSERT_EQUAL(5, count);
 	TEST_ASSERT_EQUAL(0x8F, mask); // CPUs 0-3 and 7
 }
 
 void test_parseCPUList_single_high_cpu(void) {
 	int count = 0;
-	int mask = PlayerCPU_parseCPUList("7", &count);
+	int mask = CPU_parseCPUList("7", &count);
 	TEST_ASSERT_EQUAL(1, count);
 	TEST_ASSERT_EQUAL(0x80, mask); // CPU 7
 }
 
 void test_parseCPUList_empty_string(void) {
 	int count = 0;
-	int mask = PlayerCPU_parseCPUList("", &count);
+	int mask = CPU_parseCPUList("", &count);
 	TEST_ASSERT_EQUAL(0, count);
 	TEST_ASSERT_EQUAL(0, mask);
 }
 
 void test_classifyClusters_single_is_little(void) {
-	PlayerCPUCluster clusters[1];
+	CPUCluster clusters[1];
 	clusters[0].max_khz = 1800000;
 	clusters[0].cpu_count = 4;
 
-	PlayerCPU_classifyClusters(clusters, 1);
+	CPU_classifyClusters(clusters, 1);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_LITTLE, clusters[0].type);
 }
 
 void test_classifyClusters_dual_little_big(void) {
-	PlayerCPUCluster clusters[2];
+	CPUCluster clusters[2];
 	// Sorted by max_khz ascending
 	// Use frequencies with <10% gap to get BIG (not PRIME) classification
 	clusters[0].max_khz = 1800000;
@@ -770,14 +770,14 @@ void test_classifyClusters_dual_little_big(void) {
 	clusters[1].max_khz = 1900000; // ~5.5% higher, should be BIG
 	clusters[1].cpu_count = 4;
 
-	PlayerCPU_classifyClusters(clusters, 2);
+	CPU_classifyClusters(clusters, 2);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_BIG, clusters[1].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_BIG, clusters[1].type);
 }
 
 void test_classifyClusters_tri_little_big_prime(void) {
-	PlayerCPUCluster clusters[3];
+	CPUCluster clusters[3];
 	// SD865-like: Silver, Gold, Prime
 	clusters[0].max_khz = 1800000;
 	clusters[0].cpu_count = 4;
@@ -786,34 +786,34 @@ void test_classifyClusters_tri_little_big_prime(void) {
 	clusters[2].max_khz = 2840000;
 	clusters[2].cpu_count = 1; // Prime is single-core
 
-	PlayerCPU_classifyClusters(clusters, 3);
+	CPU_classifyClusters(clusters, 3);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_BIG, clusters[1].type);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_PRIME, clusters[2].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_BIG, clusters[1].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_PRIME, clusters[2].type);
 }
 
 void test_classifyClusters_dual_prime_by_frequency_gap(void) {
-	PlayerCPUCluster clusters[2];
+	CPUCluster clusters[2];
 	// >10% frequency gap makes highest PRIME even with multiple cores
 	clusters[0].max_khz = 1800000;
 	clusters[0].cpu_count = 4;
 	clusters[1].max_khz = 2200000; // >10% higher
 	clusters[1].cpu_count = 4;
 
-	PlayerCPU_classifyClusters(clusters, 2);
+	CPU_classifyClusters(clusters, 2);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_LITTLE, clusters[0].type);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_CLUSTER_PRIME, clusters[1].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_LITTLE, clusters[0].type);
+	TEST_ASSERT_EQUAL(CPU_CLUSTER_PRIME, clusters[1].type);
 }
 
 void test_pickRepresentativeFreqs_single_freq(void) {
-	PlayerCPUCluster c;
+	CPUCluster c;
 	c.frequencies[0] = 1800000;
 	c.freq_count = 1;
 
 	int low, mid, high;
-	PlayerCPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
+	CPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
 
 	TEST_ASSERT_EQUAL(1800000, low);
 	TEST_ASSERT_EQUAL(1800000, mid);
@@ -821,7 +821,7 @@ void test_pickRepresentativeFreqs_single_freq(void) {
 }
 
 void test_pickRepresentativeFreqs_multiple_freqs(void) {
-	PlayerCPUCluster c;
+	CPUCluster c;
 	c.frequencies[0] = 400000;
 	c.frequencies[1] = 800000;
 	c.frequencies[2] = 1200000;
@@ -830,7 +830,7 @@ void test_pickRepresentativeFreqs_multiple_freqs(void) {
 	c.freq_count = 5;
 
 	int low, mid, high;
-	PlayerCPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
+	CPU_pickRepresentativeFreqs(&c, &low, &mid, &high);
 
 	TEST_ASSERT_EQUAL(400000, low);
 	TEST_ASSERT_EQUAL(1200000, mid); // freqs[5/2] = freqs[2]
@@ -838,7 +838,7 @@ void test_pickRepresentativeFreqs_multiple_freqs(void) {
 }
 
 // Helper to set up a dual-cluster topology
-static void setup_dual_cluster_topology(PlayerCPUState* s) {
+static void setup_dual_cluster_topology(CPUState* s) {
 	s->topology.cluster_count = 2;
 	s->topology.topology_detected = 1; // Mark as detected so buildPerfStates works
 
@@ -852,7 +852,7 @@ static void setup_dual_cluster_topology(PlayerCPUState* s) {
 	s->topology.clusters[0].freq_count = 3;
 	s->topology.clusters[0].min_khz = 600000;
 	s->topology.clusters[0].max_khz = 1800000;
-	s->topology.clusters[0].type = PLAYER_CPU_CLUSTER_LITTLE;
+	s->topology.clusters[0].type = CPU_CLUSTER_LITTLE;
 
 	// BIG cluster (policy 4, CPUs 4-7)
 	s->topology.clusters[1].policy_id = 4;
@@ -864,13 +864,13 @@ static void setup_dual_cluster_topology(PlayerCPUState* s) {
 	s->topology.clusters[1].freq_count = 3;
 	s->topology.clusters[1].min_khz = 800000;
 	s->topology.clusters[1].max_khz = 2400000;
-	s->topology.clusters[1].type = PLAYER_CPU_CLUSTER_BIG;
+	s->topology.clusters[1].type = CPU_CLUSTER_BIG;
 }
 
 void test_buildPerfStates_dual_cluster_creates_six_states(void) {
 	setup_dual_cluster_topology(&state);
 
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	TEST_ASSERT_EQUAL(6, state.topology.state_count);
 	TEST_ASSERT_EQUAL(1, state.use_topology);
@@ -878,36 +878,36 @@ void test_buildPerfStates_dual_cluster_creates_six_states(void) {
 
 void test_buildPerfStates_dual_cluster_state_progression(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	// State 0: LITTLE powersave, BIG powersave, affinity = LITTLE
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[0]);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[0].cluster_governor[1]);
 	TEST_ASSERT_EQUAL(0, state.topology.states[0].active_cluster_idx);
 	TEST_ASSERT_EQUAL(0x0F, state.topology.states[0].cpu_affinity_mask); // LITTLE CPUs
 
 	// State 1: LITTLE schedutil, BIG powersave
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_SCHEDUTIL, state.topology.states[1].cluster_governor[0]);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[1].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(CPU_GOV_SCHEDUTIL, state.topology.states[1].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[1].cluster_governor[1]);
 
 	// State 2: LITTLE performance, BIG powersave
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_PERFORMANCE, state.topology.states[2].cluster_governor[0]);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[2].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(CPU_GOV_PERFORMANCE, state.topology.states[2].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[2].cluster_governor[1]);
 
 	// State 3: BIG powersave, LITTLE powersave, affinity = BIG
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[0]);
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[0]);
+	TEST_ASSERT_EQUAL(CPU_GOV_POWERSAVE, state.topology.states[3].cluster_governor[1]);
 	TEST_ASSERT_EQUAL(1, state.topology.states[3].active_cluster_idx);
 	TEST_ASSERT_EQUAL(0xF0, state.topology.states[3].cpu_affinity_mask); // BIG CPUs
 
 	// State 5: BIG performance (highest state)
-	TEST_ASSERT_EQUAL(PLAYER_CPU_GOV_PERFORMANCE, state.topology.states[5].cluster_governor[1]);
+	TEST_ASSERT_EQUAL(CPU_GOV_PERFORMANCE, state.topology.states[5].cluster_governor[1]);
 }
 
 void test_buildPerfStates_single_cluster_skips_topology(void) {
 	state.topology.cluster_count = 1;
 
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	TEST_ASSERT_EQUAL(0, state.topology.state_count);
 	TEST_ASSERT_EQUAL(0, state.use_topology);
@@ -915,12 +915,12 @@ void test_buildPerfStates_single_cluster_skips_topology(void) {
 
 void test_applyPerfState_calls_governors(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.target_state = 0;
 	state.current_state = -1;
 
-	int result = PlayerCPU_applyPerfState(&state);
+	int result = CPU_applyPerfState(&state);
 
 	TEST_ASSERT_EQUAL(0, result);
 	// Should call governor for each cluster (2 clusters = 2 calls)
@@ -929,13 +929,13 @@ void test_applyPerfState_calls_governors(void) {
 
 void test_applyPerfState_does_not_set_affinity_directly(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.target_state = 0;
 	state.current_state = -1;
 	state.pending_affinity = 0;
 
-	PlayerCPU_applyPerfState(&state);
+	CPU_applyPerfState(&state);
 
 	// applyPerfState should NOT set pending_affinity or call PWR_setThreadAffinity
 	// The caller is responsible for setting pending_affinity under mutex
@@ -945,19 +945,19 @@ void test_applyPerfState_does_not_set_affinity_directly(void) {
 
 void test_applyPerfState_updates_current_state(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.target_state = 3;
 	state.current_state = -1;
 
-	PlayerCPU_applyPerfState(&state);
+	CPU_applyPerfState(&state);
 
 	TEST_ASSERT_EQUAL(3, state.current_state);
 }
 
 void test_update_topology_boost_increments_state(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.startup_frames = config.startup_grace;
 	state.target_state = 2;
@@ -968,18 +968,18 @@ void test_update_topology_boost_increments_state(void) {
 	// High utilization frames (>85%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 15000); // ~90%
+		CPU_recordFrameTime(&state, 15000); // ~90%
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_BOOST, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_EQUAL(3, state.target_state);
 }
 
 void test_update_topology_reduce_decrements_state(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.startup_frames = config.startup_grace;
 	state.target_state = 4;
@@ -990,18 +990,18 @@ void test_update_topology_reduce_decrements_state(void) {
 	// Low utilization frames (<55%)
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 6667); // ~40%
+		CPU_recordFrameTime(&state, 6667); // ~40%
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_LESS_THAN(4, state.target_state);
 }
 
 void test_update_topology_panic_jumps_states(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.startup_frames = config.startup_grace;
 	state.target_state = 1;
@@ -1009,15 +1009,15 @@ void test_update_topology_panic_jumps_states(void) {
 	state.last_underrun = 0;
 
 	// Underrun detected
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 1, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_GREATER_THAN(1, state.target_state);
 }
 
 void test_update_topology_no_boost_at_max_state(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.startup_frames = config.startup_grace;
 	state.target_state = 5; // Already at max
@@ -1028,18 +1028,18 @@ void test_update_topology_no_boost_at_max_state(void) {
 	// High utilization frames
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 15000);
+		CPU_recordFrameTime(&state, 15000);
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(5, state.target_state);
 }
 
 void test_update_topology_no_reduce_at_min_state(void) {
 	setup_dual_cluster_topology(&state);
-	PlayerCPU_buildPerfStates(&state, &config);
+	CPU_buildPerfStates(&state, &config);
 
 	state.startup_frames = config.startup_grace;
 	state.target_state = 0; // Already at min
@@ -1050,12 +1050,12 @@ void test_update_topology_no_reduce_at_min_state(void) {
 	// Low utilization frames
 	state.frame_budget_us = 16667;
 	for (int i = 0; i < 30; i++) {
-		PlayerCPU_recordFrameTime(&state, 6667);
+		CPU_recordFrameTime(&state, 6667);
 	}
 
-	PlayerCPUDecision decision = PlayerCPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
 
-	TEST_ASSERT_EQUAL(PLAYER_CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(0, state.target_state);
 }
 

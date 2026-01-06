@@ -56,7 +56,7 @@ The main files `player.c` (peaked at ~7200 lines) and `launcher.c` (peaked at ~2
 | player_core    | Core AV info processing, aspect ratio          |
 | player_menu    | In-game menu system                            |
 | player_env     | Libretro environment callback handlers         |
-| player_cpu     | Auto CPU scaling algorithm                     |
+| cpu (common)   | Auto CPU scaling algorithm                     |
 | player_game    | ZIP parsing, extension matching, M3U detection |
 | player_scaler  | Video scaling geometry calculations            |
 | player_archive | 7z/ZIP archive extraction                      |

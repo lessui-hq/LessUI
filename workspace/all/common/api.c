@@ -3335,8 +3335,8 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 // Multi-cluster CPU topology support
 ///////////////////////////////
 
-// Include player_cpu.h for topology types
-#include "../player/player_cpu.h"
+// Include cpu.h for topology types
+#include "cpu.h"
 
 // Base path for cpufreq policies
 #define CPUFREQ_BASE_PATH "/sys/devices/system/cpu/cpufreq"
@@ -3345,41 +3345,9 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
  * Comparison function for sorting clusters by max_khz ascending.
  */
 static int compare_cluster_by_max_khz(const void* a, const void* b) {
-	const PlayerCPUCluster* ca = (const PlayerCPUCluster*)a;
-	const PlayerCPUCluster* cb = (const PlayerCPUCluster*)b;
+	const CPUCluster* ca = (const CPUCluster*)a;
+	const CPUCluster* cb = (const CPUCluster*)b;
 	return ca->max_khz - cb->max_khz;
-}
-
-/**
- * Classifies clusters based on their relative performance.
- * Static helper for PWR_detectCPUTopology().
- * (Public version available in player_cpu.c for testing)
- */
-static void classify_clusters(PlayerCPUCluster* clusters, int count) {
-	if (!clusters || count <= 0)
-		return;
-
-	for (int i = 0; i < count; i++) {
-		PlayerCPUCluster* cluster = &clusters[i];
-
-		if (i == 0) {
-			cluster->type = PLAYER_CPU_CLUSTER_LITTLE;
-		} else if (i == count - 1) {
-			int prev_max = clusters[i - 1].max_khz;
-			int freq_gap_percent = 0;
-			if (prev_max > 0) {
-				freq_gap_percent = ((cluster->max_khz - prev_max) * 100) / prev_max;
-			}
-
-			if (cluster->cpu_count == 1 || freq_gap_percent > 10) {
-				cluster->type = PLAYER_CPU_CLUSTER_PRIME;
-			} else {
-				cluster->type = PLAYER_CPU_CLUSTER_BIG;
-			}
-		} else {
-			cluster->type = PLAYER_CPU_CLUSTER_BIG;
-		}
-	}
 }
 
 /**
@@ -3408,7 +3376,7 @@ static int read_sysfs_int(const char* path) {
  * @param cluster Cluster to populate
  * @return Number of frequencies read
  */
-static int read_cluster_frequencies(const char* path, PlayerCPUCluster* cluster) {
+static int read_cluster_frequencies(const char* path, CPUCluster* cluster) {
 	FILE* fp = fopen(path, "r");
 	if (!fp)
 		return 0;
@@ -3418,7 +3386,7 @@ static int read_cluster_frequencies(const char* path, PlayerCPUCluster* cluster)
 
 	if (fgets(buffer, sizeof(buffer), fp) != NULL) {
 		char* token = strtok(buffer, " \t\n");
-		while (token != NULL && count < PLAYER_CPU_MAX_FREQS_PER_CLUSTER) {
+		while (token != NULL && count < CPU_MAX_FREQS_PER_CLUSTER) {
 			int freq = atoi(token);
 			if (freq > 0) {
 				cluster->frequencies[count++] = freq;
@@ -3494,7 +3462,7 @@ static int parse_related_cpus(const char* path, int* cpu_mask, int* cpu_count) {
 	return (*cpu_count > 0) ? 1 : 0;
 }
 
-int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
+int PWR_detectCPUTopology(struct CPUTopology* topology) {
 	if (!topology) {
 		return 0;
 	}
@@ -3507,8 +3475,7 @@ int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
 	char path[256];
 	int cluster_count = 0;
 
-	for (int policy_id = 0; policy_id < 16 && cluster_count < PLAYER_CPU_MAX_CLUSTERS;
-	     policy_id++) {
+	for (int policy_id = 0; policy_id < 16 && cluster_count < CPU_MAX_CLUSTERS; policy_id++) {
 		(void)snprintf(path, sizeof(path), "%s/policy%d", CPUFREQ_BASE_PATH, policy_id);
 
 		// Check if policy directory exists by trying to read cpuinfo_max_freq
@@ -3519,7 +3486,7 @@ int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
 			continue; // Policy doesn't exist
 		}
 
-		PlayerCPUCluster* cluster = &topology->clusters[cluster_count];
+		CPUCluster* cluster = &topology->clusters[cluster_count];
 		cluster->policy_id = policy_id;
 		cluster->max_khz = max_khz;
 
@@ -3564,17 +3531,16 @@ int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
 
 	// Sort clusters by max_khz ascending (LITTLE → BIG → PRIME)
 	if (cluster_count > 1) {
-		qsort(topology->clusters, cluster_count, sizeof(PlayerCPUCluster),
-		      compare_cluster_by_max_khz);
+		qsort(topology->clusters, cluster_count, sizeof(CPUCluster), compare_cluster_by_max_khz);
 	}
 
 	// Classify clusters (LITTLE/BIG/PRIME)
-	classify_clusters(topology->clusters, cluster_count);
+	CPU_classifyClusters(topology->clusters, cluster_count);
 
 	// Log classification results
 	const char* type_names[] = {"LITTLE", "BIG", "PRIME"};
 	for (int i = 0; i < cluster_count; i++) {
-		PlayerCPUCluster* cluster = &topology->clusters[i];
+		CPUCluster* cluster = &topology->clusters[i];
 		LOG_info("PWR_detectCPUTopology: cluster %d (policy%d): %s, %d CPUs, %d-%d kHz\n", i,
 		         cluster->policy_id, type_names[cluster->type], cluster->cpu_count,
 		         cluster->min_khz, cluster->max_khz);

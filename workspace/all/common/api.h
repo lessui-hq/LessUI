@@ -1525,8 +1525,8 @@ int PWR_setCPUFrequency_sysfs(int freq_khz);
 // Multi-cluster CPU topology support
 ///////////////////////////////
 
-// Forward declarations from player_cpu.h (avoid circular include)
-struct PlayerCPUTopology;
+// Forward declarations from cpu.h (avoid circular include)
+struct CPUTopology;
 
 /**
  * Detects CPU topology from sysfs.
@@ -1541,7 +1541,7 @@ struct PlayerCPUTopology;
  * @param topology Output structure to populate
  * @return Number of clusters found (0 on failure, 1 for single-cluster)
  */
-int PWR_detectCPUTopology(struct PlayerCPUTopology* topology);
+int PWR_detectCPUTopology(struct CPUTopology* topology);
 
 /**
  * Sets frequency bounds for a CPU cluster.
