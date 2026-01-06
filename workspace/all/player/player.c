@@ -80,6 +80,7 @@
 #include "player_scaler.h"
 #include "player_state.h"
 #include "player_video_convert.h"
+#include "render_common.h"
 #include "scaler.h"
 #include "utils.h"
 
@@ -3556,6 +3557,24 @@ static const char* bitmap_font[] = {
             "1    "
             "1   1"
             " 111 ",
+    ['V'] = "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            " 1 1 "
+            " 1 1 "
+            "  1  ",
+    ['+'] = "     "
+            "     "
+            "  1  "
+            "  1  "
+            "11111"
+            "  1  "
+            "  1  "
+            "     "
+            "     ",
 };
 static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int stride, int width,
                            int height) {
@@ -3673,6 +3692,193 @@ static void blitBitmapTextRGBA(char* text, int ox, int oy, uint32_t* data, int s
 	}
 }
 
+/**
+ * Render bitmap text to an RGBA buffer with DP-based scaling.
+ *
+ * Similar to blitBitmapTextScaled but for RGBA format used by HW rendering.
+ * White text with black outline, transparent background, scaled for consistent sizing.
+ *
+ * @param text Text to render
+ * @param ox X position in pixels (negative = right-align from edge)
+ * @param oy Y position in pixels (negative = bottom-align from edge)
+ * @param data RGBA8888 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width in pixels
+ * @param height Total buffer height in pixels
+ * @param scale Scale factor (e.g., 2 = double size)
+ */
+static void blitBitmapTextRGBAScaled(char* text, int ox, int oy, uint32_t* data, int stride,
+                                     int width, int height, int scale) {
+	if (scale < 1)
+		scale = 1;
+
+	const uint32_t RGBA_WHITE = 0xFFFFFFFF;
+	const uint32_t RGBA_BLACK = 0xFF000000;
+
+	int len = strlen(text);
+	int base_w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int base_h = CHAR_HEIGHT;
+	int w = base_w * scale;
+	int h = base_h * scale;
+
+	// Handle negative offsets (right/bottom alignment)
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need scale px margin for outline
+	if (ox < scale || oy < scale || ox + w + scale > width || oy + h + scale > height)
+		return;
+
+	data += oy * stride + ox;
+
+	// Top outline rows
+	for (int outline_y = -scale; outline_y < 0; outline_y++) {
+		uint32_t* row = data + (ptrdiff_t)outline_y * stride;
+		for (int x = -scale; x < w + scale; x++) {
+			row[x] = RGBA_BLACK;
+		}
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < base_h; y++) {
+		for (int sy = 0; sy < scale; sy++) {
+			uint32_t* row = data + (ptrdiff_t)(y * scale + sy) * stride;
+
+			// Left outline
+			for (int x = -scale; x < 0; x++) {
+				row[x] = RGBA_BLACK;
+			}
+
+			// Character pixels
+			int col = 0;
+			for (int i = 0; i < len; i++) {
+				const char* c = bitmap_font[(unsigned char)text[i]];
+				if (!c)
+					c = bitmap_font[' '];
+				for (int x = 0; x < CHAR_WIDTH; x++) {
+					int j = y * CHAR_WIDTH + x;
+					uint32_t color = (c[j] == '1') ? RGBA_WHITE : RGBA_BLACK;
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = color;
+					}
+					col++;
+				}
+				// Letter spacing
+				for (int s = 0; s < LETTERSPACING; s++) {
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = RGBA_BLACK;
+					}
+					col++;
+				}
+			}
+
+			// Right outline
+			for (int x = 0; x < scale; x++) {
+				row[w + x] = RGBA_BLACK;
+			}
+		}
+	}
+
+	// Bottom outline rows
+	for (int outline_y = 0; outline_y < scale; outline_y++) {
+		uint32_t* row = data + (ptrdiff_t)(h + outline_y) * stride;
+		for (int x = -scale; x < w + scale; x++) {
+			row[x] = RGBA_BLACK;
+		}
+	}
+}
+
+/**
+ * Render bitmap text to an RGB565 buffer with DP-based scaling.
+ *
+ * Renders text at a scale factor determined by display points, ensuring
+ * consistent visual size across different screen resolutions. Each character
+ * is upscaled by repeating pixels.
+ *
+ * @param text Text to render
+ * @param ox X position in pixels (negative = right-align from edge)
+ * @param oy Y position in pixels (negative = bottom-align from edge)
+ * @param data RGB565 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width in pixels
+ * @param height Total buffer height in pixels
+ * @param scale Scale factor (e.g., 2 = double size)
+ */
+static void blitBitmapTextScaled(char* text, int ox, int oy, uint16_t* data, int stride, int width,
+                                 int height, int scale) {
+	if (scale < 1)
+		scale = 1;
+
+	int len = strlen(text);
+	int base_w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int base_h = CHAR_HEIGHT;
+	int w = base_w * scale;
+	int h = base_h * scale;
+
+	// Handle negative offsets (right/bottom alignment)
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need scale px margin for outline
+	if (ox < scale || oy < scale || ox + w + scale > width || oy + h + scale > height)
+		return;
+
+	// Draw black outline (scale pixels around text)
+	data += oy * stride + ox;
+
+	// Top outline rows
+	for (int outline_y = -scale; outline_y < 0; outline_y++) {
+		uint16_t* row = data + (ptrdiff_t)outline_y * stride;
+		memset(row - scale, 0, (size_t)(w + 2 * scale) * 2);
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < base_h; y++) {
+		for (int sy = 0; sy < scale; sy++) {
+			uint16_t* row = data + (ptrdiff_t)(y * scale + sy) * stride;
+
+			// Left outline
+			memset(row - scale, 0, (size_t)scale * 2);
+
+			// Character pixels
+			int col = 0;
+			for (int i = 0; i < len; i++) {
+				const char* c = bitmap_font[(unsigned char)text[i]];
+				if (!c)
+					c = bitmap_font[' '];
+				for (int x = 0; x < CHAR_WIDTH; x++) {
+					int j = y * CHAR_WIDTH + x;
+					uint16_t color = (c[j] == '1') ? 0xffff : 0x0000;
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = color;
+					}
+					col++;
+				}
+				// Letter spacing
+				for (int s = 0; s < LETTERSPACING; s++) {
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = 0x0000;
+					}
+					col++;
+				}
+			}
+
+			// Right outline
+			memset(row + w, 0, (size_t)scale * 2);
+		}
+	}
+
+	// Bottom outline rows
+	for (int outline_y = 0; outline_y < scale; outline_y++) {
+		uint16_t* row = data + (ptrdiff_t)(h + outline_y) * stride;
+		memset(row - scale, 0, (size_t)(w + 2 * scale) * 2);
+	}
+}
+
 ///////////////////////////////////////
 // Performance Counters (needed by HW HUD before video processing section)
 ///////////////////////////////////////
@@ -3687,75 +3893,59 @@ static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
 
 ///////////////////////////////////////
-// HW Debug HUD
+// Shared Debug HUD Logic
 ///////////////////////////////////////
 
-// HUD buffer for HW rendering (allocated once, reused)
-static uint32_t* hw_hud_buffer = NULL;
-static int hw_hud_width = 0;
-static int hw_hud_height = 0;
+/**
+ * Debug text strings for HUD display.
+ * Generated once per frame, used by both SW and HW rendering paths.
+ */
+typedef struct DebugHUDText {
+	char top_left[128]; // FPS and CPU %
+	char top_right[128]; // Source/output resolution
+	char bottom_left[128]; // CPU mode and buffer fill
+	char bottom_right[128]; // Output/source resolution
+} DebugHUDText;
 
 /**
- * Render debug HUD overlay for hardware-rendered frames.
+ * Generate debug HUD text strings.
  *
- * Creates an RGBA surface with the same debug info as the software path
- * (FPS, CPU usage, resolution, etc.) and passes it to the HW render module
- * for compositing over the game frame.
+ * Consolidates all debug metric formatting logic used by both software
+ * and hardware rendering paths. Samples audio buffer fill every 15 frames.
  *
+ * @param text Output structure for formatted debug strings
  * @param src_w Source (game) width in pixels
  * @param src_h Source (game) height in pixels
  * @param screen_w Screen width in pixels
  * @param screen_h Screen height in pixels
  */
-static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
-	// Allocate or resize HUD buffer if needed
-	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
-		free(hw_hud_buffer);
-		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
-		if (!hw_hud_buffer) {
-			LOG_error("Failed to allocate HW HUD buffer");
-			return;
-		}
-		hw_hud_width = screen_w;
-		hw_hud_height = screen_h;
-	}
-
-	// Clear to fully transparent
-	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
-
-	int x = 2;
-	int y = 2;
-	char debug_text[128];
-
-	// Calculate scale factor for HW rendering (approximate)
-	int scale = 1;
-	if (src_w > 0 && src_h > 0) {
-		int scale_x = screen_w / src_w;
-		int scale_y = screen_h / src_h;
-		scale = (scale_x < scale_y) ? scale_x : scale_y;
-		if (scale < 1)
-			scale = 1;
-	}
-
-	// Get buffer fill (sampled every 15 frames for readability)
+static void generateDebugHUDText(DebugHUDText* text, int src_w, int src_h, int screen_w,
+                                 int screen_h) {
+	// Get buffer fill and rate adjustment (sampled every 15 frames for readability)
 	static unsigned fill_display = 0;
+	static float rate_adj_display = 1.0f;
 	static int sample_count = 0;
 	if (++sample_count >= 15) {
 		sample_count = 0;
-		fill_display = SND_getBufferOccupancy();
+		SND_Snapshot snap = SND_getSnapshot();
+		fill_display = snap.fill_pct;
+		rate_adj_display = snap.rate_adjust;
 	}
 
-	// Top-left: FPS and system CPU %
+	// Top-left: FPS, sync mode, and rate control adjustment
+	// Modes: AC = audio clock, VS = vsync direct (fps≈hz), FP = frame paced (fps≠hz)
+	// Rate adjustment shows audio stretch: >1.0 = running fast, <1.0 = running slow
+	float rate_pct = (rate_adj_display - 1.0f) * 100.0f;
 #ifdef SYNC_MODE_AUDIOCLOCK
-	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double, (int)use_double);
+	(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f AC", fps_double);
 #else
-	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double, (int)use_double);
+	const char* sync_mode = FramePacer_isDirectMode(&frame_pacer) ? "VS" : "FP";
+	(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f %s %+.1f%%", fps_double, sync_mode,
+	               rate_pct);
 #endif
-	blitBitmapTextRGBA(debug_text, x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
 
-	// Top-right: Source resolution and scale factor
-	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", src_w, src_h, scale);
-	blitBitmapTextRGBA(debug_text, -x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+	// Top-right: Source resolution
+	(void)snprintf(text->top_right, sizeof(text->top_right), "%ix%i", src_w, src_h);
 
 	// Bottom-left: CPU info + buffer fill
 	if (overclock == 3) {
@@ -3782,31 +3972,120 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 			// Topology mode: show state/max and performance %
 			int perf_pct = CPU_getPerformancePercent(&auto_cpu_state);
 			int max_state = auto_cpu_state.topology.state_count - 1;
-			(void)snprintf(debug_text, sizeof(debug_text), "T%i/%i %i%% u:%u%% b:%u%%",
-			               current_state, max_state, perf_pct, util, fill_display);
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left),
+			               "T%i/%i %i%% u:%u%% b:%u%%", current_state, max_state, perf_pct, util,
+			               fill_display);
 		} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
 		           current_idx < auto_cpu_state.freq_count) {
 			// Granular mode: show frequency in MHz
 			int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-			(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
-			               fill_display);
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "%i u:%u%% b:%u%%",
+			               freq_mhz, util, fill_display);
 		} else {
 			// Fallback mode: show level
-			(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
-			               fill_display);
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "L%i u:%u%% b:%u%%", level,
+			               util, fill_display);
 		}
 	} else {
 		// Manual mode: show level and buffer fill
-		(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
+		(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "L%i b:%u%%", overclock,
+		               fill_display);
 	}
-	blitBitmapTextRGBA(debug_text, x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
 
 	// Bottom-right: Output resolution
-	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", screen_w, screen_h);
-	blitBitmapTextRGBA(debug_text, -x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+	(void)snprintf(text->bottom_right, sizeof(text->bottom_right), "%ix%i", screen_w, screen_h);
+}
 
-	// Pass HUD to HW renderer for compositing
-	GLVideo_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
+///////////////////////////////////////
+// HW Debug HUD
+///////////////////////////////////////
+
+// HUD buffer for HW rendering (allocated once, reused)
+static uint32_t* hw_hud_buffer = NULL;
+static int hw_hud_width = 0;
+static int hw_hud_height = 0;
+
+/**
+ * Build debug HUD into RGBA buffer for GL compositing.
+ *
+ * Allocates/resizes buffer as needed and renders debug text.
+ * Does NOT call GLVideo_renderHUD - caller handles compositing.
+ *
+ * @param src_w Source (game) width in pixels
+ * @param src_h Source (game) height in pixels
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ * @return RGBA8888 buffer or NULL on allocation failure
+ */
+static uint32_t* buildDebugHUDBuffer(int src_w, int src_h, int screen_w, int screen_h) {
+	// Allocate or resize HUD buffer if needed
+	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
+		free(hw_hud_buffer);
+		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+		if (!hw_hud_buffer) {
+			LOG_error("Failed to allocate HW HUD buffer");
+			hw_hud_width = 0;
+			hw_hud_height = 0;
+			return NULL;
+		}
+		hw_hud_width = screen_w;
+		hw_hud_height = screen_h;
+	}
+
+	// Clear to fully transparent
+	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+
+	// Generate debug text using shared logic
+	DebugHUDText text;
+	generateDebugHUDText(&text, src_w, src_h, screen_w, screen_h);
+
+	// Calculate text scale based on screen height for consistent proportions
+	// Using screen_h/180 gives ~3-4% of screen height across devices:
+	// - 480px: 2x (16px = 3.3%)
+	// - 560px: 3x (24px = 4.3%)
+	// - 720px: 4x (32px = 4.4%)
+	// This avoids integer quantization issues with DP-based calculation
+	int text_scale = screen_h / 180;
+	if (text_scale < 1)
+		text_scale = 1;
+	if (text_scale > 6)
+		text_scale = 6;
+
+	// Debug: log HUD rendering parameters (GL path, once)
+	static int logged_gl = 0;
+	if (!logged_gl) {
+		LOG_info("Debug HUD GL: buffer=%dx%d, text_scale=%dx (%dpx, %.1f%% of screen)\n", screen_w,
+		         screen_h, text_scale, text_scale * CHAR_HEIGHT,
+		         100.0f * text_scale * CHAR_HEIGHT / screen_h);
+		logged_gl = 1;
+	}
+
+	// Offset from screen edges (proportional to text size)
+	int margin = text_scale * 2;
+
+	// Render all four corners
+	blitBitmapTextRGBAScaled(text.top_left, margin, margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.top_right, -margin, margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.bottom_left, margin, -margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.bottom_right, -margin, -margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+
+	return hw_hud_buffer;
+}
+
+/**
+ * Get debug HUD buffer for GL compositing (PLAT hook implementation).
+ *
+ * Called by SDL2_present() GLES path. Returns RGBA buffer to be
+ * composited over the game frame via GLVideo_renderHUD().
+ */
+uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w, int screen_h) {
+	if (!show_debug)
+		return NULL;
+	return buildDebugHUDBuffer(src_w, src_h, screen_w, screen_h);
 }
 
 /**
@@ -3817,6 +4096,66 @@ static void cleanupHWDebugHUD(void) {
 	hw_hud_buffer = NULL;
 	hw_hud_width = 0;
 	hw_hud_height = 0;
+}
+
+///////////////////////////////////////
+// SW Debug HUD
+///////////////////////////////////////
+
+/**
+ * Render debug HUD to an RGB565 surface (PLAT hook implementation).
+ *
+ * Called by PLAT_present() implementations before buffer flip.
+ * Uses screen-proportional scaling for consistent sizing across platforms.
+ *
+ * @param surface SDL surface to render to (must be RGB565 format)
+ */
+void PLAT_renderDebugHUD(SDL_Surface* surface) {
+	if (!show_debug || !surface || !surface->pixels)
+		return;
+
+	int screen_w = surface->w;
+	int screen_h = surface->h;
+	int pitch_in_pixels = surface->pitch / sizeof(uint16_t);
+	uint16_t* pixels = (uint16_t*)surface->pixels;
+
+	// Generate debug text using shared logic
+	DebugHUDText text;
+	generateDebugHUDText(&text, renderer.src_w, renderer.src_h, screen_w, screen_h);
+
+	// Calculate text scale based on screen height for consistent proportions
+	// Using screen_h/180 gives ~3-4% of screen height across devices:
+	// - 480px: 2x (16px = 3.3%)
+	// - 560px: 3x (24px = 4.3%)
+	// - 720px: 4x (32px = 4.4%)
+	// This avoids integer quantization issues with DP-based calculation
+	int text_scale = screen_h / 180;
+	if (text_scale < 1)
+		text_scale = 1;
+	if (text_scale > 6)
+		text_scale = 6;
+
+	// Debug: log HUD rendering parameters (SW path, once)
+	static int logged_sw = 0;
+	if (!logged_sw) {
+		LOG_info("Debug HUD SW: surface=%dx%d, text_scale=%dx (%dpx, %.1f%% of screen)\n", screen_w,
+		         screen_h, text_scale, text_scale * CHAR_HEIGHT,
+		         100.0f * text_scale * CHAR_HEIGHT / screen_h);
+		logged_sw = 1;
+	}
+
+	// Offset from screen edges (proportional to text size)
+	int margin = text_scale * 2;
+
+	// Render all four corners
+	blitBitmapTextScaled(text.top_left, margin, margin, pixels, pitch_in_pixels, screen_w, screen_h,
+	                     text_scale);
+	blitBitmapTextScaled(text.top_right, -margin, margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
+	blitBitmapTextScaled(text.bottom_left, margin, -margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
+	blitBitmapTextScaled(text.bottom_right, -margin, -margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
 }
 
 ///////////////////////////////////////
@@ -4017,117 +4356,6 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	}
 
 	renderer.src = rotated_data;
-
-	// debug - render after pixel conversion so we write to RGB565 buffer
-	if (show_debug) {
-		int x = 2 + renderer.src_x;
-		int y = 2 + renderer.src_y;
-		char debug_text[128];
-		int scale = renderer.scale;
-		if (scale == -1)
-			scale = 1; // nearest neighbor flag
-
-		// Debug text rendering needs correct buffer dimensions and pitch.
-		// blitBitmapText expects pitch in pixels (uint16_t), not bytes.
-		//
-		// After 90°/270° rotation, the buffer dimensions are swapped (width becomes height
-		// and vice versa) because the image has been rotated. We detect this by checking if
-		// rotated_data != frame_data (indicating rotation was actually applied).
-		//
-		// blitBitmapText needs the post-rotation dimensions to correctly bounds-check text
-		// rendering, and the rotation buffer's pitch instead of the original pitch.
-		int pitch_in_pixels;
-		int debug_width = width;
-		int debug_height = height;
-
-		if (rotated_data != frame_data) {
-			// Use rotation buffer pitch when rotation was applied
-			pitch_in_pixels = PlayerRotation_getBuffer()->pitch / sizeof(uint16_t);
-			if (video_state.rotation == ROTATION_90 || video_state.rotation == ROTATION_270) {
-				// Swap dimensions for 90°/270° rotations
-				debug_width = height;
-				debug_height = width;
-			}
-		} else {
-			// Use original pitch when rotation was skipped
-			pitch_in_pixels = rgb565_pitch / sizeof(uint16_t);
-		}
-
-		// Get buffer fill (sampled every 15 frames for readability)
-		static unsigned fill_display = 0;
-		static int sample_count = 0;
-		if (++sample_count >= 15) {
-			sample_count = 0;
-			fill_display = SND_getBufferOccupancy();
-		}
-
-		// Top-left: FPS and system CPU %
-#ifdef SYNC_MODE_AUDIOCLOCK
-		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double,
-		               (int)use_double);
-#else
-		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double,
-		               (int)use_double);
-#endif
-		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Top-right: Source resolution and scale factor
-		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", renderer.src_w, renderer.src_h,
-		               scale);
-		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Bottom-left: CPU info + buffer fill (always), plus utilization when auto
-		if (overclock == 3) {
-			// Auto CPU mode: show mode-specific info, utilization, and buffer fill
-			pthread_mutex_lock(&auto_cpu_mutex);
-			int current_idx = auto_cpu_state.current_index;
-			int current_state = auto_cpu_state.current_state;
-			int level = auto_cpu_state.current_level;
-			pthread_mutex_unlock(&auto_cpu_mutex);
-
-			// Calculate current utilization from most recent frame times
-			unsigned util = 0;
-			int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
-			                  ? auto_cpu_state.frame_time_index
-			                  : auto_cpu_config.window_frames;
-			if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
-				uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
-				util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
-				if (util > 200)
-					util = 200;
-			}
-
-			if (auto_cpu_state.use_topology) {
-				// Topology mode: show state/max and performance %
-				int perf_pct = CPU_getPerformancePercent(&auto_cpu_state);
-				int max_state = auto_cpu_state.topology.state_count - 1;
-				(void)snprintf(debug_text, sizeof(debug_text), "T%i/%i %i%% u:%u%% b:%u%%",
-				               current_state, max_state, perf_pct, util, fill_display);
-			} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
-			           current_idx < auto_cpu_state.freq_count) {
-				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
-				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-				(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
-				               fill_display);
-			} else {
-				// Fallback mode: show level
-				(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
-				               fill_display);
-			}
-		} else {
-			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
-			(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
-		}
-		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Bottom-right: Output resolution
-		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", renderer.dst_w, renderer.dst_h);
-		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-	}
 	renderer.dst = screen->pixels;
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
@@ -4162,8 +4390,10 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 			                core.aspect_ratio, renderer.visual_scale);
 
 			// Render debug HUD overlay if enabled
-			if (show_debug) {
-				renderHWDebugHUD((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			uint32_t* hud =
+			    PLAT_getDebugHUDBuffer((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			if (hud) {
+				GLVideo_renderHUD(hud, DEVICE_WIDTH, DEVICE_HEIGHT, DEVICE_WIDTH, DEVICE_HEIGHT);
 			}
 
 			// Swap buffers to display the frame

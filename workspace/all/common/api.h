@@ -1387,6 +1387,32 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer);
 void PLAT_present(GFX_Renderer* renderer);
 
 /**
+ * Render debug HUD overlay to display surface (software rendering).
+ *
+ * Called by PLAT_present() implementations before buffer flip.
+ * Weak default does nothing; player provides implementation.
+ *
+ * @param surface Final display surface to render HUD onto (RGB565)
+ */
+FALLBACK_IMPLEMENTATION void PLAT_renderDebugHUD(SDL_Surface* surface);
+
+/**
+ * Get debug HUD buffer for GL compositing (hardware rendering).
+ *
+ * Called by SDL2_present() GLES path before swap buffers.
+ * Returns an RGBA8888 buffer that will be composited over the game frame.
+ * Weak default returns NULL (no HUD); player provides implementation.
+ *
+ * @param src_w Source (game) width for HUD text generation
+ * @param src_h Source (game) height for HUD text generation
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ * @return RGBA8888 pixel buffer (screen_w x screen_h) or NULL if no HUD
+ */
+FALLBACK_IMPLEMENTATION uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w,
+                                                         int screen_h);
+
+/**
  * Platform-specific overscan support check.
  *
  * @return 1 if platform supports overscan adjustment, 0 otherwise

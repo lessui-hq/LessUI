@@ -517,7 +517,7 @@ See `.clang-format` for complete style definition.
 | Player core AV processing     | `workspace/all/player/player_core.c`           |
 | Player memory persistence     | `workspace/all/player/player_memory.c`         |
 | Player save states            | `workspace/all/player/player_state.c`          |
-| CPU scaling                   | `workspace/all/common/cpu.c`            |
+| CPU scaling                   | `workspace/all/common/cpu.c`                   |
 | Player input handling         | `workspace/all/player/player_input.c`          |
 | Player save paths             | `workspace/all/player/player_paths.c`          |
 | Launcher Entry type           | `workspace/all/launcher/launcher_entry.c`      |

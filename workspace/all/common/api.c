@@ -714,6 +714,28 @@ void GFX_present(GFX_Renderer* renderer) {
 }
 
 /**
+ * Default (weak) implementation of debug HUD rendering (software).
+ * Player overrides this to render debug overlay before flip.
+ */
+FALLBACK_IMPLEMENTATION void PLAT_renderDebugHUD(SDL_Surface* surface) {
+	(void)surface;
+	// No-op by default
+}
+
+/**
+ * Default (weak) implementation of debug HUD buffer (hardware/GL).
+ * Player overrides this to provide RGBA buffer for GL compositing.
+ */
+FALLBACK_IMPLEMENTATION uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w,
+                                                         int screen_h) {
+	(void)src_w;
+	(void)src_h;
+	(void)screen_w;
+	(void)screen_h;
+	return NULL; // No HUD by default
+}
+
+/**
  * Waits for vsync without presenting new content.
  *
  * Use this for frame pacing when the core didn't produce a new frame.

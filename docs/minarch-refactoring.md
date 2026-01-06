@@ -122,12 +122,12 @@ player.c (orchestration, main loop, SDL integration)
 
 ### Core Integration Layer
 
-| Module          | Lines | Responsibility                                           | Tests |
-| --------------- | ----- | -------------------------------------------------------- | ----- |
-| `player_core.c` | ~150  | Build game info, calculate aspect ratio, process AV info | 23    |
-| `player_env.c`  | ~400  | Handle 30+ libretro environment callbacks                | 51    |
-| `player_game.c` | ~300  | Extension parsing, ZIP headers, M3U detection            | 46    |
-| `cpu.c` (common)| ~350  | Auto CPU frequency scaling algorithm                     | 42    |
+| Module           | Lines | Responsibility                                           | Tests |
+| ---------------- | ----- | -------------------------------------------------------- | ----- |
+| `player_core.c`  | ~150  | Build game info, calculate aspect ratio, process AV info | 23    |
+| `player_env.c`   | ~400  | Handle 30+ libretro environment callbacks                | 51    |
+| `player_game.c`  | ~300  | Extension parsing, ZIP headers, M3U detection            | 46    |
+| `cpu.c` (common) | ~350  | Auto CPU frequency scaling algorithm                     | 42    |
 
 **Key decisions:**
 
