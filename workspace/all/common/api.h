@@ -1577,6 +1577,18 @@ int PWR_setCPUGovernor(int policy_id, const char* governor);
 int PWR_setThreadAffinity(int cpu_mask);
 
 /**
+ * Sets all CPU clusters to low-power mode.
+ *
+ * On multi-cluster devices: sets all cpufreq policies to "powersave" governor.
+ * On single-cluster devices: uses PLAT_setCPUSpeed(CPU_SPEED_POWERSAVE).
+ *
+ * Use this for non-gaming contexts (menus, tools) to save power and reduce heat.
+ *
+ * @return Number of clusters configured (0 for single-cluster devices)
+ */
+int PWR_setLowPowerMode(void);
+
+/**
  * Platform-specific rumble/vibration control.
  *
  * @param strength Rumble strength (0 to disable)

@@ -106,7 +106,7 @@ static void blitButton(char* label, SDL_Surface* dst, int pressed, int x, int y,
  * @return EXIT_SUCCESS on normal exit
  */
 int main(int argc, char* argv[]) {
-	PWR_setCPUSpeed(CPU_SPEED_IDLE);
+	PWR_setLowPowerMode();
 
 	SDL_Surface* screen = GFX_init(MODE_MAIN);
 	if (screen == NULL) {

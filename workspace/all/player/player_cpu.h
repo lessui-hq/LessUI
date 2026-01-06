@@ -131,7 +131,7 @@ typedef struct {
  * Complete CPU topology information detected from sysfs.
  * Populated by PWR_detectCPUTopology() at initialization.
  */
-typedef struct {
+typedef struct PlayerCPUTopology {
 	PlayerCPUCluster clusters[PLAYER_CPU_MAX_CLUSTERS]; // Detected clusters (sorted by max_khz)
 	int cluster_count; // Number of clusters detected
 	PlayerCPUPerfState states[PLAYER_CPU_MAX_PERF_STATES]; // Performance state ladder

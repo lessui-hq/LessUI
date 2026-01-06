@@ -525,24 +525,24 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 ## Tuning Status
 
-| Parameter               | Current             | Notes                                             |
-| ----------------------- | ------------------- | ------------------------------------------------- |
-| Rate control d          | 1.0%                | Proportional gain - handles frame-to-frame jitter |
-| Rate control ki         | 0.00005             | Integral gain - learns persistent clock offset    |
-| Error smoothing α       | 0.003 (~333 frames) | Separates P and I timescales                      |
-| Integral clamp          | ±2%                 | Max drift correction (handles hardware variance)  |
-| Audio buffer            | 5 frames (~83ms)    | Effective latency ~42ms at 50% fill               |
-| Window size             | 30 frames (~500ms)  | Filters noise, responsive to changes              |
-| Utilization high        | 85%                 | Frame time >85% of budget = boost                 |
-| Utilization low         | 55%                 | Frame time <55% of budget = reduce                |
-| Target util             | 70%                 | Target utilization after frequency change         |
-| Max step down           | 1                   | Max frequency steps when reducing                 |
-| Panic step up           | 2                   | Frequency steps on underrun emergency             |
-| Min frequency           | 400 MHz             | Floor for frequency scaling                       |
-| Boost windows           | 2 (~1s)             | Fast response to performance issues               |
-| Reduce windows          | 4 (~2s)             | Conservative to prevent oscillation               |
-| Startup grace           | 300 frames (~5s)    | Starts at max freq, then scales                   |
-| Percentile              | 90th                | Ignores outliers (loading screens)                |
+| Parameter         | Current             | Notes                                             |
+| ----------------- | ------------------- | ------------------------------------------------- |
+| Rate control d    | 1.0%                | Proportional gain - handles frame-to-frame jitter |
+| Rate control ki   | 0.00005             | Integral gain - learns persistent clock offset    |
+| Error smoothing α | 0.003 (~333 frames) | Separates P and I timescales                      |
+| Integral clamp    | ±2%                 | Max drift correction (handles hardware variance)  |
+| Audio buffer      | 5 frames (~83ms)    | Effective latency ~42ms at 50% fill               |
+| Window size       | 30 frames (~500ms)  | Filters noise, responsive to changes              |
+| Utilization high  | 85%                 | Frame time >85% of budget = boost                 |
+| Utilization low   | 55%                 | Frame time <55% of budget = reduce                |
+| Target util       | 70%                 | Target utilization after frequency change         |
+| Max step down     | 1                   | Max frequency steps when reducing                 |
+| Panic step up     | 2                   | Frequency steps on underrun emergency             |
+| Min frequency     | 400 MHz             | Floor for frequency scaling                       |
+| Boost windows     | 2 (~1s)             | Fast response to performance issues               |
+| Reduce windows    | 4 (~2s)             | Conservative to prevent oscillation               |
+| Startup grace     | 300 frames (~5s)    | Starts at max freq, then scales                   |
+| Percentile        | 90th                | Ignores outliers (loading screens)                |
 
 ### Display Rate Handling
 
@@ -639,11 +639,11 @@ Modern ARM SoCs use heterogeneous CPU clusters (big.LITTLE, tri-cluster) where d
 
 Instead of manipulating `scaling_min_freq`/`scaling_max_freq`, we use governors:
 
-| Governor      | Behavior                                    | Use Case                |
-| ------------- | ------------------------------------------- | ----------------------- |
-| `powersave`   | Runs at minimum frequency                   | Inactive clusters, idle |
-| `schedutil`   | Kernel dynamically scales based on load     | Balanced workloads      |
-| `performance` | Runs at maximum frequency                   | Demanding workloads     |
+| Governor      | Behavior                                | Use Case                |
+| ------------- | --------------------------------------- | ----------------------- |
+| `powersave`   | Runs at minimum frequency               | Inactive clusters, idle |
+| `schedutil`   | Kernel dynamically scales based on load | Balanced workloads      |
+| `performance` | Runs at maximum frequency               | Demanding workloads     |
 
 **Why governors instead of frequency bounds:**
 
@@ -684,12 +684,12 @@ sched_setaffinity(0, sizeof(set), &set);
 
 **Example SoC configurations:**
 
-| SoC           | Clusters                  | PerfStates |
-| ------------- | ------------------------- | ---------- |
-| Allwinner A53 | 4×A53 (single)            | 0 (granular mode) |
-| Allwinner H700| 4×A53 (single)            | 0 (granular mode) |
-| Allwinner A523| 4×A55 + 4×A76             | 6          |
-| SD865         | 4×A55 + 3×A77 + 1×A77     | 9          |
+| SoC            | Clusters              | PerfStates        |
+| -------------- | --------------------- | ----------------- |
+| Allwinner A53  | 4×A53 (single)        | 0 (granular mode) |
+| Allwinner H700 | 4×A53 (single)        | 0 (granular mode) |
+| Allwinner A523 | 4×A55 + 4×A76         | 6                 |
+| SD865          | 4×A55 + 3×A77 + 1×A77 | 9                 |
 
 ### Granular Frequency Scaling (Single-Cluster Fallback)
 

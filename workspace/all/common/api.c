@@ -3351,6 +3351,38 @@ static int compare_cluster_by_max_khz(const void* a, const void* b) {
 }
 
 /**
+ * Classifies clusters based on their relative performance.
+ * Static helper for PWR_detectCPUTopology().
+ * (Public version available in player_cpu.c for testing)
+ */
+static void classify_clusters(PlayerCPUCluster* clusters, int count) {
+	if (!clusters || count <= 0)
+		return;
+
+	for (int i = 0; i < count; i++) {
+		PlayerCPUCluster* cluster = &clusters[i];
+
+		if (i == 0) {
+			cluster->type = PLAYER_CPU_CLUSTER_LITTLE;
+		} else if (i == count - 1) {
+			int prev_max = clusters[i - 1].max_khz;
+			int freq_gap_percent = 0;
+			if (prev_max > 0) {
+				freq_gap_percent = ((cluster->max_khz - prev_max) * 100) / prev_max;
+			}
+
+			if (cluster->cpu_count == 1 || freq_gap_percent > 10) {
+				cluster->type = PLAYER_CPU_CLUSTER_PRIME;
+			} else {
+				cluster->type = PLAYER_CPU_CLUSTER_BIG;
+			}
+		} else {
+			cluster->type = PLAYER_CPU_CLUSTER_BIG;
+		}
+	}
+}
+
+/**
  * Reads an integer from a sysfs file.
  *
  * @param path Full path to sysfs file
@@ -3463,13 +3495,12 @@ static int parse_related_cpus(const char* path, int* cpu_mask, int* cpu_count) {
 }
 
 int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
-	PlayerCPUTopology* topo = topology; // Use typedef for internal code
-	if (!topo) {
+	if (!topology) {
 		return 0;
 	}
 
 	// Initialize topology
-	memset(topo, 0, sizeof(*topo));
+	memset(topology, 0, sizeof(*topology));
 
 	// Enumerate policies (0, 1, 2, ... up to 15)
 	// Policies may not be contiguous (e.g., policy0, policy4, policy7)
@@ -3488,7 +3519,7 @@ int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
 			continue; // Policy doesn't exist
 		}
 
-		PlayerCPUCluster* cluster = &topo->clusters[cluster_count];
+		PlayerCPUCluster* cluster = &topology->clusters[cluster_count];
 		cluster->policy_id = policy_id;
 		cluster->max_khz = max_khz;
 
@@ -3533,23 +3564,24 @@ int PWR_detectCPUTopology(struct PlayerCPUTopology* topology) {
 
 	// Sort clusters by max_khz ascending (LITTLE → BIG → PRIME)
 	if (cluster_count > 1) {
-		qsort(topo->clusters, cluster_count, sizeof(PlayerCPUCluster), compare_cluster_by_max_khz);
+		qsort(topology->clusters, cluster_count, sizeof(PlayerCPUCluster),
+		      compare_cluster_by_max_khz);
 	}
 
-	// Classify clusters using shared logic from player_cpu.c
-	PlayerCPU_classifyClusters(topo->clusters, cluster_count);
+	// Classify clusters (LITTLE/BIG/PRIME)
+	classify_clusters(topology->clusters, cluster_count);
 
 	// Log classification results
 	const char* type_names[] = {"LITTLE", "BIG", "PRIME"};
 	for (int i = 0; i < cluster_count; i++) {
-		PlayerCPUCluster* cluster = &topo->clusters[i];
+		PlayerCPUCluster* cluster = &topology->clusters[i];
 		LOG_info("PWR_detectCPUTopology: cluster %d (policy%d): %s, %d CPUs, %d-%d kHz\n", i,
 		         cluster->policy_id, type_names[cluster->type], cluster->cpu_count,
 		         cluster->min_khz, cluster->max_khz);
 	}
 
-	topo->cluster_count = cluster_count;
-	topo->topology_detected = 1;
+	topology->cluster_count = cluster_count;
+	topology->topology_detected = 1;
 
 	LOG_info("PWR_detectCPUTopology: detected %d cluster(s), multi-cluster=%s\n", cluster_count,
 	         (cluster_count > 1) ? "yes" : "no");
@@ -3618,6 +3650,35 @@ int PWR_setCPUGovernor(int policy_id, const char* governor) {
 
 	LOG_debug("PWR_setCPUGovernor: set policy%d governor to %s\n", policy_id, governor);
 	return 0;
+}
+
+int PWR_setLowPowerMode(void) {
+	int clusters_configured = 0;
+
+	// Enumerate all cpufreq policies and set to powersave
+	for (int policy_id = 0; policy_id < 16; policy_id++) {
+		char path[256];
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_governor", CPUFREQ_BASE_PATH,
+		               policy_id);
+
+		// Check if policy exists
+		if (access(path, F_OK) != 0)
+			continue;
+
+		// Set to powersave governor
+		if (PWR_setCPUGovernor(policy_id, "powersave") == 0) {
+			clusters_configured++;
+		}
+	}
+
+	if (clusters_configured > 0) {
+		LOG_info("PWR_setLowPowerMode: set %d cluster(s) to powersave\n", clusters_configured);
+	} else {
+		// Single-cluster device without cpufreq policies
+		PLAT_setCPUSpeed(CPU_SPEED_POWERSAVE);
+	}
+
+	return clusters_configured;
 }
 
 #if defined(__linux__)
