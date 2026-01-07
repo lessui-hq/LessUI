@@ -855,6 +855,27 @@ void SND_resetUnderrunCount(void);
 void SND_newFrame(void);
 
 /**
+ * Callback type for sync mode queries.
+ *
+ * Used by audio system to query sync manager for runtime mode decisions.
+ *
+ * @return true if the feature should be enabled, false otherwise
+ */
+typedef bool (*SND_SyncCallback)(void);
+
+/**
+ * Configure sync mode callbacks for runtime adaptive behavior.
+ *
+ * The audio system uses these callbacks to adapt its behavior based on
+ * the current sync mode (audio-clock vs vsync).
+ *
+ * @param should_use_rate_control Callback returning true if audio rate control should run
+ * @param should_block_audio Callback returning true if audio writes should block
+ */
+void SND_setSyncCallbacks(SND_SyncCallback should_use_rate_control,
+                          SND_SyncCallback should_block_audio);
+
+/**
  * Shuts down the audio subsystem.
  */
 void SND_quit(void);
@@ -896,7 +917,6 @@ typedef struct {
 	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
 	float total_adjust; // Same as rate_adjust (no separate corrections)
 	float rate_integral; // PI controller integral term (drift correction)
-	float rate_boost; // Cubic safety boost multiplier (1.0 at center, up to 4.0 at limits)
 	float rate_control_d; // Proportional gain
 	float rate_control_ki; // Integral gain
 	float error_avg; // Smoothed error (for debugging integral behavior)

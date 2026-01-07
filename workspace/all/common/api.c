@@ -1723,7 +1723,6 @@ static struct SND_Context {
 	float rate_integral; // PI integral term (accumulates from smoothed error)
 	float error_avg; // Smoothed error for slow integral timescale
 	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
-	float last_rate_boost; // Last computed boost (for snapshot diagnostics)
 
 	// SDL callback timing diagnostics
 	uint64_t callback_count; // Total callbacks
@@ -1731,6 +1730,10 @@ static struct SND_Context {
 	uint64_t callback_interval_sum; // Sum of intervals (for average)
 	unsigned callback_samples_min; // Min samples requested
 	unsigned callback_samples_max; // Max samples requested
+
+	// Sync mode callbacks (set by player via SND_setSyncCallbacks)
+	SND_SyncCallback should_use_rate_control;
+	SND_SyncCallback should_block_audio;
 } snd = {0};
 
 /**
@@ -1865,26 +1868,26 @@ static float SND_getBufferFillLevel(void) {
 }
 
 /**
- * Calculates dynamic rate adjustment using a dual-timescale PI controller.
+ * Calculate dynamic rate adjustment using simple dual-timescale PI controller.
  *
- * Extends the Arntzen algorithm with an integral term on a separate (slower)
- * timescale to correct persistent hardware drift without fighting proportional.
+ * Based on RetroArch's dynamic rate control algorithm (Arntzen, 2012).
+ * Uses dual-timescale PI control: fast proportional term for immediate
+ * response, slow integral term for persistent drift compensation.
  *
- * Dual-timescale PI:
- *   error = (1 - 2*fill)
- *   p_term = error * d                              // Fast: frame-to-frame jitter
- *   error_avg = α*error + (1-α)*error_avg           // Smooth error (~100 frames)
- *   integral += error_avg * ki                      // Slow: learns persistent offset
+ * Algorithm:
+ *   error = (1 - 2*fill)                            // Positive when buffer low
+ *   p_term = error * d                              // Fast: frame-to-frame response
+ *   error_avg = α*error + (1-α)*error_avg           // Smooth over ~300 frames
+ *   integral += error_avg * ki                      // Slow: learns steady offset
  *   adjustment = p_term + integral
  *
- * Key insight: Original PI failed because both terms operated on same timescale,
- * causing them to fight. By smoothing error before integrating, the integral
- * only sees persistent trends, not per-frame noise.
+ * Works well for < 1% mismatch between game fps and display Hz.
+ * Beyond 1%, audio-clock mode should be used instead.
  *
  * Tuning guide:
- *   d: Higher = faster jitter response, more pitch variation (0.005-0.025)
- *   ki: Integral gain, 100× slower than error averaging (0.00005)
- *   α: Error smoothing factor, ~100 frame average (0.01)
+ *   d: Proportional gain (0.005-0.025) - higher = faster response, more pitch variation
+ *   ki: Integral gain (0.00005) - very slow, learns persistent drift
+ *   α: Error smoothing (0.003) - ~300 frame average
  *
  * Our resampler divides by ratio_adjust (larger = fewer outputs), so:
  *   ratio_adjust = 1 - adjustment
@@ -1902,22 +1905,8 @@ static float SND_calculateRateAdjust(void) {
 	// Fast timescale (proportional): immediate response to buffer level changes
 	float p_term = error * SND_RATE_CONTROL_D;
 
-	// Cubic safety boost: ~1.0× at center, 4× at limits
-	// Only boost proportional term - integral is a learned steady-state offset
-	// Prevents hitting 0% or 100% during integral learning or after CPU frequency resets
-	// More responsive in middle range than quartic, catches drift earlier
-	float distance = fill - 0.5f;
-	float normalized = distance * 2.0f; // -1 to +1
-	float abs_norm = normalized < 0 ? -normalized : normalized; // 0 to 1
-	float boost = 1.0f + 3.0f * (abs_norm * abs_norm * abs_norm); // 1.0 to 4.0
-	float boosted_p = p_term * boost;
-
 	// Slow timescale (integral): persistent offset learned in SND_newFrame()
-	// Integral is NOT boosted - it's a steady-state correction, not emergency response
-	float adjustment = boosted_p + snd.rate_integral;
-
-	// Store for diagnostics
-	snd.last_rate_boost = boost;
+	float adjustment = p_term + snd.rate_integral;
 
 	// Invert for our resampler convention (larger ratio = fewer outputs)
 	snd.last_rate_adjust = 1.0f - adjustment;
@@ -1927,18 +1916,18 @@ static float SND_calculateRateAdjust(void) {
 /**
  * Writes a batch of audio samples to the ring buffer.
  *
- * Two implementations based on sync mode:
+ * Runtime adaptive behavior based on sync mode:
  *
- * SYNC_MODE_AUDIOCLOCK (audio-driven timing):
+ * Audio-clock mode (should_block_audio = true):
  * - Blocks when buffer is full (up to 10ms)
  * - Audio hardware clock drives emulation timing
  * - Fixed 1.0 resampling ratio (no dynamic rate control)
- * - For devices with unstable vsync
+ * - For devices with unstable vsync (>1% mismatch)
  *
- * Default (vsync-driven timing):
+ * Vsync mode (should_block_audio = false):
  * - Non-blocking with dynamic rate control
  * - Adjusts pitch ±0.5% to maintain buffer at 50% full
- * - For devices with stable vsync
+ * - For devices with stable vsync (<1% mismatch)
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
@@ -1950,26 +1939,93 @@ size_t SND_batchSamples(const SND_Frame* frames,
 	if (snd.frame_count == 0)
 		return 0;
 
-#ifdef SYNC_MODE_AUDIOCLOCK
-	// ========================================================================
-	// AUDIOCLOCK MODE: Blocking writes with audio hardware timing
-	// ========================================================================
+	// Check sync mode via callback (defaults to vsync mode if not set)
+	bool should_block = snd.should_block_audio && snd.should_block_audio();
+	bool should_use_rate_control =
+	    !should_block && (!snd.should_use_rate_control || snd.should_use_rate_control());
 
-	SDL_LockAudio();
+	if (should_block) {
+		// ========================================================================
+		// AUDIO-CLOCK MODE: Blocking writes with audio hardware timing
+		// ========================================================================
 
-	size_t consumed = 0;
-	while (frame_count > 0) {
-		int tries = 0;
+		SDL_LockAudio();
 
-		// Wait for audio callback to drain buffer (up to 10ms)
-		while (tries < 10 && snd.frame_in == snd.frame_filled) {
-			tries++;
-			SDL_UnlockAudio();
-			SDL_Delay(1);
-			SDL_LockAudio();
+		size_t consumed = 0;
+		while (frame_count > 0) {
+			int tries = 0;
+
+			// Wait for audio callback to drain buffer (up to 10ms)
+			while (tries < 10 && snd.frame_in == snd.frame_filled) {
+				tries++;
+				SDL_UnlockAudio();
+				SDL_Delay(1);
+				SDL_LockAudio();
+			}
+
+			// Write samples with fixed 1.0 ratio (no rate control)
+			AudioRingBuffer ring = {
+			    .frames = snd.buffer,
+			    .capacity = snd.frame_count,
+			    .write_pos = snd.frame_in,
+			    .read_pos = snd.frame_out,
+			};
+
+			ResampleResult result =
+			    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, 1.0f);
+
+			snd.frame_in = ring.write_pos;
+			snd.samples_in += result.frames_consumed;
+			snd.samples_written += result.frames_written;
+
+			frames += result.frames_consumed;
+			frame_count -= result.frames_consumed;
+			consumed += result.frames_consumed;
 		}
 
-		// Write samples with fixed 1.0 ratio (no rate control)
+		SDL_UnlockAudio();
+		return consumed;
+
+	} else {
+		// ========================================================================
+		// VSYNC MODE: Non-blocking with dynamic rate control
+		// ========================================================================
+
+		SDL_LockAudio();
+
+		// Determine resampling ratio
+		float total_adjust;
+		if (should_use_rate_control) {
+			// Dynamic rate control: adjust based on buffer fill
+			total_adjust = SND_calculateRateAdjust();
+
+			// Track cumulative adjust for diagnostics
+			snd.cumulative_total_adjust += total_adjust;
+			snd.total_adjust_count++;
+		} else {
+			// No rate control: fixed 1.0 ratio
+			total_adjust = 1.0f;
+		}
+
+		// Estimate output size for diagnostics
+		int estimated_output =
+		    AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
+
+		// Calculate available space
+		int available;
+		if (snd.frame_in >= snd.frame_out) {
+			available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
+		} else {
+			available = snd.frame_out - snd.frame_in - 1;
+		}
+
+		// Warn if buffer nearly full
+		if (available < estimated_output) {
+			LOG_warn("Audio buffer nearly full: %d available, %d needed (fill=%.0f%%)\n", available,
+			         estimated_output, SND_getBufferFillLevel() * 100.0f);
+		}
+
+		// Resample into ring buffer
 		AudioRingBuffer ring = {
 		    .frames = snd.buffer,
 		    .capacity = snd.frame_count,
@@ -1978,84 +2034,16 @@ size_t SND_batchSamples(const SND_Frame* frames,
 		};
 
 		ResampleResult result =
-		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, 1.0f);
+		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
 
 		snd.frame_in = ring.write_pos;
 		snd.samples_in += result.frames_consumed;
 		snd.samples_written += result.frames_written;
 
-		frames += result.frames_consumed;
-		frame_count -= result.frames_consumed;
-		consumed += result.frames_consumed;
+		SDL_UnlockAudio();
+
+		return result.frames_consumed;
 	}
-
-	SDL_UnlockAudio();
-	return consumed;
-
-#else
-	// ========================================================================
-	// VSYNC MODE: Non-blocking with dynamic rate control
-	// ========================================================================
-
-	SDL_LockAudio();
-
-	// Dynamic rate control per Arntzen paper: adjust resampling ratio based on buffer fill
-	// Buffer empty → produce more samples (fill up), buffer full → produce fewer (drain)
-	// The system naturally converges to a stable equilibrium point
-	float total_adjust = SND_calculateRateAdjust();
-
-	// Note: Debug logging moved to player's unified snapshot logging (SND_getSnapshot)
-
-	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
-	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
-
-	// Calculate how much space is available in the ring buffer (for diagnostics)
-	int available;
-	if (snd.frame_in >= snd.frame_out) {
-		available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
-	} else {
-		available = snd.frame_out - snd.frame_in - 1;
-	}
-
-	// Warn if buffer is nearly full (indicates rate control failure)
-	// The resampler will handle buffer full gracefully (partial write + save state)
-	if (available < estimated_output) {
-		LOG_warn(
-		    "Audio buffer nearly full: %d available, %d needed (fill=%.0f%%) - rate control may "
-		    "be failing\n",
-		    available, estimated_output, SND_getBufferFillLevel() * 100.0f);
-	}
-
-	// Set up ring buffer wrapper for the resampler
-	AudioRingBuffer ring = {
-	    .frames = snd.buffer,
-	    .capacity = snd.frame_count,
-	    .write_pos = snd.frame_in,
-	    .read_pos = snd.frame_out,
-	};
-
-	// Resample with combined adjustment (base correction + dynamic rate control)
-	ResampleResult result =
-	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
-
-	// Update ring buffer write position
-	snd.frame_in = ring.write_pos;
-
-	// Track sample flow for diagnostics
-	snd.samples_in += result.frames_consumed; // Input samples consumed by resampler
-	snd.samples_written += result.frames_written; // Output samples written to buffer
-
-	// Track cumulative total_adjust for window-averaged comparisons
-	snd.cumulative_total_adjust += total_adjust;
-	snd.total_adjust_count++;
-
-	// Note: frame_filled is managed by the audio callback (SND_audioCallback)
-	// to track what has been consumed. We don't update it here.
-
-	SDL_UnlockAudio();
-
-	return result.frames_consumed;
-#endif
 }
 
 /**
@@ -2084,8 +2072,16 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	LOG_debug("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
 #endif
 
+	// Preserve sync mode callbacks across reinit
+	SND_SyncCallback saved_rate_control = snd.should_use_rate_control;
+	SND_SyncCallback saved_block_audio = snd.should_block_audio;
+
 	memset(&snd, 0, sizeof(struct SND_Context));
 	snd.frame_rate = frame_rate;
+
+	// Restore callbacks
+	snd.should_use_rate_control = saved_rate_control;
+	snd.should_block_audio = saved_block_audio;
 
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
@@ -2166,13 +2162,15 @@ void SND_resetUnderrunCount(void) {
  * This prevents the integral from accumulating N times when cores use
  * per-sample audio callbacks (audio_sample_callback instead of batch).
  * Some cores (e.g., 64-bit snes9x) call audio ~535 times per frame.
+ *
+ * No-op in audio-clock mode (no rate control needed).
  */
 void SND_newFrame(void) {
-#ifdef SYNC_MODE_AUDIOCLOCK
-	// No-op in audioclock mode - no rate control needed
-	return;
-#else
 	if (!snd.initialized)
+		return;
+
+	// Check if rate control should run (vsync mode only)
+	if (!snd.should_use_rate_control || !snd.should_use_rate_control())
 		return;
 
 	SDL_LockAudio();
@@ -2191,7 +2189,6 @@ void SND_newFrame(void) {
 		snd.rate_integral = -SND_INTEGRAL_CLAMP;
 
 	SDL_UnlockAudio();
-#endif
 }
 
 /**
@@ -2227,7 +2224,6 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.rate_adjust = snd.last_rate_adjust;
 	snap.total_adjust = snd.last_rate_adjust;
 	snap.rate_integral = snd.rate_integral;
-	snap.rate_boost = snd.last_rate_boost;
 	snap.rate_control_d = SND_RATE_CONTROL_D;
 	snap.rate_control_ki = SND_RATE_CONTROL_KI;
 	snap.error_avg = snd.error_avg;
@@ -2347,6 +2343,21 @@ void SND_setMinLatency(unsigned latency_ms) {
 	snd.frame_filled = snd.frame_count - 1;
 
 	SDL_UnlockAudio();
+}
+
+/**
+ * Configure sync mode callbacks for runtime adaptive behavior.
+ *
+ * The audio system uses these callbacks to adapt its behavior based on
+ * the current sync mode (audio-clock vs vsync).
+ *
+ * @param should_use_rate_control Callback returning true if audio rate control should run
+ * @param should_block_audio Callback returning true if audio writes should block
+ */
+void SND_setSyncCallbacks(SND_SyncCallback should_use_rate_control,
+                          SND_SyncCallback should_block_audio) {
+	snd.should_use_rate_control = should_use_rate_control;
+	snd.should_block_audio = should_block_audio;
 }
 
 ///////////////////////////////

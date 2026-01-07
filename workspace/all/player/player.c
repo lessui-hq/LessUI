@@ -57,7 +57,6 @@
 #include "../common/cpu.h"
 #include "api.h"
 #include "defines.h"
-#include "frame_pacer.h"
 #include "gl_video.h"
 #include "launcher_file_utils.h"
 #include "libretro.h"
@@ -82,6 +81,7 @@
 #include "player_video_convert.h"
 #include "render_common.h"
 #include "scaler.h"
+#include "sync_manager.h"
 #include "utils.h"
 
 ///////////////////////////////////////
@@ -157,10 +157,11 @@ static CPUState auto_cpu_state;
 static CPUConfig auto_cpu_config;
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
-// Frame Pacing State
-// Decouples emulation from display refresh for non-60Hz displays (e.g., M17 @ 72Hz).
-// See frame_pacer.h for algorithm details.
-static FramePacer frame_pacer;
+// Sync Manager State
+// Manages audio/video synchronization mode (audio-clock vs vsync).
+// Starts in audio-clock mode (safe), switches to vsync if compatible (<1% Hz mismatch).
+// See sync_manager.h for details.
+static SyncManager sync_manager;
 
 // Background thread for applying CPU changes without blocking main loop
 static pthread_t auto_cpu_thread;
@@ -1269,9 +1270,6 @@ void setOverclock(int i) {
 	}
 }
 
-// Vsync rate for diagnostics (currently unused, would need measurement to populate)
-static float current_vsync_hz = 0;
-
 /**
  * Updates auto CPU scaling based on frame timing (core.run() execution time).
  *
@@ -1279,15 +1277,23 @@ static float current_vsync_hz = 0;
  * Uses the 90th percentile of frame execution times to determine CPU utilization,
  * which directly measures emulation performance independent of audio/display timing.
  *
- * Granular Mode Algorithm:
- * - Performance scales linearly with frequency
- * - Boost: Jump to predicted optimal frequency (no step limit)
- * - Reduce: Limited to max_step_down indices to prevent underruns
- * - Panic: Boost by panic_step_up on underrun, with cooldown
+ * Three scaling modes (selected at init based on hardware capabilities):
+ * - Topology: Multi-cluster CPUs with PerfStates (big.LITTLE)
+ * - Granular: Single-cluster with fine-grained frequency steps
+ * - Fallback: Simple 3-level low/medium/high scaling
  *
- * Fallback Mode Algorithm (3 levels):
- * - Count consecutive high/low util windows
- * - Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
+ * All modes use the same basic algorithm:
+ * - Measure utilization as frame_time / frame_budget
+ * - Boost after sustained high util (>85% for boost_windows)
+ * - Reduce after sustained low util (<55% for reduce_windows)
+ * - Panic boost on audio underrun (immediate, with cooldown)
+ *
+ * Audio Clock mode special handling:
+ * In Audio Clock sync mode, blocking audio writes make utilization metrics
+ * unreliable (frame time includes blocking wait). Instead of util-based
+ * decisions, we use conservative time-based reduction: after 8 stable windows
+ * (~4s), step down one level. This prevents wasting power while avoiding
+ * aggressive changes that could cause underruns.
  */
 static void updateAutoCPU(void) {
 	// Skip if not in auto mode or during special states
@@ -1432,9 +1438,6 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
-		// Get buffer fill for reduce decisions
-		unsigned buffer_fill = SND_getBufferOccupancy();
-
 		if (auto_cpu_state.use_topology) {
 			// Topology mode: step through PerfStates one at a time
 			// Unlike granular mode, we don't predict - just step conservatively
@@ -1444,7 +1447,20 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > auto_cpu_config.util_high) {
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				auto_cpu_state.low_util_windows++;
+				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
+				    auto_cpu_state.panic_cooldown == 0 && current_state > 0) {
+					int new_state = current_state - 1;
+					auto_cpu_setTargetState(new_state);
+					auto_cpu_state.low_util_windows = 0;
+					LOG_debug("Auto CPU: REDUCE state %d→%d (AC mode)\n", current_state, new_state);
+				}
+			} else if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
@@ -1467,8 +1483,7 @@ static void updateAutoCPU(void) {
 				// Only reduce if: enough windows, cooldown expired, buffer healthy
 				int reduce_ok =
 				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
-				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0) &&
-				    (buffer_fill >= auto_cpu_config.min_buffer_for_reduce);
+				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0);
 
 				if (reduce_ok) {
 					// Step down by max_step_down (usually 1)
@@ -1478,8 +1493,8 @@ static void updateAutoCPU(void) {
 					auto_cpu_setTargetState(new_state);
 					auto_cpu_state.low_util_windows = 0;
 					// No grace period on reduce - if we underrun, frequency is too slow
-					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%% buf=%u%%)\n", current_state,
-					          new_state, util, buffer_fill);
+					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
+					          new_state, util);
 				}
 			} else {
 				// In sweet spot - reset counters
@@ -1492,15 +1507,13 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_topo >= 4) {
 				debug_window_count_topo = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug(
-				    "Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% state=%d/%d\n",
-				    snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust, util,
-				    current_state, max_state);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% state=%d/%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_state,
+				          max_state);
 			}
 		} else if (auto_cpu_state.use_granular) {
-			// Granular mode: use linear performance scaling to find optimal frequency
-			// Performance scales linearly with frequency, so:
-			// new_util = current_util * (current_freq / new_freq)
+			// Granular mode: step through available frequencies one at a time
+			// Skips frequencies that have caused repeated underruns (panic-blocked)
 
 			int current_freq = auto_cpu_state.frequencies[current_idx];
 
@@ -1509,7 +1522,30 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > auto_cpu_config.util_high) {
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				auto_cpu_state.low_util_windows++;
+				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
+				    auto_cpu_state.panic_cooldown == 0 && current_idx > 0) {
+					int new_idx = current_idx - 1;
+					// Skip blocked frequencies
+					while (new_idx >= 0 &&
+					       auto_cpu_state.panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
+						new_idx--;
+					}
+					if (new_idx >= 0) {
+						int new_freq = auto_cpu_state.frequencies[new_idx];
+						auto_cpu_setTargetIndex(new_idx);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (AC mode)\n", current_freq, new_freq);
+					} else {
+						auto_cpu_state.low_util_windows = 0;
+					}
+				}
+			} else if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
@@ -1533,8 +1569,7 @@ static void updateAutoCPU(void) {
 				// Only reduce if: enough windows, cooldown expired, buffer healthy
 				int reduce_ok =
 				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
-				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0) &&
-				    (buffer_fill >= auto_cpu_config.min_buffer_for_reduce);
+				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0);
 
 				if (reduce_ok) {
 					// Step down by 1 - simple and predictable
@@ -1554,8 +1589,8 @@ static void updateAutoCPU(void) {
 						auto_cpu_setTargetIndex(new_idx);
 						auto_cpu_state.low_util_windows = 0;
 						// No grace period on reduce - if we underrun, frequency is too slow
-						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%% buf=%u%%)\n", current_freq,
-						          new_freq, util, buffer_fill);
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%%)\n", current_freq,
+						          new_freq, util);
 					}
 				}
 			} else {
@@ -1569,10 +1604,10 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% freq=%dkHz "
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz "
 				          "idx=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust,
-				          util, current_freq, current_idx, max_idx);
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
+				          current_idx, max_idx);
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
@@ -1582,7 +1617,20 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > auto_cpu_config.util_high) {
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				auto_cpu_state.low_util_windows++;
+				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
+				    auto_cpu_state.panic_cooldown == 0 && current_level > 0) {
+					int new_level = current_level - 1;
+					auto_cpu_setTargetLevel(new_level);
+					auto_cpu_state.low_util_windows = 0;
+					LOG_debug("Auto CPU: REDUCE level %d (AC mode)\n", new_level);
+				}
+			} else if (util > auto_cpu_config.util_high) {
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
 			} else if (util < auto_cpu_config.util_low) {
@@ -1598,9 +1646,9 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% level=%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust,
-				          util, current_level);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
+				          current_level);
 			}
 
 			// Boost if sustained high utilization
@@ -1616,14 +1664,12 @@ static void updateAutoCPU(void) {
 
 			// Reduce if sustained low utilization, buffer healthy (respects panic cooldown)
 			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
-			    auto_cpu_state.panic_cooldown == 0 && current_level > 0 &&
-			    buffer_fill >= auto_cpu_config.min_buffer_for_reduce) {
+			    auto_cpu_state.panic_cooldown == 0 && current_level > 0) {
 				int new_level = current_level - 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.low_util_windows = 0;
 				// No grace period on reduce - if we underrun, frequency is too slow
-				LOG_debug("Auto CPU: REDUCE level %d (util=%u%% buf=%u%%)\n", new_level, util,
-				          buffer_fill);
+				LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
 			}
 		}
 
@@ -3968,16 +4014,16 @@ static void generateDebugHUDText(DebugHUDText* text, int src_w, int src_h, int s
 	}
 
 	// Top-left: FPS, sync mode, and rate control adjustment
-	// Modes: AC = audio clock, VS = vsync direct (fps≈hz), FP = frame paced (fps≠hz)
+	// Modes: AC = audio clock, VS = vsync with rate control
 	// Rate adjustment shows audio stretch: >1.0 = running fast, <1.0 = running slow
 	float rate_pct = (rate_adj_display - 1.0f) * 100.0f;
-#ifdef SYNC_MODE_AUDIOCLOCK
-	(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f AC", fps_double);
-#else
-	const char* sync_mode = FramePacer_isDirectMode(&frame_pacer) ? "VS" : "FP";
-	(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f %s %+.1f%%", fps_double, sync_mode,
-	               rate_pct);
-#endif
+	SyncMode current_mode = SyncManager_getMode(&sync_manager);
+	if (current_mode == SYNC_MODE_AUDIO_CLOCK) {
+		(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f AC", fps_double);
+	} else {
+		(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f VS %+.1f%%", fps_double,
+		               rate_pct);
+	}
 
 	// Top-right: Source resolution
 	(void)snprintf(text->top_right, sizeof(text->top_right), "%ix%i", src_w, src_h);
@@ -5922,7 +5968,7 @@ static void Menu_saveState(void) {
 
 static void Menu_loadState(void) {
 	PlayerMenu_loadState(PlayerContext_get());
-	FramePacer_reset(&frame_pacer); // Reset accumulator after state load
+	// Note: Sync manager doesn't need reset after state load (no persistent accumulator)
 }
 
 static void Menu_scale(SDL_Surface* src, SDL_Surface* dst) {
@@ -6195,12 +6241,118 @@ static void showFatalError(void) {
 	}
 }
 
-// Main loop implementation selected at compile-time based on sync mode
-#ifdef SYNC_MODE_AUDIOCLOCK
-#include "player_loop_audioclock.inc"
-#else
-#include "player_loop_vsync.inc"
-#endif
+// Sync mode callbacks for audio system
+static bool sync_shouldUseRateControl(void) {
+	return SyncManager_shouldUseRateControl(&sync_manager);
+}
+
+static bool sync_shouldBlockAudio(void) {
+	return SyncManager_shouldBlockAudio(&sync_manager);
+}
+
+/**
+ * Unified main loop with runtime-adaptive sync mode.
+ */
+static void run_main_loop(void) {
+	double display_hz = PLAT_getDisplayHz();
+	SyncManager_init(&sync_manager, core.fps, display_hz);
+	SND_setSyncCallbacks(sync_shouldUseRateControl, sync_shouldBlockAudio);
+
+	LOG_info("Starting main loop: %.2ffps @ %.1fHz (mode: %s)\n", core.fps, display_hz,
+	         SyncManager_getModeName(SyncManager_getMode(&sync_manager)));
+
+	PWR_warn(1);
+	PWR_disableAutosleep();
+
+	GFX_clearAll();
+	GFX_present(NULL);
+
+	LOG_debug("Special_init");
+	Special_init();
+
+	LOG_debug("Entering main loop");
+	sec_start = SDL_GetTicks();
+
+	while (!quit) {
+		GFX_startFrame();
+		input_polled_this_frame = 0;
+
+		int runs_this_vsync = fast_forward ? (max_ff_speed + 2) : 1;
+
+		for (int run = 0; run < runs_this_vsync; run++) {
+			bool should_run_core =
+			    !show_menu &&
+			    ((run == 0) ? (fast_forward || SyncManager_shouldRunCore(&sync_manager))
+			                : fast_forward);
+
+			if (should_run_core) {
+				if (video_state.frame_time_cb) {
+					retro_usec_t frame_now = getMicroseconds();
+					retro_usec_t delta;
+					if (fast_forward) {
+						delta = video_state.frame_time_ref;
+					} else {
+						if (video_state.frame_time_last == 0) {
+							delta = video_state.frame_time_ref;
+						} else {
+							delta = frame_now - video_state.frame_time_last;
+						}
+						video_state.frame_time_last = frame_now;
+					}
+					video_state.frame_time_cb(delta);
+				}
+
+				if (core.audio_buffer_status) {
+					if (fast_forward) {
+						core.audio_buffer_status(false, 0, false);
+					} else {
+						unsigned occupancy = SND_getBufferOccupancy();
+						core.audio_buffer_status(true, occupancy, occupancy < 25);
+					}
+				}
+
+				if (!fast_forward) {
+					SND_newFrame();
+				}
+
+				uint64_t frame_start = getMicroseconds();
+				GLVideo_bindFBO();
+				core.run();
+				uint64_t frame_time = getMicroseconds() - frame_start;
+
+				if (overclock == 3 && !fast_forward && !show_menu) {
+					auto_cpu_state
+					    .frame_times[auto_cpu_state.frame_time_index % CPU_FRAME_BUFFER_SIZE] =
+					    frame_time;
+					auto_cpu_state.frame_time_index++;
+				}
+			}
+		}
+
+		if (!GLVideo_isEnabled()) {
+			GFX_present(&renderer);
+			frame_ready_for_flip = 0;
+		}
+
+		SyncManager_recordVsync(&sync_manager);
+
+		limitFF();
+		trackFPS();
+		updateAutoCPU();
+
+		input_poll_callback();
+
+		if (show_menu) {
+			Menu_loop();
+
+			if (GLVideo_isEnabled()) {
+				GLVideo_bindFBO();
+			}
+		}
+
+		hdmimon();
+	}
+}
 
 int main(int argc, char* argv[]) {
 	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)

@@ -13,7 +13,46 @@ Retro game consoles are highly synchronous - audio generation is locked to video
 
 **The fundamental challenge**: Synchronize to vsync (smooth video) while never underrunning or blocking on audio.
 
-## The Algorithm
+## Runtime-Adaptive Sync System
+
+LessUI uses a runtime-adaptive approach that measures the actual display refresh rate and selects the appropriate sync mode automatically.
+
+### Two Sync Modes
+
+| Mode            | Timing Source         | Audio Handling                     | When Used                        |
+| --------------- | --------------------- | ---------------------------------- | -------------------------------- |
+| **Audio Clock** | Blocking audio writes | Fixed ratio (no rate control)      | Startup default, Hz mismatch >1% |
+| **Vsync**       | Display vsync         | PI rate control (±0.5% adjustment) | Hz mismatch <1% from game fps    |
+
+### Mode Selection Algorithm
+
+```
+1. Start in Audio Clock mode (safe default, works on all hardware)
+2. Measure actual display Hz via vsync timing (~2 seconds warmup)
+3. If measured Hz within 1% of game fps → switch to Vsync mode
+4. Monitor for drift; fall back to Audio Clock if Hz becomes unstable
+```
+
+This eliminates compile-time mode selection and handles hardware variance automatically.
+
+## Audio Clock Mode
+
+When display Hz differs significantly from game fps (>1%), rate control cannot compensate without audible pitch changes. Instead:
+
+- Audio writes **block** when the buffer is full
+- Audio hardware clock drives emulation timing
+- Frame duplication occurs naturally (less visible than frame skipping)
+- No rate control needed - the blocking provides natural backpressure
+
+**Benefits:**
+
+- Works with any display refresh rate
+- Audio buffer stays naturally stable
+- No PI controller oscillation or windup
+
+## Vsync Mode (Rate Control Active)
+
+When display Hz closely matches game fps (<1%), vsync provides timing and rate control keeps the audio buffer stable.
 
 ### Arntzen's Core Formula
 
@@ -67,6 +106,24 @@ float adjustment = p_term + integral;
 
 ## Implementation Details
 
+### Sync Mode Callbacks
+
+The audio system queries the sync manager to determine behavior:
+
+```c
+// Set by player at init
+SND_setSyncCallbacks(
+    SyncManager_shouldUseRateControl,  // true in Vsync mode
+    SyncManager_shouldBlockAudio       // true in Audio Clock mode
+);
+
+// In SND_batchSamples()
+bool should_block = snd.should_block_audio();
+bool should_use_rate_control = !should_block && snd.should_use_rate_control();
+```
+
+This decouples the audio system from sync mode decisions.
+
 ### Per-Frame Integral Update
 
 The integral must update **once per frame**, not once per audio batch. Some cores (e.g., 64-bit snes9x) use per-sample audio callbacks, calling `SND_batchSamples()` ~535 times per frame. Without this fix, effective ki = 535× intended, causing wild oscillation.
@@ -74,6 +131,10 @@ The integral must update **once per frame**, not once per audio batch. Some core
 ```c
 // Called once per frame from main loop, before core.run()
 void SND_newFrame(void) {
+    // Skip in audio-clock mode (no rate control)
+    if (!snd.should_use_rate_control || !snd.should_use_rate_control())
+        return;
+
     SDL_LockAudio();
 
     float fill = SND_getBufferFillLevel();
@@ -104,19 +165,6 @@ int PLAT_pickSampleRate(int requested, int max) {
 
 Forcing a different rate (e.g., always 48kHz when core wants 32kHz) causes unnecessary resampling and wider buffer swings.
 
-### Vsync Cadence
-
-When a libretro core skips rendering (passes NULL to video_refresh), we still flip to maintain vsync timing:
-
-```c
-if (!data) {
-    frame_ready_for_flip = 1;  // Still flip to maintain vsync cadence
-    return;
-}
-```
-
-Without this, skipped frames cause: no vsync wait → 4ms frame → next frame waits 2 vblanks → 30ms frame. This creates 20% buffer oscillation even with perfect rate control.
-
 ## Tuning Results
 
 Tested across three platforms with different timing characteristics:
@@ -135,10 +183,12 @@ Tested across three platforms with different timing characteristics:
 
 ## Code References
 
-- PI controller: `workspace/all/common/api.c` (SND_calculateRateAdjust, SND_newFrame)
-- Parameters: `workspace/all/common/api.c` (lines 1640-1652)
+- Sync manager: `workspace/all/player/sync_manager.c` (mode selection, Hz measurement)
+- PI controller: `workspace/all/common/api.c` (`SND_calculateRateAdjust`, `SND_newFrame`)
+- Sync callbacks: `workspace/all/common/api.c` (`SND_setSyncCallbacks`)
+- Parameters: `workspace/all/common/api.c` (SND_RATE_CONTROL_D, SND_RATE_CONTROL_KI, etc.)
 - Resampler: `workspace/all/common/audio_resampler.c`
-- Sample rate policy: `workspace/<platform>/platform/platform.c` (PLAT_pickSampleRate)
+- Sample rate policy: `workspace/<platform>/platform/platform.c` (`PLAT_pickSampleRate`)
 
 ## References
 

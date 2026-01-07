@@ -122,7 +122,7 @@ declare -a TEST_BUILDS=(
 	"player_state_test:tests/unit/all/player/test_player_state.c workspace/all/player/player_state.c workspace/all/player/player_paths.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c tests/support/libretro_mocks.c:-D_DEFAULT_SOURCE"
 	"launcher_launcher_test:tests/unit/all/launcher/test_launcher_launcher.c workspace/all/launcher/launcher_launcher.c:"
 	"cpu_test:tests/unit/all/common/test_cpu.c workspace/all/common/cpu.c:"
-	"frame_pacer_test:tests/unit/all/player/test_frame_pacer.c workspace/all/player/frame_pacer.c:-lm"
+	"sync_manager_test:tests/unit/all/player/test_sync_manager.c workspace/all/player/sync_manager.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c:-lm"
 	"player_input_test:tests/unit/all/player/test_player_input.c workspace/all/player/player_input.c:"
 	"launcher_state_test:tests/unit/all/launcher/test_launcher_state.c workspace/all/launcher/launcher_state.c workspace/all/common/stb_ds_impl.c:"
 	"player_menu_test:tests/unit/all/player/test_player_menu.c workspace/all/player/player_context.c tests/support/menu_state_stub.c tests/support/sdl_fakes.c workspace/all/common/utils.c workspace/all/common/nointro_parser.c workspace/all/common/log.c:-I tests/support/SDL -I workspace/all/player/libretro-common/include -I tests/vendor/fff -D_DEFAULT_SOURCE"

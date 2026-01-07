@@ -55,6 +55,9 @@
 #define CPU_PANIC_GRACE_FRAMES 60 // Frames to ignore underruns after freq change (~1s at 60fps)
 #define CPU_PANIC_GRACE_MAX_UNDERRUNS 5 // Max underruns during grace before panic anyway
 #define CPU_STABILITY_DECAY_WINDOWS 8 // Stable windows before decaying panic counts (~4s)
+#define CPU_AUDIO_CLOCK_REDUCE_WINDOWS                                                             \
+	8 // Windows before reduce in audio-clock mode (~4s)                                           \
+	    // Higher than normal (4) since util metrics are unreliable
 #define CPU_DEFAULT_MIN_BUFFER_FOR_REDUCE 40 // Min audio buffer % to allow reduce
 
 /**

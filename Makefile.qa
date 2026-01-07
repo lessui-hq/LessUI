@@ -236,7 +236,7 @@ TEST_UNITY = tests/vendor/unity/unity.c
 PATHS_STUB = tests/support/paths_stub.c
 
 # All test executables (built from tests/unit/ and tests/integration/)
-TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/gfx_text_test tests/audio_resampler_test tests/player_paths_test tests/launcher_utils_test tests/m3u_parser_test tests/launcher_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/effect_generate_test tests/player_utils_test tests/player_config_test tests/player_options_test tests/platform_variant_test tests/launcher_entry_test tests/directory_index_test tests/player_archive_test tests/player_memory_test tests/player_state_test tests/launcher_launcher_test tests/cpu_test tests/player_input_test tests/launcher_state_test tests/player_menu_test tests/player_env_test tests/player_game_test tests/player_scaler_test tests/player_core_test tests/launcher_directory_test tests/launcher_navigation_test tests/launcher_thumbnail_test tests/launcher_context_test tests/emu_cache_test tests/res_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/frame_pacer_test
+TEST_EXECUTABLES = tests/utils_test tests/nointro_parser_test tests/pad_test tests/gfx_text_test tests/audio_resampler_test tests/player_paths_test tests/launcher_utils_test tests/m3u_parser_test tests/launcher_file_utils_test tests/map_parser_test tests/collection_parser_test tests/recent_parser_test tests/recent_writer_test tests/recent_runtime_test tests/directory_utils_test tests/binary_file_utils_test tests/ui_layout_test tests/str_compare_test tests/effect_system_test tests/effect_generate_test tests/player_utils_test tests/player_config_test tests/player_options_test tests/platform_variant_test tests/launcher_entry_test tests/directory_index_test tests/player_archive_test tests/player_memory_test tests/player_state_test tests/launcher_launcher_test tests/cpu_test tests/player_input_test tests/launcher_state_test tests/player_menu_test tests/player_env_test tests/player_game_test tests/player_scaler_test tests/player_core_test tests/launcher_directory_test tests/launcher_navigation_test tests/launcher_thumbnail_test tests/launcher_context_test tests/emu_cache_test tests/res_cache_test tests/render_common_test tests/integration_workflows_test tests/log_test tests/sync_manager_test
 
 # Default targets: use Docker for consistency
 test: docker-test
@@ -413,9 +413,10 @@ tests/cpu_test: tests/unit/all/common/test_cpu.c workspace/all/common/cpu.c $(TE
 	@echo "Building CPU scaling tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS)
 
-# Build frame pacing tests (pure algorithm, no external dependencies)
-tests/frame_pacer_test: tests/unit/all/player/test_frame_pacer.c workspace/all/player/frame_pacer.c $(TEST_UNITY)
-	@echo "Building frame pacer tests..."
+# Build sync manager tests (vsync measurement and mode switching)
+# Note: Uses test stub for getMicroseconds, not utils.c version
+tests/sync_manager_test: tests/unit/all/player/test_sync_manager.c workspace/all/player/sync_manager.c workspace/all/common/log.c $(TEST_UNITY)
+	@echo "Building sync manager tests..."
 	@$(CC) -o $@ $^ $(TEST_INCLUDES) $(TEST_CFLAGS) -lm
 
 # Build input handling tests (pure state queries and mapping lookups)

@@ -31,7 +31,7 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          player_video_convert.c player_rotation.c player_config.c player_context.c \
          player_menu.c player_env.c player_game.c player_scaler.c player_core.c \
          ../common/gl_video.c \
-         frame_pacer.c \
+         sync_manager.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
