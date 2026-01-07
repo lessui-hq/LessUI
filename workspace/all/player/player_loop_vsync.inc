@@ -117,6 +117,9 @@ static void run_main_loop(void) {
 			frame_ready_for_flip = 0;
 		}
 
+		// Record vsync timing for Hz measurement (must be right after present)
+		FramePacer_recordVsync(&frame_pacer);
+
 		// Track performance (only once per vsync, not per FF run)
 		limitFF();
 		trackFPS();

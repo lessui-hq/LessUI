@@ -12,10 +12,22 @@
 
 #include "unity.h"
 #include "frame_pacer.h"
+#include <stdarg.h>
 
 // Stub for PLAT_getDisplayHz - not tested here, just needed for linking
 double PLAT_getDisplayHz(void) {
 	return 60.0;
+}
+
+// Stub for getMicroseconds - returns incrementing time for vsync measurement tests
+static uint64_t mock_time_us = 0;
+uint64_t getMicroseconds(void) {
+	return mock_time_us;
+}
+
+// Stub for LOG_info - just suppress output during tests
+void LOG_info(const char* fmt, ...) {
+	(void)fmt;
 }
 
 // Q16.16 scale factor for test assertions
@@ -31,6 +43,8 @@ static FramePacer pacer;
 void setUp(void) {
 	// Fresh pacer for each test
 	FramePacer_init(&pacer, 60.0, 60.0);
+	// Reset mock time to non-zero (recordVsync checks last_vsync_time > 0)
+	mock_time_us = 1000000; // Start at 1 second
 }
 
 void tearDown(void) {
@@ -58,17 +72,17 @@ void test_init_5994fps_60hz_direct_mode(void) {
 	TEST_ASSERT_TRUE(pacer.direct_mode);
 }
 
-void test_init_60fps_61hz_direct_mode(void) {
-	// 60fps @ 61Hz = 1.6% diff → direct mode (within 2% tolerance)
+void test_init_60fps_60_5hz_direct_mode(void) {
+	// 60fps @ 60.5Hz = 0.83% diff → direct mode (within 1% tolerance)
 	// This is the kind of hardware variance audio rate control can handle
-	FramePacer_init(&pacer, 60.0, 61.0);
+	FramePacer_init(&pacer, 60.0, 60.5);
 
 	TEST_ASSERT_TRUE(pacer.direct_mode);
 }
 
-void test_init_60fps_63hz_paced_mode(void) {
-	// 60fps @ 63Hz = 4.8% diff → paced mode (outside 2% tolerance)
-	FramePacer_init(&pacer, 60.0, 63.0);
+void test_init_60fps_61hz_paced_mode(void) {
+	// 60fps @ 61Hz = 1.6% diff → paced mode (outside 1% tolerance)
+	FramePacer_init(&pacer, 60.0, 61.0);
 
 	TEST_ASSERT_FALSE(pacer.direct_mode);
 }
@@ -339,6 +353,128 @@ void test_reset_preserves_settings(void) {
 }
 
 ///////////////////////////////
+// Vsync Measurement Tests
+///////////////////////////////
+
+void test_vsync_measurement_not_stable_initially(void) {
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	TEST_ASSERT_FALSE(FramePacer_isMeasurementStable(&pacer));
+	// getMeasuredHz returns 0 when not stable
+	double hz = FramePacer_getMeasuredHz(&pacer);
+	TEST_ASSERT_TRUE(hz == 0.0);
+}
+
+void test_vsync_measurement_accumulates_samples(void) {
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	// First call just sets baseline, doesn't count as sample
+	FramePacer_recordVsync(&pacer);
+
+	// Simulate 60Hz vsync (16667µs intervals)
+	for (int i = 0; i < 50; i++) {
+		mock_time_us += 16667; // ~60Hz
+		FramePacer_recordVsync(&pacer);
+	}
+
+	// Should have samples but not stable yet (need 120)
+	TEST_ASSERT_FALSE(FramePacer_isMeasurementStable(&pacer));
+	TEST_ASSERT_EQUAL(50, pacer.vsync_samples);
+}
+
+// Helper to check if a double is within tolerance
+static int within_tolerance(double actual, double expected, double tolerance) {
+	double diff = actual - expected;
+	if (diff < 0) diff = -diff;
+	return diff <= tolerance;
+}
+
+void test_vsync_measurement_becomes_stable(void) {
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	// First call sets baseline
+	FramePacer_recordVsync(&pacer);
+
+	// Simulate 60Hz vsync (16667µs intervals) for warmup period
+	for (int i = 0; i < FRAME_PACER_VSYNC_WARMUP + 10; i++) {
+		mock_time_us += 16667;
+		FramePacer_recordVsync(&pacer);
+	}
+
+	TEST_ASSERT_TRUE(FramePacer_isMeasurementStable(&pacer));
+	// Should be approximately 60Hz (within 0.5Hz)
+	double measured = FramePacer_getMeasuredHz(&pacer);
+	TEST_ASSERT_TRUE(within_tolerance(measured, 60.0, 0.5));
+}
+
+void test_vsync_measurement_detects_higher_hz(void) {
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	// First call sets baseline
+	FramePacer_recordVsync(&pacer);
+
+	// Simulate 60.05Hz vsync (16653µs intervals instead of 16667µs)
+	for (int i = 0; i < FRAME_PACER_VSYNC_WARMUP + 10; i++) {
+		mock_time_us += 16653; // ~60.05Hz
+		FramePacer_recordVsync(&pacer);
+	}
+
+	TEST_ASSERT_TRUE(FramePacer_isMeasurementStable(&pacer));
+	double measured = FramePacer_getMeasuredHz(&pacer);
+	// Should be approximately 60.05Hz (within 0.1Hz)
+	TEST_ASSERT_TRUE(within_tolerance(measured, 60.05, 0.1));
+}
+
+void test_vsync_measurement_rejects_outliers(void) {
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	// First call sets baseline
+	FramePacer_recordVsync(&pacer);
+
+	// Simulate normal 60Hz vsync
+	for (int i = 0; i < 50; i++) {
+		mock_time_us += 16667;
+		FramePacer_recordVsync(&pacer);
+	}
+	int samples_before = pacer.vsync_samples;
+
+	// Simulate a frame drop (long interval = low Hz, rejected)
+	mock_time_us += 50000; // ~20Hz, should be rejected
+	FramePacer_recordVsync(&pacer);
+
+	// Sample count should not have increased (outlier rejected)
+	TEST_ASSERT_EQUAL(samples_before, pacer.vsync_samples);
+
+	// Simulate a fast frame (very short interval = high Hz, rejected)
+	mock_time_us += 5000; // ~200Hz, should be rejected
+	FramePacer_recordVsync(&pacer);
+
+	// Sample count should still not have increased
+	TEST_ASSERT_EQUAL(samples_before, pacer.vsync_samples);
+}
+
+void test_vsync_measurement_reinits_pacer_when_hz_differs(void) {
+	// Start with reported 60Hz but actual 60.05Hz
+	FramePacer_init(&pacer, 60.0, 60.0);
+
+	// Originally in direct mode (60fps @ 60Hz)
+	TEST_ASSERT_TRUE(pacer.direct_mode);
+
+	// First call sets baseline
+	FramePacer_recordVsync(&pacer);
+
+	// Simulate 60.05Hz vsync for warmup period
+	for (int i = 0; i < FRAME_PACER_VSYNC_WARMUP + 10; i++) {
+		mock_time_us += 16653; // ~60.05Hz
+		FramePacer_recordVsync(&pacer);
+	}
+
+	// After measurement, display_hz_q16 should be updated to ~60.05 (within 0.1Hz)
+	double updated_hz = pacer.display_hz_q16 / (double)Q16_SCALE;
+	TEST_ASSERT_TRUE(within_tolerance(updated_hz, 60.05, 0.1));
+}
+
+///////////////////////////////
 // Test Runner
 ///////////////////////////////
 
@@ -348,8 +484,8 @@ int main(void) {
 	// Initialization and tolerance tests
 	RUN_TEST(test_init_60fps_60hz_direct_mode);
 	RUN_TEST(test_init_5994fps_60hz_direct_mode);
-	RUN_TEST(test_init_60fps_61hz_direct_mode);   // within 2% tolerance
-	RUN_TEST(test_init_60fps_63hz_paced_mode);    // outside 2% tolerance
+	RUN_TEST(test_init_60fps_60_5hz_direct_mode); // within 1% tolerance
+	RUN_TEST(test_init_60fps_61hz_paced_mode);    // outside 1% tolerance
 	RUN_TEST(test_init_60fps_72hz_paced_mode);
 	RUN_TEST(test_init_50fps_60hz_paced_mode);
 	RUN_TEST(test_init_30fps_60hz_paced_mode);
@@ -380,6 +516,14 @@ int main(void) {
 	RUN_TEST(test_reset_to_display_hz);
 	RUN_TEST(test_reset_ensures_next_step);
 	RUN_TEST(test_reset_preserves_settings);
+
+	// Vsync measurement
+	RUN_TEST(test_vsync_measurement_not_stable_initially);
+	RUN_TEST(test_vsync_measurement_accumulates_samples);
+	RUN_TEST(test_vsync_measurement_becomes_stable);
+	RUN_TEST(test_vsync_measurement_detects_higher_hz);
+	RUN_TEST(test_vsync_measurement_rejects_outliers);
+	RUN_TEST(test_vsync_measurement_reinits_pacer_when_hz_differs);
 
 	return UNITY_END();
 }
