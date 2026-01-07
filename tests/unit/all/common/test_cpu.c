@@ -9,8 +9,11 @@
  * - Granular vs fallback modes
  * - Frame timing percentile calculation
  * - Single-frequency/scaling-disabled scenarios (M17-like devices)
+ * - Grace period after frequency changes (prevents cascade panics)
+ * - Stability decay (earns back blocked frequencies over time)
+ * - Step-by-1 behavior for predictable scaling
  *
- * 46 tests organized by functionality.
+ * 100 tests organized by functionality.
  */
 
 #include "unity.h"
@@ -96,6 +99,8 @@ void test_initConfig_sets_defaults(void) {
 	TEST_ASSERT_LESS_OR_EQUAL(100, c.target_util);
 	TEST_ASSERT_GREATER_THAN(0, c.max_step_down);
 	TEST_ASSERT_GREATER_THAN(0, c.panic_step_up);
+	TEST_ASSERT_GREATER_THAN(0, c.min_buffer_for_reduce); // Must have a minimum buffer level
+	TEST_ASSERT_LESS_OR_EQUAL(100, c.min_buffer_for_reduce);
 }
 
 void test_initState_zeros_state(void) {
@@ -454,7 +459,7 @@ void test_getModeName_null(void) {
 
 void test_update_skips_during_fast_forward(void) {
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, true, false, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, true, false, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, result.decision);
@@ -462,7 +467,7 @@ void test_update_skips_during_fast_forward(void) {
 
 void test_update_skips_during_menu(void) {
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, true, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, true, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 }
@@ -471,7 +476,7 @@ void test_update_skips_during_grace_period(void) {
 	config.startup_grace = 300;
 	state.startup_frames = 100; // Not yet at grace period
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(101, state.startup_frames); // Incremented
@@ -493,7 +498,7 @@ void test_update_skips_when_scaling_disabled(void) {
 	}
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, result.decision);
@@ -506,7 +511,7 @@ void test_update_skips_when_no_frequencies(void) {
 	TEST_ASSERT_EQUAL(1, state.scaling_disabled);
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_SKIP, decision);
 }
@@ -524,10 +529,10 @@ void test_update_panic_on_underrun_granular(void) {
 	state.last_underrun = 0;
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 1, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
-	TEST_ASSERT_EQUAL(3, state.target_index); // Boosted by panic_step_up=2 (1+2=3)
+	TEST_ASSERT_EQUAL(2, state.target_index); // Boosted by panic_step_up=1 (1+1=2)
 	TEST_ASSERT_EQUAL(8, state.panic_cooldown);
 }
 
@@ -539,10 +544,10 @@ void test_update_panic_on_underrun_fallback(void) {
 	state.last_underrun = 0;
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 1, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
-	TEST_ASSERT_EQUAL(2, state.target_level); // Boosted to max
+	TEST_ASSERT_EQUAL(1, state.target_level); // Boosted by panic_step_up=1 (0+1=1)
 }
 
 void test_update_no_panic_when_at_max(void) {
@@ -552,7 +557,7 @@ void test_update_no_panic_when_at_max(void) {
 	state.target_index = 3; // Already at max
 	state.last_underrun = 0;
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 1, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
 
 	// Should not panic, just update underrun tracking
 	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
@@ -569,7 +574,7 @@ void test_update_waits_for_full_window(void) {
 	state.startup_frames = config.startup_grace;
 	state.frame_count = 10; // Not yet at window_frames (30)
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(11, state.frame_count); // Incremented
@@ -594,7 +599,7 @@ void test_update_boost_on_high_util_granular(void) {
 	}
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_TRUE(state.target_index > 1); // Moved up
@@ -616,7 +621,7 @@ void test_update_reduce_on_low_util_granular(void) {
 	}
 
 	CPUResult result;
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, &result);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, &result);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_TRUE(state.target_index < 3); // Moved down
@@ -636,7 +641,7 @@ void test_update_no_reduce_during_cooldown(void) {
 		CPU_recordFrameTime(&state, 6667); // Low util
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	// Should NOT reduce due to cooldown
 	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
@@ -656,7 +661,7 @@ void test_update_boost_fallback_mode(void) {
 		CPU_recordFrameTime(&state, 15000);
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
@@ -674,7 +679,7 @@ void test_update_reduce_fallback_mode(void) {
 		CPU_recordFrameTime(&state, 6667);
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_EQUAL(1, state.target_level);
@@ -695,11 +700,87 @@ void test_update_sweet_spot_resets_counters(void) {
 		CPU_recordFrameTime(&state, 11667); // ~70% of 16667
 	}
 
-	CPU_update(&state, &config, false, false, 0, NULL);
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	// Counters should be reset
 	TEST_ASSERT_EQUAL(0, state.high_util_windows);
 	TEST_ASSERT_EQUAL(0, state.low_util_windows);
+}
+
+void test_update_reduce_blocked_by_low_buffer(void) {
+	// Setup: granular mode at high frequency, ready to reduce
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 3;
+	state.current_index = 3;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Add low utilization frame times (would normally trigger reduce)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 6667); // Low util
+	}
+
+	// Pass buffer_fill below threshold (default is 40)
+	unsigned low_buffer = config.min_buffer_for_reduce - 1;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, low_buffer, NULL);
+
+	// Should NOT reduce because buffer is too low
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(3, state.target_index); // Still at max frequency
+
+	// low_util_windows should have incremented but no reduce happened
+	TEST_ASSERT_EQUAL(config.reduce_windows, state.low_util_windows);
+}
+
+void test_update_reduce_allowed_with_healthy_buffer(void) {
+	// Same setup as above
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 3;
+	state.current_index = 3;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 6667); // Low util
+	}
+
+	// Pass buffer_fill at threshold (default is 40)
+	unsigned healthy_buffer = config.min_buffer_for_reduce;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, healthy_buffer, NULL);
+
+	// Should reduce because buffer is healthy
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_EQUAL(2, state.target_index); // Reduced from 3 to 2
+}
+
+void test_update_reduce_no_grace_period(void) {
+	// Setup: ready to reduce
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 3;
+	state.current_index = 3;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 6667); // Low util
+	}
+
+	// Healthy buffer so reduce should happen
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
+
+	// Verify NO grace period was set (unlike boost which sets grace)
+	TEST_ASSERT_EQUAL(0, state.panic_grace);
 }
 
 ///////////////////////////////
@@ -971,7 +1052,7 @@ void test_update_topology_boost_increments_state(void) {
 		CPU_recordFrameTime(&state, 15000); // ~90%
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_BOOST, decision);
 	TEST_ASSERT_EQUAL(3, state.target_state);
@@ -993,8 +1074,58 @@ void test_update_topology_reduce_decrements_state(void) {
 		CPU_recordFrameTime(&state, 6667); // ~40%
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
+	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
+	TEST_ASSERT_LESS_THAN(4, state.target_state);
+}
+
+void test_update_topology_reduce_blocked_by_low_buffer(void) {
+	setup_dual_cluster_topology(&state);
+	CPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 4;
+	state.current_state = 4;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Low utilization frames (<55%)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 6667); // ~40%
+	}
+
+	// Buffer below threshold
+	unsigned low_buffer = config.min_buffer_for_reduce - 1;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, low_buffer, NULL);
+
+	// Should NOT reduce because buffer is too low
+	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
+	TEST_ASSERT_EQUAL(4, state.target_state); // Still at original state
+}
+
+void test_update_topology_reduce_allowed_with_healthy_buffer(void) {
+	setup_dual_cluster_topology(&state);
+	CPU_buildPerfStates(&state, &config);
+
+	state.startup_frames = config.startup_grace;
+	state.target_state = 4;
+	state.current_state = 4;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Low utilization frames (<55%)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 6667); // ~40%
+	}
+
+	// Buffer at threshold
+	unsigned healthy_buffer = config.min_buffer_for_reduce;
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, healthy_buffer, NULL);
+
+	// Should reduce because buffer is healthy
 	TEST_ASSERT_EQUAL(CPU_DECISION_REDUCE, decision);
 	TEST_ASSERT_LESS_THAN(4, state.target_state);
 }
@@ -1009,7 +1140,7 @@ void test_update_topology_panic_jumps_states(void) {
 	state.last_underrun = 0;
 
 	// Underrun detected
-	CPUDecision decision = CPU_update(&state, &config, false, false, 1, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
 	TEST_ASSERT_GREATER_THAN(1, state.target_state);
@@ -1031,7 +1162,7 @@ void test_update_topology_no_boost_at_max_state(void) {
 		CPU_recordFrameTime(&state, 15000);
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(5, state.target_state);
@@ -1053,10 +1184,410 @@ void test_update_topology_no_reduce_at_min_state(void) {
 		CPU_recordFrameTime(&state, 6667);
 	}
 
-	CPUDecision decision = CPU_update(&state, &config, false, false, 0, NULL);
+	CPUDecision decision = CPU_update(&state, &config, false, false, 0, 100, NULL);
 
 	TEST_ASSERT_EQUAL(CPU_DECISION_NONE, decision);
 	TEST_ASSERT_EQUAL(0, state.target_state);
+}
+
+///////////////////////////////
+// Grace Period Tests
+///////////////////////////////
+
+void test_panic_grace_ignores_underruns(void) {
+	// Setup: granular mode with grace period active
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 30; // Grace period active
+
+	// Underrun occurs during grace period
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Should NOT panic - grace period protects
+	TEST_ASSERT_NOT_EQUAL(CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(1, state.target_index); // Unchanged
+}
+
+void test_panic_grace_allows_panic_when_expired(void) {
+	// Setup: granular mode with grace period expired
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 0; // Grace period expired
+
+	// Underrun occurs after grace period
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Should panic normally
+	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(2, state.target_index); // Boosted by 1
+}
+
+void test_panic_sets_grace_period(void) {
+	// Setup: granular mode
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 0;
+
+	// Trigger panic
+	CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Grace period should be set
+	TEST_ASSERT_EQUAL(CPU_PANIC_GRACE_FRAMES, state.panic_grace);
+}
+
+void test_panic_resets_stability_streak(void) {
+	// Setup: granular mode with stability streak
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 0;
+	state.stability_streak = 5; // Had some stability
+
+	// Trigger panic
+	CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Stability streak should be reset
+	TEST_ASSERT_EQUAL(0, state.stability_streak);
+}
+
+void test_panic_grace_decrements_each_update(void) {
+	// Setup: granular mode with grace period
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 3;
+	state.panic_grace = 10;
+
+	// Call update (no underrun, not completing a window)
+	state.frame_count = 0;
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Grace should decrement
+	TEST_ASSERT_EQUAL(9, state.panic_grace);
+}
+
+void test_panic_grace_topology_mode(void) {
+	// Setup: topology mode with grace period active
+	setup_dual_cluster_topology(&state);
+	CPU_buildPerfStates(&state, &config);
+	state.startup_frames = config.startup_grace;
+	state.target_state = 1;
+	state.current_state = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 30; // Grace period active
+
+	// Underrun occurs during grace period
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Should NOT panic
+	TEST_ASSERT_NOT_EQUAL(CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(1, state.target_state); // Unchanged
+}
+
+void test_grace_underruns_tracked_during_grace(void) {
+	// Setup: granular mode with grace period active
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 30;
+	state.grace_underruns = 0;
+
+	// Underrun occurs during grace period
+	CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Grace underruns should be tracked
+	TEST_ASSERT_EQUAL(1, state.grace_underruns);
+}
+
+void test_grace_period_override_on_max_underruns(void) {
+	// Setup: granular mode with grace period active but near max underruns
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 30; // Grace period still active
+	state.grace_underruns = CPU_PANIC_GRACE_MAX_UNDERRUNS - 1; // One more triggers override
+
+	// Underrun occurs - should exceed max and trigger panic despite grace
+	CPUDecision decision = CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Should PANIC despite grace period (catastrophic failure override)
+	TEST_ASSERT_EQUAL(CPU_DECISION_PANIC, decision);
+	TEST_ASSERT_EQUAL(2, state.target_index); // Boosted
+}
+
+void test_grace_underruns_reset_on_panic(void) {
+	// Setup: granular mode, trigger a panic
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 0; // No grace period
+	state.grace_underruns = 3; // Some accumulated
+
+	// Underrun occurs - triggers panic
+	CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Grace underruns should be reset (along with grace period being set)
+	TEST_ASSERT_EQUAL(0, state.grace_underruns);
+	TEST_ASSERT_EQUAL(CPU_PANIC_GRACE_FRAMES, state.panic_grace);
+}
+
+void test_stability_decay_does_not_affect_lower_frequencies(void) {
+	// Setup: stable at 800MHz (index 2), 400MHz (index 0) is blocked
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 2; // At 800MHz
+
+	// Block 400MHz
+	state.panic_count[0] = CPU_PANIC_THRESHOLD;
+	state.stability_streak = CPU_STABILITY_DECAY_WINDOWS - 1;
+	state.frame_count = config.window_frames - 1;
+
+	// Complete a stable window
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 10000);
+	}
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// 400MHz should still be blocked (below current, not decayed)
+	TEST_ASSERT_EQUAL(CPU_PANIC_THRESHOLD, state.panic_count[0]);
+}
+
+///////////////////////////////
+// Stability Decay Tests
+///////////////////////////////
+
+void test_stability_streak_increments_on_stable_window(void) {
+	// Setup: granular mode, complete a window without panic
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 3;
+	state.frame_count = config.window_frames - 1;
+	state.stability_streak = 0;
+
+	// Add frame times for a complete window (low util, sweet spot)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 10000); // ~60% - in sweet spot
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Stability streak should increment
+	TEST_ASSERT_EQUAL(1, state.stability_streak);
+}
+
+void test_stability_decay_after_threshold_windows(void) {
+	// Setup: granular mode with panic counts at index 1 (600MHz)
+	// Stability at 600MHz should decay 600/800/1000 but NOT 400MHz
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1; // At 600MHz
+	state.frame_count = config.window_frames - 1;
+	state.stability_streak = CPU_STABILITY_DECAY_WINDOWS - 1; // One more for decay
+
+	// Set panic counts: below, at, and above current index
+	state.panic_count[0] = 2; // Below current - should NOT decay
+	state.panic_count[1] = 2; // At current - should decay
+	state.panic_count[2] = 1; // Above current - should decay
+	state.panic_count[3] = 0; // Above current - stays 0
+
+	// Add frame times for stable window
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 10000); // ~60%
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Only current index and above should decay
+	TEST_ASSERT_EQUAL(2, state.panic_count[0]); // Below - unchanged
+	TEST_ASSERT_EQUAL(1, state.panic_count[1]); // At current: 2 -> 1
+	TEST_ASSERT_EQUAL(0, state.panic_count[2]); // Above: 1 -> 0
+	TEST_ASSERT_EQUAL(0, state.panic_count[3]); // Above: stays 0
+	// Stability streak should reset after decay
+	TEST_ASSERT_EQUAL(0, state.stability_streak);
+}
+
+void test_stability_decay_unblocks_frequency(void) {
+	// Setup: frequency 1 (600MHz) is blocked, we're stable at that frequency
+	// Only being stable AT a frequency can unblock it (not being stable above it)
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1; // At 600MHz - same as blocked frequency
+
+	// Block frequency 1 (panic_count at threshold)
+	state.panic_count[1] = CPU_PANIC_THRESHOLD;
+
+	// Run enough stable windows to decay
+	state.frame_budget_us = 16667;
+	for (int w = 0; w < CPU_PANIC_THRESHOLD; w++) {
+		// Each iteration: reach decay threshold, then check
+		for (int s = 0; s < CPU_STABILITY_DECAY_WINDOWS; s++) {
+			state.frame_count = config.window_frames - 1;
+			for (int i = 0; i < 30; i++) {
+				CPU_recordFrameTime(&state, 10000);
+			}
+			CPU_update(&state, &config, false, false, 0, 100, NULL);
+		}
+	}
+
+	// After enough decays, frequency should be unblocked
+	TEST_ASSERT_LESS_THAN(CPU_PANIC_THRESHOLD, state.panic_count[1]);
+}
+
+void test_no_stability_increment_during_panic(void) {
+	// Setup: a panic happens this frame
+	int freqs[] = {400000, 600000, 800000, 1000000};
+	CPU_detectFrequencies(&state, &config, freqs, 4);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.last_underrun = 0;
+	state.panic_grace = 0;
+	state.stability_streak = 3;
+
+	// Panic happens
+	CPU_update(&state, &config, false, false, 1, 100, NULL);
+
+	// Stability streak should be reset, not incremented
+	TEST_ASSERT_EQUAL(0, state.stability_streak);
+}
+
+///////////////////////////////
+// Step-by-1 Tests
+///////////////////////////////
+
+void test_panic_step_default_is_one(void) {
+	CPUConfig cfg;
+	CPU_initConfig(&cfg);
+
+	TEST_ASSERT_EQUAL(1, cfg.panic_step_up);
+}
+
+void test_granular_boost_steps_by_one(void) {
+	// Setup: granular mode, ready to boost
+	int freqs[] = {400000, 600000, 800000, 1000000, 1200000};
+	CPU_detectFrequencies(&state, &config, freqs, 5);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1; // At 600MHz
+	state.frame_count = config.window_frames - 1;
+	state.high_util_windows = config.boost_windows - 1;
+
+	// High utilization (would predict big jump with old algorithm)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 16000); // ~96% - would have jumped more before
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Should only step by 1
+	TEST_ASSERT_EQUAL(2, state.target_index); // 1 -> 2, not 1 -> 4
+}
+
+void test_granular_boost_extreme_util_still_steps_by_one(void) {
+	// Setup: granular mode at lowest freq, ready to boost
+	int freqs[] = {400000, 600000, 800000, 1000000, 1200000};
+	CPU_detectFrequencies(&state, &config, freqs, 5);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 0; // At 400MHz (lowest)
+	state.frame_count = config.window_frames - 1;
+	state.high_util_windows = config.boost_windows - 1;
+
+	// Extreme utilization - 200% would predict 400*200/70 = 1142MHz (index 4)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 33334); // 200% utilization
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Should only step by 1 even with extreme utilization
+	TEST_ASSERT_EQUAL(1, state.target_index); // 0 -> 1, NOT 0 -> 4
+}
+
+void test_granular_boost_sets_grace_period(void) {
+	// Setup: granular mode, ready to boost
+	int freqs[] = {400000, 600000, 800000, 1000000, 1200000};
+	CPU_detectFrequencies(&state, &config, freqs, 5);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 1;
+	state.frame_count = config.window_frames - 1;
+	state.high_util_windows = config.boost_windows - 1;
+	state.panic_grace = 0;
+
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 15000); // 90% utilization
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Boost should set grace period
+	TEST_ASSERT_EQUAL(CPU_PANIC_GRACE_FRAMES, state.panic_grace);
+}
+
+void test_granular_reduce_no_grace_period(void) {
+	// Setup: granular mode, ready to reduce
+	int freqs[] = {400000, 600000, 800000, 1000000, 1200000};
+	CPU_detectFrequencies(&state, &config, freqs, 5);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 4;
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+	state.panic_grace = 0;
+
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 5000); // 30% utilization
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Reduce should NOT set grace period (if we underrun, frequency is too slow)
+	TEST_ASSERT_EQUAL(0, state.panic_grace);
+}
+
+void test_granular_reduce_steps_by_one(void) {
+	// Setup: granular mode, ready to reduce
+	int freqs[] = {400000, 600000, 800000, 1000000, 1200000};
+	CPU_detectFrequencies(&state, &config, freqs, 5);
+	state.startup_frames = config.startup_grace;
+	state.target_index = 4; // At 1200MHz
+	state.frame_count = config.window_frames - 1;
+	state.low_util_windows = config.reduce_windows - 1;
+
+	// Low utilization (would predict big drop with old algorithm)
+	state.frame_budget_us = 16667;
+	for (int i = 0; i < 30; i++) {
+		CPU_recordFrameTime(&state, 3333); // ~20% - would have dropped more before
+	}
+
+	CPU_update(&state, &config, false, false, 0, 100, NULL);
+
+	// Should only step by 1
+	TEST_ASSERT_EQUAL(3, state.target_index); // 4 -> 3, not 4 -> 0
 }
 
 ///////////////////////////////
@@ -1149,6 +1680,9 @@ int main(void) {
 	RUN_TEST(test_update_boost_fallback_mode);
 	RUN_TEST(test_update_reduce_fallback_mode);
 	RUN_TEST(test_update_sweet_spot_resets_counters);
+	RUN_TEST(test_update_reduce_blocked_by_low_buffer);
+	RUN_TEST(test_update_reduce_allowed_with_healthy_buffer);
+	RUN_TEST(test_update_reduce_no_grace_period);
 
 	// Topology - initialization
 	RUN_TEST(test_initTopology_zeros_topology);
@@ -1183,9 +1717,37 @@ int main(void) {
 	// Topology - update decisions
 	RUN_TEST(test_update_topology_boost_increments_state);
 	RUN_TEST(test_update_topology_reduce_decrements_state);
+	RUN_TEST(test_update_topology_reduce_blocked_by_low_buffer);
+	RUN_TEST(test_update_topology_reduce_allowed_with_healthy_buffer);
 	RUN_TEST(test_update_topology_panic_jumps_states);
 	RUN_TEST(test_update_topology_no_boost_at_max_state);
 	RUN_TEST(test_update_topology_no_reduce_at_min_state);
+
+	// Grace period
+	RUN_TEST(test_panic_grace_ignores_underruns);
+	RUN_TEST(test_panic_grace_allows_panic_when_expired);
+	RUN_TEST(test_panic_sets_grace_period);
+	RUN_TEST(test_panic_resets_stability_streak);
+	RUN_TEST(test_panic_grace_decrements_each_update);
+	RUN_TEST(test_panic_grace_topology_mode);
+	RUN_TEST(test_grace_underruns_tracked_during_grace);
+	RUN_TEST(test_grace_period_override_on_max_underruns);
+	RUN_TEST(test_grace_underruns_reset_on_panic);
+
+	// Stability decay
+	RUN_TEST(test_stability_streak_increments_on_stable_window);
+	RUN_TEST(test_stability_decay_after_threshold_windows);
+	RUN_TEST(test_stability_decay_unblocks_frequency);
+	RUN_TEST(test_no_stability_increment_during_panic);
+	RUN_TEST(test_stability_decay_does_not_affect_lower_frequencies);
+
+	// Step-by-1 behavior
+	RUN_TEST(test_panic_step_default_is_one);
+	RUN_TEST(test_granular_boost_steps_by_one);
+	RUN_TEST(test_granular_boost_extreme_util_still_steps_by_one);
+	RUN_TEST(test_granular_boost_sets_grace_period);
+	RUN_TEST(test_granular_reduce_no_grace_period);
+	RUN_TEST(test_granular_reduce_steps_by_one);
 
 	return UNITY_END();
 }

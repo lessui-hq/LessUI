@@ -896,6 +896,7 @@ typedef struct {
 	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
 	float total_adjust; // Same as rate_adjust (no separate corrections)
 	float rate_integral; // PI controller integral term (drift correction)
+	float rate_boost; // Cubic safety boost multiplier (1.0 at center, up to 4.0 at limits)
 	float rate_control_d; // Proportional gain
 	float rate_control_ki; // Integral gain
 	float error_avg; // Smoothed error (for debugging integral behavior)

@@ -50,8 +50,12 @@
 #define CPU_DEFAULT_MIN_FREQ_KHZ 0 // No minimum (panic failsafe handles problematic freqs)
 #define CPU_DEFAULT_TARGET_UTIL 70 // Target utilization after change
 #define CPU_DEFAULT_MAX_STEP_DOWN 1 // Max frequency steps when reducing
-#define CPU_DEFAULT_PANIC_STEP_UP 2 // Frequency steps on panic (underrun)
+#define CPU_DEFAULT_PANIC_STEP_UP 1 // Frequency steps on panic (underrun)
 #define CPU_PANIC_THRESHOLD 3 // Block frequency after this many panics
+#define CPU_PANIC_GRACE_FRAMES 60 // Frames to ignore underruns after freq change (~1s at 60fps)
+#define CPU_PANIC_GRACE_MAX_UNDERRUNS 5 // Max underruns during grace before panic anyway
+#define CPU_STABILITY_DECAY_WINDOWS 8 // Stable windows before decaying panic counts (~4s)
+#define CPU_DEFAULT_MIN_BUFFER_FOR_REDUCE 40 // Min audio buffer % to allow reduce
 
 /**
  * Multi-cluster topology constants.
@@ -158,6 +162,7 @@ typedef struct {
 	unsigned int target_util; // Target utilization after frequency change
 	int max_step_down; // Max frequency steps when reducing
 	int panic_step_up; // Frequency steps on panic (underrun)
+	unsigned int min_buffer_for_reduce; // Min audio buffer % to allow reduce
 } CPUConfig;
 
 /**
@@ -198,6 +203,11 @@ typedef struct {
 
 	// Per-frequency panic tracking (failsafe for problematic frequencies)
 	int panic_count[CPU_MAX_FREQUENCIES]; // Count of panics at each frequency
+
+	// Grace period and stability tracking
+	int panic_grace; // Frames remaining where underruns are ignored after freq change
+	int grace_underruns; // Underruns accumulated during grace period
+	int stability_streak; // Consecutive windows without panic (for decay)
 
 	// Multi-cluster topology support
 	CPUTopology topology; // Detected CPU topology
@@ -289,11 +299,12 @@ void CPU_recordFrameTime(CPUState* state, uint64_t frame_time_us);
  * @param fast_forward True if fast-forwarding (skip scaling)
  * @param show_menu True if menu is showing (skip scaling)
  * @param current_underruns Current underrun count from audio
+ * @param buffer_fill_percent Current audio buffer fill (0-100)
  * @param result Optional output for detailed result info
  * @return Decision type (NONE, BOOST, REDUCE, PANIC, SKIP)
  */
 CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forward, bool show_menu,
-                       unsigned current_underruns, CPUResult* result);
+                       unsigned current_underruns, unsigned buffer_fill_percent, CPUResult* result);
 
 /**
  * Calculates the recommended frequency for a target utilization.

@@ -1171,6 +1171,9 @@ static void resetAutoCPUState(void) {
 	auto_cpu_state.startup_frames = 0;
 	auto_cpu_state.frame_time_index = 0;
 	auto_cpu_state.panic_cooldown = 0;
+	auto_cpu_state.panic_grace = 0;
+	auto_cpu_state.grace_underruns = 0;
+	auto_cpu_state.stability_streak = 0;
 
 	// Reset panic tracking (menu changes may allow lower frequencies to work)
 	memset(auto_cpu_state.panic_count, 0, sizeof(auto_cpu_state.panic_count));
@@ -1314,7 +1317,13 @@ static void updateAutoCPU(void) {
 		PWR_setThreadAffinity(pending_affinity);
 	}
 
+	// Decrement panic grace period (ignore underruns after frequency change)
+	if (auto_cpu_state.panic_grace > 0) {
+		auto_cpu_state.panic_grace--;
+	}
+
 	// Emergency: check for actual underruns (panic path)
+	// Skip if in grace period - new frequency needs time to refill audio buffer
 	unsigned underruns = SND_getUnderrunCount();
 	int max_idx = auto_cpu_state.freq_count - 1;
 	int max_state = auto_cpu_state.topology.state_count - 1;
@@ -1327,7 +1336,16 @@ static void updateAutoCPU(void) {
 		at_max = (current_level >= 2);
 	}
 
-	if (underruns > auto_cpu_state.last_underrun && !at_max) {
+	// Track underruns during grace period
+	bool underrun_detected = (underruns > auto_cpu_state.last_underrun);
+	if (underrun_detected && auto_cpu_state.panic_grace > 0) {
+		auto_cpu_state.grace_underruns++;
+	}
+
+	// Override grace period if too many underruns (catastrophic failure)
+	bool grace_exceeded = (auto_cpu_state.grace_underruns >= CPU_PANIC_GRACE_MAX_UNDERRUNS);
+
+	if (underrun_detected && !at_max && (auto_cpu_state.panic_grace == 0 || grace_exceeded)) {
 		// Underrun detected - track panic and boost
 		unsigned audio_fill = SND_getBufferOccupancy();
 
@@ -1374,8 +1392,12 @@ static void updateAutoCPU(void) {
 		}
 		auto_cpu_state.high_util_windows = 0;
 		auto_cpu_state.low_util_windows = 0;
+		auto_cpu_state.stability_streak = 0;
 		// Cooldown: wait 8 windows (~4 seconds) before allowing reduction
 		auto_cpu_state.panic_cooldown = 8;
+		// Grace period: ignore underruns while new frequency refills audio buffer
+		auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+		auto_cpu_state.grace_underruns = 0;
 		SND_resetUnderrunCount();
 		auto_cpu_state.last_underrun = 0;
 		return;
@@ -1410,6 +1432,9 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
+		// Get buffer fill for reduce decisions
+		unsigned buffer_fill = SND_getBufferOccupancy();
+
 		if (auto_cpu_state.use_topology) {
 			// Topology mode: step through PerfStates one at a time
 			// Unlike granular mode, we don't predict - just step conservatively
@@ -1429,6 +1454,8 @@ static void updateAutoCPU(void) {
 					int new_state = current_state + 1;
 					auto_cpu_setTargetState(new_state);
 					auto_cpu_state.high_util_windows = 0;
+					auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+					auto_cpu_state.grace_underruns = 0;
 					LOG_debug("Auto CPU: BOOST state %d→%d (util=%u%%)\n", current_state, new_state,
 					          util);
 				}
@@ -1437,10 +1464,11 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.low_util_windows++;
 				auto_cpu_state.high_util_windows = 0;
 
-				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				// Only reduce if: enough windows, cooldown expired, buffer healthy
 				int reduce_ok =
 				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
-				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0);
+				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0) &&
+				    (buffer_fill >= auto_cpu_config.min_buffer_for_reduce);
 
 				if (reduce_ok) {
 					// Step down by max_step_down (usually 1)
@@ -1449,8 +1477,9 @@ static void updateAutoCPU(void) {
 						new_state = 0;
 					auto_cpu_setTargetState(new_state);
 					auto_cpu_state.low_util_windows = 0;
-					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
-					          new_state, util);
+					// No grace period on reduce - if we underrun, frequency is too slow
+					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%% buf=%u%%)\n", current_state,
+					          new_state, util, buffer_fill);
 				}
 			} else {
 				// In sweet spot - reset counters
@@ -1463,9 +1492,10 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_topo >= 4) {
 				debug_window_count_topo = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% state=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_state,
-				          max_state);
+				LOG_debug(
+				    "Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% state=%d/%d\n",
+				    snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust, util,
+				    current_state, max_state);
 			}
 		} else if (auto_cpu_state.use_granular) {
 			// Granular mode: use linear performance scaling to find optimal frequency
@@ -1486,21 +1516,12 @@ static void updateAutoCPU(void) {
 
 				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
 				    current_idx < max_idx) {
-					// Find next frequency that would bring util to target (sweet spot)
-					// Using: new_util = util * (current_freq / new_freq)
-					// So: new_freq = current_freq * util / target_util
-					// No step limit - linear scaling prediction is accurate, boost aggressively
-					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
-					int new_idx = auto_cpu_findNearestIndex(needed_freq);
-
-					// Ensure we actually go higher
-					if (new_idx <= current_idx)
-						new_idx = current_idx + 1;
-					if (new_idx > max_idx)
-						new_idx = max_idx;
-
+					// Step up by 1 - simple and predictable
+					int new_idx = current_idx + 1;
 					auto_cpu_setTargetIndex(new_idx);
 					auto_cpu_state.high_util_windows = 0;
+					auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+					auto_cpu_state.grace_underruns = 0;
 					LOG_debug("Auto CPU: BOOST %d→%d kHz (util=%u%%)\n", current_freq,
 					          auto_cpu_state.frequencies[new_idx], util);
 				}
@@ -1509,49 +1530,32 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.low_util_windows++;
 				auto_cpu_state.high_util_windows = 0;
 
-				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				// Only reduce if: enough windows, cooldown expired, buffer healthy
 				int reduce_ok =
 				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
-				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0);
+				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0) &&
+				    (buffer_fill >= auto_cpu_config.min_buffer_for_reduce);
 
 				if (reduce_ok) {
-					// Find frequency that would bring util up to target (sweet spot)
-					// new_util = util * (current_freq / new_freq)
-					// new_freq = current_freq * util / target_util
-					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
-					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+					// Step down by 1 - simple and predictable
+					int new_idx = current_idx - 1;
 
-					// Ensure we actually go lower
-					if (new_idx >= current_idx)
-						new_idx = current_idx - 1;
-					if (new_idx < 0)
-						new_idx = 0;
-
-					// Limit reduction to max_step_down indices at once
-					if (current_idx - new_idx > auto_cpu_config.max_step_down) {
-						new_idx = current_idx - auto_cpu_config.max_step_down;
-					}
-
-					// Skip blocked frequencies - find first unblocked one above new_idx.
-					// Frequencies get blocked when they cause repeated panics.
+					// Skip blocked frequencies
 					while (new_idx >= 0 &&
 					       auto_cpu_state.panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
-						new_idx++;
-						if (new_idx >= current_idx) {
-							// All lower frequencies blocked - stay at current
-							break;
-						}
+						new_idx--;
 					}
 
 					// Don't reduce if no safe frequency found
-					if (new_idx >= current_idx) {
+					if (new_idx < 0) {
 						auto_cpu_state.low_util_windows = 0;
 					} else {
 						int new_freq = auto_cpu_state.frequencies[new_idx];
 						auto_cpu_setTargetIndex(new_idx);
 						auto_cpu_state.low_util_windows = 0;
-						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%%)\n", current_freq,
-						          new_freq, util);
+						// No grace period on reduce - if we underrun, frequency is too slow
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%% buf=%u%%)\n", current_freq,
+						          new_freq, util, buffer_fill);
 					}
 				}
 			} else {
@@ -1565,12 +1569,19 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
-				          current_idx, max_idx);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% freq=%dkHz "
+				          "idx=%d/%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust,
+				          util, current_freq, current_idx, max_idx);
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
+			}
+
 			if (util > auto_cpu_config.util_high) {
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
@@ -1587,9 +1598,9 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
-				          current_level);
+				LOG_debug("Auto CPU: fill=%u%% int=%.4f boost=%.2f adj=%.4f util=%u%% level=%d\n",
+				          snap.fill_pct, snap.rate_integral, snap.rate_boost, snap.total_adjust,
+				          util, current_level);
 			}
 
 			// Boost if sustained high utilization
@@ -1598,17 +1609,41 @@ static void updateAutoCPU(void) {
 				int new_level = current_level + 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+				auto_cpu_state.grace_underruns = 0;
 				LOG_debug("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
 			}
 
-			// Reduce if sustained low utilization
+			// Reduce if sustained low utilization, buffer healthy (respects panic cooldown)
 			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
-			    current_level > 0) {
+			    auto_cpu_state.panic_cooldown == 0 && current_level > 0 &&
+			    buffer_fill >= auto_cpu_config.min_buffer_for_reduce) {
 				int new_level = current_level - 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.low_util_windows = 0;
-				LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				// No grace period on reduce - if we underrun, frequency is too slow
+				LOG_debug("Auto CPU: REDUCE level %d (util=%u%% buf=%u%%)\n", new_level, util,
+				          buffer_fill);
 			}
+		}
+
+		// Track stability for panic count decay
+		// If we reached here, no panic happened during this window
+		auto_cpu_state.stability_streak++;
+		if (auto_cpu_state.stability_streak >= CPU_STABILITY_DECAY_WINDOWS) {
+			// Earned stability - decay panic counts for current freq and above only
+			// Being stable at 600MHz proves 800/1000/1200 are fine too, but not 400MHz
+			int decayed = 0;
+			for (int i = current_idx; i < auto_cpu_state.freq_count; i++) {
+				if (auto_cpu_state.panic_count[i] > 0) {
+					auto_cpu_state.panic_count[i]--;
+					decayed++;
+				}
+			}
+			if (decayed > 0) {
+				LOG_debug("Auto CPU: stability earned, decayed %d panic counts\n", decayed);
+			}
+			auto_cpu_state.stability_streak = 0;
 		}
 
 		// Reset window counter (frame times stay in ring buffer)

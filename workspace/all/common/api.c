@@ -1723,6 +1723,7 @@ static struct SND_Context {
 	float rate_integral; // PI integral term (accumulates from smoothed error)
 	float error_avg; // Smoothed error for slow integral timescale
 	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
+	float last_rate_boost; // Last computed boost (for snapshot diagnostics)
 
 	// SDL callback timing diagnostics
 	uint64_t callback_count; // Total callbacks
@@ -1901,9 +1902,22 @@ static float SND_calculateRateAdjust(void) {
 	// Fast timescale (proportional): immediate response to buffer level changes
 	float p_term = error * SND_RATE_CONTROL_D;
 
+	// Cubic safety boost: ~1.0× at center, 4× at limits
+	// Only boost proportional term - integral is a learned steady-state offset
+	// Prevents hitting 0% or 100% during integral learning or after CPU frequency resets
+	// More responsive in middle range than quartic, catches drift earlier
+	float distance = fill - 0.5f;
+	float normalized = distance * 2.0f; // -1 to +1
+	float abs_norm = normalized < 0 ? -normalized : normalized; // 0 to 1
+	float boost = 1.0f + 3.0f * (abs_norm * abs_norm * abs_norm); // 1.0 to 4.0
+	float boosted_p = p_term * boost;
+
 	// Slow timescale (integral): persistent offset learned in SND_newFrame()
-	// Integral is updated once per frame, not here (avoids N updates for N audio batches)
-	float adjustment = p_term + snd.rate_integral;
+	// Integral is NOT boosted - it's a steady-state correction, not emergency response
+	float adjustment = boosted_p + snd.rate_integral;
+
+	// Store for diagnostics
+	snd.last_rate_boost = boost;
 
 	// Invert for our resampler convention (larger ratio = fewer outputs)
 	snd.last_rate_adjust = 1.0f - adjustment;
@@ -2213,6 +2227,7 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.rate_adjust = snd.last_rate_adjust;
 	snap.total_adjust = snd.last_rate_adjust;
 	snap.rate_integral = snd.rate_integral;
+	snap.rate_boost = snd.last_rate_boost;
 	snap.rate_control_d = SND_RATE_CONTROL_D;
 	snap.rate_control_ki = SND_RATE_CONTROL_KI;
 	snap.error_avg = snd.error_avg;

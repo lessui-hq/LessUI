@@ -48,6 +48,7 @@ void CPU_initConfig(CPUConfig* config) {
 	config->target_util = CPU_DEFAULT_TARGET_UTIL;
 	config->max_step_down = CPU_DEFAULT_MAX_STEP_DOWN;
 	config->panic_step_up = CPU_DEFAULT_PANIC_STEP_UP;
+	config->min_buffer_for_reduce = CPU_DEFAULT_MIN_BUFFER_FOR_REDUCE;
 }
 
 void CPU_initState(CPUState* state) {
@@ -228,7 +229,8 @@ const char* CPU_getModeName(const CPUState* state) {
 }
 
 CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forward, bool show_menu,
-                       unsigned current_underruns, CPUResult* result) {
+                       unsigned current_underruns, unsigned buffer_fill_percent,
+                       CPUResult* result) {
 	// Initialize result if provided
 	if (result) {
 		result->decision = CPU_DECISION_NONE;
@@ -260,6 +262,11 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 		return CPU_DECISION_SKIP;
 	}
 
+	// Decrement panic grace period (ignore underruns after frequency change)
+	if (state->panic_grace > 0) {
+		state->panic_grace--;
+	}
+
 	// Get current indices based on mode
 	int current_idx = state->target_index;
 	int current_level = state->target_level;
@@ -281,8 +288,16 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 		at_max = (current_level >= 2);
 	}
 
+	// Track underruns during grace period
+	bool underrun_detected = (current_underruns > state->last_underrun);
+	if (underrun_detected && state->panic_grace > 0) {
+		state->grace_underruns++;
+	}
+
 	// Emergency: check for underruns (panic path)
-	if (current_underruns > state->last_underrun && !at_max) {
+	// Skip if in grace period UNLESS too many underruns (catastrophic failure)
+	bool grace_exceeded = (state->grace_underruns >= CPU_PANIC_GRACE_MAX_UNDERRUNS);
+	if (underrun_detected && !at_max && (state->panic_grace == 0 || grace_exceeded)) {
 		// Underrun detected - boost by panic_step_up
 		if (state->use_topology) {
 			int new_state = current_state_idx + config->panic_step_up;
@@ -315,7 +330,10 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 
 		state->high_util_windows = 0;
 		state->low_util_windows = 0;
+		state->stability_streak = 0;
 		state->panic_cooldown = 8; // ~4 seconds before allowing reduction
+		state->panic_grace = CPU_PANIC_GRACE_FRAMES; // Ignore underruns while new freq settles
+		state->grace_underruns = 0;
 		state->last_underrun = 0; // Reset after handling
 
 		return CPU_DECISION_PANIC;
@@ -395,9 +413,10 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 			state->low_util_windows++;
 			state->high_util_windows = 0;
 
-			// Only reduce if enough windows AND panic cooldown expired
+			// Only reduce if: enough windows, cooldown expired, buffer healthy
 			bool reduce_ok = (state->low_util_windows >= config->reduce_windows) &&
-			                 (state->panic_cooldown == 0) && (current_state_idx > 0);
+			                 (state->panic_cooldown == 0) && (current_state_idx > 0) &&
+			                 (buffer_fill_percent >= config->min_buffer_for_reduce);
 
 			if (reduce_ok) {
 				// Step down one state at a time
@@ -421,7 +440,6 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 		}
 	} else if (state->use_granular) {
 		// Granular mode: linear frequency scaling
-		int current_freq = state->frequencies[current_idx];
 
 		// Decrement panic cooldown
 		if (state->panic_cooldown > 0) {
@@ -434,19 +452,15 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 			state->low_util_windows = 0;
 
 			if (state->high_util_windows >= config->boost_windows && current_idx < max_idx) {
-				// Predict optimal frequency using linear scaling
-				int needed_freq = CPU_predictFrequency(current_freq, util, config->target_util);
-				int new_idx =
-				    CPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
-
-				// Ensure we actually go higher
-				if (new_idx <= current_idx)
-					new_idx = current_idx + 1;
+				// Step up by 1 - simple and predictable
+				int new_idx = current_idx + 1;
 				if (new_idx > max_idx)
 					new_idx = max_idx;
 
 				state->target_index = new_idx;
 				state->high_util_windows = 0;
+				state->panic_grace = CPU_PANIC_GRACE_FRAMES;
+				state->grace_underruns = 0;
 				decision = CPU_DECISION_BOOST;
 
 				if (result) {
@@ -459,34 +473,30 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 			state->low_util_windows++;
 			state->high_util_windows = 0;
 
-			// Only reduce if enough windows AND panic cooldown expired
+			// Only reduce if: enough windows, panic cooldown expired, buffer healthy
 			bool reduce_ok = (state->low_util_windows >= config->reduce_windows) &&
-			                 (state->panic_cooldown == 0) && (current_idx > 0);
+			                 (state->panic_cooldown == 0) && (current_idx > 0) &&
+			                 (buffer_fill_percent >= config->min_buffer_for_reduce);
 
 			if (reduce_ok) {
-				// Predict lower frequency
-				int needed_freq = CPU_predictFrequency(current_freq, util, config->target_util);
-				int new_idx =
-				    CPU_findNearestIndex(state->frequencies, state->freq_count, needed_freq);
+				// Step down by 1 - simple and predictable
+				int new_idx = current_idx - 1;
 
-				// Ensure we actually go lower
-				if (new_idx >= current_idx)
-					new_idx = current_idx - 1;
-				if (new_idx < 0)
-					new_idx = 0;
-
-				// Limit reduction to max_step_down
-				if (current_idx - new_idx > config->max_step_down) {
-					new_idx = current_idx - config->max_step_down;
+				// Skip blocked frequencies
+				while (new_idx >= 0 && state->panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
+					new_idx--;
 				}
 
-				state->target_index = new_idx;
-				state->low_util_windows = 0;
-				decision = CPU_DECISION_REDUCE;
+				if (new_idx >= 0) {
+					state->target_index = new_idx;
+					state->low_util_windows = 0;
+					// No grace period on reduce - if we underrun, frequency is too slow
+					decision = CPU_DECISION_REDUCE;
 
-				if (result) {
-					result->decision = CPU_DECISION_REDUCE;
-					result->new_index = new_idx;
+					if (result) {
+						result->decision = CPU_DECISION_REDUCE;
+						result->new_index = new_idx;
+					}
 				}
 			}
 		} else {
@@ -496,6 +506,12 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 		}
 	} else {
 		// Fallback mode: 3-level scaling
+
+		// Decrement panic cooldown
+		if (state->panic_cooldown > 0) {
+			state->panic_cooldown--;
+		}
+
 		if (util > config->util_high) {
 			state->high_util_windows++;
 			state->low_util_windows = 0;
@@ -512,6 +528,8 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 			int new_level = current_level + 1;
 			state->target_level = new_level;
 			state->high_util_windows = 0;
+			state->panic_grace = CPU_PANIC_GRACE_FRAMES;
+			state->grace_underruns = 0;
 			decision = CPU_DECISION_BOOST;
 
 			if (result) {
@@ -520,11 +538,13 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 			}
 		}
 
-		// Reduce if sustained low utilization
-		if (state->low_util_windows >= config->reduce_windows && current_level > 0) {
+		// Reduce if sustained low utilization (and panic cooldown expired, buffer healthy)
+		if (state->low_util_windows >= config->reduce_windows && current_level > 0 &&
+		    state->panic_cooldown == 0 && buffer_fill_percent >= config->min_buffer_for_reduce) {
 			int new_level = current_level - 1;
 			state->target_level = new_level;
 			state->low_util_windows = 0;
+			// No grace period on reduce - if we underrun, frequency is too slow
 			decision = CPU_DECISION_REDUCE;
 
 			if (result) {
@@ -532,6 +552,20 @@ CPUDecision CPU_update(CPUState* state, const CPUConfig* config, bool fast_forwa
 				result->new_level = new_level;
 			}
 		}
+	}
+
+	// Track stability for panic count decay
+	// If we reached here, no panic happened during this window
+	state->stability_streak++;
+	if (state->stability_streak >= CPU_STABILITY_DECAY_WINDOWS) {
+		// Earned stability - decay panic counts for current freq and above only
+		// Being stable at 600MHz proves 800/1000/1200 are fine too, but not 400MHz
+		for (int i = current_idx; i < state->freq_count; i++) {
+			if (state->panic_count[i] > 0) {
+				state->panic_count[i]--;
+			}
+		}
+		state->stability_streak = 0;
 	}
 
 	// Reset window counter
