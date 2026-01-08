@@ -21,6 +21,9 @@
  * - Font resources managed through TTF_CloseFont
  */
 
+// Enable GNU extensions for CPU affinity macros (must be before any includes)
+#define _GNU_SOURCE
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -708,6 +711,28 @@ void GFX_startFrame(void) {
  */
 void GFX_present(GFX_Renderer* renderer) {
 	PLAT_present(renderer);
+}
+
+/**
+ * Default (weak) implementation of debug HUD rendering (software).
+ * Player overrides this to render debug overlay before flip.
+ */
+FALLBACK_IMPLEMENTATION void PLAT_renderDebugHUD(SDL_Surface* surface) {
+	(void)surface;
+	// No-op by default
+}
+
+/**
+ * Default (weak) implementation of debug HUD buffer (hardware/GL).
+ * Player overrides this to provide RGBA buffer for GL compositing.
+ */
+FALLBACK_IMPLEMENTATION uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w,
+                                                         int screen_h) {
+	(void)src_w;
+	(void)src_h;
+	(void)screen_w;
+	(void)screen_h;
+	return NULL; // No HUD by default
 }
 
 /**
@@ -1653,14 +1678,6 @@ void GFX_blitText(TTF_Font* ttf_font, char* str, int leading, SDL_Color color, S
 // SND_RATE_CONTROL_D is defined in defines.h (platforms can override)
 // See docs/audio-rate-control.md for tuning guidance.
 
-// Dual-timescale PI controller: integral operates on smoothed error to avoid fighting proportional
-// ki: Integral gain - very slow accumulation for persistent drift only
-// alpha: Error smoothing factor (~300 frame average, ~5 seconds at 60fps)
-// clamp: Max integral magnitude (handles up to ±2% persistent clock mismatch)
-#define SND_RATE_CONTROL_KI 0.00005f
-#define SND_ERROR_AVG_ALPHA 0.003f
-#define SND_INTEGRAL_CLAMP 0.02f
-
 // SND_BUFFER_SAMPLES is defined in defines.h (platforms can override)
 
 // Sound context manages the ring buffer and resampling
@@ -1678,6 +1695,12 @@ static struct SND_Context {
 	int frame_out; // Read position
 	int frame_filled; // Last consumed position
 
+	// Thread synchronization for blocking audio writes
+	// In audio-clock mode, writers block via SDL_CondWait when buffer is full.
+	// The callback signals when space becomes available.
+	SDL_mutex* mutex; // Protects buffer access
+	SDL_cond* cond; // Signals space available (for blocking writes)
+
 	// Linear interpolation resampler with dynamic rate control
 	AudioResampler resampler;
 
@@ -1694,9 +1717,7 @@ static struct SND_Context {
 	double cumulative_total_adjust; // Sum of total_adjust values applied
 	uint64_t total_adjust_count; // Number of total_adjust applications
 
-	// Rate control state (persistent across frames)
-	float rate_integral; // PI integral term (accumulates from smoothed error)
-	float error_avg; // Smoothed error for slow integral timescale
+	// Rate control state
 	float last_rate_adjust; // Last computed adjustment (for snapshot without side effects)
 
 	// SDL callback timing diagnostics
@@ -1705,6 +1726,10 @@ static struct SND_Context {
 	uint64_t callback_interval_sum; // Sum of intervals (for average)
 	unsigned callback_samples_min; // Min samples requested
 	unsigned callback_samples_max; // Max samples requested
+
+	// Sync mode callbacks (set by player via SND_setSyncCallbacks)
+	SND_SyncCallback should_use_rate_control;
+	SND_SyncCallback should_block_audio;
 } snd = {0};
 
 /**
@@ -1714,18 +1739,25 @@ static struct SND_Context {
  * Reads samples from the ring buffer and writes them to the output stream.
  * If buffer runs dry, repeats last sample or outputs silence.
  *
+ * Thread synchronization:
+ * - Uses snd.mutex to protect buffer access
+ * - Signals snd.cond after draining to wake blocked writers (audio-clock mode)
+ *
  * @param userdata Unused user data pointer
  * @param stream Output audio buffer to fill
  * @param len Length of output buffer in bytes
  *
  * @note Runs on SDL's audio thread, not the main thread
  */
-static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // plat_sound_callback
+static void SND_audioCallback(void* userdata, uint8_t* stream, int len) {
+	(void)userdata;
 
-	// return (void)memset(stream,0,len); // TODO: tmp, silent
-
-	if (snd.frame_count == 0)
+	if (snd.frame_count == 0 || !snd.mutex) {
+		memset(stream, 0, len);
 		return;
+	}
+
+	SDL_LockMutex(snd.mutex);
 
 	int16_t* out = (int16_t*)stream;
 	len /= (sizeof(int16_t) * 2);
@@ -1768,7 +1800,7 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 
 		// Log underrun with context (every occurrence - these are critical events)
 		float fill_before = (float)(requested - len) / (float)snd.frame_count * 100.0f;
-		LOG_warn("Audio underrun #%u: needed %d more samples (had %d/%d, fill was %.0f%%)\n",
+		LOG_warn("Audio underrun #%u: needed %d more samples (had %d/%d, fill was %.0f%%)",
 		         snd.underrun_count, len, requested - len, requested, fill_before);
 
 		if (snd.frame_filled >= 0 && snd.frame_filled < (int)snd.frame_count) {
@@ -1784,39 +1816,56 @@ static void SND_audioCallback(void* userdata, uint8_t* stream, int len) { // pla
 			memset(out, 0, len * sizeof(int16_t) * 2);
 		}
 	}
+
+	// Signal writers that space is available (wakes blocked audio-clock writers)
+	SDL_CondSignal(snd.cond);
+
+	SDL_UnlockMutex(snd.mutex);
 }
 
 /**
  * Allocates the audio ring buffer.
  *
- * Buffer size is SND_BUFFER_SAMPLES (~83ms at 48kHz with 4000 samples).
- * Locks audio thread during resize to prevent corruption.
+ * Buffer size is SND_BUFFER_SAMPLES (~133ms at 48kHz, ~8 video frames at 60fps).
+ * Locks mutex during resize to prevent corruption.
  *
- * @note Called during init
+ * @note Called during init (before audio thread starts)
  */
 static void SND_resizeBuffer(void) {
 	snd.frame_count = SND_BUFFER_SAMPLES;
 	if (snd.frame_count == 0)
 		return;
 
-	SDL_LockAudio();
+	// Lock mutex if available (may be called during init before mutex exists)
+	if (snd.mutex)
+		SDL_LockMutex(snd.mutex);
 
 	int buffer_bytes = snd.frame_count * sizeof(SND_Frame);
 	void* new_buffer = realloc(snd.buffer, buffer_bytes);
 	if (!new_buffer) {
 		LOG_error("Failed to allocate audio buffer (%d bytes)\n", buffer_bytes);
-		SDL_UnlockAudio();
+		if (snd.mutex)
+			SDL_UnlockMutex(snd.mutex);
 		return;
 	}
 	snd.buffer = new_buffer;
 
 	memset(snd.buffer, 0, buffer_bytes);
 
-	snd.frame_in = 0;
+	// Pre-fill buffer to 50% with silence to give headroom at startup.
+	// This prevents immediate underruns before the core has a chance to
+	// produce real audio samples. The silence will be gradually replaced
+	// as the core submits audio.
+	snd.frame_in = snd.frame_count / 2;
 	snd.frame_out = 0;
 	snd.frame_filled = snd.frame_count - 1;
 
-	SDL_UnlockAudio();
+	if (snd.mutex)
+		SDL_UnlockMutex(snd.mutex);
+
+	LOG_info("Audio buffer allocated: %d samples (%d bytes, ~%.1fms at %dHz, pre-filled to 50%%)",
+	         snd.frame_count, buffer_bytes, (float)snd.frame_count / snd.sample_rate_out * 1000.0f,
+	         snd.sample_rate_out);
 }
 
 /**
@@ -1839,46 +1888,28 @@ static float SND_getBufferFillLevel(void) {
 }
 
 /**
- * Calculates dynamic rate adjustment using a dual-timescale PI controller.
+ * Calculate dynamic rate adjustment using proportional control.
  *
- * Extends the Arntzen algorithm with an integral term on a separate (slower)
- * timescale to correct persistent hardware drift without fighting proportional.
+ * Based on Arntzen's "Dynamic Rate Control for Retro Game Emulators" (2012).
+ * Pure proportional control adjusts resampling ratio based on buffer fill:
  *
- * Dual-timescale PI:
- *   error = (1 - 2*fill)
- *   p_term = error * d                              // Fast: frame-to-frame jitter
- *   error_avg = α*error + (1-α)*error_avg           // Smooth error (~100 frames)
- *   integral += error_avg * ki                      // Slow: learns persistent offset
- *   adjustment = p_term + integral
+ *   error = (1 - 2*fill)      // +1 when empty, 0 at half, -1 when full
+ *   adjustment = error * d    // Bounded by ±d
  *
- * Key insight: Original PI failed because both terms operated on same timescale,
- * causing them to fight. By smoothing error before integrating, the integral
- * only sees persistent trends, not per-frame noise.
+ * Buffer behavior:
+ *   - Empty (fill=0): error=+1 → produce MORE samples → fill buffer
+ *   - Half (fill=0.5): error=0 → maintain equilibrium
+ *   - Full (fill=1): error=-1 → produce FEWER samples → drain buffer
  *
- * Tuning guide:
- *   d: Higher = faster jitter response, more pitch variation (0.005-0.025)
- *   ki: Integral gain, 100× slower than error averaging (0.00005)
- *   α: Error smoothing factor, ~100 frame average (0.01)
+ * The paper proves this converges to stable equilibrium. Only used when
+ * display Hz is within 1% of game fps (sync manager gates this).
  *
- * Our resampler divides by ratio_adjust (larger = fewer outputs), so:
- *   ratio_adjust = 1 - adjustment
- *
- * @return Rate adjustment factor for resampler step size
+ * @return Rate adjustment factor for resampler (1.0 - adjustment)
  */
 static float SND_calculateRateAdjust(void) {
 	float fill = SND_getBufferFillLevel();
-
-	// Arntzen error formula: positive when buffer low, negative when high
-	// Buffer low (fill<0.5) → produce more samples (adjustment > 0)
-	// Buffer high (fill>0.5) → produce fewer samples (adjustment < 0)
 	float error = 1.0f - 2.0f * fill;
-
-	// Fast timescale (proportional): immediate response to buffer level changes
-	float p_term = error * SND_RATE_CONTROL_D;
-
-	// Slow timescale (integral): persistent offset learned in SND_newFrame()
-	// Integral is updated once per frame, not here (avoids N updates for N audio batches)
-	float adjustment = p_term + snd.rate_integral;
+	float adjustment = error * SND_RATE_CONTROL_D;
 
 	// Invert for our resampler convention (larger ratio = fewer outputs)
 	snd.last_rate_adjust = 1.0f - adjustment;
@@ -1886,51 +1917,145 @@ static float SND_calculateRateAdjust(void) {
 }
 
 /**
+ * Helper to calculate available write space in FIFO.
+ * Caller must hold snd.mutex.
+ */
+static int SND_getWriteAvailable(void) {
+	if (snd.frame_in >= snd.frame_out) {
+		return snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
+	} else {
+		return snd.frame_out - snd.frame_in - 1;
+	}
+}
+
+/**
  * Writes a batch of audio samples to the ring buffer.
  *
- * Two implementations based on sync mode:
+ * Runtime adaptive behavior based on sync mode:
  *
- * SYNC_MODE_AUDIOCLOCK (audio-driven timing):
- * - Blocks when buffer is full (up to 10ms)
- * - Audio hardware clock drives emulation timing
+ * Audio-clock mode (should_block_audio = true):
+ * - TRUE blocking via SDL_CondWait when buffer is full
+ * - Audio hardware clock drives emulation timing naturally
  * - Fixed 1.0 resampling ratio (no dynamic rate control)
- * - For devices with unstable vsync
+ * - Blocking provides frame pacing without SDL_Delay
  *
- * Default (vsync-driven timing):
+ * Vsync mode (should_block_audio = false):
  * - Non-blocking with dynamic rate control
  * - Adjusts pitch ±0.5% to maintain buffer at 50% full
- * - For devices with stable vsync
+ * - For devices with stable vsync (<1% mismatch)
  *
  * @param frames Array of audio frames to write
  * @param frame_count Number of frames in array
  * @return Number of frames consumed
  */
-size_t SND_batchSamples(const SND_Frame* frames,
-                        size_t frame_count) { // plat_sound_write / plat_sound_write_resample
-
-	if (snd.frame_count == 0)
+size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count) {
+	if (snd.frame_count == 0 || !snd.mutex)
 		return 0;
 
-#ifdef SYNC_MODE_AUDIOCLOCK
-	// ========================================================================
-	// AUDIOCLOCK MODE: Blocking writes with audio hardware timing
-	// ========================================================================
+	// Check sync mode via callback (defaults to vsync mode if not set)
+	bool should_block = snd.should_block_audio && snd.should_block_audio();
+	bool should_use_rate_control =
+	    !should_block && (!snd.should_use_rate_control || snd.should_use_rate_control());
 
-	SDL_LockAudio();
+	if (should_block) {
+		// ========================================================================
+		// AUDIO-CLOCK MODE: TRUE blocking when buffer is full
+		// ========================================================================
+		//
+		// Strategy: Write to FIFO until full, then block via SDL_CondWait.
+		// The audio callback signals the cond when it drains samples.
+		// This provides natural backpressure from the audio hardware clock -
+		// no SDL_Delay needed; blocking IS the timing mechanism.
 
-	size_t consumed = 0;
-	while (frame_count > 0) {
-		int tries = 0;
+		SDL_LockMutex(snd.mutex);
 
-		// Wait for audio callback to drain buffer (up to 10ms)
-		while (tries < 10 && snd.frame_in == snd.frame_filled) {
-			tries++;
-			SDL_UnlockAudio();
-			SDL_Delay(1);
-			SDL_LockAudio();
+		size_t consumed = 0;
+		while (frame_count > 0) {
+			// Calculate available space
+			int available = SND_getWriteAvailable();
+
+			// If buffer is nearly full (>90%), block until callback drains
+			int overflow_threshold = snd.frame_count / 10; // 10% available = 90% full
+			while (available < overflow_threshold) {
+				// Block with timeout to allow checking for shutdown
+				// 100ms timeout: long enough to not spin, short enough for responsive shutdown
+				int wait_result = SDL_CondWaitTimeout(snd.cond, snd.mutex, 100);
+				(void)wait_result;
+
+				// Check if we're shutting down (SND_quit sets initialized=0)
+				if (!snd.initialized) {
+					SDL_UnlockMutex(snd.mutex);
+					return consumed;
+				}
+
+				available = SND_getWriteAvailable();
+			}
+
+			// Audio-clock mode: gentle rate control as buffer health mechanism.
+			// Like RetroArch, we use proportional rate control (±0.5%) in both modes
+			// to handle timing variations when true blocking can't provide pacing
+			// (e.g., platform can't disable vsync). This is gentle enough that
+			// underruns will still occur if CPU is truly too slow.
+			float ratio = SND_calculateRateAdjust();
+
+			AudioRingBuffer ring = {
+			    .frames = snd.buffer,
+			    .capacity = snd.frame_count,
+			    .write_pos = snd.frame_in,
+			    .read_pos = snd.frame_out,
+			};
+
+			ResampleResult result =
+			    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, ratio);
+
+			snd.frame_in = ring.write_pos;
+			snd.samples_in += result.frames_consumed;
+			snd.samples_written += result.frames_written;
+
+			frames += result.frames_consumed;
+			frame_count -= result.frames_consumed;
+			consumed += result.frames_consumed;
 		}
 
-		// Write samples with fixed 1.0 ratio (no rate control)
+		SDL_UnlockMutex(snd.mutex);
+
+		return consumed;
+
+	} else {
+		// ========================================================================
+		// VSYNC MODE: Non-blocking with dynamic rate control
+		// ========================================================================
+
+		SDL_LockMutex(snd.mutex);
+
+		// Determine resampling ratio
+		float total_adjust;
+		if (should_use_rate_control) {
+			// Dynamic rate control: adjust based on buffer fill
+			total_adjust = SND_calculateRateAdjust();
+
+			// Track cumulative adjust for diagnostics
+			snd.cumulative_total_adjust += total_adjust;
+			snd.total_adjust_count++;
+		} else {
+			// No rate control: fixed 1.0 ratio
+			total_adjust = 1.0f;
+		}
+
+		// Estimate output size for diagnostics
+		int estimated_output =
+		    AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
+
+		// Calculate available space
+		int available = SND_getWriteAvailable();
+
+		// Warn if buffer nearly full
+		if (available < estimated_output) {
+			LOG_warn("Audio buffer nearly full: %d available, %d needed (fill=%.0f%%)", available,
+			         estimated_output, SND_getBufferFillLevel() * 100.0f);
+		}
+
+		// Resample into ring buffer
 		AudioRingBuffer ring = {
 		    .frames = snd.buffer,
 		    .capacity = snd.frame_count,
@@ -1939,84 +2064,16 @@ size_t SND_batchSamples(const SND_Frame* frames,
 		};
 
 		ResampleResult result =
-		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, 1.0f);
+		    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
 
 		snd.frame_in = ring.write_pos;
 		snd.samples_in += result.frames_consumed;
 		snd.samples_written += result.frames_written;
 
-		frames += result.frames_consumed;
-		frame_count -= result.frames_consumed;
-		consumed += result.frames_consumed;
+		SDL_UnlockMutex(snd.mutex);
+
+		return result.frames_consumed;
 	}
-
-	SDL_UnlockAudio();
-	return consumed;
-
-#else
-	// ========================================================================
-	// VSYNC MODE: Non-blocking with dynamic rate control
-	// ========================================================================
-
-	SDL_LockAudio();
-
-	// Dynamic rate control per Arntzen paper: adjust resampling ratio based on buffer fill
-	// Buffer empty → produce more samples (fill up), buffer full → produce fewer (drain)
-	// The system naturally converges to a stable equilibrium point
-	float total_adjust = SND_calculateRateAdjust();
-
-	// Note: Debug logging moved to player's unified snapshot logging (SND_getSnapshot)
-
-	// Estimate how many OUTPUT frames we'll produce (may be more than input when upsampling)
-	int estimated_output = AudioResampler_estimateOutput(&snd.resampler, frame_count, total_adjust);
-
-	// Calculate how much space is available in the ring buffer (for diagnostics)
-	int available;
-	if (snd.frame_in >= snd.frame_out) {
-		available = snd.frame_count - (snd.frame_in - snd.frame_out) - 1;
-	} else {
-		available = snd.frame_out - snd.frame_in - 1;
-	}
-
-	// Warn if buffer is nearly full (indicates rate control failure)
-	// The resampler will handle buffer full gracefully (partial write + save state)
-	if (available < estimated_output) {
-		LOG_warn(
-		    "Audio buffer nearly full: %d available, %d needed (fill=%.0f%%) - rate control may "
-		    "be failing\n",
-		    available, estimated_output, SND_getBufferFillLevel() * 100.0f);
-	}
-
-	// Set up ring buffer wrapper for the resampler
-	AudioRingBuffer ring = {
-	    .frames = snd.buffer,
-	    .capacity = snd.frame_count,
-	    .write_pos = snd.frame_in,
-	    .read_pos = snd.frame_out,
-	};
-
-	// Resample with combined adjustment (base correction + dynamic rate control)
-	ResampleResult result =
-	    AudioResampler_resample(&snd.resampler, &ring, frames, frame_count, total_adjust);
-
-	// Update ring buffer write position
-	snd.frame_in = ring.write_pos;
-
-	// Track sample flow for diagnostics
-	snd.samples_in += result.frames_consumed; // Input samples consumed by resampler
-	snd.samples_written += result.frames_written; // Output samples written to buffer
-
-	// Track cumulative total_adjust for window-averaged comparisons
-	snd.cumulative_total_adjust += total_adjust;
-	snd.total_adjust_count++;
-
-	// Note: frame_filled is managed by the audio callback (SND_audioCallback)
-	// to track what has been consumed. We don't update it here.
-
-	SDL_UnlockAudio();
-
-	return result.frames_consumed;
-#endif
 }
 
 /**
@@ -2045,8 +2102,23 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
 	LOG_debug("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
 #endif
 
+	// Preserve sync mode callbacks across reinit
+	SND_SyncCallback saved_rate_control = snd.should_use_rate_control;
+	SND_SyncCallback saved_block_audio = snd.should_block_audio;
+
 	memset(&snd, 0, sizeof(struct SND_Context));
 	snd.frame_rate = frame_rate;
+
+	// Restore callbacks
+	snd.should_use_rate_control = saved_rate_control;
+	snd.should_block_audio = saved_block_audio;
+
+	// Create synchronization primitives for blocking audio writes
+	snd.mutex = SDL_CreateMutex();
+	snd.cond = SDL_CreateCond();
+	if (!snd.mutex || !snd.cond) {
+		LOG_error("Failed to create audio sync primitives");
+	}
 
 	SDL_AudioSpec spec_in;
 	SDL_AudioSpec spec_out;
@@ -2082,14 +2154,16 @@ void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
  * Gets current audio buffer fill level as a percentage.
  *
  * Used by libretro cores for audio-based frameskip decisions.
- * Thread-safe: locks audio to read consistent buffer state.
+ * Thread-safe: locks mutex to read consistent buffer state.
  *
  * @return Fill level 0-100 (0 = empty, 100 = full)
  */
 unsigned SND_getBufferOccupancy(void) {
-	SDL_LockAudio();
+	if (!snd.mutex)
+		return 0;
+	SDL_LockMutex(snd.mutex);
 	float fill = SND_getBufferFillLevel();
-	SDL_UnlockAudio();
+	SDL_UnlockMutex(snd.mutex);
 	return (unsigned)(fill * 100.0f);
 }
 
@@ -2102,10 +2176,17 @@ unsigned SND_getBufferOccupancy(void) {
  * For auto CPU scaling, underruns are an emergency signal - if rate control
  * stress is high AND underruns are occurring, immediate CPU boost is needed.
  *
+ * Thread-safe: locks mutex to read consistent value.
+ *
  * @return Number of underruns since SND_init() or last SND_resetUnderrunCount()
  */
 unsigned SND_getUnderrunCount(void) {
-	return snd.underrun_count;
+	if (!snd.mutex)
+		return 0;
+	SDL_LockMutex(snd.mutex);
+	unsigned count = snd.underrun_count;
+	SDL_UnlockMutex(snd.mutex);
+	return count;
 }
 
 /**
@@ -2113,52 +2194,32 @@ unsigned SND_getUnderrunCount(void) {
  *
  * Call after handling an underrun event (e.g., after boosting CPU)
  * to track new underruns going forward.
+ *
+ * Thread-safe: locks mutex to write consistent value.
  */
 void SND_resetUnderrunCount(void) {
+	if (!snd.mutex)
+		return;
+	SDL_LockMutex(snd.mutex);
 	snd.underrun_count = 0;
+	SDL_UnlockMutex(snd.mutex);
 }
 
 /**
  * Signals start of a new video frame for audio rate control.
  *
- * Updates the PI integral term once per frame based on current buffer fill.
- * Call once per frame before core.run() produces audio.
- *
- * This prevents the integral from accumulating N times when cores use
- * per-sample audio callbacks (audio_sample_callback instead of batch).
- * Some cores (e.g., 64-bit snes9x) call audio ~535 times per frame.
+ * Previously used for PI integral updates, now a no-op since we use
+ * pure proportional control (Arntzen algorithm). Kept for API compatibility.
  */
 void SND_newFrame(void) {
-#ifdef SYNC_MODE_AUDIOCLOCK
-	// No-op in audioclock mode - no rate control needed
-	return;
-#else
-	if (!snd.initialized)
-		return;
-
-	SDL_LockAudio();
-
-	float fill = SND_getBufferFillLevel();
-	float error = 1.0f - 2.0f * fill;
-
-	// Update smoothed error and integral (once per frame)
-	snd.error_avg = SND_ERROR_AVG_ALPHA * error + (1.0f - SND_ERROR_AVG_ALPHA) * snd.error_avg;
-	snd.rate_integral += snd.error_avg * SND_RATE_CONTROL_KI;
-
-	// Clamp integral to prevent windup (handles up to ±2% clock mismatch)
-	if (snd.rate_integral > SND_INTEGRAL_CLAMP)
-		snd.rate_integral = SND_INTEGRAL_CLAMP;
-	if (snd.rate_integral < -SND_INTEGRAL_CLAMP)
-		snd.rate_integral = -SND_INTEGRAL_CLAMP;
-
-	SDL_UnlockAudio();
-#endif
+	// No-op: pure proportional control doesn't need per-frame state updates
+	(void)0;
 }
 
 /**
  * Captures an atomic snapshot of all audio state for diagnostics.
  *
- * All values are read while holding the audio lock to ensure consistency.
+ * All values are read while holding the mutex to ensure consistency.
  * Includes buffer state, sample flow counters, and rate control parameters.
  *
  * @return Snapshot of current audio state
@@ -2166,7 +2227,10 @@ void SND_newFrame(void) {
 SND_Snapshot SND_getSnapshot(void) {
 	SND_Snapshot snap = {0};
 
-	SDL_LockAudio();
+	if (!snd.mutex)
+		return snap;
+
+	SDL_LockMutex(snd.mutex);
 
 	// Timestamp for delta calculations
 	snap.timestamp_us = getMicroseconds();
@@ -2183,14 +2247,11 @@ SND_Snapshot SND_getSnapshot(void) {
 	snap.samples_consumed = snd.samples_consumed;
 	snap.samples_requested = snd.samples_requested;
 
-	// Rate control parameters (PI controller - read last computed values to avoid side effects)
+	// Rate control parameters (proportional control - read last computed value)
 	snap.frame_rate = snd.frame_rate;
 	snap.rate_adjust = snd.last_rate_adjust;
 	snap.total_adjust = snd.last_rate_adjust;
-	snap.rate_integral = snd.rate_integral;
 	snap.rate_control_d = SND_RATE_CONTROL_D;
-	snap.rate_control_ki = SND_RATE_CONTROL_KI;
-	snap.error_avg = snd.error_avg;
 
 	// Resampler state
 	snap.sample_rate_in = snd.sample_rate_in;
@@ -2220,7 +2281,7 @@ SND_Snapshot SND_getSnapshot(void) {
 		snap.callback_avg_interval_ms = 0;
 	}
 
-	SDL_UnlockAudio();
+	SDL_UnlockMutex(snd.mutex);
 
 	return snap;
 }
@@ -2228,15 +2289,30 @@ SND_Snapshot SND_getSnapshot(void) {
 /**
  * Shuts down the audio subsystem and frees resources.
  *
- * Pauses audio, closes SDL audio device, frees ring buffer.
+ * Sets initialized=0 first to signal blocked writers to exit,
+ * then pauses audio, closes device, and frees resources.
  * Safe to call even if audio was never initialized.
  */
-void SND_quit(void) { // plat_sound_finish
+void SND_quit(void) {
 	if (!snd.initialized)
 		return;
 
+	// Signal shutdown first - wakes any blocked SDL_CondWaitTimeout
+	snd.initialized = 0;
+
+	// Pause and close audio - SDL_CloseAudio waits for callback to complete
 	SDL_PauseAudio(1);
 	SDL_CloseAudio();
+
+	// Destroy synchronization primitives (safe now that callback has stopped)
+	if (snd.cond) {
+		SDL_DestroyCond(snd.cond);
+		snd.cond = NULL;
+	}
+	if (snd.mutex) {
+		SDL_DestroyMutex(snd.mutex);
+		snd.mutex = NULL;
+	}
 
 	if (snd.buffer) {
 		free(snd.buffer);
@@ -2288,13 +2364,16 @@ void SND_setMinLatency(unsigned latency_ms) {
 	LOG_info("SET_MINIMUM_AUDIO_LATENCY: %ums - resizing buffer from %zu to %zu samples",
 	         latency_ms, snd.frame_count, required_samples);
 
-	SDL_LockAudio();
+	if (!snd.mutex)
+		return;
+
+	SDL_LockMutex(snd.mutex);
 
 	size_t buffer_bytes = required_samples * sizeof(SND_Frame);
 	void* new_buffer = realloc(snd.buffer, buffer_bytes);
 	if (!new_buffer) {
 		LOG_error("Failed to allocate audio buffer (%zu bytes)", buffer_bytes);
-		SDL_UnlockAudio();
+		SDL_UnlockMutex(snd.mutex);
 		return;
 	}
 	snd.buffer = new_buffer;
@@ -2306,7 +2385,22 @@ void SND_setMinLatency(unsigned latency_ms) {
 	snd.frame_out = 0;
 	snd.frame_filled = snd.frame_count - 1;
 
-	SDL_UnlockAudio();
+	SDL_UnlockMutex(snd.mutex);
+}
+
+/**
+ * Configure sync mode callbacks for runtime adaptive behavior.
+ *
+ * The audio system uses these callbacks to adapt its behavior based on
+ * the current sync mode (audio-clock vs vsync).
+ *
+ * @param should_use_rate_control Callback returning true if audio rate control should run
+ * @param should_block_audio Callback returning true if audio writes should block
+ */
+void SND_setSyncCallbacks(SND_SyncCallback should_use_rate_control,
+                          SND_SyncCallback should_block_audio) {
+	snd.should_use_rate_control = should_use_rate_control;
+	snd.should_block_audio = should_block_audio;
 }
 
 ///////////////////////////////
@@ -3327,6 +3421,363 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz\n", freq_khz);
 	return -1;
 }
+
+///////////////////////////////
+// Multi-cluster CPU topology support
+///////////////////////////////
+
+// Include cpu.h for topology types
+#include "cpu.h"
+
+// Base path for cpufreq policies
+#define CPUFREQ_BASE_PATH "/sys/devices/system/cpu/cpufreq"
+
+/**
+ * Comparison function for sorting clusters by max_khz ascending.
+ */
+static int compare_cluster_by_max_khz(const void* a, const void* b) {
+	const CPUCluster* ca = (const CPUCluster*)a;
+	const CPUCluster* cb = (const CPUCluster*)b;
+	if (ca->max_khz < cb->max_khz)
+		return -1;
+	if (ca->max_khz > cb->max_khz)
+		return 1;
+	return 0;
+}
+
+/**
+ * Reads an integer from a sysfs file.
+ *
+ * @param path Full path to sysfs file
+ * @return Value read, or 0 on failure
+ */
+static int read_sysfs_int(const char* path) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	int value = 0;
+	if (fscanf(fp, "%d", &value) != 1) {
+		value = 0;
+	}
+	(void)fclose(fp);
+	return value;
+}
+
+/**
+ * Reads available frequencies from a sysfs file into a cluster.
+ *
+ * @param path Path to scaling_available_frequencies
+ * @param cluster Cluster to populate
+ * @return Number of frequencies read
+ */
+static int read_cluster_frequencies(const char* path, CPUCluster* cluster) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	char buffer[256];
+	int count = 0;
+
+	if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+		char* token = strtok(buffer, " \t\n");
+		while (token != NULL && count < CPU_MAX_FREQS_PER_CLUSTER) {
+			int freq = atoi(token);
+			if (freq > 0) {
+				cluster->frequencies[count++] = freq;
+			}
+			token = strtok(NULL, " \t\n");
+		}
+	}
+	(void)fclose(fp);
+
+	// Sort frequencies ascending
+	if (count > 1) {
+		qsort(cluster->frequencies, count, sizeof(int), compare_int_asc);
+	}
+
+	cluster->freq_count = count;
+	return count;
+}
+
+/**
+ * Parses related_cpus file to get CPU mask and count.
+ *
+ * Format can be: "0 1 2 3" or "0-3" or "0-3 5 7-8"
+ *
+ * @param path Path to related_cpus file
+ * @param cpu_mask Output: bitmask of CPUs
+ * @param cpu_count Output: number of CPUs
+ * @return 1 on success, 0 on failure
+ */
+static int parse_related_cpus(const char* path, int* cpu_mask, int* cpu_count) {
+	FILE* fp = fopen(path, "r");
+	if (!fp)
+		return 0;
+
+	char buffer[128];
+	*cpu_mask = 0;
+	*cpu_count = 0;
+
+	if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+		char* ptr = buffer;
+		while (*ptr) {
+			// Skip whitespace
+			while (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
+				ptr++;
+			if (!*ptr)
+				break;
+
+			// Parse number
+			int start = atoi(ptr);
+			while (*ptr >= '0' && *ptr <= '9')
+				ptr++;
+
+			int end = start;
+			if (*ptr == '-') {
+				// Range: "0-3"
+				ptr++;
+				end = atoi(ptr);
+				while (*ptr >= '0' && *ptr <= '9')
+					ptr++;
+			}
+
+			// Add CPUs to mask (check for duplicates)
+			for (int cpu = start; cpu <= end && cpu < 32; cpu++) {
+				int bit = 1 << cpu;
+				if (!(*cpu_mask & bit)) {
+					*cpu_mask |= bit;
+					(*cpu_count)++;
+				}
+			}
+
+			// Skip comma if present
+			if (*ptr == ',')
+				ptr++;
+		}
+	}
+	(void)fclose(fp);
+	return (*cpu_count > 0) ? 1 : 0;
+}
+
+int PWR_detectCPUTopology(struct CPUTopology* topology) {
+	if (!topology) {
+		return 0;
+	}
+
+	// Initialize topology
+	memset(topology, 0, sizeof(*topology));
+
+	// Enumerate policies (0, 1, 2, ... up to 15)
+	// Policies may not be contiguous (e.g., policy0, policy4, policy7)
+	char path[256];
+	int cluster_count = 0;
+
+	for (int policy_id = 0; policy_id < 16 && cluster_count < CPU_MAX_CLUSTERS; policy_id++) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d", CPUFREQ_BASE_PATH, policy_id);
+
+		// Check if policy directory exists by trying to read cpuinfo_max_freq
+		char max_freq_path[256];
+		(void)snprintf(max_freq_path, sizeof(max_freq_path), "%s/cpuinfo_max_freq", path);
+		int max_khz = read_sysfs_int(max_freq_path);
+		if (max_khz <= 0) {
+			continue; // Policy doesn't exist
+		}
+
+		CPUCluster* cluster = &topology->clusters[cluster_count];
+		cluster->policy_id = policy_id;
+		cluster->max_khz = max_khz;
+
+		// Read min freq
+		char min_freq_path[256];
+		(void)snprintf(min_freq_path, sizeof(min_freq_path), "%s/cpuinfo_min_freq", path);
+		cluster->min_khz = read_sysfs_int(min_freq_path);
+
+		// Read related_cpus
+		char cpus_path[256];
+		(void)snprintf(cpus_path, sizeof(cpus_path), "%s/related_cpus", path);
+		if (!parse_related_cpus(cpus_path, &cluster->cpu_mask, &cluster->cpu_count)) {
+			LOG_warn("PWR_detectCPUTopology: failed to parse related_cpus for policy%d\n",
+			         policy_id);
+			continue;
+		}
+
+		// Read available frequencies
+		char freqs_path[256];
+		(void)snprintf(freqs_path, sizeof(freqs_path), "%s/scaling_available_frequencies", path);
+		read_cluster_frequencies(freqs_path, cluster);
+
+		// If no frequencies available, use min/max as fallback
+		if (cluster->freq_count == 0 && cluster->min_khz > 0 && cluster->max_khz > 0) {
+			cluster->frequencies[0] = cluster->min_khz;
+			cluster->frequencies[1] = (cluster->min_khz + cluster->max_khz) / 2;
+			cluster->frequencies[2] = cluster->max_khz;
+			cluster->freq_count = 3;
+		}
+
+		LOG_debug("PWR_detectCPUTopology: policy%d: cpus=%d (mask=0x%x), %d-%d kHz, %d freqs\n",
+		          policy_id, cluster->cpu_count, cluster->cpu_mask, cluster->min_khz,
+		          cluster->max_khz, cluster->freq_count);
+
+		cluster_count++;
+	}
+
+	if (cluster_count == 0) {
+		LOG_info("PWR_detectCPUTopology: no clusters detected\n");
+		return 0;
+	}
+
+	// Sort clusters by max_khz ascending (LITTLE → BIG → PRIME)
+	if (cluster_count > 1) {
+		qsort(topology->clusters, cluster_count, sizeof(CPUCluster), compare_cluster_by_max_khz);
+	}
+
+	// Classify clusters (LITTLE/BIG/PRIME)
+	CPU_classifyClusters(topology->clusters, cluster_count);
+
+	// Log classification results
+	const char* type_names[] = {"LITTLE", "BIG", "PRIME"};
+	for (int i = 0; i < cluster_count; i++) {
+		CPUCluster* cluster = &topology->clusters[i];
+		LOG_info("PWR_detectCPUTopology: cluster %d (policy%d): %s, %d CPUs, %d-%d kHz\n", i,
+		         cluster->policy_id, type_names[cluster->type], cluster->cpu_count,
+		         cluster->min_khz, cluster->max_khz);
+	}
+
+	topology->cluster_count = cluster_count;
+	topology->topology_detected = 1;
+
+	LOG_info("PWR_detectCPUTopology: detected %d cluster(s), multi-cluster=%s\n", cluster_count,
+	         (cluster_count > 1) ? "yes" : "no");
+
+	return cluster_count;
+}
+
+int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz) {
+	char path[256];
+	int result = 0;
+
+	// Write min_freq if specified
+	if (min_khz > 0) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_min_freq", CPUFREQ_BASE_PATH,
+		               policy_id);
+		FILE* fp = fopen(path, "w");
+		if (fp) {
+			(void)fprintf(fp, "%d\n", min_khz);
+			(void)fclose(fp);
+		} else {
+			LOG_warn("PWR_setCPUClusterBounds: failed to write min_freq for policy%d\n", policy_id);
+			result = -1;
+		}
+	}
+
+	// Write max_freq if specified
+	if (max_khz > 0) {
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_max_freq", CPUFREQ_BASE_PATH,
+		               policy_id);
+		FILE* fp = fopen(path, "w");
+		if (fp) {
+			(void)fprintf(fp, "%d\n", max_khz);
+			(void)fclose(fp);
+		} else {
+			LOG_warn("PWR_setCPUClusterBounds: failed to write max_freq for policy%d\n", policy_id);
+			result = -1;
+		}
+	}
+
+	return result;
+}
+
+int PWR_setCPUGovernor(int policy_id, const char* governor) {
+	if (!governor) {
+		return -1;
+	}
+
+	char path[256];
+	(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_governor", CPUFREQ_BASE_PATH,
+	               policy_id);
+
+	FILE* fp = fopen(path, "w");
+	if (!fp) {
+		LOG_warn("PWR_setCPUGovernor: failed to open %s\n", path);
+		return -1;
+	}
+
+	int written = fprintf(fp, "%s\n", governor);
+	int close_result = fclose(fp);
+
+	if (written < 0 || close_result != 0) {
+		LOG_warn("PWR_setCPUGovernor: write failed for policy%d governor %s\n", policy_id,
+		         governor);
+		return -1;
+	}
+
+	LOG_debug("PWR_setCPUGovernor: set policy%d governor to %s\n", policy_id, governor);
+	return 0;
+}
+
+int PWR_setLowPowerMode(void) {
+	int clusters_configured = 0;
+
+	// Enumerate all cpufreq policies and set to powersave
+	for (int policy_id = 0; policy_id < 16; policy_id++) {
+		char path[256];
+		(void)snprintf(path, sizeof(path), "%s/policy%d/scaling_governor", CPUFREQ_BASE_PATH,
+		               policy_id);
+
+		// Check if policy exists
+		if (access(path, F_OK) != 0)
+			continue;
+
+		// Set to powersave governor
+		if (PWR_setCPUGovernor(policy_id, "powersave") == 0) {
+			clusters_configured++;
+		}
+	}
+
+	if (clusters_configured > 0) {
+		LOG_info("PWR_setLowPowerMode: set %d cluster(s) to powersave\n", clusters_configured);
+	} else {
+		// Single-cluster device without cpufreq policies
+		PLAT_setCPUSpeed(CPU_SPEED_POWERSAVE);
+	}
+
+	return clusters_configured;
+}
+
+#if defined(__linux__)
+#include <sched.h>
+
+int PWR_setThreadAffinity(int cpu_mask) {
+	if (cpu_mask <= 0) {
+		return -1;
+	}
+
+	cpu_set_t set;
+	CPU_ZERO(&set);
+
+	for (int cpu = 0; cpu < 32; cpu++) {
+		if (cpu_mask & (1 << cpu)) {
+			CPU_SET(cpu, &set);
+		}
+	}
+
+	// Set affinity for current thread
+	if (sched_setaffinity(0, sizeof(set), &set) != 0) {
+		LOG_warn("PWR_setThreadAffinity: sched_setaffinity failed: %s\n", strerror(errno));
+		return -1;
+	}
+
+	LOG_debug("PWR_setThreadAffinity: set affinity mask to 0x%x\n", cpu_mask);
+	return 0;
+}
+#else
+// Non-Linux platforms: no-op
+int PWR_setThreadAffinity(int cpu_mask) {
+	(void)cpu_mask;
+	return 0;
+}
+#endif
 
 ///////////////////////////////
 // Platform utility functions

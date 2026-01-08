@@ -700,6 +700,9 @@ void PLAT_present(GFX_Renderer* renderer) {
 				GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);
 			}
 		}
+
+		// Render debug HUD overlay (game mode only)
+		PLAT_renderDebugHUD(vid.video);
 	} else {
 		// UI mode: blit screen to video
 		if (!vid.direct) {

@@ -243,6 +243,20 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
+
+#if !HAS_OPENGLES
+	// Create HUD texture for debug overlay (RGBA for alpha blending)
+	ctx->hud_texture = SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGBA8888,
+	                                     SDL_TEXTUREACCESS_STREAMING, w, h);
+	if (!ctx->hud_texture) {
+		LOG_warn("SDL2_initVideo: Failed to create HUD texture: %s", SDL_GetError());
+		// Non-fatal, continue without HUD support
+	} else {
+		SDL_SetTextureBlendMode(ctx->hud_texture, SDL_BLENDMODE_BLEND);
+	}
+	ctx->hud_surface = NULL; // Not used - PLAT_getDebugHUDBuffer provides RGBA buffer
+#endif
+
 	LOG_debug("SDL2_initVideo: Surfaces created successfully");
 
 	// Store dimensions
@@ -298,6 +312,9 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 		SDL_DestroyTexture(ctx->target);
 	if (ctx->effect)
 		SDL_DestroyTexture(ctx->effect);
+	if (ctx->hud_texture)
+		SDL_DestroyTexture(ctx->hud_texture);
+	// Note: hud_surface is unused (set to NULL) - PLAT_getDebugHUDBuffer provides RGBA buffer
 	SDL_DestroyTexture(ctx->texture);
 
 	// Destroy renderer and window
@@ -392,6 +409,15 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 
 	// Draw software frame (with effect support)
 	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness, renderer->visual_scale);
+
+	// Render debug HUD overlay if available (player provides implementation)
+	uint32_t* hud_buf = PLAT_getDebugHUDBuffer(renderer->src_w, renderer->src_h, ctx->device_width,
+	                                           ctx->device_height);
+	if (hud_buf) {
+		GLVideo_renderHUD(hud_buf, ctx->device_width, ctx->device_height, ctx->device_width,
+		                  ctx->device_height);
+	}
+
 	GLVideo_swapBuffers();
 
 #else
@@ -471,6 +497,19 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 			                 ctx->rotate * 90, NULL, SDL_FLIP_NONE);
 		} else {
 			SDL_RenderCopy(ctx->renderer, ctx->effect, &effect_src, &dst_rect);
+		}
+	}
+
+	// Render debug HUD overlay if available (player provides implementation)
+	if (ctx->hud_texture) {
+		uint32_t* hud_buf = PLAT_getDebugHUDBuffer(renderer->src_w, renderer->src_h,
+		                                           ctx->device_width, ctx->device_height);
+		if (hud_buf) {
+			// Upload RGBA buffer to texture
+			SDL_UpdateTexture(ctx->hud_texture, NULL, hud_buf,
+			                  ctx->device_width * (int)sizeof(uint32_t));
+			// Composite HUD texture over game (fullscreen, no rotation)
+			SDL_RenderCopy(ctx->renderer, ctx->hud_texture, NULL, NULL);
 		}
 	}
 

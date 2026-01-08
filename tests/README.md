@@ -58,7 +58,7 @@ tests/
 │           ├── test_player_utils.c       # Player utilities
 │           ├── test_player_config.c      # Config path generation
 │           ├── test_player_options.c     # Option management
-│           ├── test_player_cpu.c         # CPU scaling algorithm
+│           ├── (see common/test_cpu.c)   # CPU scaling (now in common/)
 │           ├── test_player_menu.c        # Menu system
 │           ├── test_player_env.c         # Environment callbacks
 │           └── ...                       # Other player module tests

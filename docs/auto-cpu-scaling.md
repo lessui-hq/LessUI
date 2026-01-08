@@ -8,7 +8,7 @@ Dynamic CPU frequency scaling for libretro emulation based on frame timing.
 
 Add an "Auto" CPU speed option that dynamically scales between existing power levels (POWERSAVE/NORMAL/PERFORMANCE) based on real-time emulation performance, saving battery when possible and boosting when needed.
 
-**Status:** ✅ Granular frequency scaling implemented. Auto mode now uses all available CPU frequencies detected from the system.
+**Status:** ✅ Topology-aware scaling implemented. Supports multi-cluster ARM SoCs (big.LITTLE, tri-cluster) with governor-based PerfState ladder, plus granular frequency scaling for single-cluster devices.
 
 ## Design Approach
 
@@ -169,10 +169,10 @@ while (!quit) {
 
 ### Two-Layer Architecture
 
-| Layer                 | Handles                    | Magnitude                     | Speed      |
-| --------------------- | -------------------------- | ----------------------------- | ---------- |
-| **Rate control (PI)** | Jitter + persistent drift  | ±1% (proportional) + integral | Per-frame  |
-| **CPU scaling**       | Sustained performance gaps | 10-50%+                       | Per-second |
+| Layer                | Handles                    | Magnitude            | Speed      |
+| -------------------- | -------------------------- | -------------------- | ---------- |
+| **Rate control (P)** | Frame-to-frame jitter      | ±0.8% (proportional) | Per-frame  |
+| **CPU scaling**      | Sustained performance gaps | 10-50%+              | Per-second |
 
 Rate control handles small timing variations. CPU scaling handles sustained performance problems that rate control can't fix.
 
@@ -255,10 +255,16 @@ Auto CPU scaling uses a **two-thread design** to keep the main emulation loop re
 ### Background Thread (CPU Applier)
 
 - Polls every 50ms checking for target changes
-- When target ≠ current, applies the change
-- Calls `PWR_setCPUSpeed()` which may fork `system("overclock.elf")`
-- Updates current level after successful application
+- When target ≠ current, applies the change:
+  - **Topology mode**: Calls `CPU_applyPerfState()` to set governors on all clusters, queues affinity change for main thread
+  - **Granular mode**: Calls `PLAT_setCPUFrequency()` to set frequency via sysfs
+  - **Fallback mode**: Calls `PWR_setCPUSpeed()` which may fork `system("overclock.elf")`
+- Updates current level/state after successful application
 - Stops cleanly when exiting auto mode
+
+**Topology mode thread safety:**
+
+CPU affinity must be set from the emulation thread (not background thread) because `sched_setaffinity(0, ...)` affects the calling thread. The background thread sets `pending_affinity` under mutex, and the main thread applies it on next frame.
 
 ### Thread Safety
 
@@ -439,23 +445,20 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 The **d parameter** determines how much pitch adjustment the rate control algorithm can apply for jitter compensation. See [docs/audio-rate-control.md](audio-rate-control.md) for the full algorithm derivation.
 
-**Current implementation (PI Controller):**
+**Current implementation (Proportional Controller):**
 
 ```c
-// Rate control gains (api.c)
-#define SND_RATE_CONTROL_D_DEFAULT 0.010f  // 1.0% - proportional gain
-#define SND_RATE_CONTROL_KI 0.00005f       // integral gain (drift correction)
-#define SND_ERROR_AVG_ALPHA 0.003f         // error smoothing (~333 frame average)
-#define SND_INTEGRAL_CLAMP 0.02f           // ±2% max drift correction
+// Rate control gain (defines.h)
+#define SND_RATE_CONTROL_D 0.012f  // 1.2% max pitch adjustment
 ```
 
-**Why dual-timescale PI controller works:**
+**Why pure proportional control works:**
 
-- Error smoothing (α=0.003) filters jitter before it reaches the integral term
-- Proportional term (d=1.0%) provides immediate response to buffer level changes
-- Integral term operates on slower timescale, learning persistent clock offset
-- Integral clamped to ±2% handles hardware clock mismatch up to ±2%
-- P and I can't fight because they operate on different timescales
+- Vsync mode only activates when display Hz is within 1% of game fps
+- With d=1.2% and max 1% mismatch, we have 1.2x headroom (similar to Arntzen's 1.4x)
+- Proportional term provides immediate response to buffer level changes
+- Buffer settles at stable equilibrium (may not be exactly 50%, but stable)
+- Devices outside 1% tolerance fall back to audio-clock mode (no rate control needed)
 
 ### Audio Buffer Size
 
@@ -466,7 +469,7 @@ snd.buffer_video_frames = 5;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-With the PI controller, the buffer settles near 50-65% fill depending on device clock characteristics, providing headroom for jitter and ~42ms effective latency.
+With proportional control, the buffer settles at a stable equilibrium. The 8-frame buffer (~133ms) provides substantial headroom for CPU frequency transitions and timing variance.
 
 ## Benchmark Methodology
 
@@ -510,30 +513,30 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 - [Dynamic Rate Control for Retro Game Emulators](https://docs.libretro.com/guides/ratecontrol.pdf) - Hans-Kristian Arntzen, 2012
 - [docs/audio-rate-control.md](audio-rate-control.md) - Our rate control implementation
-- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`
+- [workspace/all/common/api.c](../workspace/all/common/api.c) - `SND_calculateRateAdjust()`, `PWR_getAvailableCPUFrequencies_sysfs()`, `PWR_setCPUFrequency_sysfs()`, `PWR_detectCPUTopology()`, `PWR_setCPUGovernor()`, `PWR_setThreadAffinity()`
 - [workspace/all/common/api.h](../workspace/all/common/api.h) - `PLAT_getAvailableCPUFrequencies()`, `PLAT_setCPUFrequency()` API
 - [workspace/all/player/player.c](../workspace/all/player/player.c) - Main emulation loop, `updateAutoCPU()`, `auto_cpu_detectFrequencies()`
+- [workspace/all/common/cpu.c](../workspace/all/common/cpu.c) - CPU scaling algorithm, `CPU_buildPerfStates()`, `CPU_applyPerfState()`, `CPU_getPerformancePercent()`
+- [workspace/all/common/cpu.h](../workspace/all/common/cpu.h) - CPU scaling types and API
 - [workspace/all/paks/Benchmark/](../workspace/all/paks/Benchmark/) - CPU frequency benchmark tool
 
 ## Tuning Status
 
-| Parameter               | Current             | Notes                                             |
-| ----------------------- | ------------------- | ------------------------------------------------- |
-| Rate control d          | 1.0%                | Proportional gain - handles frame-to-frame jitter |
-| Rate control ki         | 0.00005             | Integral gain - learns persistent clock offset    |
-| Error smoothing α       | 0.003 (~333 frames) | Separates P and I timescales                      |
-| Integral clamp          | ±2%                 | Max drift correction (handles hardware variance)  |
-| Audio buffer            | 5 frames (~83ms)    | Effective latency ~42ms at 50% fill               |
-| Window size             | 30 frames (~500ms)  | Filters noise, responsive to changes              |
-| Utilization high        | 85%                 | Frame time >85% of budget = boost                 |
-| Utilization low         | 55%                 | Frame time <55% of budget = reduce                |
-| Target util             | 70%                 | Target utilization after frequency change         |
-| Max step (reduce/panic) | 2                   | Max frequency steps down (boost unlimited)        |
-| Min frequency           | 400 MHz             | Floor for frequency scaling                       |
-| Boost windows           | 2 (~1s)             | Fast response to performance issues               |
-| Reduce windows          | 4 (~2s)             | Conservative to prevent oscillation               |
-| Startup grace           | 300 frames (~5s)    | Starts at max freq, then scales                   |
-| Percentile              | 90th                | Ignores outliers (loading screens)                |
+| Parameter        | Current            | Notes                                                    |
+| ---------------- | ------------------ | -------------------------------------------------------- |
+| Rate control d   | 0.8%               | Proportional gain - gentler than 1.2% with larger buffer |
+| Audio buffer     | 8 frames (~133ms)  | Matches RetroArch handheld default, CPU scaling headroom |
+| Window size      | 30 frames (~500ms) | Filters noise, responsive to changes                     |
+| Utilization high | 85%                | Frame time >85% of budget = boost                        |
+| Utilization low  | 55%                | Frame time <55% of budget = reduce                       |
+| Target util      | 70%                | Target utilization after frequency change                |
+| Max step down    | 1                  | Max frequency steps when reducing                        |
+| Panic step up    | 2                  | Frequency steps on underrun emergency                    |
+| Min frequency    | 400 MHz            | Floor for frequency scaling                              |
+| Boost windows    | 2 (~1s)            | Fast response to performance issues                      |
+| Reduce windows   | 4 (~2s)            | Conservative to prevent oscillation                      |
+| Startup grace    | 300 frames (~5s)   | Starts at max freq, then scales                          |
+| Percentile       | 90th               | Ignores outliers (loading screens)                       |
 
 ### Display Rate Handling
 
@@ -545,9 +548,9 @@ Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode(
 | tg5040     | 60 Hz       | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 | miyoomini  | 60 Hz       | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 
-**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The PI controller's integral term learns and corrects for any mismatch over time.
+**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The sync manager measures actual Hz and gates vsync mode to within 1% of game fps.
 
-**How it works:** The PI controller adjusts the resampling ratio based on buffer fill. The proportional term (d) handles jitter, while the integral term slowly learns the persistent timing offset to maintain exactly 50% buffer fill.
+**How it works:** The proportional controller adjusts the resampling ratio based on buffer fill. Buffer below 50% → produce more samples; above 50% → produce fewer. This converges to stable equilibrium.
 
 ### Debug HUD
 
@@ -574,11 +577,14 @@ The debug overlay uses all 4 corners to show performance and scaling info:
 - Manual mode: `L1 b:48%` (level + buffer fill)
 - Auto mode (fallback): `L1 u:52% b:48%` (level + utilization + buffer fill)
 - Auto mode (granular): `1200 u:52% b:48%` (frequency in MHz + utilization + buffer fill)
+- Auto mode (topology): `T3/5 60% u:52% b:48%` (state/max + perf% + utilization + buffer fill)
 
 **Key metrics:**
 
 - `L0/L1/L2` = CPU level (POWERSAVE/NORMAL/PERFORMANCE) - used in manual and fallback modes
 - `1200` = CPU frequency in MHz (e.g., 1200 = 1.2 GHz) - used in granular auto mode
+- `T3/5` = PerfState index / max (e.g., state 3 of 5) - used in topology auto mode
+- `60%` = Normalized performance level (0-100%) - topology mode only
 - `u:XX%` = Frame timing utilization (90th percentile, % of frame budget)
 - `b:XX%` = Audio buffer fill (should converge to ~50%)
 
@@ -603,7 +609,7 @@ After implementing the unified RateMeter system with dual clock correction (disp
    - Low quality: frame timing drops → auto scaler correctly reduces CPU
    - The system responds to actual emulation workload, not arbitrary core labels
 
-3. **No feedback loops** - Buffer fill is influenced by the PI controller rate adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+3. **No feedback loops** - Buffer fill is influenced by the rate control adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
 
 **The two-layer separation is optimal:**
 
@@ -612,14 +618,81 @@ After implementing the unified RateMeter system with dual clock correction (disp
 | Rate control | Audio/video sync     | Per-frame (~16ms)  | Buffer fill     | Resampler ratio adjustment |
 | CPU scaling  | Performance headroom | Per-second (~1-2s) | Frame timing    | CPU frequency              |
 
-### Granular Frequency Scaling (Implemented)
+### Multi-Cluster Topology Mode (Implemented)
 
-Auto mode now uses **all available CPU frequencies** detected from the system via `scaling_available_frequencies` sysfs interface.
+Modern ARM SoCs use heterogeneous CPU clusters (big.LITTLE, tri-cluster) where different cores have different performance/power characteristics. Auto mode now detects and leverages this topology.
+
+**How it works:**
+
+1. **Detection**: Enumerates `/sys/devices/system/cpu/cpufreq/policy{0,1,...}` at startup
+2. **Classification**: Sorts clusters by max frequency, assigns LITTLE/BIG/PRIME types
+3. **PerfState Ladder**: Builds a progression of performance states using governors
+4. **Application**: Sets governors and CPU affinity to guide the emulation thread
+
+**Governor-based approach (not frequency bounds):**
+
+Instead of manipulating `scaling_min_freq`/`scaling_max_freq`, we use governors:
+
+| Governor      | Behavior                                | Use Case                |
+| ------------- | --------------------------------------- | ----------------------- |
+| `powersave`   | Runs at minimum frequency               | Inactive clusters, idle |
+| `schedutil`   | Kernel dynamically scales based on load | Balanced workloads      |
+| `performance` | Runs at maximum frequency               | Demanding workloads     |
+
+**Why governors instead of frequency bounds:**
+
+- Works WITH the kernel's frequency scaling intelligence
+- `schedutil` finds optimal frequency automatically
+- Inactive clusters truly idle at `powersave` (power savings)
+- No fighting between our algorithm and the kernel
+
+**PerfState Ladder Structure:**
+
+```
+Dual-cluster (LITTLE + BIG):
+  State 0: LITTLE powersave (active), BIG powersave    ← lightest
+  State 1: LITTLE schedutil (active), BIG powersave
+  State 2: LITTLE performance (active), BIG powersave
+  State 3: BIG powersave (active), LITTLE powersave
+  State 4: BIG schedutil (active), LITTLE powersave
+  State 5: BIG performance (active), LITTLE powersave  ← heaviest
+
+Tri-cluster adds 3 more states for PRIME (6-8)
+```
+
+**CPU Affinity:**
+
+Each PerfState sets CPU affinity to guide the emulation thread to the active cluster:
+
+```c
+// State 0-2: Run on LITTLE cores (mask 0x0F for CPUs 0-3)
+// State 3-5: Run on BIG cores (mask 0xF0 for CPUs 4-7)
+sched_setaffinity(0, sizeof(set), &set);
+```
+
+**Cluster Classification:**
+
+- `LITTLE`: First cluster (lowest max frequency)
+- `BIG`: Middle clusters
+- `PRIME`: Last cluster if single-core OR >10% faster than previous
+
+**Example SoC configurations:**
+
+| SoC            | Clusters              | PerfStates        |
+| -------------- | --------------------- | ----------------- |
+| Allwinner A53  | 4×A53 (single)        | 0 (granular mode) |
+| Allwinner H700 | 4×A53 (single)        | 0 (granular mode) |
+| Allwinner A523 | 4×A55 + 4×A76         | 6                 |
+| SD865          | 4×A55 + 3×A77 + 1×A77 | 9                 |
+
+### Granular Frequency Scaling (Single-Cluster Fallback)
+
+For single-cluster devices, auto mode uses **all available CPU frequencies** detected from the system via `scaling_available_frequencies` sysfs interface.
 
 **Key features:**
 
 - Runtime frequency detection via `PLAT_getAvailableCPUFrequencies()`
-- Direct frequency setting via `PLAT_setCPUFrequency()`
+- Direct frequency setting via `PLAT_setCPUFrequency()` with `userspace` governor
 - Linear performance scaling for intelligent frequency selection
 - Minimum frequency floor (400 MHz) filters out unusably slow frequencies
 - Automatic fallback to 3-level mode if detection fails
@@ -629,14 +702,14 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 - Performance scales linearly with frequency: `new_util = current_util × (current_freq / new_freq)`
 - Target 70% utilization after frequency changes
 - **Boost**: Uses linear prediction, no step limit (aggressive is safe)
-- **Reduce**: Uses linear prediction, max 2 steps (conservative to avoid underruns)
+- **Reduce**: Uses linear prediction, max 1 step (conservative to avoid underruns)
 - **Panic**: Boost by max 2 steps on underrun, 4s cooldown
 - **Startup**: Begin at max frequency during 5s grace period
 
 **Preset mapping for manual modes:**
 
-- POWERSAVE: ~25% up from minimum frequency
-- NORMAL: ~75% of max frequency
+- POWERSAVE: ~55% of max frequency
+- NORMAL: ~80% of max frequency
 - PERFORMANCE: max frequency
 
 **Example on miyoomini (6 frequencies detected: 400, 600, 800, 1000, 1100, 1600 kHz):**
@@ -645,6 +718,25 @@ Auto mode now uses **all available CPU frequencies** detected from the system vi
 Old: POWERSAVE → NORMAL → PERFORMANCE (3 steps)
 New: 400 → 600 → 800 → 1000 → 1100 → 1600 (6 steps, granular)
 ```
+
+### Unified API
+
+Helper functions provide a consistent interface regardless of scaling mode:
+
+```c
+// Get normalized performance level (0-100%)
+int CPU_getPerformancePercent(const CPUState* state);
+// - Topology: (current_state / max_state) * 100
+// - Granular: (current_index / max_index) * 100
+// - Fallback: level * 50 (0=0%, 1=50%, 2=100%)
+// - Returns -1 if scaling disabled
+
+// Get mode name for logging/debugging
+const char* CPU_getModeName(const CPUState* state);
+// - Returns: "topology", "granular", "fallback", or "disabled"
+```
+
+These functions enable mode-agnostic debugging, logging, and potential future UI elements.
 
 ### Frequency Band Analysis
 
@@ -658,6 +750,33 @@ Comprehensive analysis of benchmark data from all platforms revealed optimizatio
 | magicmini | PS/N ratio 57.6% (dangerous!) | Updated to 1200/1608/1800 (74.6% ratio) ✓ |
 
 **Analysis output:** See `scripts/analyze-cpu-bands.py` and `scripts/analyze-frequency-strategies.py` for detailed frequency analysis and strategy comparison.
+
+### Audio Clock Mode Buffer Range
+
+In Audio Clock mode, the CPU scaler can't rely on utilization metrics (blocking audio makes frame timing unreliable). Instead, it uses **time-based probing** with buffer-guided timing.
+
+**Problem discovered (TG5050):** When display Hz differs significantly from game fps (e.g., 62.9Hz vs 60.1fps), and `SDL_GL_SetSwapInterval(0)` doesn't actually disable vsync:
+
+1. Buffer fills due to timing mismatch (display Hz > game fps)
+2. Utilization appears artificially high (~90%) because blocking time inflates frame time
+3. CPU never reduces because util never drops below threshold
+
+**Solution:** In Audio Clock mode, use time-based probing with buffer-guided timing:
+
+| Buffer Level | Wait Time  | Rationale                                            |
+| ------------ | ---------- | ---------------------------------------------------- |
+| < 40%        | N/A        | Don't reduce (need headroom for transition)          |
+| 40-75%       | 8 windows  | Normal timing - reduce after ~4 seconds of stability |
+| > 75%        | 16 windows | Pathological timing - wait ~8 seconds before probing |
+
+**Key insight:** We can't trust utilization metrics in AC mode, so we:
+
+1. Probe by reducing after a stability period (time-based, not util-based)
+2. Rely on the panic path to boost back if reduction causes underruns
+3. Use buffer level to guide timing - high buffer gets longer wait because it indicates
+   problematic timing where reductions are more likely to cause issues
+
+**Files changed:** `workspace/all/player/player.c` (all three CPU scaling modes)
 
 ### Threshold Validation
 

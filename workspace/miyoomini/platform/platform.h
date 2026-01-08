@@ -26,8 +26,7 @@
 // Audio Configuration
 ///////////////////////////////
 
-// More aggressive rate control for A7 device with high timing variance
-#define SND_RATE_CONTROL_D 0.015f
+// Uses default SND_RATE_CONTROL_D (0.012f) - cubic safety boost handles edge cases
 
 ///////////////////////////////
 // Video Buffer Scaling

@@ -5,7 +5,7 @@
  * They perform string manipulation and other pure computations.
  *
  * For option-related functions, see player_options.h
- * For CPU frequency functions, see player_cpu.h
+ * For CPU frequency functions, see cpu.h
  */
 
 #ifndef PLAYER_UTILS_H

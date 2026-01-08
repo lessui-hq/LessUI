@@ -285,6 +285,18 @@ void GLVideo_presentSurface(SDL_Surface* surface);
 void GLVideo_swapBuffers(void);
 
 /**
+ * Set vsync mode for the GL context.
+ *
+ * In audio-clock mode, vsync should be disabled so audio blocking
+ * is the sole timing source. In vsync mode, vsync should be enabled
+ * for tear-free rendering.
+ *
+ * @param enabled 1 to enable vsync, 0 to disable
+ * @return 0 on success, -1 on failure
+ */
+int GLVideo_setVsync(int enabled);
+
+/**
  * Clear the screen to black.
  *
  * Used by software rendering path to ensure backbuffer is clean before drawing.
@@ -461,6 +473,11 @@ static inline void GLVideo_presentSurface(SDL_Surface* surface) {
 }
 
 static inline void GLVideo_swapBuffers(void) {}
+
+static inline int GLVideo_setVsync(int enabled) {
+	(void)enabled;
+	return -1;
+}
 
 static inline void GLVideo_clear(void) {}
 

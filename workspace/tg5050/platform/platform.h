@@ -36,7 +36,7 @@
 // Audio Configuration
 ///////////////////////////////
 
-// Uses default SND_RATE_CONTROL_D (0.012f) for standard timing
+// Uses default SND_RATE_CONTROL_D (0.012f) - cubic safety boost handles edge cases
 
 ///////////////////////////////
 // Video Buffer Scaling

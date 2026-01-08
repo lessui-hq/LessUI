@@ -4,7 +4,7 @@
  * These functions have no external dependencies and can be tested in isolation.
  *
  * For option-related functions, see player_options.c
- * For CPU frequency functions, see player_cpu.c
+ * For CPU frequency functions, see cpu.c
  */
 
 #include "player_utils.h"
