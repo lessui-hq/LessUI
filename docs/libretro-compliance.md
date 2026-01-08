@@ -403,14 +403,14 @@ This section compares LessUI's libretro implementation against [RetroArch](https
 
 ### Audio Callbacks (`retro_audio_sample_t`, `retro_audio_sample_batch_t`)
 
-| Aspect              | RetroArch                                                     | LessUI                                              | Match |
-| ------------------- | ------------------------------------------------------------- | --------------------------------------------------- | ----- |
-| **Sample callback** | Accumulates to conversion buffer, flushes at chunk size       | Passes directly to `SND_batchSamples`               | ✅    |
-| **Batch callback**  | Processes in chunks up to `AUDIO_CHUNK_SIZE_NONBLOCKING >> 1` | Processes via ring buffer in `SND_batchSamples`     | ✅    |
-| **Return value**    | Returns frames processed                                      | Returns frames processed (or `frames` during FF)    | ✅    |
-| **Resampling**      | Converts to float, applies DSP, resamples with rate control   | Linear interpolation resampler with PI rate control | ✅    |
-| **Rate control**    | Monitors buffer space, adjusts ratio dynamically              | Dual-timescale PI controller (Arntzen-based)        | ✅    |
-| **Fast-forward**    | Adjusts ratio with EMA smoothing, clamps to 0.0625-16x range  | Skips audio entirely during fast-forward            | ⚠️    |
+| Aspect              | RetroArch                                                     | LessUI                                             | Match |
+| ------------------- | ------------------------------------------------------------- | -------------------------------------------------- | ----- |
+| **Sample callback** | Accumulates to conversion buffer, flushes at chunk size       | Passes directly to `SND_batchSamples`              | ✅    |
+| **Batch callback**  | Processes in chunks up to `AUDIO_CHUNK_SIZE_NONBLOCKING >> 1` | Processes via ring buffer in `SND_batchSamples`    | ✅    |
+| **Return value**    | Returns frames processed                                      | Returns frames processed (or `frames` during FF)   | ✅    |
+| **Resampling**      | Converts to float, applies DSP, resamples with rate control   | Linear interpolation resampler with P rate control | ✅    |
+| **Rate control**    | Monitors buffer space, adjusts ratio dynamically              | Proportional controller (Arntzen algorithm)        | ✅    |
+| **Fast-forward**    | Adjusts ratio with EMA smoothing, clamps to 0.0625-16x range  | Skips audio entirely during fast-forward           | ⚠️    |
 
 **Note:** LessUI skips audio during fast-forward rather than pitch-adjusting like RetroArch. This is simpler and appropriate for handheld use where audio fidelity during FF is less important.
 

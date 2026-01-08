@@ -371,23 +371,25 @@
 
 /**
  * Audio ring buffer size in samples (stereo frames).
- * Controls how much audio is buffered ahead (~85ms at 48kHz with 4096 samples).
- * Lower values reduce latency, higher values prevent underruns on slow devices.
+ * Controls how much audio is buffered ahead (~133ms at 48kHz, ~8 video frames at 60fps).
+ * Matches RetroArch's 128ms default for handheld devices.
+ * Provides headroom for CPU frequency scaling and timing variance.
  * Platforms can override this in platform.h if needed.
  */
 #ifndef SND_BUFFER_SAMPLES
-#define SND_BUFFER_SAMPLES 4096
+#define SND_BUFFER_SAMPLES 6400
 #endif
 
 /**
  * Rate control proportional gain (d parameter from Arntzen paper).
  * Controls maximum pitch deviation for buffer level compensation.
  * Higher values = more aggressive correction, faster response to jitter.
- * Paper recommends 0.2-0.5%, but handhelds need 1.0-1.5% due to timing variance.
+ * Paper recommends 0.2-0.5%, handhelds typically use 0.5-1.0%.
+ * Set to 0.8% - gentler than previous 1.2% since larger buffer provides more headroom.
  * Platforms can override this in platform.h if needed.
  */
 #ifndef SND_RATE_CONTROL_D
-#define SND_RATE_CONTROL_D 0.012f
+#define SND_RATE_CONTROL_D 0.008f
 #endif
 
 ///////////////////////////////

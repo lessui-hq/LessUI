@@ -169,10 +169,10 @@ while (!quit) {
 
 ### Two-Layer Architecture
 
-| Layer                 | Handles                    | Magnitude                     | Speed      |
-| --------------------- | -------------------------- | ----------------------------- | ---------- |
-| **Rate control (PI)** | Jitter + persistent drift  | ±1% (proportional) + integral | Per-frame  |
-| **CPU scaling**       | Sustained performance gaps | 10-50%+                       | Per-second |
+| Layer                | Handles                    | Magnitude            | Speed      |
+| -------------------- | -------------------------- | -------------------- | ---------- |
+| **Rate control (P)** | Frame-to-frame jitter      | ±0.8% (proportional) | Per-frame  |
+| **CPU scaling**      | Sustained performance gaps | 10-50%+              | Per-second |
 
 Rate control handles small timing variations. CPU scaling handles sustained performance problems that rate control can't fix.
 
@@ -445,23 +445,20 @@ if (SND_getUnderrunCount() > last_underrun_count) {
 
 The **d parameter** determines how much pitch adjustment the rate control algorithm can apply for jitter compensation. See [docs/audio-rate-control.md](audio-rate-control.md) for the full algorithm derivation.
 
-**Current implementation (PI Controller):**
+**Current implementation (Proportional Controller):**
 
 ```c
-// Rate control gains (api.c)
-#define SND_RATE_CONTROL_D_DEFAULT 0.010f  // 1.0% - proportional gain
-#define SND_RATE_CONTROL_KI 0.00005f       // integral gain (drift correction)
-#define SND_ERROR_AVG_ALPHA 0.003f         // error smoothing (~333 frame average)
-#define SND_INTEGRAL_CLAMP 0.02f           // ±2% max drift correction
+// Rate control gain (defines.h)
+#define SND_RATE_CONTROL_D 0.012f  // 1.2% max pitch adjustment
 ```
 
-**Why dual-timescale PI controller works:**
+**Why pure proportional control works:**
 
-- Error smoothing (α=0.003) filters jitter before it reaches the integral term
-- Proportional term (d=1.0%) provides immediate response to buffer level changes
-- Integral term operates on slower timescale, learning persistent clock offset
-- Integral clamped to ±2% handles hardware clock mismatch up to ±2%
-- P and I can't fight because they operate on different timescales
+- Vsync mode only activates when display Hz is within 1% of game fps
+- With d=1.2% and max 1% mismatch, we have 1.2x headroom (similar to Arntzen's 1.4x)
+- Proportional term provides immediate response to buffer level changes
+- Buffer settles at stable equilibrium (may not be exactly 50%, but stable)
+- Devices outside 1% tolerance fall back to audio-clock mode (no rate control needed)
 
 ### Audio Buffer Size
 
@@ -472,7 +469,7 @@ snd.buffer_video_frames = 5;
 snd.frame_count = snd.buffer_video_frames * snd.sample_rate_in / snd.frame_rate;
 ```
 
-With the PI controller, the buffer settles near 50-65% fill depending on device clock characteristics, providing headroom for jitter and ~42ms effective latency.
+With proportional control, the buffer settles at a stable equilibrium. The 8-frame buffer (~133ms) provides substantial headroom for CPU frequency transitions and timing variance.
 
 ## Benchmark Methodology
 
@@ -525,24 +522,21 @@ The discovered frequency steps and performance data come from a custom CPU bench
 
 ## Tuning Status
 
-| Parameter         | Current             | Notes                                             |
-| ----------------- | ------------------- | ------------------------------------------------- |
-| Rate control d    | 1.0%                | Proportional gain - handles frame-to-frame jitter |
-| Rate control ki   | 0.00005             | Integral gain - learns persistent clock offset    |
-| Error smoothing α | 0.003 (~333 frames) | Separates P and I timescales                      |
-| Integral clamp    | ±2%                 | Max drift correction (handles hardware variance)  |
-| Audio buffer      | 5 frames (~83ms)    | Effective latency ~42ms at 50% fill               |
-| Window size       | 30 frames (~500ms)  | Filters noise, responsive to changes              |
-| Utilization high  | 85%                 | Frame time >85% of budget = boost                 |
-| Utilization low   | 55%                 | Frame time <55% of budget = reduce                |
-| Target util       | 70%                 | Target utilization after frequency change         |
-| Max step down     | 1                   | Max frequency steps when reducing                 |
-| Panic step up     | 2                   | Frequency steps on underrun emergency             |
-| Min frequency     | 400 MHz             | Floor for frequency scaling                       |
-| Boost windows     | 2 (~1s)             | Fast response to performance issues               |
-| Reduce windows    | 4 (~2s)             | Conservative to prevent oscillation               |
-| Startup grace     | 300 frames (~5s)    | Starts at max freq, then scales                   |
-| Percentile        | 90th                | Ignores outliers (loading screens)                |
+| Parameter        | Current            | Notes                                                    |
+| ---------------- | ------------------ | -------------------------------------------------------- |
+| Rate control d   | 0.8%               | Proportional gain - gentler than 1.2% with larger buffer |
+| Audio buffer     | 8 frames (~133ms)  | Matches RetroArch handheld default, CPU scaling headroom |
+| Window size      | 30 frames (~500ms) | Filters noise, responsive to changes                     |
+| Utilization high | 85%                | Frame time >85% of budget = boost                        |
+| Utilization low  | 55%                | Frame time <55% of budget = reduce                       |
+| Target util      | 70%                | Target utilization after frequency change                |
+| Max step down    | 1                  | Max frequency steps when reducing                        |
+| Panic step up    | 2                  | Frequency steps on underrun emergency                    |
+| Min frequency    | 400 MHz            | Floor for frequency scaling                              |
+| Boost windows    | 2 (~1s)            | Fast response to performance issues                      |
+| Reduce windows   | 4 (~2s)            | Conservative to prevent oscillation                      |
+| Startup grace    | 300 frames (~5s)   | Starts at max freq, then scales                          |
+| Percentile       | 90th               | Ignores outliers (loading screens)                       |
 
 ### Display Rate Handling
 
@@ -554,9 +548,9 @@ Display refresh rate is queried from SDL at init via `SDL_GetCurrentDisplayMode(
 | tg5040     | 60 Hz       | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 | miyoomini  | 60 Hz       | 60.10 Hz (NES) | 60/60.10 = 0.9983 |
 
-**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The PI controller's integral term learns and corrects for any mismatch over time.
+**Note:** SDL typically reports rounded integer refresh rates (60 Hz). The actual display rate may vary slightly (59.71-60.5 Hz measured via vsync timing). The sync manager measures actual Hz and gates vsync mode to within 1% of game fps.
 
-**How it works:** The PI controller adjusts the resampling ratio based on buffer fill. The proportional term (d) handles jitter, while the integral term slowly learns the persistent timing offset to maintain exactly 50% buffer fill.
+**How it works:** The proportional controller adjusts the resampling ratio based on buffer fill. Buffer below 50% → produce more samples; above 50% → produce fewer. This converges to stable equilibrium.
 
 ### Debug HUD
 
@@ -615,7 +609,7 @@ After implementing the unified RateMeter system with dual clock correction (disp
    - Low quality: frame timing drops → auto scaler correctly reduces CPU
    - The system responds to actual emulation workload, not arbitrary core labels
 
-3. **No feedback loops** - Buffer fill is influenced by the PI controller rate adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
+3. **No feedback loops** - Buffer fill is influenced by the rate control adjustment and dynamic buffer sizing. Using it for CPU scaling would create two control systems fighting over the same signal.
 
 **The two-layer separation is optimal:**
 
@@ -756,6 +750,33 @@ Comprehensive analysis of benchmark data from all platforms revealed optimizatio
 | magicmini | PS/N ratio 57.6% (dangerous!) | Updated to 1200/1608/1800 (74.6% ratio) ✓ |
 
 **Analysis output:** See `scripts/analyze-cpu-bands.py` and `scripts/analyze-frequency-strategies.py` for detailed frequency analysis and strategy comparison.
+
+### Audio Clock Mode Buffer Range
+
+In Audio Clock mode, the CPU scaler can't rely on utilization metrics (blocking audio makes frame timing unreliable). Instead, it uses **time-based probing** with buffer-guided timing.
+
+**Problem discovered (TG5050):** When display Hz differs significantly from game fps (e.g., 62.9Hz vs 60.1fps), and `SDL_GL_SetSwapInterval(0)` doesn't actually disable vsync:
+
+1. Buffer fills due to timing mismatch (display Hz > game fps)
+2. Utilization appears artificially high (~90%) because blocking time inflates frame time
+3. CPU never reduces because util never drops below threshold
+
+**Solution:** In Audio Clock mode, use time-based probing with buffer-guided timing:
+
+| Buffer Level | Wait Time  | Rationale                                            |
+| ------------ | ---------- | ---------------------------------------------------- |
+| < 40%        | N/A        | Don't reduce (need headroom for transition)          |
+| 40-75%       | 8 windows  | Normal timing - reduce after ~4 seconds of stability |
+| > 75%        | 16 windows | Pathological timing - wait ~8 seconds before probing |
+
+**Key insight:** We can't trust utilization metrics in AC mode, so we:
+
+1. Probe by reducing after a stability period (time-based, not util-based)
+2. Rely on the panic path to boost back if reduction causes underruns
+3. Use buffer level to guide timing - high buffer gets longer wait because it indicates
+   problematic timing where reductions are more likely to cause issues
+
+**Files changed:** `workspace/all/player/player.c` (all three CPU scaling modes)
 
 ### Threshold Validation
 

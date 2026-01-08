@@ -3,11 +3,12 @@
  *
  * Tests the runtime-adaptive sync mode switching including:
  * - Initialization (starts in AUDIO_CLOCK mode)
- * - Vsync measurement with EMA smoothing
+ * - Vsync measurement with circular buffer and stddev-based convergence
  * - Mode switching based on measured Hz
  * - Drift detection and fallback to AUDIO_CLOCK
  * - shouldRunCore (always returns true)
- * - shouldUseRateControl/shouldBlockAudio based on mode
+ * - shouldUseRateControl (always true, both modes use rate control)
+ * - shouldBlockAudio based on mode
  */
 
 #include "unity.h"
@@ -80,17 +81,19 @@ void test_first_vsync_just_records_timestamp(void) {
 	TEST_ASSERT_EQUAL_FLOAT(0.0, manager.measured_hz);
 }
 
-void test_second_vsync_calculates_hz(void) {
-	// First call
+void test_second_vsync_records_interval(void) {
+	// First call - just records timestamp
 	mock_time_us = 1000000;
 	SyncManager_recordVsync(&manager);
+	TEST_ASSERT_EQUAL(0, manager.sample_count);
 
-	// Second call - 16.667ms later (60Hz)
+	// Second call - 16.667ms later (60Hz) - records first interval
 	mock_time_us = 1016667;
 	SyncManager_recordVsync(&manager);
 
-	// Should have initial Hz measurement (not averaged yet, first sample)
-	TEST_ASSERT_FLOAT_WITHIN(0.1, 60.0, manager.measured_hz);
+	// Should have recorded the interval (measured_hz only set when stable)
+	TEST_ASSERT_EQUAL(1, manager.sample_count);
+	TEST_ASSERT_EQUAL_FLOAT(0.0, manager.measured_hz); // Not stable yet
 }
 
 void test_rejects_outlier_too_low(void) {
@@ -103,7 +106,7 @@ void test_rejects_outlier_too_low(void) {
 
 	// Should be rejected, no measurement
 	TEST_ASSERT_EQUAL_FLOAT(0.0, manager.measured_hz);
-	TEST_ASSERT_EQUAL(0, manager.measurement_samples);
+	TEST_ASSERT_EQUAL(0, manager.sample_count);
 }
 
 void test_rejects_outlier_too_high(void) {
@@ -164,20 +167,21 @@ void test_stays_in_audio_clock_when_incompatible(void) {
 	TEST_ASSERT_TRUE(SyncManager_isMeasurementStable(&manager));
 }
 
-void test_measurement_stable_after_120_samples(void) {
+void test_measurement_stable_after_60_samples(void) {
 	mock_time_us = 1000000;
 	SyncManager_recordVsync(&manager);
 
-	// Need 120 samples after initial baseline
-	for (int i = 0; i < 120; i++) {
+	// With consistent samples, should converge after SYNC_MIN_SAMPLES (60)
+	// Not stable until we have 60+ samples with low stddev
+	for (int i = 0; i < 59; i++) {
 		mock_time_us += 16667;
 		SyncManager_recordVsync(&manager);
-		if (i < 119) {
-			TEST_ASSERT_FALSE(SyncManager_isMeasurementStable(&manager));
-		}
+		TEST_ASSERT_FALSE(SyncManager_isMeasurementStable(&manager));
 	}
 
-	// After 120 samples - now stable
+	// 60th sample - should now be stable (consistent samples = low stddev)
+	mock_time_us += 16667;
+	SyncManager_recordVsync(&manager);
 	TEST_ASSERT_TRUE(SyncManager_isMeasurementStable(&manager));
 }
 
@@ -219,9 +223,10 @@ void test_should_use_rate_control_in_vsync_mode(void) {
 	TEST_ASSERT_TRUE(SyncManager_shouldUseRateControl(&manager));
 }
 
-void test_should_not_use_rate_control_in_audio_clock(void) {
+void test_should_use_rate_control_in_audio_clock_too(void) {
+	// Both modes now use rate control as buffer health mechanism
 	manager.mode = SYNC_MODE_AUDIO_CLOCK;
-	TEST_ASSERT_FALSE(SyncManager_shouldUseRateControl(&manager));
+	TEST_ASSERT_TRUE(SyncManager_shouldUseRateControl(&manager));
 }
 
 void test_should_block_audio_in_audio_clock_mode(void) {
@@ -264,21 +269,22 @@ void test_mode_name_vsync(void) {
 // Edge Cases
 ///////////////////////////////
 
-void test_ema_smooths_noisy_measurements(void) {
+void test_mean_smooths_noisy_measurements(void) {
 	mock_time_us = 1000000;
 	SyncManager_recordVsync(&manager);
 
-	// Alternate between 59Hz and 61Hz (simulating jitter)
-	for (int i = 0; i < 120; i++) {
+	// Alternate between 59.5Hz and 60.5Hz (simulating light jitter)
+	// stddev/mean < 1% so it should still converge
+	for (int i = 0; i < 60; i++) {
 		if (i % 2 == 0) {
-			mock_time_us += 16949; // 59Hz
+			mock_time_us += 16807; // 59.5Hz
 		} else {
-			mock_time_us += 16393; // 61Hz
+			mock_time_us += 16529; // 60.5Hz
 		}
 		SyncManager_recordVsync(&manager);
 	}
 
-	// EMA should smooth to ~60Hz
+	// Mean should be ~60Hz
 	double measured = SyncManager_getMeasuredHz(&manager);
 	TEST_ASSERT_FLOAT_WITHIN(1.0, 60.0, measured);
 }
@@ -314,7 +320,7 @@ int main(void) {
 
 	// Vsync measurement tests
 	RUN_TEST(test_first_vsync_just_records_timestamp);
-	RUN_TEST(test_second_vsync_calculates_hz);
+	RUN_TEST(test_second_vsync_records_interval);
 	RUN_TEST(test_rejects_outlier_too_low);
 	RUN_TEST(test_rejects_outlier_too_high);
 	RUN_TEST(test_rejects_zero_interval);
@@ -322,13 +328,13 @@ int main(void) {
 	// Mode switching tests
 	RUN_TEST(test_switches_to_vsync_when_compatible);
 	RUN_TEST(test_stays_in_audio_clock_when_incompatible);
-	RUN_TEST(test_measurement_stable_after_120_samples);
+	RUN_TEST(test_measurement_stable_after_60_samples);
 	RUN_TEST(test_drift_detection_switches_back_to_audio_clock);
 
 	// API tests
 	RUN_TEST(test_should_run_core_always_returns_true);
 	RUN_TEST(test_should_use_rate_control_in_vsync_mode);
-	RUN_TEST(test_should_not_use_rate_control_in_audio_clock);
+	RUN_TEST(test_should_use_rate_control_in_audio_clock_too);
 	RUN_TEST(test_should_block_audio_in_audio_clock_mode);
 	RUN_TEST(test_should_not_block_audio_in_vsync_mode);
 	RUN_TEST(test_get_measured_hz_returns_zero_when_not_stable);
@@ -337,7 +343,7 @@ int main(void) {
 	RUN_TEST(test_mode_name_vsync);
 
 	// Edge cases
-	RUN_TEST(test_ema_smooths_noisy_measurements);
+	RUN_TEST(test_mean_smooths_noisy_measurements);
 	RUN_TEST(test_drift_check_only_after_stable);
 
 	return UNITY_END();

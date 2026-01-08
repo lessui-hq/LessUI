@@ -1974,6 +1974,20 @@ void GLVideo_swapBuffers(void) {
 	SDL_GL_SwapWindow(window);
 }
 
+int GLVideo_setVsync(int enabled) {
+	if (!gl_state.context_ready) {
+		return -1;
+	}
+
+	int result = SDL_GL_SetSwapInterval(enabled ? 1 : 0);
+	if (result == 0) {
+		LOG_info("GL video: vsync %s", enabled ? "enabled" : "disabled");
+	} else {
+		LOG_warn("GL video: failed to set vsync: %s", SDL_GetError());
+	}
+	return result;
+}
+
 void GLVideo_clear(void) {
 	if (!gl_state.context_ready) {
 		return;

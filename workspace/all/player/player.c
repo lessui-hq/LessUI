@@ -1355,10 +1355,18 @@ static void updateAutoCPU(void) {
 		// Underrun detected - track panic and boost
 		unsigned audio_fill = SND_getBufferOccupancy();
 
-		// Track panic at current frequency (for failsafe blocking).
-		// If a frequency can't keep up, all lower frequencies are also blocked
-		// because lower freq = less CPU throughput = guaranteed worse performance.
-		if (auto_cpu_state.use_granular && current_idx >= 0 && current_idx < CPU_MAX_FREQUENCIES) {
+		// Track panic at current state/frequency (for failsafe blocking).
+		// If a state can't keep up, it gets blocked after CPU_PANIC_THRESHOLD panics.
+		if (auto_cpu_state.use_topology && current_state >= 0 &&
+		    current_state < CPU_MAX_FREQUENCIES) {
+			auto_cpu_state.panic_count[current_state]++;
+
+			if (auto_cpu_state.panic_count[current_state] >= CPU_PANIC_THRESHOLD) {
+				LOG_warn("Auto CPU: BLOCKING state %d after %d panics (audio=%u%%)\n",
+				         current_state, auto_cpu_state.panic_count[current_state], audio_fill);
+			}
+		} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		           current_idx < CPU_MAX_FREQUENCIES) {
 			auto_cpu_state.panic_count[current_idx]++;
 
 			if (auto_cpu_state.panic_count[current_idx] >= CPU_PANIC_THRESHOLD) {
@@ -1389,6 +1397,16 @@ static void updateAutoCPU(void) {
 			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx],
 			         audio_fill);
 		} else {
+			// Fallback mode - track panic at current level
+			if (current_level >= 0 && current_level < 3) {
+				auto_cpu_state.panic_count[current_level]++;
+
+				if (auto_cpu_state.panic_count[current_level] >= CPU_PANIC_THRESHOLD) {
+					LOG_warn("Auto CPU: BLOCKING level %d after %d panics (audio=%u%%)\n",
+					         current_level, auto_cpu_state.panic_count[current_level], audio_fill);
+				}
+			}
+
 			int new_level = current_level + auto_cpu_config.panic_step_up;
 			if (new_level > 2)
 				new_level = 2;
@@ -1452,13 +1470,42 @@ static void updateAutoCPU(void) {
 
 			if (in_audio_clock) {
 				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// We use time-based probing: after stability period, try reducing.
+				// If it causes underruns, panic path will boost back.
+				//
+				// Buffer level guides timing:
+				// - 40-75%: Normal range, reduce after 8 windows (~4s)
+				// - >75%: High buffer (Hz/fps mismatch), reduce after 16 windows (~8s)
+				//         Longer delay because high buffer means timing is pathological
+				// - <40%: Don't reduce (need headroom for transition)
 				auto_cpu_state.low_util_windows++;
-				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
-				    auto_cpu_state.panic_cooldown == 0 && current_state > 0) {
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// Determine required stability windows based on buffer level
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS; // 8 windows (~4s)
+				if (audio_fill > 75) {
+					// High buffer = pathological timing, be more conservative
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2; // 16 windows (~8s)
+				}
+
+				bool buffer_ok = (audio_fill >= 40); // Lower bound only - need headroom
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_state > 0) {
 					int new_state = current_state - 1;
-					auto_cpu_setTargetState(new_state);
-					auto_cpu_state.low_util_windows = 0;
-					LOG_debug("Auto CPU: REDUCE state %d→%d (AC mode)\n", current_state, new_state);
+					// Skip blocked states (too many panics at that state)
+					while (new_state >= 0 &&
+					       auto_cpu_state.panic_count[new_state] >= CPU_PANIC_THRESHOLD) {
+						new_state--;
+					}
+					if (new_state >= 0) {
+						auto_cpu_setTargetState(new_state);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE state %d→%d (AC mode, buf=%u%%, wait=%d)\n",
+						          current_state, new_state, audio_fill, required_windows);
+					} else {
+						// All lower states blocked, just reset counter
+						auto_cpu_state.low_util_windows = 0;
+					}
 				}
 			} else if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
@@ -1490,11 +1537,21 @@ static void updateAutoCPU(void) {
 					int new_state = current_state - auto_cpu_config.max_step_down;
 					if (new_state < 0)
 						new_state = 0;
-					auto_cpu_setTargetState(new_state);
-					auto_cpu_state.low_util_windows = 0;
-					// No grace period on reduce - if we underrun, frequency is too slow
-					LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
-					          new_state, util);
+					// Skip blocked states (too many panics at that state)
+					while (new_state >= 0 &&
+					       auto_cpu_state.panic_count[new_state] >= CPU_PANIC_THRESHOLD) {
+						new_state--;
+					}
+					if (new_state >= 0) {
+						auto_cpu_setTargetState(new_state);
+						auto_cpu_state.low_util_windows = 0;
+						// No grace period on reduce - if we underrun, frequency is too slow
+						LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
+						          new_state, util);
+					} else {
+						// All lower states blocked
+						auto_cpu_state.low_util_windows = 0;
+					}
 				}
 			} else {
 				// In sweet spot - reset counters
@@ -1507,9 +1564,8 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_topo >= 4) {
 				debug_window_count_topo = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% state=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_state,
-				          max_state);
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% state=%d/%d\n", snap.fill_pct,
+				          snap.total_adjust, util, current_state, max_state);
 			}
 		} else if (auto_cpu_state.use_granular) {
 			// Granular mode: step through available frequencies one at a time
@@ -1527,9 +1583,19 @@ static void updateAutoCPU(void) {
 
 			if (in_audio_clock) {
 				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// Use time-based probing with buffer-guided timing.
 				auto_cpu_state.low_util_windows++;
-				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
-				    auto_cpu_state.panic_cooldown == 0 && current_idx > 0) {
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// High buffer = pathological timing, wait longer before probing
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS;
+				if (audio_fill > 75) {
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2;
+				}
+
+				bool buffer_ok = (audio_fill >= 40);
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_idx > 0) {
 					int new_idx = current_idx - 1;
 					// Skip blocked frequencies
 					while (new_idx >= 0 &&
@@ -1540,7 +1606,8 @@ static void updateAutoCPU(void) {
 						int new_freq = auto_cpu_state.frequencies[new_idx];
 						auto_cpu_setTargetIndex(new_idx);
 						auto_cpu_state.low_util_windows = 0;
-						LOG_debug("Auto CPU: REDUCE %d→%d kHz (AC mode)\n", current_freq, new_freq);
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (AC mode, buf=%u%%, wait=%d)\n",
+						          current_freq, new_freq, audio_fill, required_windows);
 					} else {
 						auto_cpu_state.low_util_windows = 0;
 					}
@@ -1604,10 +1671,9 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz "
-				          "idx=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
-				          current_idx, max_idx);
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
+				          snap.fill_pct, snap.total_adjust, util, current_freq, current_idx,
+				          max_idx);
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
@@ -1622,13 +1688,33 @@ static void updateAutoCPU(void) {
 
 			if (in_audio_clock) {
 				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// Use time-based probing with buffer-guided timing.
 				auto_cpu_state.low_util_windows++;
-				if (auto_cpu_state.low_util_windows >= CPU_AUDIO_CLOCK_REDUCE_WINDOWS &&
-				    auto_cpu_state.panic_cooldown == 0 && current_level > 0) {
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// High buffer = pathological timing, wait longer before probing
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS;
+				if (audio_fill > 75) {
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2;
+				}
+
+				bool buffer_ok = (audio_fill >= 40);
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_level > 0) {
 					int new_level = current_level - 1;
-					auto_cpu_setTargetLevel(new_level);
-					auto_cpu_state.low_util_windows = 0;
-					LOG_debug("Auto CPU: REDUCE level %d (AC mode)\n", new_level);
+					// Skip blocked levels
+					while (new_level >= 0 &&
+					       auto_cpu_state.panic_count[new_level] >= CPU_PANIC_THRESHOLD) {
+						new_level--;
+					}
+					if (new_level >= 0) {
+						auto_cpu_setTargetLevel(new_level);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE level %d (AC mode, buf=%u%%, wait=%d)\n",
+						          new_level, audio_fill, required_windows);
+					} else {
+						auto_cpu_state.low_util_windows = 0;
+					}
 				}
 			} else if (util > auto_cpu_config.util_high) {
 				auto_cpu_state.high_util_windows++;
@@ -1646,9 +1732,8 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
-				          current_level);
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% level=%d\n", snap.fill_pct,
+				          snap.total_adjust, util, current_level);
 			}
 
 			// Boost if sustained high utilization
@@ -1666,10 +1751,20 @@ static void updateAutoCPU(void) {
 			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
 			    auto_cpu_state.panic_cooldown == 0 && current_level > 0) {
 				int new_level = current_level - 1;
-				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_state.low_util_windows = 0;
-				// No grace period on reduce - if we underrun, frequency is too slow
-				LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				// Skip blocked levels
+				while (new_level >= 0 &&
+				       auto_cpu_state.panic_count[new_level] >= CPU_PANIC_THRESHOLD) {
+					new_level--;
+				}
+				if (new_level >= 0) {
+					auto_cpu_setTargetLevel(new_level);
+					auto_cpu_state.low_util_windows = 0;
+					// No grace period on reduce - if we underrun, frequency is too slow
+					LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				} else {
+					// All lower levels blocked
+					auto_cpu_state.low_util_windows = 0;
+				}
 			}
 		}
 
@@ -1677,13 +1772,30 @@ static void updateAutoCPU(void) {
 		// If we reached here, no panic happened during this window
 		auto_cpu_state.stability_streak++;
 		if (auto_cpu_state.stability_streak >= CPU_STABILITY_DECAY_WINDOWS) {
-			// Earned stability - decay panic counts for current freq and above only
-			// Being stable at 600MHz proves 800/1000/1200 are fine too, but not 400MHz
+			// Earned stability - decay panic counts for current state/freq and above only
+			// Being stable at a state proves higher states are fine too, but not lower ones
 			int decayed = 0;
-			for (int i = current_idx; i < auto_cpu_state.freq_count; i++) {
-				if (auto_cpu_state.panic_count[i] > 0) {
-					auto_cpu_state.panic_count[i]--;
-					decayed++;
+			if (auto_cpu_state.use_topology) {
+				for (int i = current_state; i < auto_cpu_state.topology.state_count; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
+				}
+			} else if (auto_cpu_state.use_granular) {
+				for (int i = current_idx; i < auto_cpu_state.freq_count; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
+				}
+			} else {
+				// Fallback mode: decay for current level and above
+				for (int i = current_level; i < 3; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
 				}
 			}
 			if (decayed > 0) {
@@ -6258,8 +6370,14 @@ static void run_main_loop(void) {
 	SyncManager_init(&sync_manager, core.fps, display_hz);
 	SND_setSyncCallbacks(sync_shouldUseRateControl, sync_shouldBlockAudio);
 
-	LOG_info("Starting main loop: %.2ffps @ %.1fHz (mode: %s)\n", core.fps, display_hz,
-	         SyncManager_getModeName(SyncManager_getMode(&sync_manager)));
+	// Set vsync based on sync mode:
+	// - Audio-clock mode: disable vsync so audio blocking is the sole timing source
+	// - Vsync mode: enable vsync for tear-free rendering with display-driven timing
+	bool use_vsync = (SyncManager_getMode(&sync_manager) != SYNC_MODE_AUDIO_CLOCK);
+	GLVideo_setVsync(use_vsync ? 1 : 0);
+
+	LOG_info("Starting main loop: %.2ffps @ %.1fHz (mode: %s, vsync=%s)\n", core.fps, display_hz,
+	         SyncManager_getModeName(SyncManager_getMode(&sync_manager)), use_vsync ? "on" : "off");
 
 	PWR_warn(1);
 	PWR_disableAutosleep();
@@ -6335,6 +6453,17 @@ static void run_main_loop(void) {
 		}
 
 		SyncManager_recordVsync(&sync_manager);
+
+		// Update vsync if sync mode changed (e.g., audio-clock → vsync transition)
+		{
+			static SyncMode prev_mode = SYNC_MODE_AUDIO_CLOCK;
+			SyncMode curr_mode = SyncManager_getMode(&sync_manager);
+			if (curr_mode != prev_mode) {
+				int vsync_enabled = (curr_mode != SYNC_MODE_AUDIO_CLOCK) ? 1 : 0;
+				GLVideo_setVsync(vsync_enabled);
+				prev_mode = curr_mode;
+			}
+		}
 
 		limitFF();
 		trackFPS();

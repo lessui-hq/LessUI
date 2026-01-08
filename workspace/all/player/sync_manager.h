@@ -63,6 +63,10 @@ typedef enum {
 	SYNC_MODE_VSYNC
 } SyncMode;
 
+// Vsync measurement circular buffer size
+// 512 samples (~8 seconds at 60fps) provides good rolling window
+#define SYNC_SAMPLE_BUFFER_SIZE 512
+
 /**
  * Sync manager state.
  */
@@ -70,9 +74,16 @@ typedef struct {
 	SyncMode mode; // Current sync mode
 	double game_fps; // Game target fps (e.g., 60.0, 59.94)
 	double display_hz; // Reported display Hz from SDL
-	double measured_hz; // Actual measured Hz from vsync timing
-	int measurement_samples; // Number of vsync measurements collected
-	bool measurement_stable; // True after enough samples collected
+
+	// Vsync timing measurement (circular buffer)
+	uint64_t frame_intervals[SYNC_SAMPLE_BUFFER_SIZE]; // Frame time deltas in microseconds
+	int sample_count; // Total samples collected (may exceed buffer size)
+	int write_index; // Next write position in circular buffer
+
+	bool measurement_stable; // True when stddev converged
+	double measured_hz; // Calculated from buffer mean (valid when stable)
+	double measurement_confidence; // Stddev/mean ratio (lower = better)
+
 	uint32_t last_drift_check; // Frames since last drift check (resets at interval)
 	uint64_t last_vsync_time; // Microsecond timestamp of last vsync
 } SyncManager;
@@ -95,8 +106,14 @@ void SyncManager_init(SyncManager* manager, double game_fps, double display_hz);
  * Call this immediately after GFX_present() returns.
  * Measures actual display refresh rate and switches modes when appropriate.
  *
+ * Measurement approach:
+ * - Continuously collects frame intervals in circular buffer
+ * - Calculates mean and stddev from buffer samples
+ * - Measurement stable when: samples >= 60 AND stddev/mean < 1%
+ * - Gives up after 1800 samples (~30s) if never converges
+ *
  * Mode transitions:
- * - AUDIO_CLOCK → VSYNC: After 120 samples if mismatch < 1%
+ * - AUDIO_CLOCK → VSYNC: When measurement stable and mismatch < 1%
  * - VSYNC → AUDIO_CLOCK: If drift > 1% detected
  *
  * @param manager Manager state to update
@@ -135,11 +152,12 @@ const char* SyncManager_getModeName(SyncMode mode);
 /**
  * Check if audio rate control should be active.
  *
- * AUDIO_CLOCK: No rate control (blocking writes handle timing)
- * VSYNC: Yes (light rate control for ±0.5% adjustment)
+ * Both modes use rate control (±0.8%) as a buffer health mechanism.
+ * This handles timing variations when true blocking can't provide pacing
+ * (e.g., platform can't disable vsync, loop runs at display Hz).
  *
  * @param manager Manager state
- * @return true if audio rate control should run
+ * @return true if audio rate control should run (always true)
  */
 bool SyncManager_shouldUseRateControl(const SyncManager* manager);
 
