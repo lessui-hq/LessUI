@@ -25,6 +25,72 @@
 #include "render_common.h"
 #include "utils.h"
 
+/**
+ * Check if a kernel module is loaded by searching /proc/modules.
+ */
+static int isModuleLoaded(const char* module_name) {
+	char buf[4096];
+	buf[0] = '\0';
+	getFile("/proc/modules", buf, sizeof(buf));
+	return buf[0] && strstr(buf, module_name) != NULL;
+}
+
+/**
+ * Log diagnostic information when display initialization fails.
+ * Captures system state to help debug EGL/framebuffer issues.
+ */
+static void logDisplayDiagnostics(void) {
+	LOG_error("=== Display Diagnostics ===");
+
+	char buf[512];
+
+	// Platform identification
+	const char* lessui_device = getenv("LESSUI_DEVICE");
+	const char* lessui_variant = getenv("LESSUI_VARIANT");
+	LOG_error("Device: %s (%s)", lessui_device ? lessui_device : "unknown",
+	          lessui_variant ? lessui_variant : "unknown");
+
+	// Framebuffer info
+	buf[0] = '\0';
+	getFile("/sys/class/graphics/fb0/modes", buf, sizeof(buf));
+	LOG_error("fb0/modes: %s", buf[0] ? buf : "(unable to read)");
+
+	buf[0] = '\0';
+	getFile("/sys/class/graphics/fb0/virtual_size", buf, sizeof(buf));
+	if (buf[0]) {
+		LOG_error("fb0/virtual_size: %s", buf);
+	}
+
+	// GPU device nodes
+	int has_mali = exists("/dev/mali") || exists("/dev/mali0");
+	int has_dri = exists("/dev/dri/card0");
+	LOG_error("GPU devices: mali=%s dri=%s", has_mali ? "yes" : "NO", has_dri ? "yes" : "no");
+
+	// GPU kernel modules - critical for diagnosing "module exists but not loaded"
+	int mali_loaded = isModuleLoaded("mali");
+	int mali_kbase_loaded = isModuleLoaded("mali_kbase");
+	LOG_error("GPU modules loaded: mali=%s mali_kbase=%s", mali_loaded ? "yes" : "no",
+	          mali_kbase_loaded ? "yes" : "no");
+
+	// Check if module file exists but isn't loaded (the CubeXX issue)
+	if (!mali_kbase_loaded && exists("/lib/modules/mali_kbase.ko")) {
+		LOG_error("NOTE: /lib/modules/mali_kbase.ko exists but module not loaded!");
+	}
+
+	// Environment that affects graphics
+	const char* sdl_videodriver = getenv("SDL_VIDEODRIVER");
+	if (sdl_videodriver) {
+		LOG_error("SDL_VIDEODRIVER=%s", sdl_videodriver);
+	}
+
+	const char* ld_lib_path = getenv("LD_LIBRARY_PATH");
+	if (ld_lib_path) {
+		LOG_error("LD_LIBRARY_PATH=%s", ld_lib_path);
+	}
+
+	LOG_error("=== End Diagnostics ===");
+}
+
 // Internal helper to resize video resources
 static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 	if (w == ctx->width && h == ctx->height && p == ctx->pitch)
@@ -144,6 +210,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	LOG_debug("SDL2_initVideo: Calling SDL_InitSubSystem(VIDEO)");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
 		LOG_error("SDL2_initVideo: SDL_InitSubSystem failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		return NULL;
 	}
 	LOG_debug("SDL2_initVideo: SDL video subsystem initialized");
@@ -165,6 +232,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	    SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, window_flags);
 	if (!ctx->window) {
 		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		return NULL;
 	}
 	LOG_debug("SDL2_initVideo: Window created successfully");
@@ -174,6 +242,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	ctx->renderer = SDL_CreateRenderer(ctx->window, -1, renderer_flags);
 	if (!ctx->renderer) {
 		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}

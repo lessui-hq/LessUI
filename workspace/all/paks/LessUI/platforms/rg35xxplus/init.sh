@@ -13,6 +13,11 @@ export RGXX_MODEL
 # Export LESSUI_* variables for device identification
 export LESSUI_PLATFORM="rg35xxplus"
 
+# Ensure Mali GPU driver is loaded (some variants don't auto-load it)
+if [ ! -e /dev/mali0 ] && [ -f /lib/modules/mali_kbase.ko ]; then
+	insmod /lib/modules/mali_kbase.ko 2>/dev/null || true
+fi
+
 case "$RGXX_MODEL" in
 	RGcubexx)
 		export LESSUI_VARIANT="square"
