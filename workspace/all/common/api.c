@@ -3438,7 +3438,11 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 static int compare_cluster_by_max_khz(const void* a, const void* b) {
 	const CPUCluster* ca = (const CPUCluster*)a;
 	const CPUCluster* cb = (const CPUCluster*)b;
-	return ca->max_khz - cb->max_khz;
+	if (ca->max_khz < cb->max_khz)
+		return -1;
+	if (ca->max_khz > cb->max_khz)
+		return 1;
+	return 0;
 }
 
 /**
@@ -3538,10 +3542,13 @@ static int parse_related_cpus(const char* path, int* cpu_mask, int* cpu_count) {
 					ptr++;
 			}
 
-			// Add CPUs to mask
+			// Add CPUs to mask (check for duplicates)
 			for (int cpu = start; cpu <= end && cpu < 32; cpu++) {
-				*cpu_mask |= (1 << cpu);
-				(*cpu_count)++;
+				int bit = 1 << cpu;
+				if (!(*cpu_mask & bit)) {
+					*cpu_mask |= bit;
+					(*cpu_count)++;
+				}
 			}
 
 			// Skip comma if present
