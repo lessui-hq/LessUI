@@ -1948,21 +1948,43 @@ static void Config_init(void) {
 
 		LOG_debug("\tbind %s (%s) %i:%i", button_name, button_id, local_id, retro_id);
 
-		// TODO: test this without a final line return
-		tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
-		if (!tmp2) {
-			for (int j = 0; j < i; j++) {
-				if (core_button_mapping[j].name)
-					free(core_button_mapping[j].name);
+		// Check if this button already exists (for cascaded configs with duplicate bindings)
+		int existing_idx = -1;
+		for (int j = 0; j < i; j++) {
+			if (core_button_mapping[j].name &&
+			    strcmp(core_button_mapping[j].name, button_name) == 0) {
+				existing_idx = j;
+				break;
 			}
-			return;
 		}
-		safe_strcpy(tmp2, button_name, strlen(button_name) + 1);
-		PlayerButtonMapping* button = &core_button_mapping[i++];
-		button->name = tmp2;
-		button->retro_id = retro_id;
-		button->local_id = local_id;
-	};
+
+		if (existing_idx >= 0) {
+			// Update existing binding (later config overrides earlier)
+			PlayerButtonMapping* button = &core_button_mapping[existing_idx];
+			button->retro_id = retro_id;
+			button->local_id = local_id;
+		} else {
+			// Add new binding (with bounds check)
+			if (i >= RETRO_BUTTON_COUNT) {
+				LOG_warn("Too many button bindings (%d), ignoring: %s", i, button_name);
+				continue;
+			}
+
+			tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
+			if (!tmp2) {
+				for (int j = 0; j < i; j++) {
+					if (core_button_mapping[j].name)
+						free(core_button_mapping[j].name);
+				}
+				return;
+			}
+			safe_strcpy(tmp2, button_name, strlen(button_name) + 1);
+			PlayerButtonMapping* button = &core_button_mapping[i++];
+			button->name = tmp2;
+			button->retro_id = retro_id;
+			button->local_id = local_id;
+		}
+	}
 
 	config.initialized = 1;
 }
@@ -3004,6 +3026,9 @@ static struct retro_perf_callback perf_cb = {
 
 static bool environment_callback(unsigned cmd, void* data) { // copied from picoarch initially
 	EnvResult result;
+
+	// Log all environment callbacks to help debug core crashes
+	LOG_debug("ENV cmd=%u data=%p", cmd, data);
 
 	switch (cmd) {
 	case RETRO_ENVIRONMENT_SET_ROTATION: { /* 1 */
