@@ -79,7 +79,7 @@ void PLAT_initInput(void) {
 		snprintf(path, sizeof(path), "/dev/input/event%i", i);
 		inputs[i] = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 		if (inputs[i] < 0)
-			LOG_warn("Failed to open /dev/input/event%d\n", i);
+			LOG_warn("Failed to open /dev/input/event%d", i);
 	}
 }
 /**

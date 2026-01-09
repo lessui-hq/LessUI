@@ -1145,7 +1145,7 @@ void GFX_blitRect(int asset, SDL_Surface* dst, const SDL_Rect* dst_rect) {
  * @note Uses global pwr.is_charging and pwr.charge values
  */
 void GFX_blitBattery(SDL_Surface* dst, const SDL_Rect* dst_rect) {
-	// LOG_info("dst: %p\n", dst);
+	// LOG_info("dst: %p", dst);
 	int x = 0;
 	int y = 0;
 	if (dst_rect) {
@@ -2089,18 +2089,18 @@ size_t SND_batchSamples(const SND_Frame* frames, size_t frame_count) {
  * @note Platform may adjust sample_rate via PLAT_pickSampleRate
  */
 void SND_init(double sample_rate, double frame_rate) { // plat_sound_init
-	LOG_info("SND_init\n");
+	LOG_info("SND_init");
 
 	LOG_debug("SND_init: SDL_InitSubSystem start");
 	SDL_InitSubSystem(SDL_INIT_AUDIO);
 	LOG_debug("SND_init: SDL_InitSubSystem done");
 
 #if defined(USE_SDL2)
-	LOG_debug("Available audio drivers:\n");
+	LOG_debug("Available audio drivers:");
 	for (int i = 0; i < SDL_GetNumAudioDrivers(); i++) {
-		LOG_debug("- %s\n", SDL_GetAudioDriver(i));
+		LOG_debug("- %s", SDL_GetAudioDriver(i));
 	}
-	LOG_debug("Current audio driver: %s\n", SDL_GetCurrentAudioDriver());
+	LOG_debug("Current audio driver: %s", SDL_GetCurrentAudioDriver());
 #endif
 
 	// Preserve sync mode callbacks across reinit
@@ -2573,7 +2573,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 		} else if (event.type == SDL_JOYHATMOTION) {
 			int hats[4] = {-1, -1, -1, -1}; // -1=no change,0=up,1=down,2=left,3=right btn_ids
 			int hat = event.jhat.value;
-			// LOG_info("hat event: %i\n", hat);
+			// LOG_info("hat event: %i", hat);
 			// TODO: safe to assume hats will always be the primary dpad?
 			// TODO: this is literally a bitmask, make it one (oh, except there's 3 states...)
 			switch (hat) {
@@ -2673,7 +2673,7 @@ FALLBACK_IMPLEMENTATION void PLAT_pollInput(void) {
 			// before the first press but you can't release
 			// a button that wasn't pressed
 			if (!pressed && btn != BTN_NONE && !(pad.is_pressed & btn)) {
-				// LOG_info("cancel: %i\n", axis);
+				// LOG_info("cancel: %i", axis);
 				btn = BTN_NONE;
 			}
 		}
@@ -3356,9 +3356,9 @@ int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count) {
 		qsort(frequencies, count, sizeof(int), compare_int_asc);
 	}
 
-	LOG_info("PWR_getAvailableCPUFrequencies_sysfs: found %d frequencies\n", count);
+	LOG_info("PWR_getAvailableCPUFrequencies_sysfs: found %d frequencies", count);
 	if (count > 0) {
-		LOG_info("  Range: %d - %d kHz\n", frequencies[0], frequencies[count - 1]);
+		LOG_info("  Range: %d - %d kHz", frequencies[0], frequencies[count - 1]);
 	}
 
 	return count;
@@ -3419,7 +3419,7 @@ int PWR_setCPUFrequency_sysfs(int freq_khz) {
 		}
 	}
 
-	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz\n", freq_khz);
+	LOG_warn("PWR_setCPUFrequency_sysfs: failed to set %d kHz", freq_khz);
 	return -1;
 }
 
@@ -3598,8 +3598,7 @@ int PWR_detectCPUTopology(struct CPUTopology* topology) {
 		char cpus_path[256];
 		(void)snprintf(cpus_path, sizeof(cpus_path), "%s/related_cpus", path);
 		if (!parse_related_cpus(cpus_path, &cluster->cpu_mask, &cluster->cpu_count)) {
-			LOG_warn("PWR_detectCPUTopology: failed to parse related_cpus for policy%d\n",
-			         policy_id);
+			LOG_warn("PWR_detectCPUTopology: failed to parse related_cpus for policy%d", policy_id);
 			continue;
 		}
 
@@ -3624,7 +3623,7 @@ int PWR_detectCPUTopology(struct CPUTopology* topology) {
 	}
 
 	if (cluster_count == 0) {
-		LOG_info("PWR_detectCPUTopology: no clusters detected\n");
+		LOG_info("PWR_detectCPUTopology: no clusters detected");
 		return 0;
 	}
 
@@ -3667,7 +3666,7 @@ int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz) {
 			(void)fprintf(fp, "%d\n", min_khz);
 			(void)fclose(fp);
 		} else {
-			LOG_warn("PWR_setCPUClusterBounds: failed to write min_freq for policy%d\n", policy_id);
+			LOG_warn("PWR_setCPUClusterBounds: failed to write min_freq for policy%d", policy_id);
 			result = -1;
 		}
 	}
@@ -3681,7 +3680,7 @@ int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz) {
 			(void)fprintf(fp, "%d\n", max_khz);
 			(void)fclose(fp);
 		} else {
-			LOG_warn("PWR_setCPUClusterBounds: failed to write max_freq for policy%d\n", policy_id);
+			LOG_warn("PWR_setCPUClusterBounds: failed to write max_freq for policy%d", policy_id);
 			result = -1;
 		}
 	}
@@ -3700,7 +3699,7 @@ int PWR_setCPUGovernor(int policy_id, const char* governor) {
 
 	FILE* fp = fopen(path, "w");
 	if (!fp) {
-		LOG_warn("PWR_setCPUGovernor: failed to open %s\n", path);
+		LOG_warn("PWR_setCPUGovernor: failed to open %s", path);
 		return -1;
 	}
 
@@ -3708,12 +3707,11 @@ int PWR_setCPUGovernor(int policy_id, const char* governor) {
 	int close_result = fclose(fp);
 
 	if (written < 0 || close_result != 0) {
-		LOG_warn("PWR_setCPUGovernor: write failed for policy%d governor %s\n", policy_id,
-		         governor);
+		LOG_warn("PWR_setCPUGovernor: write failed for policy%d governor %s", policy_id, governor);
 		return -1;
 	}
 
-	LOG_debug("PWR_setCPUGovernor: set policy%d governor to %s\n", policy_id, governor);
+	LOG_debug("PWR_setCPUGovernor: set policy%d governor to %s", policy_id, governor);
 	return 0;
 }
 
@@ -3765,11 +3763,11 @@ int PWR_setThreadAffinity(int cpu_mask) {
 
 	// Set affinity for current thread
 	if (sched_setaffinity(0, sizeof(set), &set) != 0) {
-		LOG_warn("PWR_setThreadAffinity: sched_setaffinity failed: %s\n", strerror(errno));
+		LOG_warn("PWR_setThreadAffinity: sched_setaffinity failed: %s", strerror(errno));
 		return -1;
 	}
 
-	LOG_debug("PWR_setThreadAffinity: set affinity mask to 0x%x\n", cpu_mask);
+	LOG_debug("PWR_setThreadAffinity: set affinity mask to 0x%x", cpu_mask);
 	return 0;
 }
 #else

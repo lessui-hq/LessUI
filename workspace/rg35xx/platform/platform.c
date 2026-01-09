@@ -359,7 +359,7 @@ SDL_Surface* PLAT_initVideo(void) {
 
 	vid.de_mem = mmap(0, DE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, vid.fd_mem, DE);
 	if (vid.de_mem == MAP_FAILED) {
-		LOG_error("Failed to mmap display engine\n");
+		LOG_error("Failed to mmap display engine");
 		close(vid.fd_mem);
 		close(vid.fd_ion);
 		close(vid.fd_fb);

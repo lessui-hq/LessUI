@@ -155,7 +155,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	int scale = fx->scale > 0 ? fx->scale : 1;
 	int opacity = EFFECT_getOpacity(scale);
 
-	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d", fx->type, fx->scale,
 	          fx->color, opacity);
 
 #if !HAS_OPENGLES
@@ -180,7 +180,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		// Mark as live
 		EFFECT_markLive(fx);
 
-		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
+		LOG_debug("Effect: created %dx%d texture", target_w, target_h);
 	}
 #else
 	EFFECT_markLive(fx);
@@ -262,7 +262,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		if (SDL_GetCurrentDisplayMode(0, &mode) < 0) {
 			LOG_error("SDL2_initVideo: SDL_GetCurrentDisplayMode failed: %s", SDL_GetError());
 		} else {
-			LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
+			LOG_info("Display mode: %ix%i", mode.w, mode.h);
 			if (mode.h > mode.w) {
 				// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
 				ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
@@ -602,12 +602,12 @@ int SDL2_hdmiChanged(SDL2_RenderContext* ctx) {
 double SDL2_getDisplayHz(void) {
 	SDL_DisplayMode mode;
 	if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
-		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
+		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz", mode.w, mode.h, mode.refresh_rate);
 		if (mode.refresh_rate > 0) {
 			return (double)mode.refresh_rate;
 		}
 	}
-	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback\n");
+	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback");
 	return 0.0; // Return 0 to indicate no data, caller should use PLAT_getDisplayHz
 }
 

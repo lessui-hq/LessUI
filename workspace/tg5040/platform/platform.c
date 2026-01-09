@@ -124,7 +124,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Fallback to default if not found
 	if (!map) {
-		LOG_warn("Unknown LESSUI_DEVICE '%s', defaulting to Smart Pro\n",
+		LOG_warn("Unknown LESSUI_DEVICE '%s', defaulting to Smart Pro",
 		         device ? device : "(unset)");
 		map = &tg5040_device_map[0]; // Smart Pro
 	}

@@ -858,12 +858,12 @@ static void* auto_cpu_scaling_thread(void* arg) {
 
 			if (target_state != current_state && target_state >= 0 &&
 			    target_state < auto_cpu_state.topology.state_count) {
-				LOG_debug("Auto CPU: applying PerfState %d/%d\n", target_state,
+				LOG_debug("Auto CPU: applying PerfState %d/%d", target_state,
 				          auto_cpu_state.topology.state_count - 1);
 
 				int result = CPU_applyPerfState(&auto_cpu_state);
 				if (result != 0) {
-					LOG_warn("Auto CPU: failed to apply PerfState %d\n", target_state);
+					LOG_warn("Auto CPU: failed to apply PerfState %d", target_state);
 				}
 
 				// Set pending_affinity under mutex (main thread will apply it)
@@ -894,7 +894,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 					auto_cpu_state.current_index = target_idx;
 					pthread_mutex_unlock(&auto_cpu_mutex);
 				} else {
-					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
+					LOG_warn("Auto CPU: failed to set frequency %d kHz", freq_khz);
 				}
 			}
 		} else {
@@ -940,7 +940,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		usleep(50000);
 	}
 
-	LOG_debug("Auto CPU thread: stopped\n");
+	LOG_debug("Auto CPU thread: stopped");
 	return NULL;
 }
 
@@ -956,10 +956,10 @@ static void auto_cpu_startThread(void) {
 
 	auto_cpu_thread_running = 1;
 	if (pthread_create(&auto_cpu_thread, NULL, auto_cpu_scaling_thread, NULL) != 0) {
-		LOG_error("Failed to create auto CPU scaling thread\n");
+		LOG_error("Failed to create auto CPU scaling thread");
 		auto_cpu_thread_running = 0;
 	} else {
-		LOG_debug("Auto CPU: thread started\n");
+		LOG_debug("Auto CPU: thread started");
 	}
 }
 
@@ -975,7 +975,7 @@ static void auto_cpu_stopThread(void) {
 
 	auto_cpu_thread_running = 0;
 	pthread_join(auto_cpu_thread, NULL);
-	LOG_debug("Auto CPU: thread stopped\n");
+	LOG_debug("Auto CPU: thread stopped");
 }
 
 /**
@@ -1080,7 +1080,7 @@ static void auto_cpu_detectFrequencies(void) {
 		// Note: governors are now set by applyPerfState(), not upfront
 		// This lets each PerfState control its own governor configuration
 
-		LOG_info("Auto CPU: topology mode enabled, %d clusters, %d PerfStates\n", cluster_count,
+		LOG_info("Auto CPU: topology mode enabled, %d clusters, %d PerfStates", cluster_count,
 		         auto_cpu_state.topology.state_count);
 
 		// Log cluster info
@@ -1099,12 +1099,12 @@ static void auto_cpu_detectFrequencies(void) {
 		static const char* gov_names[] = {"powersave", "schedutil", "performance"};
 		for (int s = 0; s < auto_cpu_state.topology.state_count; s++) {
 			CPUPerfState* ps = &auto_cpu_state.topology.states[s];
-			LOG_debug("Auto CPU: PerfState %d: cluster %d, affinity=0x%x\n", s,
+			LOG_debug("Auto CPU: PerfState %d: cluster %d, affinity=0x%x", s,
 			          ps->active_cluster_idx, ps->cpu_affinity_mask);
 			for (int c = 0; c < cluster_count; c++) {
 				int gov = ps->cluster_governor[c];
 				const char* gov_str = (gov >= 0 && gov <= 2) ? gov_names[gov] : "?";
-				LOG_debug("  cluster %d: %s\n", c, gov_str);
+				LOG_debug("  cluster %d: %s", c, gov_str);
 			}
 		}
 
@@ -1153,9 +1153,9 @@ static void auto_cpu_detectFrequencies(void) {
 		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[2]]);
 
 		// Log all frequencies for debugging
-		LOG_debug("Auto CPU: frequency table:\n");
+		LOG_debug("Auto CPU: frequency table:");
 		for (int i = 0; i < auto_cpu_state.freq_count; i++) {
-			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_state.frequencies[i]);
+			LOG_debug("  [%d] %d kHz", i, auto_cpu_state.frequencies[i]);
 		}
 	} else {
 		auto_cpu_state.use_granular = 0;
@@ -1304,7 +1304,7 @@ static void updateAutoCPU(void) {
 	if (auto_cpu_state.startup_frames < auto_cpu_config.startup_grace) {
 		auto_cpu_state.startup_frames++;
 		if (auto_cpu_state.startup_frames == auto_cpu_config.startup_grace) {
-			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
+			LOG_debug("Auto CPU: grace period complete, monitoring active");
 		}
 		return;
 	}
@@ -1564,7 +1564,7 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_topo >= 4) {
 				debug_window_count_topo = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% state=%d/%d\n", snap.fill_pct,
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% state=%d/%d", snap.fill_pct,
 				          snap.total_adjust, util, current_state, max_state);
 			}
 		} else if (auto_cpu_state.use_granular) {
@@ -1671,7 +1671,7 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% freq=%dkHz idx=%d/%d",
 				          snap.fill_pct, snap.total_adjust, util, current_freq, current_idx,
 				          max_idx);
 			}
@@ -1732,7 +1732,7 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% level=%d\n", snap.fill_pct,
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% level=%d", snap.fill_pct,
 				          snap.total_adjust, util, current_level);
 			}
 
@@ -1799,7 +1799,7 @@ static void updateAutoCPU(void) {
 				}
 			}
 			if (decayed > 0) {
-				LOG_debug("Auto CPU: stability earned, decayed %d panic counts\n", decayed);
+				LOG_debug("Auto CPU: stability earned, decayed %d panic counts", decayed);
 			}
 			auto_cpu_state.stability_streak = 0;
 		}

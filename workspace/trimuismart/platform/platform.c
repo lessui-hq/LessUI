@@ -223,7 +223,7 @@ SDL_Surface* PLAT_initVideo(void) {
 	vid.mem_map =
 	    mmap(0, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, vid.mem_fd, OVL_V);
 	if (vid.mem_map == MAP_FAILED) {
-		LOG_error("Failed to mmap overlay registers\n");
+		LOG_error("Failed to mmap overlay registers");
 		close(vid.mem_fd);
 		close(vid.ion_fd);
 		close(vid.fb_fd);
@@ -530,14 +530,14 @@ void ADC_init(void) {
 
 	adc.mem_fd = open("/dev/mem", O_RDWR);
 	if (adc.mem_fd < 0) {
-		LOG_error("Failed to open /dev/mem for ADC\n");
+		LOG_error("Failed to open /dev/mem for ADC");
 		return;
 	}
 
 	adc.mem_map =
 	    mmap(0, adc.page_size * 2, PROT_READ | PROT_WRITE, MAP_SHARED, adc.mem_fd, addr_start);
 	if (adc.mem_map == MAP_FAILED) {
-		LOG_error("Failed to mmap ADC registers\n");
+		LOG_error("Failed to mmap ADC registers");
 		close(adc.mem_fd);
 		return;
 	}

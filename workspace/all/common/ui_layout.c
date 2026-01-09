@@ -181,9 +181,9 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 		// Emergency fallback (should never happen with reasonable MIN_PILL)
 		best_pill_px = min_pill_px;
 		best_rows = 1;
-		LOG_warn("Row calc: EMERGENCY FALLBACK to %dpx, 1 row\n", min_pill_px);
+		LOG_warn("Row calc: EMERGENCY FALLBACK to %dpx, 1 row", min_pill_px);
 	} else if (best_is_even) {
-		LOG_info("Row calc: Using even-pixel configuration\n");
+		LOG_info("Row calc: Using even-pixel configuration");
 	} else {
 		LOG_info("Row calc: Using odd-pixel fallback (no even option available)\n");
 	}
@@ -250,8 +250,8 @@ void UI_initLayout(int screen_width, int screen_height, float diagonal_inches) {
 	ui.settings_size = ui.pill_height / 8; // ~4dp for 30dp pill
 	ui.settings_width = 80; // Fixed 80dp width (hardware icons need consistent spacing)
 
-	LOG_info("UI_initLayout: %dx%d @ %.2f\" → PPI=%.0f, dp_scale=%.2f\n", screen_width,
-	         screen_height, diagonal_inches, ppi, gfx_dp_scale);
-	LOG_info("UI_initLayout: pill=%ddp, rows=%d, padding=%ddp, edge_padding=%ddp\n", ui.pill_height,
+	LOG_info("UI_initLayout: %dx%d @ %.2f\" → PPI=%.0f, dp_scale=%.2f", screen_width, screen_height,
+	         diagonal_inches, ppi, gfx_dp_scale);
+	LOG_info("UI_initLayout: pill=%ddp, rows=%d, padding=%ddp, edge_padding=%ddp", ui.pill_height,
 	         ui.row_count, ui.padding, ui.edge_padding);
 }

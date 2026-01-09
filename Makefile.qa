@@ -14,7 +14,7 @@
 # The main makefile forwards to this file for test/lint/format targets.
 # Run 'make -f Makefile.qa help' for complete target list.
 
-.PHONY: help lint lint-code lint-full lint-shell analyze analyze-native test test-native test-asan test-asan-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-pull docker-test docker-test-asan docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
+.PHONY: help lint lint-code lint-full lint-shell lint-log-newlines analyze analyze-native test test-native test-asan test-asan-native format format-native format-check format-shell format-shell-check format-make format-make-check format-prettier format-prettier-check clean-qa clean-tests docker-build docker-pull docker-test docker-test-asan docker-lint docker-analyze docker-format docker-format-check docker-shell lint-native report coverage docker-coverage clean-coverage
 
 help:
 	@echo "LessUI Quality Assurance Tools"
@@ -142,6 +142,26 @@ lint-unsafe-functions:
 		exit 1; \
 	else \
 		echo "✓ No unsafe string functions found"; \
+	fi
+
+# Check for LOG_* calls with trailing \n (newlines are added automatically)
+lint-log-newlines:
+	@echo "Checking for LOG_* calls with trailing newlines..."
+	@BAD_LOGS=$$(grep -rnE 'LOG_(error|warn|info|debug|errno)\([^)]*\\n"' \
+		workspace \
+		--include='*.c' 2>/dev/null | \
+		grep -v 'libretro-common' | \
+		grep -v 'parson' | \
+		grep -v 'vendor' | \
+		grep -v '^\s*//' || true); \
+	if [ -n "$$BAD_LOGS" ]; then \
+		echo "✗ Found LOG_* calls with trailing \\n:"; \
+		echo "$$BAD_LOGS" | sed 's/^/  /'; \
+		echo ""; \
+		echo "Remove \\n from log messages (newlines are added automatically)"; \
+		exit 1; \
+	else \
+		echo "✓ No LOG_* calls with trailing newlines"; \
 	fi
 
 # Run clang-tidy on common code (platform-independent, highest priority)
@@ -870,7 +890,7 @@ docker-shell: docker-build
 
 # Native targets (runs directly on host)
 # Sub-targets can run in parallel with: make -j4 -f Makefile.qa lint-native
-lint-native: lint-unsafe-functions lint-code format-check format-shell-check format-make-check format-prettier-check lint-shell
+lint-native: lint-unsafe-functions lint-log-newlines lint-code format-check format-shell-check format-make-check format-prettier-check lint-shell
 	@echo ""
 	@echo "================================="
 	@echo "✓ All linting checks passed"
