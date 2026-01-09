@@ -315,6 +315,7 @@ SDL_Surface* GFX_init(int mode) {
 	// tried adding to PWR_init() but that was no good (not sure why)
 	LOG_debug("GFX_init: Initializing lid");
 	PLAT_initLid();
+	LOG_debug("GFX_init: Lid state after init: has_lid=%d, is_open=%d", lid.has_lid, lid.is_open);
 
 	LOG_debug("GFX_init: Calling PLAT_initVideo");
 	gfx.screen = PLAT_initVideo();
