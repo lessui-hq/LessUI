@@ -18,7 +18,7 @@ all: readmes show
 	@cd overclock && $(MAKE)
 	@cd other/squashfs && $(MAKE)
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 

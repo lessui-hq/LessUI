@@ -16,7 +16,7 @@ REQUIRES_COMMANDER = other/DinguxCommander
 # Platform-specific binaries (can run in parallel)
 PLATFORM_TARGETS = blank batmon lumon overclock show keymon
 
-.PHONY: $(PLATFORM_TARGETS)
+.PHONY: all early clean blank batmon lumon overclock show keymon
 
 all: readmes $(PLATFORM_TARGETS)
 

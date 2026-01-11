@@ -21,7 +21,7 @@ REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 all: readmes show
 	@cd other/squashfs && $(MAKE)
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 

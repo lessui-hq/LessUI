@@ -19,7 +19,7 @@ REQUIRES_FBSET = other/fbset
 # Platform-specific binaries (can run in parallel after readmes)
 PLATFORM_TARGETS = boot init show
 
-.PHONY: $(PLATFORM_TARGETS)
+.PHONY: all early clean boot init show
 
 all: readmes $(PLATFORM_TARGETS)
 
@@ -28,8 +28,6 @@ boot:
 
 init:
 	@$(MAKE) -C init
-
-.PHONY: show
 show:
 	@$(MAKE) -C show
 

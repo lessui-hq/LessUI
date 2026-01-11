@@ -15,7 +15,7 @@ REQUIRES_COMMANDER = other/DinguxCommander
 # keymon.elf is now built in workspace/all/utils
 all: readmes show
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 

@@ -1,5 +1,7 @@
 #magicmini
 
+.PHONY: all early clean
+
 ###########################################################
 
 ifeq (,$(PLATFORM))

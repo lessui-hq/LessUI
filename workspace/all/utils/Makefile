@@ -22,7 +22,7 @@ endif
 UTIL_DIRS := $(dir $(wildcard */Makefile))
 UTIL_NAMES := $(filter-out parson,$(patsubst %/,%,$(UTIL_DIRS)))
 
-.PHONY: setup build install clean all
+.PHONY: setup build install clean all FORCE
 
 # Default target when called from workspace/Makefile (per-platform build)
 all: build

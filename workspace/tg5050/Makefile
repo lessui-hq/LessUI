@@ -15,7 +15,7 @@ REQUIRES_JSTEST = other/jstest
 
 all: readmes show
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 
