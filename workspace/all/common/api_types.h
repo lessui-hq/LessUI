@@ -8,6 +8,7 @@
 #ifndef __API_TYPES_H__
 #define __API_TYPES_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 
 ///////////////////////////////

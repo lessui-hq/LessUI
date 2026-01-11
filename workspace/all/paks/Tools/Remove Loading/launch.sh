@@ -148,7 +148,7 @@ case "$PLATFORM" in
 		shui message "Loading screen removed!" --confirm "Done"
 		;;
 
-	tg5040)
+	tg5040 | tg5050)
 		# Confirm before modifying
 		if ! shui message "Remove boot loading screen?" \
 			--subtext "This modifies system files." \

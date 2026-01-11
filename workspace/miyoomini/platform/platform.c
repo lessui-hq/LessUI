@@ -363,7 +363,7 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 			LOG_info("MI_GFX blit: src %dx%d (bpp=%d Amask=0x%X) -> dst %dx%d (bpp=%d)\n", src->w,
 			         src->h, src->format->BitsPerPixel, src->format->Amask, dst->w, dst->h,
 			         dst->format->BitsPerPixel);
-			LOG_info("MI_GFX blit: flags=0x%X eDFBBlendFlag=0x%X eSrcDfbBldOp=%d eDstDfbBldOp=%d\n",
+			LOG_info("MI_GFX blit: flags=0x%X eDFBBlendFlag=0x%X eSrcDfbBldOp=%d eDstDfbBldOp=%d",
 			         src->flags, Opt.eDFBBlendFlag, Opt.eSrcDfbBldOp, Opt.eDstDfbBldOp);
 			blit_logged = 1;
 		}
@@ -383,6 +383,15 @@ static inline void GFX_BlitSurfaceExec(SDL_Surface* src, SDL_Rect* srcrect, SDL_
 
 void PLAT_initLid(void) {
 	lid.has_lid = exists(LID_PATH);
+	if (lid.has_lid) {
+		// Read initial lid state
+		int initial_value = getInt(LID_PATH);
+		lid.is_open = initial_value;
+		LOG_info("PLAT_initLid: Hall sensor found, initial value=%d (is_open=%d)", initial_value,
+		         lid.is_open);
+	} else {
+		LOG_debug("PLAT_initLid: No hall sensor found at %s", LID_PATH);
+	}
 }
 
 int PLAT_lidChanged(int* state) {
@@ -437,9 +446,78 @@ static EffectState effect_state;
 
 #define MODES_PATH "/sys/class/graphics/fb0/modes"
 
+/**
+ * Log display diagnostics for debugging black screen issues.
+ */
+static void logDisplayDiagnostics(void) {
+	char buf[256];
+
+	LOG_info("=== Display Diagnostics ===");
+
+	// MY_MODEL environment variable
+	char* my_model = getenv("MY_MODEL");
+	LOG_info("MY_MODEL=%s", my_model ? my_model : "(not set)");
+
+	// Framebuffer modes
+	buf[0] = '\0';
+	getFile(MODES_PATH, buf, sizeof(buf));
+	if (buf[0]) {
+		// Replace newlines with spaces for single-line output
+		for (char* p = buf; *p; p++) {
+			if (*p == '\n')
+				*p = ' ';
+		}
+		LOG_info("fb0/modes: %s", buf);
+	} else {
+		LOG_info("fb0/modes: (unable to read)");
+	}
+
+	// Virtual size
+	buf[0] = '\0';
+	getFile("/sys/class/graphics/fb0/virtual_size", buf, sizeof(buf));
+	if (buf[0]) {
+		char* newline = strchr(buf, '\n');
+		if (newline)
+			*newline = '\0';
+		LOG_info("fb0/virtual_size: %s", buf);
+	}
+
+	// Check backlight/PWM state
+	buf[0] = '\0';
+	getFile("/sys/class/pwm/pwmchip0/pwm0/enable", buf, sizeof(buf));
+	if (buf[0]) {
+		char* newline = strchr(buf, '\n');
+		if (newline)
+			*newline = '\0';
+		LOG_info("pwm0/enable: %s", buf);
+	}
+
+	buf[0] = '\0';
+	getFile("/sys/class/pwm/pwmchip0/pwm0/duty_cycle", buf, sizeof(buf));
+	if (buf[0]) {
+		char* newline = strchr(buf, '\n');
+		if (newline)
+			*newline = '\0';
+		LOG_info("pwm0/duty_cycle: %s", buf);
+	}
+
+	// Hall sensor (lid) state
+	if (exists(LID_PATH)) {
+		int lid_value = getInt(LID_PATH);
+		LOG_info("hall_sensor: %d (0=closed, 1=open)", lid_value);
+	} else {
+		LOG_info("hall_sensor: not present");
+	}
+
+	LOG_info("=== End Diagnostics ===");
+}
+
 SDL_Surface* PLAT_initVideo(void) {
 	// Detect device variant
 	PLAT_detectVariant(&platform_variant);
+
+	// Log display diagnostics for debugging
+	logDisplayDiagnostics();
 
 	putenv("SDL_HIDE_BATTERY=1");
 	// Enable strict vsync for proper frame pacing (rate control handles audio sync)
@@ -580,7 +658,7 @@ static void updateEffectOverlay(void) {
 	SDL_Surface* temp = EFFECT_createGeneratedSurfaceWithColor(
 	    effect_state.type, scale, FIXED_WIDTH, FIXED_HEIGHT, effect_state.color);
 	int opacity = EFFECT_getOpacity(scale);
-	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d screen=%dx%d\n",
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d screen=%dx%d",
 	          effect_state.type, scale, effect_state.color, opacity, FIXED_WIDTH, FIXED_HEIGHT);
 
 	if (!temp) {
@@ -593,7 +671,7 @@ static void updateEffectOverlay(void) {
 		MI_SYS_MMA_Alloc(NULL, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.padd);
 		MI_SYS_Mmap(vid.effect_buffer.padd, ALIGN4K(EFFECT_BUFFER_SIZE), &vid.effect_buffer.vadd,
 		            true);
-		LOG_debug("Effect: allocated ION buffer padd=0x%llX vadd=%p\n",
+		LOG_debug("Effect: allocated ION buffer padd=0x%llX vadd=%p",
 		          (unsigned long long)vid.effect_buffer.padd, vid.effect_buffer.vadd);
 	}
 
@@ -622,7 +700,7 @@ static void updateEffectOverlay(void) {
 	// Enable alpha blending with opacity from effect_system
 	SDLX_SetAlpha(vid.effect, SDL_SRCALPHA, opacity);
 
-	LOG_debug("Effect: overlay created %dx%d in ION memory\n", vid.effect->w, vid.effect->h);
+	LOG_debug("Effect: overlay created %dx%d in ION memory", vid.effect->w, vid.effect->h);
 
 	EFFECT_markLive(&effect_state);
 }
@@ -644,7 +722,7 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer) {
 	// Track scale for effect overlay generation
 	EFFECT_setScale(&effect_state, renderer->visual_scale);
 
-	LOG_debug("Scaler: src=%dx%d dst=%dx%d+%d+%d buffer_scale=%d visual_scale=%d aspect=%.2f\n",
+	LOG_debug("Scaler: src=%dx%d dst=%dx%d+%d+%d buffer_scale=%d visual_scale=%d aspect=%.2f",
 	          renderer->src_w, renderer->src_h, renderer->dst_w, renderer->dst_h, renderer->dst_x,
 	          renderer->dst_y, renderer->scale, renderer->visual_scale, renderer->aspect);
 
@@ -700,6 +778,9 @@ void PLAT_present(GFX_Renderer* renderer) {
 				GFX_BlitSurfaceExec(vid.effect, &src_rect, vid.video, &dst_rect, 0, 0, 0);
 			}
 		}
+
+		// Render debug HUD overlay (game mode only)
+		PLAT_renderDebugHUD(vid.video);
 	} else {
 		// UI mode: blit screen to video
 		if (!vid.direct) {
@@ -901,7 +982,7 @@ void PLAT_setCPUSpeed(int speed) {
 	snprintf(cmd, sizeof(cmd), "overclock.elf %d", freq);
 	int ret = system(cmd);
 	if (ret != 0) {
-		LOG_warn("overclock.elf returned %d for freq %d\n", ret, freq);
+		LOG_warn("overclock.elf returned %d for freq %d", ret, freq);
 	}
 }
 

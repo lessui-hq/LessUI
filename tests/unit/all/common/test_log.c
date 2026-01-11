@@ -112,28 +112,34 @@ void test_log_get_timestamp_format(void) {
 	char buf[32];
 	int len = log_get_timestamp(buf, sizeof(buf));
 
-	// Should be HH:MM:SS format (8 characters)
-	TEST_ASSERT_EQUAL(8, len);
+	// Should be HH:MM:SS.mmm format (12 characters)
+	TEST_ASSERT_EQUAL(12, len);
 
-	// Should match HH:MM:SS pattern
+	// Should match HH:MM:SS.mmm pattern
 	TEST_ASSERT_EQUAL(':', buf[2]);
 	TEST_ASSERT_EQUAL(':', buf[5]);
+	TEST_ASSERT_EQUAL('.', buf[8]);
 
-	// All other characters should be digits
+	// Hour, minute, second digits
 	TEST_ASSERT_TRUE(buf[0] >= '0' && buf[0] <= '9');
 	TEST_ASSERT_TRUE(buf[1] >= '0' && buf[1] <= '9');
 	TEST_ASSERT_TRUE(buf[3] >= '0' && buf[3] <= '9');
 	TEST_ASSERT_TRUE(buf[4] >= '0' && buf[4] <= '9');
 	TEST_ASSERT_TRUE(buf[6] >= '0' && buf[6] <= '9');
 	TEST_ASSERT_TRUE(buf[7] >= '0' && buf[7] <= '9');
+
+	// Millisecond digits
+	TEST_ASSERT_TRUE(buf[9] >= '0' && buf[9] <= '9');
+	TEST_ASSERT_TRUE(buf[10] >= '0' && buf[10] <= '9');
+	TEST_ASSERT_TRUE(buf[11] >= '0' && buf[11] <= '9');
 }
 
 void test_log_get_timestamp_null_terminated(void) {
 	char buf[32];
 	log_get_timestamp(buf, sizeof(buf));
 
-	// Should be null-terminated
-	TEST_ASSERT_EQUAL('\0', buf[8]);
+	// Should be null-terminated after HH:MM:SS.mmm (12 chars)
+	TEST_ASSERT_EQUAL('\0', buf[12]);
 }
 
 ///////////////////////////////

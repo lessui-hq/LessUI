@@ -1,3 +1,5 @@
+.PHONY: all clean
+
 ifeq (,$(CROSS_COMPILE))
 $(error missing CROSS_COMPILE for this toolchain)
 endif

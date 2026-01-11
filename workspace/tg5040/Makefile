@@ -16,7 +16,7 @@ REQUIRES_COMMANDER = other/DinguxCommander-sdl2
 
 all: readmes show
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 

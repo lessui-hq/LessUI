@@ -56,7 +56,7 @@ The main files `player.c` (peaked at ~7200 lines) and `launcher.c` (peaked at ~2
 | player_core    | Core AV info processing, aspect ratio          |
 | player_menu    | In-game menu system                            |
 | player_env     | Libretro environment callback handlers         |
-| player_cpu     | Auto CPU scaling algorithm                     |
+| cpu (common)   | Auto CPU scaling algorithm                     |
 | player_game    | ZIP parsing, extension matching, M3U detection |
 | player_scaler  | Video scaling geometry calculations            |
 | player_archive | 7z/ZIP archive extraction                      |
@@ -110,19 +110,15 @@ Extracted duplicated rendering code from platform files into shared modules, wit
 **Replaced basic audio handling with adaptive resampling and rate control.**
 
 - **Linear interpolation resampling** for smooth audio at any sample rate
-- **Dual-timescale PI controller** for stable audio synchronization
-  - Smooths error signal (0.9) to filter jitter
-  - Quadratic integral weighting for faster convergence far from 50%
-  - Integral clamped to ±1% for persistent hardware drift correction
-- **Dynamic rate control** that adjusts playback speed to prevent buffer underruns
-  - Parameters tuned for handheld timing variance (d=0.010, 5-frame buffer)
-  - `SND_newFrame()` updates integral once per frame to prevent over-accumulation
+- **Proportional rate control** (Arntzen algorithm) for stable audio synchronization
+  - Adjusts resampling ratio based on buffer fill level
+  - Parameters tuned for handheld timing variance (d=1.2%, 5-frame buffer)
+- **Runtime-adaptive sync system** that measures display Hz and selects appropriate mode
+  - Vsync mode when display Hz within 1% of game fps (rate control active)
+  - Audio-clock mode otherwise (blocking writes, no rate control needed)
 - **Audio buffer status callback** enabling cores to implement frameskip
-- **Dual sync modes** with compile-time selection:
-  - **Vsync mode** (default): Frame pacing via Bresenham accumulator, non-blocking audio writes
-  - **Audioclock mode** (M17): Audio hardware clock drives timing, blocking writes when buffer full
 
-The audioclock mode fixes audio stuttering on devices with unstable vsync (like M17).
+The runtime-adaptive system automatically selects audio-clock mode for devices with unstable vsync, ensuring smooth audio on all hardware.
 
 ### Removed Legacy Audio Code
 

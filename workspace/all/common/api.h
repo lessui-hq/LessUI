@@ -850,9 +850,30 @@ void SND_resetUnderrunCount(void);
 
 /**
  * Signals start of a new video frame for audio rate control.
- * Call once per frame before core.run() to limit integral updates.
+ * Currently a no-op (pure proportional control). Kept for API compatibility.
  */
 void SND_newFrame(void);
+
+/**
+ * Callback type for sync mode queries.
+ *
+ * Used by audio system to query sync manager for runtime mode decisions.
+ *
+ * @return true if the feature should be enabled, false otherwise
+ */
+typedef bool (*SND_SyncCallback)(void);
+
+/**
+ * Configure sync mode callbacks for runtime adaptive behavior.
+ *
+ * The audio system uses these callbacks to adapt its behavior based on
+ * the current sync mode (audio-clock vs vsync).
+ *
+ * @param should_use_rate_control Callback returning true if audio rate control should run
+ * @param should_block_audio Callback returning true if audio writes should block
+ */
+void SND_setSyncCallbacks(SND_SyncCallback should_use_rate_control,
+                          SND_SyncCallback should_block_audio);
 
 /**
  * Shuts down the audio subsystem.
@@ -891,14 +912,11 @@ typedef struct {
 	uint64_t samples_consumed; // Total samples consumed by audio callback
 	uint64_t samples_requested; // Total samples requested by SDL callback
 
-	// Rate control parameters (PI controller based on Arntzen algorithm)
+	// Rate control parameters (proportional control based on Arntzen algorithm)
 	float frame_rate; // Core frame rate (e.g., 60.0988)
 	float rate_adjust; // Dynamic rate control adjustment (1.0 ± d)
 	float total_adjust; // Same as rate_adjust (no separate corrections)
-	float rate_integral; // PI controller integral term (drift correction)
 	float rate_control_d; // Proportional gain
-	float rate_control_ki; // Integral gain
-	float error_avg; // Smoothed error (for debugging integral behavior)
 
 	// Resampler state
 	int sample_rate_in; // Input sample rate (from core)
@@ -1387,6 +1405,32 @@ scaler_t PLAT_getScaler(GFX_Renderer* renderer);
 void PLAT_present(GFX_Renderer* renderer);
 
 /**
+ * Render debug HUD overlay to display surface (software rendering).
+ *
+ * Called by PLAT_present() implementations before buffer flip.
+ * Weak default does nothing; player provides implementation.
+ *
+ * @param surface Final display surface to render HUD onto (RGB565)
+ */
+FALLBACK_IMPLEMENTATION void PLAT_renderDebugHUD(SDL_Surface* surface);
+
+/**
+ * Get debug HUD buffer for GL compositing (hardware rendering).
+ *
+ * Called by SDL2_present() GLES path before swap buffers.
+ * Returns an RGBA8888 buffer that will be composited over the game frame.
+ * Weak default returns NULL (no HUD); player provides implementation.
+ *
+ * @param src_w Source (game) width for HUD text generation
+ * @param src_h Source (game) height for HUD text generation
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ * @return RGBA8888 pixel buffer (screen_w x screen_h) or NULL if no HUD
+ */
+FALLBACK_IMPLEMENTATION uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w,
+                                                         int screen_h);
+
+/**
  * Platform-specific overscan support check.
  *
  * @return 1 if platform supports overscan adjustment, 0 otherwise
@@ -1520,6 +1564,73 @@ int PWR_getAvailableCPUFrequencies_sysfs(int* frequencies, int max_count);
  * @return 0 on success, -1 on failure
  */
 int PWR_setCPUFrequency_sysfs(int freq_khz);
+
+///////////////////////////////
+// Multi-cluster CPU topology support
+///////////////////////////////
+
+// Forward declarations from cpu.h (avoid circular include)
+struct CPUTopology;
+
+/**
+ * Detects CPU topology from sysfs.
+ *
+ * Enumerates /sys/devices/system/cpu/cpufreq/policy{0,1,...} and reads:
+ * - related_cpus: Which CPUs belong to this cluster
+ * - cpuinfo_min_freq / cpuinfo_max_freq: Frequency bounds
+ * - scaling_available_frequencies: Available frequency steps
+ *
+ * Clusters are sorted by max_khz ascending (LITTLE → BIG → PRIME).
+ *
+ * @param topology Output structure to populate
+ * @return Number of clusters found (0 on failure, 1 for single-cluster)
+ */
+int PWR_detectCPUTopology(struct CPUTopology* topology);
+
+/**
+ * Sets frequency bounds for a CPU cluster.
+ *
+ * For multi-cluster mode with schedutil governor, writes to:
+ * - /sys/devices/system/cpu/cpufreq/policy{N}/scaling_min_freq
+ * - /sys/devices/system/cpu/cpufreq/policy{N}/scaling_max_freq
+ *
+ * @param policy_id Policy number (0, 4, 7, etc.)
+ * @param min_khz Minimum frequency in kHz
+ * @param max_khz Maximum frequency in kHz (0 = don't change)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUClusterBounds(int policy_id, int min_khz, int max_khz);
+
+/**
+ * Sets CPU governor for a cluster.
+ *
+ * @param policy_id Policy number (0, 4, 7, etc.)
+ * @param governor Governor name ("userspace", "schedutil", etc.)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setCPUGovernor(int policy_id, const char* governor);
+
+/**
+ * Sets CPU affinity for the current thread.
+ *
+ * Uses pthread_setaffinity_np() to restrict thread to specific CPUs.
+ *
+ * @param cpu_mask Bitmask of allowed CPUs (bit 0 = CPU0, bit 1 = CPU1, etc.)
+ * @return 0 on success, -1 on failure
+ */
+int PWR_setThreadAffinity(int cpu_mask);
+
+/**
+ * Sets all CPU clusters to low-power mode.
+ *
+ * On multi-cluster devices: sets all cpufreq policies to "powersave" governor.
+ * On single-cluster devices: uses PLAT_setCPUSpeed(CPU_SPEED_POWERSAVE).
+ *
+ * Use this for non-gaming contexts (menus, tools) to save power and reduce heat.
+ *
+ * @return Number of clusters configured (0 for single-cluster devices)
+ */
+int PWR_setLowPowerMode(void);
 
 /**
  * Platform-specific rumble/vibration control.

@@ -1,3 +1,5 @@
+.PHONY: all clean
+
 ###########################################################
 
 ifeq (,$(PLATFORM))
@@ -21,8 +23,8 @@ HEADERS = $(wildcard ../../$(PLATFORM)/platform/msettings.h)
 CC = $(CROSS_COMPILE)gcc
 # OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
 OPT_FLAGS ?= -O3
-CFLAGS = $(ARCH) -DPLATFORM=\"$(PLATFORM)\"
-LDFLAGS = $(OPT_FLAGS) -lmsettings -lrt -ldl -Wl,--gc-sections -s
+CFLAGS += $(ARCH) -DPLATFORM=\"$(PLATFORM)\"
+LDFLAGS += $(OPT_FLAGS) -lmsettings -lrt -ldl -Wl,--gc-sections -s
 
 PRODUCT = build/$(PLATFORM)/$(TARGET).elf
 

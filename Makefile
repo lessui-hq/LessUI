@@ -29,7 +29,7 @@ endif
 
 # Default platforms to build (can be overridden with PLATFORMS=...)
 ifeq (,$(PLATFORMS))
-PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 zero28 rgb30 m17 my282 magicmini retroid
+PLATFORMS = miyoomini trimuismart rg35xx rg35xxplus my355 tg5040 tg5050 zero28 rgb30 m17 my282 magicmini retroid
 endif
 
 ###########################################################
@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major common system .DEFAULT
 
 export MAKEFLAGS=--no-print-directory
 
@@ -284,6 +284,12 @@ clean:
 	@find workspace -type f -name "*.bmp" -path "*/boot/*.bmp" -delete 2>/dev/null || true
 	@find workspace -type f -name "boot_logo.png" -path "*/boot/boot_logo.png" -delete 2>/dev/null || true
 	@rm -rf workspace/all/paks/Emus/cores/extracted/
+	@echo "Cleaning platform-specific build artifacts..."
+	@find workspace -type f -name "*.o" -delete 2>/dev/null || true
+	@find workspace -type f -name "*.elf" -delete 2>/dev/null || true
+	@find workspace -path "*/other/*/DinguxCommander" -type f -delete 2>/dev/null || true
+	@find workspace -path "*/other/*/351files" -type f -delete 2>/dev/null || true
+	@echo "Clean complete"
 
 # Prepare fresh build directory and skeleton
 setup: name

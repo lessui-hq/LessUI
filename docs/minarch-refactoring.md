@@ -54,7 +54,7 @@ player.c (orchestration, main loop, SDL integration)
     │   ├── player_core.c      ─ AV info processing, aspect ratio
     │   ├── player_env.c       ─ Libretro environment callbacks
     │   ├── player_game.c      ─ Game file handling, ZIP parsing
-    │   └── player_cpu.c       ─ Auto CPU frequency scaling
+    │   └── cpu.c (common)     ─ Auto CPU frequency scaling
     │
     └── UI
         ├── player_menu.c      ─ In-game menu system
@@ -122,12 +122,12 @@ player.c (orchestration, main loop, SDL integration)
 
 ### Core Integration Layer
 
-| Module          | Lines | Responsibility                                           | Tests |
-| --------------- | ----- | -------------------------------------------------------- | ----- |
-| `player_core.c` | ~150  | Build game info, calculate aspect ratio, process AV info | 23    |
-| `player_env.c`  | ~400  | Handle 30+ libretro environment callbacks                | 51    |
-| `player_game.c` | ~300  | Extension parsing, ZIP headers, M3U detection            | 46    |
-| `player_cpu.c`  | ~350  | Auto CPU frequency scaling algorithm                     | 42    |
+| Module           | Lines | Responsibility                                           | Tests |
+| ---------------- | ----- | -------------------------------------------------------- | ----- |
+| `player_core.c`  | ~150  | Build game info, calculate aspect ratio, process AV info | 23    |
+| `player_env.c`   | ~400  | Handle 30+ libretro environment callbacks                | 51    |
+| `player_game.c`  | ~300  | Extension parsing, ZIP headers, M3U detection            | 46    |
+| `cpu.c` (common) | ~350  | Auto CPU frequency scaling algorithm                     | 42    |
 
 **Key decisions:**
 
@@ -340,7 +340,7 @@ workspace/all/player/           # Emulator frontend
 ├── player_core.h/c             # Core AV processing
 ├── player_env.h/c              # Environment callbacks
 ├── player_game.h/c             # Game file handling
-├── player_cpu.h/c              # CPU scaling
+├── (cpu.h/c in common/)        # CPU scaling (moved to common/)
 ├── player_menu.h/c             # Menu system
 └── player_menu_types.h         # Menu types
 
@@ -356,7 +356,7 @@ tests/unit/all/common/           # Unit tests
 ├── test_player_core.c
 ├── test_player_env.c
 ├── test_player_game.c
-├── test_player_cpu.c
+├── test_cpu.c                  # (moved to common/)
 └── test_player_menu.c
 ```
 
@@ -476,7 +476,7 @@ Renamed **405 function references** across 8 modules to follow consistent `Playe
 | player_state   | 5                 | `Player_readState` → `PlayerState_read`           |
 | player_utils   | 3                 | `Player_getCoreName` → `PlayerUtils_getCoreName`  |
 | player_zip     | 2                 | `Player_zipCopy` → `PlayerZip_copy`               |
-| player_cpu     | (earlier)         | `AutoCPU_update` → `PlayerCPU_update`             |
+| cpu (common)   | (earlier)         | `AutoCPU_update` → `CPU_update`                   |
 
 **Benefits:**
 
@@ -490,7 +490,7 @@ Renamed **405 function references** across 8 modules to follow consistent `Playe
 
 - Added comprehensive naming convention guide to CLAUDE.md
 - Includes table of all module prefixes and example functions
-- Documents type naming (`PlayerCPUState`) and constant naming (`PLAYER_CPU_MAX`)
+- Documents type naming (`CPUState`) and constant naming (`CPU_MAX_*`)
 
 ---
 

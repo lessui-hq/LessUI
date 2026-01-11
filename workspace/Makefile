@@ -17,7 +17,7 @@ MAKEFLAGS += --no-print-directory
 # keymon is now built in workspace/all/utils/keymon (unified implementation)
 COMPONENTS = launcher player paks utils syncsettings platform-late
 
-.PHONY: all libs $(COMPONENTS)
+.PHONY: all libs launcher player paks utils syncsettings platform-late clean
 
 all: libs $(COMPONENTS)
 

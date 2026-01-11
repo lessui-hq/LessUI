@@ -29,7 +29,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "player_cpu.h"
+#include "../common/cpu.h"
 #include "player_internal.h"
 
 // Forward declaration for SDL_Surface (avoids pulling in SDL headers)
@@ -196,8 +196,8 @@ typedef struct PlayerContext {
 	//----------------------------------
 	// Auto CPU scaling
 	//----------------------------------
-	PlayerCPUState* auto_cpu_state;
-	PlayerCPUConfig* auto_cpu_config;
+	CPUState* auto_cpu_state;
+	CPUConfig* auto_cpu_config;
 
 	//----------------------------------
 	// Multi-disc support

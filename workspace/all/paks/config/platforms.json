@@ -49,6 +49,13 @@
       "shutdown_cmd": "exec shutdown",
       "nice_prefix": ""
     },
+    "tg5050": {
+      "description": "TrimUI Smart Pro S",
+      "arch": "arm64",
+      "sdcard_path": "/mnt/SDCARD",
+      "shutdown_cmd": "poweroff",
+      "nice_prefix": ""
+    },
     "rgb30": {
       "description": "Powkiddy RGB30 (LessOS)",
       "arch": "arm64",

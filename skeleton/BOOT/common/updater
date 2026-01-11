@@ -36,6 +36,9 @@ else
 	*"SStar"*)
 		PLATFORM="miyoomini"
 		;;
+	*"TG5050"*)
+		PLATFORM="tg5050" # Trimui Smart Pro S
+		;;
 	*"TG5040"*|*"TG3040"*)
 		PLATFORM="tg5040" # Trimui Smart Pro or Brick
 		;;

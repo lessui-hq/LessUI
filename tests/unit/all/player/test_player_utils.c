@@ -10,7 +10,7 @@
  * - PlayerUtils_escapeSingleQuotes - Shell quote escaping
  *
  * For option-related tests, see test_player_options.c
- * For CPU frequency tests, see test_player_cpu.c
+ * For CPU frequency tests, see test_cpu.c (in common/)
  */
 
 #include "unity.h"

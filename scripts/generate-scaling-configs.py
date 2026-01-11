@@ -39,6 +39,7 @@ PLATFORMS = {
     "m17":          (480, 272, 4.3),    # Miyoo A30 / similar
     "trimuismart":  (640, 480, 4.95),
     "tg5040":       (1280, 720, 4.96),  # Trimui Smart Pro
+    "tg5050":       (1280, 720, 4.95),  # Trimui Smart Pro S
     "retroid":      (1920, 1080, 5.5),  # Pocket 5, Flip 2 (FHD)
 }
 

@@ -27,11 +27,11 @@ SOURCE = $(TARGET).c ../common/scaler.c ../common/utils.c ../common/nointro_pars
          ../common/gfx_text.c ../launcher/launcher_file_utils.c ../common/platform_variant.c \
          ../common/paths.c \
          player_archive.c player_memory.c player_state.c \
-         player_paths.c player_cpu.c player_input.c player_mappings.c \
+         player_paths.c ../common/cpu.c player_input.c player_mappings.c \
          player_video_convert.c player_rotation.c player_config.c player_context.c \
          player_menu.c player_env.c player_game.c player_scaler.c player_core.c \
          ../common/gl_video.c \
-         frame_pacer.c \
+         sync_manager.c \
          ../../$(PLATFORM)/platform/platform.c
 
 # Add shared rendering modules
@@ -54,11 +54,11 @@ HEADERS = $(wildcard *.h) $(wildcard ../common/*.h) $(wildcard ../launcher/*.h) 
 CC = $(CROSS_COMPILE)gcc
 # OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
 OPT_FLAGS ?= -O3
-CFLAGS = $(ARCH) -fomit-frame-pointer
+CFLAGS += $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS) -std=gnu99
 CFLAGS += -flto
-LDFLAGS = -ldl $(LIBS) -lmsettings -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
-CFLAGS += $(WARN_FLAGS)
+LDFLAGS += -ldl $(LIBS) -lmsettings -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+CFLAGS += $(WARN_FLAGS) $(EXTRA_CFLAGS)
 # CFLAGS  += -fsanitize=address -fno-common
 # LDFLAGS += -lasan
 
@@ -85,4 +85,4 @@ libretro-common:
 $(PREFIX)/include/msettings.h:
 	@cd /root/workspace/$(PLATFORM)/libmsettings && $(MAKE)
 
-.PHONY: all clean
+.PHONY: all clean libretro-common

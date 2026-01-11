@@ -68,10 +68,12 @@ typedef struct SDL2_RenderContext {
 	SDL_Texture* texture; // Main texture (source resolution)
 	SDL_Texture* target; // Intermediate texture for crisp scaling
 	SDL_Texture* effect; // Effect overlay texture
+	SDL_Texture* hud_texture; // Debug HUD overlay texture
 
 	// Surfaces
 	SDL_Surface* buffer; // Wrapper for texture lock (unused pixels pointer)
 	SDL_Surface* screen; // Main screen surface for UI rendering
+	SDL_Surface* hud_surface; // Debug HUD surface for rendering text
 
 	// Video dimensions
 	int width; // Current source width

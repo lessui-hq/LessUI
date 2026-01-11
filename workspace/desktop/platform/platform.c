@@ -128,20 +128,20 @@ SDL_Surface* PLAT_initVideo(void) {
 	// SDL_InitSubSystem(SDL_INIT_VIDEO);
 	// SDL_ShowCursor(0);
 	//
-	// LOG_info("Available video drivers:\n");
+	// LOG_info("Available video drivers:");
 	// for (int i=0; i<SDL_GetNumVideoDrivers(); i++) {
-	// 	LOG_info("- %s\n", SDL_GetVideoDriver(i));
+	// 	LOG_info("- %s", SDL_GetVideoDriver(i));
 	// }
-	// LOG_info("Current video driver: %s\n", SDL_GetCurrentVideoDriver());
+	// LOG_info("Current video driver: %s", SDL_GetCurrentVideoDriver());
 	//
-	// LOG_info("Available render drivers:\n");
+	// LOG_info("Available render drivers:");
 	// for (int i=0; i<SDL_GetNumRenderDrivers(); i++) {
 	// 	SDL_RendererInfo info;
 	// 	SDL_GetRenderDriverInfo(i,&info);
-	// 	LOG_info("- %s\n", info.name);
+	// 	LOG_info("- %s", info.name);
 	// }
 	//
-	// LOG_info("Available display modes:\n");
+	// LOG_info("Available display modes:");
 	SDL_DisplayMode mode;
 	// for (int i=0; i<SDL_GetNumDisplayModes(0); i++) {
 	// 	SDL_GetDisplayMode(0, i, &mode);
@@ -173,7 +173,7 @@ SDL_Surface* PLAT_initVideo(void) {
 
 	// SDL_RendererInfo info;
 	// SDL_GetRendererInfo(vid.renderer, &info);
-	// LOG_info("Current render driver: %s\n", info.name);
+	// LOG_info("Current render driver: %s", info.name);
 
 	vid.texture =
 	    SDL_CreateTexture(vid.renderer, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, w, h);

@@ -57,6 +57,7 @@
 #include "launcher_str_compare.h"
 #include "launcher_thumbnail.h"
 #include "paths.h"
+#include "platform_variant.h"
 #include "recent_file.h"
 #include "utils.h"
 
@@ -736,10 +737,28 @@ static int hasCollections(void) {
 
 /**
  * Checks if a ROM system directory has any playable ROMs.
- * Wrapper around LauncherDir_hasRoms with platform-specific paths.
+ *
+ * Uses cached emulator lookup (O(1) hash) instead of filesystem checks.
+ * The EmuCache is initialized at startup and contains all available emulator paks.
  */
 static int hasRoms(char* dir_name) {
-	return LauncherDir_hasRoms(dir_name, g_roms_path, g_paks_path, g_sdcard_path, PLATFORM);
+	// Get emulator name from directory name
+	char emu_name[256];
+	getEmuName(dir_name, emu_name);
+	LOG_debug("hasRoms: dir='%s' -> emu='%s'", dir_name, emu_name);
+
+	// Use cached emu check (O(1) hash lookup instead of 2 filesystem calls)
+	if (!hasEmu(emu_name)) {
+		LOG_debug("hasRoms: No emu pak for '%s'", emu_name);
+		return 0;
+	}
+
+	// Check for at least one non-hidden file in the ROM directory
+	char rom_path[512];
+	(void)snprintf(rom_path, sizeof(rom_path), "%s/%s", g_roms_path, dir_name);
+	int has_files = Launcher_hasNonHiddenFiles(rom_path);
+	LOG_debug("hasRoms: path='%s' hasFiles=%d", rom_path, has_files);
+	return has_files;
 }
 
 ///////////////////////////////
@@ -785,8 +804,9 @@ static Entry** getRoot(void) {
 		int total_entries = 0;
 		while ((dp = readdir(dh)) != NULL) {
 			total_entries++;
-			LOG_debug("getRoot: readdir entry='%s' d_type=%d", dp->d_name, dp->d_type);
-			if (hide(dp->d_name))
+			// Skip hidden entries and non-directories
+			// Allow DT_UNKNOWN through - hasRoms() validates via opendir()
+			if (hide(dp->d_name) || (dp->d_type != DT_DIR && dp->d_type != DT_UNKNOWN))
 				continue;
 			dir_count++;
 			int has = hasRoms(dp->d_name);
@@ -1318,7 +1338,7 @@ static void openRom(char* path, char* last) {
  * @param auto_launch 1 to auto-launch contents, 0 to browse
  */
 static void openDirectory_ctx(LauncherContext* ctx, char* path, int auto_launch) {
-	char auto_path[256];
+	char auto_path[MAX_PATH];
 	// Auto-launch .cue file if present
 	if (hasCue(path, auto_path) && auto_launch) {
 		openRom_ctx(ctx, auto_path, path);
@@ -1326,7 +1346,7 @@ static void openDirectory_ctx(LauncherContext* ctx, char* path, int auto_launch)
 	}
 
 	// Auto-launch .m3u playlist if present
-	char m3u_path[256];
+	char m3u_path[MAX_PATH];
 	safe_strcpy(m3u_path, auto_path, sizeof(m3u_path));
 	char* tmp = strrchr(m3u_path, '.') + 1; // extension
 	safe_strcpy(tmp, "m3u", sizeof(m3u_path) - (tmp - m3u_path)); // replace with m3u
@@ -1700,6 +1720,9 @@ int main(int argc, char* argv[]) {
 	// Initialize runtime paths from environment (supports LessOS dynamic storage)
 	Paths_init();
 
+	// Detect platform variant early (before any code that may need variant info)
+	PLAT_detectVariant(&platform_variant);
+
 	// Check for auto-resume first (fast path)
 	if (autoResume()) {
 		log_close();
@@ -1749,7 +1772,7 @@ int main(int argc, char* argv[]) {
 	Menu_init();
 
 	// Reduce CPU speed for menu browsing (saves power and heat)
-	PWR_setCPUSpeed(CPU_SPEED_POWERSAVE);
+	PWR_setLowPowerMode();
 
 	PAD_reset();
 	int dirty = 1; // Set to 1 when screen needs redraw

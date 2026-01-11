@@ -162,9 +162,9 @@ void PLAT_initInput(void) {
 	// devices appearing in any order during boot.
 	input_count = udev_open_all_inputs(inputs);
 	if (input_count == 0) {
-		LOG_warn("No input devices found via udev\n");
+		LOG_warn("No input devices found via udev");
 	} else {
-		LOG_info("Opened %d input devices via udev\n", input_count);
+		LOG_info("Opened %d input devices via udev", input_count);
 	}
 }
 

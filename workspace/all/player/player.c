@@ -54,18 +54,18 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#include "../common/cpu.h"
 #include "api.h"
 #include "defines.h"
-#include "frame_pacer.h"
 #include "gl_video.h"
 #include "launcher_file_utils.h"
 #include "libretro.h"
 #include "paths.h"
+#include "platform_variant.h"
 #include "player_archive.h"
 #include "player_config.h"
 #include "player_context.h"
 #include "player_core.h"
-#include "player_cpu.h"
 #include "player_env.h"
 #include "player_game.h"
 #include "player_input.h"
@@ -79,7 +79,9 @@
 #include "player_scaler.h"
 #include "player_state.h"
 #include "player_video_convert.h"
+#include "render_common.h"
 #include "scaler.h"
+#include "sync_manager.h"
 #include "utils.h"
 
 ///////////////////////////////////////
@@ -150,15 +152,16 @@ static int overclock = 3; // CPU speed (0=powersave, 1=normal, 2=performance, 3=
 
 // Auto CPU Scaling State (when overclock == 3)
 // Uses frame timing (core.run() execution time) to dynamically adjust CPU speed.
-// State and config are managed via player_cpu.h structs for testability.
-static PlayerCPUState auto_cpu_state;
-static PlayerCPUConfig auto_cpu_config;
+// State and config are managed via cpu.h structs for testability.
+static CPUState auto_cpu_state;
+static CPUConfig auto_cpu_config;
 static uint64_t auto_cpu_last_frame_start = 0; // For measuring core.run() time
 
-// Frame Pacing State
-// Decouples emulation from display refresh for non-60Hz displays (e.g., M17 @ 72Hz).
-// See frame_pacer.h for algorithm details.
-static FramePacer frame_pacer;
+// Sync Manager State
+// Manages audio/video synchronization mode (audio-clock vs vsync).
+// Starts in audio-clock mode (safe), switches to vsync if compatible (<1% Hz mismatch).
+// See sync_manager.h for details.
+static SyncManager sync_manager;
 
 // Background thread for applying CPU changes without blocking main loop
 static pthread_t auto_cpu_thread;
@@ -842,11 +845,37 @@ static struct Config config =
  * Thread safety: Uses auto_cpu_mutex to protect shared state.
  */
 static void* auto_cpu_scaling_thread(void* arg) {
-	LOG_debug("Auto CPU thread: started (granular=%d, freq_count=%d)\n",
-	          auto_cpu_state.use_granular, auto_cpu_state.freq_count);
+	LOG_debug("Auto CPU thread: started (topology=%d, granular=%d, freq_count=%d)\n",
+	          auto_cpu_state.use_topology, auto_cpu_state.use_granular, auto_cpu_state.freq_count);
 
 	while (auto_cpu_thread_running) {
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			// Multi-cluster topology mode: apply PerfState changes
+			pthread_mutex_lock(&auto_cpu_mutex);
+			int target_state = auto_cpu_state.target_state;
+			int current_state = auto_cpu_state.current_state;
+			pthread_mutex_unlock(&auto_cpu_mutex);
+
+			if (target_state != current_state && target_state >= 0 &&
+			    target_state < auto_cpu_state.topology.state_count) {
+				LOG_debug("Auto CPU: applying PerfState %d/%d", target_state,
+				          auto_cpu_state.topology.state_count - 1);
+
+				int result = CPU_applyPerfState(&auto_cpu_state);
+				if (result != 0) {
+					LOG_warn("Auto CPU: failed to apply PerfState %d", target_state);
+				}
+
+				// Set pending_affinity under mutex (main thread will apply it)
+				// This avoids race condition with main thread reading pending_affinity
+				CPUPerfState* ps = &auto_cpu_state.topology.states[target_state];
+				pthread_mutex_lock(&auto_cpu_mutex);
+				if (ps->cpu_affinity_mask > 0) {
+					auto_cpu_state.pending_affinity = ps->cpu_affinity_mask;
+				}
+				pthread_mutex_unlock(&auto_cpu_mutex);
+			}
+		} else if (auto_cpu_state.use_granular) {
 			// Granular frequency mode
 			pthread_mutex_lock(&auto_cpu_mutex);
 			int target_idx = auto_cpu_state.target_index;
@@ -865,7 +894,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 					auto_cpu_state.current_index = target_idx;
 					pthread_mutex_unlock(&auto_cpu_mutex);
 				} else {
-					LOG_warn("Auto CPU: failed to set frequency %d kHz\n", freq_khz);
+					LOG_warn("Auto CPU: failed to set frequency %d kHz", freq_khz);
 				}
 			}
 		} else {
@@ -911,7 +940,7 @@ static void* auto_cpu_scaling_thread(void* arg) {
 		usleep(50000);
 	}
 
-	LOG_debug("Auto CPU thread: stopped\n");
+	LOG_debug("Auto CPU thread: stopped");
 	return NULL;
 }
 
@@ -927,10 +956,10 @@ static void auto_cpu_startThread(void) {
 
 	auto_cpu_thread_running = 1;
 	if (pthread_create(&auto_cpu_thread, NULL, auto_cpu_scaling_thread, NULL) != 0) {
-		LOG_error("Failed to create auto CPU scaling thread\n");
+		LOG_error("Failed to create auto CPU scaling thread");
 		auto_cpu_thread_running = 0;
 	} else {
-		LOG_debug("Auto CPU: thread started\n");
+		LOG_debug("Auto CPU: thread started");
 	}
 }
 
@@ -946,7 +975,7 @@ static void auto_cpu_stopThread(void) {
 
 	auto_cpu_thread_running = 0;
 	pthread_join(auto_cpu_thread, NULL);
-	LOG_debug("Auto CPU: thread stopped\n");
+	LOG_debug("Auto CPU: thread stopped");
 }
 
 /**
@@ -980,6 +1009,23 @@ static void auto_cpu_setTargetIndex(int index) {
 }
 
 /**
+ * Requests a PerfState change (non-blocking, topology mode).
+ *
+ * @param state Target PerfState index
+ */
+static void auto_cpu_setTargetState(int state) {
+	int max_state = auto_cpu_state.topology.state_count - 1;
+	if (state < 0)
+		state = 0;
+	if (state > max_state)
+		state = max_state;
+
+	pthread_mutex_lock(&auto_cpu_mutex);
+	auto_cpu_state.target_state = state;
+	pthread_mutex_unlock(&auto_cpu_mutex);
+}
+
+/**
  * Gets the current frequency index (thread-safe).
  */
 static int auto_cpu_getCurrentIndex(void) {
@@ -1005,8 +1051,7 @@ static int auto_cpu_getCurrentFrequency(void) {
  * Wrapper around module function for convenience.
  */
 static int auto_cpu_findNearestIndex(int target_khz) {
-	return PlayerCPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count,
-	                                  target_khz);
+	return CPU_findNearestIndex(auto_cpu_state.frequencies, auto_cpu_state.freq_count, target_khz);
 }
 
 /**
@@ -1021,6 +1066,54 @@ static int auto_cpu_findNearestIndex(int target_khz) {
  * - PERFORMANCE: 100% (max frequency)
  */
 static void auto_cpu_detectFrequencies(void) {
+	// First, try topology detection for multi-cluster SoCs
+	int cluster_count = PWR_detectCPUTopology(&auto_cpu_state.topology);
+
+	if (cluster_count >= 2) {
+		// Multi-cluster detected - use topology mode
+		auto_cpu_state.use_topology = 1;
+		auto_cpu_state.use_granular = 0;
+
+		// Build the PerfState ladder (3 governor levels per cluster tier)
+		CPU_buildPerfStates(&auto_cpu_state, &auto_cpu_config);
+
+		// Note: governors are now set by applyPerfState(), not upfront
+		// This lets each PerfState control its own governor configuration
+
+		LOG_info("Auto CPU: topology mode enabled, %d clusters, %d PerfStates", cluster_count,
+		         auto_cpu_state.topology.state_count);
+
+		// Log cluster info
+		for (int c = 0; c < cluster_count; c++) {
+			CPUCluster* cluster = &auto_cpu_state.topology.clusters[c];
+			const char* type_str = cluster->type == CPU_CLUSTER_PRIME    ? "PRIME"
+			                       : cluster->type == CPU_CLUSTER_BIG    ? "BIG"
+			                       : cluster->type == CPU_CLUSTER_LITTLE ? "LITTLE"
+			                                                             : "?";
+			LOG_debug("Auto CPU: cluster %d (policy%d): %s, %d CPUs, %d-%d MHz\n", c,
+			          cluster->policy_id, type_str, cluster->cpu_count, cluster->min_khz / 1000,
+			          cluster->max_khz / 1000);
+		}
+
+		// Log PerfState ladder (governor-based)
+		static const char* gov_names[] = {"powersave", "schedutil", "performance"};
+		for (int s = 0; s < auto_cpu_state.topology.state_count; s++) {
+			CPUPerfState* ps = &auto_cpu_state.topology.states[s];
+			LOG_debug("Auto CPU: PerfState %d: cluster %d, affinity=0x%x", s,
+			          ps->active_cluster_idx, ps->cpu_affinity_mask);
+			for (int c = 0; c < cluster_count; c++) {
+				int gov = ps->cluster_governor[c];
+				const char* gov_str = (gov >= 0 && gov <= 2) ? gov_names[gov] : "?";
+				LOG_debug("  cluster %d: %s", c, gov_str);
+			}
+		}
+
+		return;
+	}
+
+	// Single-cluster or no topology - fall back to traditional mode
+	auto_cpu_state.use_topology = 0;
+
 	int raw_count =
 	    PLAT_getAvailableCPUFrequencies(auto_cpu_state.frequencies, CPU_MAX_FREQUENCIES);
 
@@ -1060,9 +1153,9 @@ static void auto_cpu_detectFrequencies(void) {
 		         auto_cpu_state.frequencies[auto_cpu_state.preset_indices[2]]);
 
 		// Log all frequencies for debugging
-		LOG_debug("Auto CPU: frequency table:\n");
+		LOG_debug("Auto CPU: frequency table:");
 		for (int i = 0; i < auto_cpu_state.freq_count; i++) {
-			LOG_debug("  [%d] %d kHz\n", i, auto_cpu_state.frequencies[i]);
+			LOG_debug("  [%d] %d kHz", i, auto_cpu_state.frequencies[i]);
 		}
 	} else {
 		auto_cpu_state.use_granular = 0;
@@ -1079,6 +1172,9 @@ static void resetAutoCPUState(void) {
 	auto_cpu_state.startup_frames = 0;
 	auto_cpu_state.frame_time_index = 0;
 	auto_cpu_state.panic_cooldown = 0;
+	auto_cpu_state.panic_grace = 0;
+	auto_cpu_state.grace_underruns = 0;
+	auto_cpu_state.stability_streak = 0;
 
 	// Reset panic tracking (menu changes may allow lower frequencies to work)
 	memset(auto_cpu_state.panic_count, 0, sizeof(auto_cpu_state.panic_count));
@@ -1102,9 +1198,16 @@ static void resetAutoCPUState(void) {
 
 	// Note: target/current frequency set by setOverclock() after this call
 
-	LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
-	         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
-	         auto_cpu_state.use_granular);
+	if (auto_cpu_state.use_topology) {
+		LOG_info("Auto CPU: enabled (topology mode), frame budget=%lluus (%.2f fps), "
+		         "clusters=%d, states=%d\n",
+		         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+		         auto_cpu_state.topology.cluster_count, auto_cpu_state.topology.state_count);
+	} else {
+		LOG_info("Auto CPU: enabled, frame budget=%lluus (%.2f fps), granular=%d\n",
+		         (unsigned long long)auto_cpu_state.frame_budget_us, core.fps,
+		         auto_cpu_state.use_granular);
+	}
 	LOG_debug(
 	    "Auto CPU: util thresholds high=%d%% low=%d%%, windows boost=%d reduce=%d, grace=%d\n",
 	    auto_cpu_config.util_high, auto_cpu_config.util_low, auto_cpu_config.boost_windows,
@@ -1132,7 +1235,21 @@ void setOverclock(int i) {
 		resetAutoCPUState();
 		// Start at max frequency to avoid startup stutter during grace period
 		// Background thread will scale down as needed after grace period
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			// Multi-cluster mode: start at highest PerfState
+			int start_state = auto_cpu_state.topology.state_count - 1;
+			pthread_mutex_lock(&auto_cpu_mutex);
+			auto_cpu_state.target_state = start_state;
+			auto_cpu_state.current_state = -1; // Force apply on first thread iteration
+			pthread_mutex_unlock(&auto_cpu_mutex);
+			// Apply initial state immediately (thread will maintain it)
+			CPU_applyPerfState(&auto_cpu_state);
+			// Apply affinity directly since we're on the main (emulation) thread
+			CPUPerfState* ps = &auto_cpu_state.topology.states[start_state];
+			if (ps->cpu_affinity_mask > 0) {
+				PWR_setThreadAffinity(ps->cpu_affinity_mask);
+			}
+		} else if (auto_cpu_state.use_granular) {
 			int start_idx = auto_cpu_state.preset_indices[2]; // PERFORMANCE - start high
 			int start_freq = auto_cpu_state.frequencies[start_idx];
 			PLAT_setCPUFrequency(start_freq);
@@ -1153,9 +1270,6 @@ void setOverclock(int i) {
 	}
 }
 
-// Vsync rate for diagnostics (currently unused, would need measurement to populate)
-static float current_vsync_hz = 0;
-
 /**
  * Updates auto CPU scaling based on frame timing (core.run() execution time).
  *
@@ -1163,15 +1277,23 @@ static float current_vsync_hz = 0;
  * Uses the 90th percentile of frame execution times to determine CPU utilization,
  * which directly measures emulation performance independent of audio/display timing.
  *
- * Granular Mode Algorithm:
- * - Performance scales linearly with frequency
- * - Boost: Jump to predicted optimal frequency (no step limit)
- * - Reduce: Limited to max_step_down indices to prevent underruns
- * - Panic: Boost by panic_step_up on underrun, with cooldown
+ * Three scaling modes (selected at init based on hardware capabilities):
+ * - Topology: Multi-cluster CPUs with PerfStates (big.LITTLE)
+ * - Granular: Single-cluster with fine-grained frequency steps
+ * - Fallback: Simple 3-level low/medium/high scaling
  *
- * Fallback Mode Algorithm (3 levels):
- * - Count consecutive high/low util windows
- * - Boost after 2 high-util windows (~1s), reduce after 4 low-util windows (~2s)
+ * All modes use the same basic algorithm:
+ * - Measure utilization as frame_time / frame_budget
+ * - Boost after sustained high util (>85% for boost_windows)
+ * - Reduce after sustained low util (<55% for reduce_windows)
+ * - Panic boost on audio underrun (immediate, with cooldown)
+ *
+ * Audio Clock mode special handling:
+ * In Audio Clock sync mode, blocking audio writes make utilization metrics
+ * unreliable (frame time includes blocking wait). Instead of util-based
+ * decisions, we use conservative time-based reduction: after 8 stable windows
+ * (~4s), step down one level. This prevents wasting power while avoiding
+ * aggressive changes that could cause underruns.
  */
 static void updateAutoCPU(void) {
 	// Skip if not in auto mode or during special states
@@ -1182,7 +1304,7 @@ static void updateAutoCPU(void) {
 	if (auto_cpu_state.startup_frames < auto_cpu_config.startup_grace) {
 		auto_cpu_state.startup_frames++;
 		if (auto_cpu_state.startup_frames == auto_cpu_config.startup_grace) {
-			LOG_debug("Auto CPU: grace period complete, monitoring active\n");
+			LOG_debug("Auto CPU: grace period complete, monitoring active");
 		}
 		return;
 	}
@@ -1191,37 +1313,82 @@ static void updateAutoCPU(void) {
 	pthread_mutex_lock(&auto_cpu_mutex);
 	int current_idx = auto_cpu_state.target_index;
 	int current_level = auto_cpu_state.target_level;
+	int current_state = auto_cpu_state.target_state;
+	int pending_affinity = auto_cpu_state.pending_affinity;
+	auto_cpu_state.pending_affinity = 0; // Clear after reading
 	pthread_mutex_unlock(&auto_cpu_mutex);
 
+	// Apply pending affinity from background thread (must be done from main thread)
+	if (pending_affinity > 0) {
+		PWR_setThreadAffinity(pending_affinity);
+	}
+
+	// Decrement panic grace period (ignore underruns after frequency change)
+	if (auto_cpu_state.panic_grace > 0) {
+		auto_cpu_state.panic_grace--;
+	}
+
 	// Emergency: check for actual underruns (panic path)
+	// Skip if in grace period - new frequency needs time to refill audio buffer
 	unsigned underruns = SND_getUnderrunCount();
 	int max_idx = auto_cpu_state.freq_count - 1;
-	int at_max = auto_cpu_state.use_granular ? (current_idx >= max_idx) : (current_level >= 2);
+	int max_state = auto_cpu_state.topology.state_count - 1;
+	int at_max;
+	if (auto_cpu_state.use_topology) {
+		at_max = (current_state >= max_state);
+	} else if (auto_cpu_state.use_granular) {
+		at_max = (current_idx >= max_idx);
+	} else {
+		at_max = (current_level >= 2);
+	}
 
-	if (underruns > auto_cpu_state.last_underrun && !at_max) {
+	// Track underruns during grace period
+	bool underrun_detected = (underruns > auto_cpu_state.last_underrun);
+	if (underrun_detected && auto_cpu_state.panic_grace > 0) {
+		auto_cpu_state.grace_underruns++;
+	}
+
+	// Override grace period if too many underruns (catastrophic failure)
+	bool grace_exceeded = (auto_cpu_state.grace_underruns >= CPU_PANIC_GRACE_MAX_UNDERRUNS);
+
+	if (underrun_detected && !at_max && (auto_cpu_state.panic_grace == 0 || grace_exceeded)) {
 		// Underrun detected - track panic and boost
 		unsigned audio_fill = SND_getBufferOccupancy();
 
-		// Track panic at current frequency (for failsafe blocking).
-		// If a frequency can't keep up, all lower frequencies are also blocked
-		// because lower freq = less CPU throughput = guaranteed worse performance.
-		if (auto_cpu_state.use_granular && current_idx >= 0 &&
-		    current_idx < PLAYER_CPU_MAX_FREQUENCIES) {
+		// Track panic at current state/frequency (for failsafe blocking).
+		// If a state can't keep up, it gets blocked after CPU_PANIC_THRESHOLD panics.
+		if (auto_cpu_state.use_topology && current_state >= 0 &&
+		    current_state < CPU_MAX_FREQUENCIES) {
+			auto_cpu_state.panic_count[current_state]++;
+
+			if (auto_cpu_state.panic_count[current_state] >= CPU_PANIC_THRESHOLD) {
+				LOG_warn("Auto CPU: BLOCKING state %d after %d panics (audio=%u%%)\n",
+				         current_state, auto_cpu_state.panic_count[current_state], audio_fill);
+			}
+		} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		           current_idx < CPU_MAX_FREQUENCIES) {
 			auto_cpu_state.panic_count[current_idx]++;
 
-			if (auto_cpu_state.panic_count[current_idx] >= PLAYER_CPU_PANIC_THRESHOLD) {
+			if (auto_cpu_state.panic_count[current_idx] >= CPU_PANIC_THRESHOLD) {
 				LOG_warn("Auto CPU: BLOCKING %d kHz and below after %d panics (audio=%u%%)\n",
 				         auto_cpu_state.frequencies[current_idx],
 				         auto_cpu_state.panic_count[current_idx], audio_fill);
 				// Block this frequency and all below - they can't possibly work
 				// if this one failed (lower freq = strictly less performance)
 				for (int i = 0; i <= current_idx; i++) {
-					auto_cpu_state.panic_count[i] = PLAYER_CPU_PANIC_THRESHOLD;
+					auto_cpu_state.panic_count[i] = CPU_PANIC_THRESHOLD;
 				}
 			}
 		}
 
-		if (auto_cpu_state.use_granular) {
+		if (auto_cpu_state.use_topology) {
+			int new_state = current_state + auto_cpu_config.panic_step_up;
+			if (new_state > max_state)
+				new_state = max_state;
+			auto_cpu_setTargetState(new_state);
+			LOG_warn("Auto CPU: PANIC - underrun, boosting state %d→%d (audio=%u%%)\n",
+			         current_state, new_state, audio_fill);
+		} else if (auto_cpu_state.use_granular) {
 			int new_idx = current_idx + auto_cpu_config.panic_step_up;
 			if (new_idx > max_idx)
 				new_idx = max_idx;
@@ -1230,6 +1397,16 @@ static void updateAutoCPU(void) {
 			         auto_cpu_state.frequencies[current_idx], auto_cpu_state.frequencies[new_idx],
 			         audio_fill);
 		} else {
+			// Fallback mode - track panic at current level
+			if (current_level >= 0 && current_level < 3) {
+				auto_cpu_state.panic_count[current_level]++;
+
+				if (auto_cpu_state.panic_count[current_level] >= CPU_PANIC_THRESHOLD) {
+					LOG_warn("Auto CPU: BLOCKING level %d after %d panics (audio=%u%%)\n",
+					         current_level, auto_cpu_state.panic_count[current_level], audio_fill);
+				}
+			}
+
 			int new_level = current_level + auto_cpu_config.panic_step_up;
 			if (new_level > 2)
 				new_level = 2;
@@ -1239,8 +1416,12 @@ static void updateAutoCPU(void) {
 		}
 		auto_cpu_state.high_util_windows = 0;
 		auto_cpu_state.low_util_windows = 0;
+		auto_cpu_state.stability_streak = 0;
 		// Cooldown: wait 8 windows (~4 seconds) before allowing reduction
 		auto_cpu_state.panic_cooldown = 8;
+		// Grace period: ignore underruns while new frequency refills audio buffer
+		auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+		auto_cpu_state.grace_underruns = 0;
 		SND_resetUnderrunCount();
 		auto_cpu_state.last_underrun = 0;
 		return;
@@ -1275,10 +1456,120 @@ static void updateAutoCPU(void) {
 				util = 200; // Cap at 200% for sanity
 		}
 
-		if (auto_cpu_state.use_granular) {
-			// Granular mode: use linear performance scaling to find optimal frequency
-			// Performance scales linearly with frequency, so:
-			// new_util = current_util * (current_freq / new_freq)
+		if (auto_cpu_state.use_topology) {
+			// Topology mode: step through PerfStates one at a time
+			// Unlike granular mode, we don't predict - just step conservatively
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
+			}
+
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// We use time-based probing: after stability period, try reducing.
+				// If it causes underruns, panic path will boost back.
+				//
+				// Buffer level guides timing:
+				// - 40-75%: Normal range, reduce after 8 windows (~4s)
+				// - >75%: High buffer (Hz/fps mismatch), reduce after 16 windows (~8s)
+				//         Longer delay because high buffer means timing is pathological
+				// - <40%: Don't reduce (need headroom for transition)
+				auto_cpu_state.low_util_windows++;
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// Determine required stability windows based on buffer level
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS; // 8 windows (~4s)
+				if (audio_fill > 75) {
+					// High buffer = pathological timing, be more conservative
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2; // 16 windows (~8s)
+				}
+
+				bool buffer_ok = (audio_fill >= 40); // Lower bound only - need headroom
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_state > 0) {
+					int new_state = current_state - 1;
+					// Skip blocked states (too many panics at that state)
+					while (new_state >= 0 &&
+					       auto_cpu_state.panic_count[new_state] >= CPU_PANIC_THRESHOLD) {
+						new_state--;
+					}
+					if (new_state >= 0) {
+						auto_cpu_setTargetState(new_state);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE state %d→%d (AC mode, buf=%u%%, wait=%d)\n",
+						          current_state, new_state, audio_fill, required_windows);
+					} else {
+						// All lower states blocked, just reset counter
+						auto_cpu_state.low_util_windows = 0;
+					}
+				}
+			} else if (util > auto_cpu_config.util_high) {
+				// Need more performance - step up
+				auto_cpu_state.high_util_windows++;
+				auto_cpu_state.low_util_windows = 0;
+
+				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
+				    current_state < max_state) {
+					int new_state = current_state + 1;
+					auto_cpu_setTargetState(new_state);
+					auto_cpu_state.high_util_windows = 0;
+					auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+					auto_cpu_state.grace_underruns = 0;
+					LOG_debug("Auto CPU: BOOST state %d→%d (util=%u%%)\n", current_state, new_state,
+					          util);
+				}
+			} else if (util < auto_cpu_config.util_low) {
+				// Can reduce power - step down
+				auto_cpu_state.low_util_windows++;
+				auto_cpu_state.high_util_windows = 0;
+
+				// Only reduce if: enough windows, cooldown expired, buffer healthy
+				int reduce_ok =
+				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
+				    (auto_cpu_state.panic_cooldown == 0) && (current_state > 0);
+
+				if (reduce_ok) {
+					// Step down by max_step_down (usually 1)
+					int new_state = current_state - auto_cpu_config.max_step_down;
+					if (new_state < 0)
+						new_state = 0;
+					// Skip blocked states (too many panics at that state)
+					while (new_state >= 0 &&
+					       auto_cpu_state.panic_count[new_state] >= CPU_PANIC_THRESHOLD) {
+						new_state--;
+					}
+					if (new_state >= 0) {
+						auto_cpu_setTargetState(new_state);
+						auto_cpu_state.low_util_windows = 0;
+						// No grace period on reduce - if we underrun, frequency is too slow
+						LOG_debug("Auto CPU: REDUCE state %d→%d (util=%u%%)\n", current_state,
+						          new_state, util);
+					} else {
+						// All lower states blocked
+						auto_cpu_state.low_util_windows = 0;
+					}
+				}
+			} else {
+				// In sweet spot - reset counters
+				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.low_util_windows = 0;
+			}
+
+			// Sampled debug logging (every 4th window = ~2 seconds)
+			static int debug_window_count_topo = 0;
+			if (++debug_window_count_topo >= 4) {
+				debug_window_count_topo = 0;
+				SND_Snapshot snap = SND_getSnapshot();
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% state=%d/%d", snap.fill_pct,
+				          snap.total_adjust, util, current_state, max_state);
+			}
+		} else if (auto_cpu_state.use_granular) {
+			// Granular mode: step through available frequencies one at a time
+			// Skips frequencies that have caused repeated underruns (panic-blocked)
 
 			int current_freq = auto_cpu_state.frequencies[current_idx];
 
@@ -1287,28 +1578,53 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.panic_cooldown--;
 			}
 
-			if (util > auto_cpu_config.util_high) {
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// Use time-based probing with buffer-guided timing.
+				auto_cpu_state.low_util_windows++;
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// High buffer = pathological timing, wait longer before probing
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS;
+				if (audio_fill > 75) {
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2;
+				}
+
+				bool buffer_ok = (audio_fill >= 40);
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_idx > 0) {
+					int new_idx = current_idx - 1;
+					// Skip blocked frequencies
+					while (new_idx >= 0 &&
+					       auto_cpu_state.panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
+						new_idx--;
+					}
+					if (new_idx >= 0) {
+						int new_freq = auto_cpu_state.frequencies[new_idx];
+						auto_cpu_setTargetIndex(new_idx);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE %d→%d kHz (AC mode, buf=%u%%, wait=%d)\n",
+						          current_freq, new_freq, audio_fill, required_windows);
+					} else {
+						auto_cpu_state.low_util_windows = 0;
+					}
+				}
+			} else if (util > auto_cpu_config.util_high) {
 				// Need more performance - step up
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
 
 				if (auto_cpu_state.high_util_windows >= auto_cpu_config.boost_windows &&
 				    current_idx < max_idx) {
-					// Find next frequency that would bring util to target (sweet spot)
-					// Using: new_util = util * (current_freq / new_freq)
-					// So: new_freq = current_freq * util / target_util
-					// No step limit - linear scaling prediction is accurate, boost aggressively
-					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
-					int new_idx = auto_cpu_findNearestIndex(needed_freq);
-
-					// Ensure we actually go higher
-					if (new_idx <= current_idx)
-						new_idx = current_idx + 1;
-					if (new_idx > max_idx)
-						new_idx = max_idx;
-
+					// Step up by 1 - simple and predictable
+					int new_idx = current_idx + 1;
 					auto_cpu_setTargetIndex(new_idx);
 					auto_cpu_state.high_util_windows = 0;
+					auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+					auto_cpu_state.grace_underruns = 0;
 					LOG_debug("Auto CPU: BOOST %d→%d kHz (util=%u%%)\n", current_freq,
 					          auto_cpu_state.frequencies[new_idx], util);
 				}
@@ -1317,47 +1633,29 @@ static void updateAutoCPU(void) {
 				auto_cpu_state.low_util_windows++;
 				auto_cpu_state.high_util_windows = 0;
 
-				// Only reduce if: enough consecutive low windows AND panic cooldown expired
+				// Only reduce if: enough windows, cooldown expired, buffer healthy
 				int reduce_ok =
 				    (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows) &&
 				    (auto_cpu_state.panic_cooldown == 0) && (current_idx > 0);
 
 				if (reduce_ok) {
-					// Find frequency that would bring util up to target (sweet spot)
-					// new_util = util * (current_freq / new_freq)
-					// new_freq = current_freq * util / target_util
-					int needed_freq = current_freq * (int)util / auto_cpu_config.target_util;
-					int new_idx = auto_cpu_findNearestIndex(needed_freq);
+					// Step down by 1 - simple and predictable
+					int new_idx = current_idx - 1;
 
-					// Ensure we actually go lower
-					if (new_idx >= current_idx)
-						new_idx = current_idx - 1;
-					if (new_idx < 0)
-						new_idx = 0;
-
-					// Limit reduction to max_step_down indices at once
-					if (current_idx - new_idx > auto_cpu_config.max_step_down) {
-						new_idx = current_idx - auto_cpu_config.max_step_down;
-					}
-
-					// Skip blocked frequencies - find first unblocked one above new_idx.
-					// Frequencies get blocked when they cause repeated panics.
+					// Skip blocked frequencies
 					while (new_idx >= 0 &&
-					       auto_cpu_state.panic_count[new_idx] >= PLAYER_CPU_PANIC_THRESHOLD) {
-						new_idx++;
-						if (new_idx >= current_idx) {
-							// All lower frequencies blocked - stay at current
-							break;
-						}
+					       auto_cpu_state.panic_count[new_idx] >= CPU_PANIC_THRESHOLD) {
+						new_idx--;
 					}
 
 					// Don't reduce if no safe frequency found
-					if (new_idx >= current_idx) {
+					if (new_idx < 0) {
 						auto_cpu_state.low_util_windows = 0;
 					} else {
 						int new_freq = auto_cpu_state.frequencies[new_idx];
 						auto_cpu_setTargetIndex(new_idx);
 						auto_cpu_state.low_util_windows = 0;
+						// No grace period on reduce - if we underrun, frequency is too slow
 						LOG_debug("Auto CPU: REDUCE %d→%d kHz (util=%u%%)\n", current_freq,
 						          new_freq, util);
 					}
@@ -1373,13 +1671,52 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count >= 4) {
 				debug_window_count = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% freq=%dkHz idx=%d/%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util, current_freq,
-				          current_idx, max_idx);
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% freq=%dkHz idx=%d/%d",
+				          snap.fill_pct, snap.total_adjust, util, current_freq, current_idx,
+				          max_idx);
 			}
 		} else {
 			// Fallback mode: 3-level scaling (original algorithm)
-			if (util > auto_cpu_config.util_high) {
+
+			// Decrement panic cooldown each window
+			if (auto_cpu_state.panic_cooldown > 0) {
+				auto_cpu_state.panic_cooldown--;
+			}
+
+			// Check if we're in Audio Clock mode (blocking audio makes util unreliable)
+			bool in_audio_clock = (SyncManager_getMode(&sync_manager) == SYNC_MODE_AUDIO_CLOCK);
+
+			if (in_audio_clock) {
+				// Audio Clock: time-based reduction (util is unreliable due to blocking audio)
+				// Use time-based probing with buffer-guided timing.
+				auto_cpu_state.low_util_windows++;
+				unsigned audio_fill = SND_getBufferOccupancy();
+
+				// High buffer = pathological timing, wait longer before probing
+				int required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS;
+				if (audio_fill > 75) {
+					required_windows = CPU_AUDIO_CLOCK_REDUCE_WINDOWS * 2;
+				}
+
+				bool buffer_ok = (audio_fill >= 40);
+				if (auto_cpu_state.low_util_windows >= required_windows &&
+				    auto_cpu_state.panic_cooldown == 0 && buffer_ok && current_level > 0) {
+					int new_level = current_level - 1;
+					// Skip blocked levels
+					while (new_level >= 0 &&
+					       auto_cpu_state.panic_count[new_level] >= CPU_PANIC_THRESHOLD) {
+						new_level--;
+					}
+					if (new_level >= 0) {
+						auto_cpu_setTargetLevel(new_level);
+						auto_cpu_state.low_util_windows = 0;
+						LOG_debug("Auto CPU: REDUCE level %d (AC mode, buf=%u%%, wait=%d)\n",
+						          new_level, audio_fill, required_windows);
+					} else {
+						auto_cpu_state.low_util_windows = 0;
+					}
+				}
+			} else if (util > auto_cpu_config.util_high) {
 				auto_cpu_state.high_util_windows++;
 				auto_cpu_state.low_util_windows = 0;
 			} else if (util < auto_cpu_config.util_low) {
@@ -1395,9 +1732,8 @@ static void updateAutoCPU(void) {
 			if (++debug_window_count_fallback >= 4) {
 				debug_window_count_fallback = 0;
 				SND_Snapshot snap = SND_getSnapshot();
-				LOG_debug("Auto CPU: fill=%u%% int=%.4f adj=%.4f util=%u%% level=%d\n",
-				          snap.fill_pct, snap.rate_integral, snap.total_adjust, util,
-				          current_level);
+				LOG_debug("Auto CPU: fill=%u%% adj=%.4f util=%u%% level=%d", snap.fill_pct,
+				          snap.total_adjust, util, current_level);
 			}
 
 			// Boost if sustained high utilization
@@ -1406,17 +1742,66 @@ static void updateAutoCPU(void) {
 				int new_level = current_level + 1;
 				auto_cpu_setTargetLevel(new_level);
 				auto_cpu_state.high_util_windows = 0;
+				auto_cpu_state.panic_grace = CPU_PANIC_GRACE_FRAMES;
+				auto_cpu_state.grace_underruns = 0;
 				LOG_debug("Auto CPU: BOOST level %d (util=%u%%)\n", new_level, util);
 			}
 
-			// Reduce if sustained low utilization
+			// Reduce if sustained low utilization, buffer healthy (respects panic cooldown)
 			if (auto_cpu_state.low_util_windows >= auto_cpu_config.reduce_windows &&
-			    current_level > 0) {
+			    auto_cpu_state.panic_cooldown == 0 && current_level > 0) {
 				int new_level = current_level - 1;
-				auto_cpu_setTargetLevel(new_level);
-				auto_cpu_state.low_util_windows = 0;
-				LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				// Skip blocked levels
+				while (new_level >= 0 &&
+				       auto_cpu_state.panic_count[new_level] >= CPU_PANIC_THRESHOLD) {
+					new_level--;
+				}
+				if (new_level >= 0) {
+					auto_cpu_setTargetLevel(new_level);
+					auto_cpu_state.low_util_windows = 0;
+					// No grace period on reduce - if we underrun, frequency is too slow
+					LOG_debug("Auto CPU: REDUCE level %d (util=%u%%)\n", new_level, util);
+				} else {
+					// All lower levels blocked
+					auto_cpu_state.low_util_windows = 0;
+				}
 			}
+		}
+
+		// Track stability for panic count decay
+		// If we reached here, no panic happened during this window
+		auto_cpu_state.stability_streak++;
+		if (auto_cpu_state.stability_streak >= CPU_STABILITY_DECAY_WINDOWS) {
+			// Earned stability - decay panic counts for current state/freq and above only
+			// Being stable at a state proves higher states are fine too, but not lower ones
+			int decayed = 0;
+			if (auto_cpu_state.use_topology) {
+				for (int i = current_state; i < auto_cpu_state.topology.state_count; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
+				}
+			} else if (auto_cpu_state.use_granular) {
+				for (int i = current_idx; i < auto_cpu_state.freq_count; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
+				}
+			} else {
+				// Fallback mode: decay for current level and above
+				for (int i = current_level; i < 3; i++) {
+					if (auto_cpu_state.panic_count[i] > 0) {
+						auto_cpu_state.panic_count[i]--;
+						decayed++;
+					}
+				}
+			}
+			if (decayed > 0) {
+				LOG_debug("Auto CPU: stability earned, decayed %d panic counts", decayed);
+			}
+			auto_cpu_state.stability_streak = 0;
 		}
 
 		// Reset window counter (frame times stay in ring buffer)
@@ -1563,21 +1948,43 @@ static void Config_init(void) {
 
 		LOG_debug("\tbind %s (%s) %i:%i", button_name, button_id, local_id, retro_id);
 
-		// TODO: test this without a final line return
-		tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
-		if (!tmp2) {
-			for (int j = 0; j < i; j++) {
-				if (core_button_mapping[j].name)
-					free(core_button_mapping[j].name);
+		// Check if this button already exists (for cascaded configs with duplicate bindings)
+		int existing_idx = -1;
+		for (int j = 0; j < i; j++) {
+			if (core_button_mapping[j].name &&
+			    strcmp(core_button_mapping[j].name, button_name) == 0) {
+				existing_idx = j;
+				break;
 			}
-			return;
 		}
-		safe_strcpy(tmp2, button_name, strlen(button_name) + 1);
-		PlayerButtonMapping* button = &core_button_mapping[i++];
-		button->name = tmp2;
-		button->retro_id = retro_id;
-		button->local_id = local_id;
-	};
+
+		if (existing_idx >= 0) {
+			// Update existing binding (later config overrides earlier)
+			PlayerButtonMapping* button = &core_button_mapping[existing_idx];
+			button->retro_id = retro_id;
+			button->local_id = local_id;
+		} else {
+			// Add new binding (with bounds check)
+			if (i >= RETRO_BUTTON_COUNT) {
+				LOG_warn("Too many button bindings (%d), ignoring: %s", i, button_name);
+				continue;
+			}
+
+			tmp2 = calloc(strlen(button_name) + 1, sizeof(char));
+			if (!tmp2) {
+				for (int j = 0; j < i; j++) {
+					if (core_button_mapping[j].name)
+						free(core_button_mapping[j].name);
+				}
+				return;
+			}
+			safe_strcpy(tmp2, button_name, strlen(button_name) + 1);
+			PlayerButtonMapping* button = &core_button_mapping[i++];
+			button->name = tmp2;
+			button->retro_id = retro_id;
+			button->local_id = local_id;
+		}
+	}
 
 	config.initialized = 1;
 }
@@ -1993,12 +2400,10 @@ static const char* getOptionNameFromKey(const char* key, const char* name) {
 
 // the following 3 functions always touch config.core, the rest can operate on arbitrary PlayerOptionLists
 static void PlayerOptionList_init(const struct retro_core_option_definition* defs) {
-	LOG_debug("PlayerOptionList_init");
+	LOG_debug("PlayerOptionList_init: start");
 	int count;
 	for (count = 0; defs[count].key; count++)
 		;
-
-	// LOG_info("count: %i", count);
 
 	// TODO: add frontend options to this? so the can use the same override method? eg. player_*
 
@@ -2074,6 +2479,7 @@ static void PlayerOptionList_init(const struct retro_core_option_definition* def
 			// LOG_info("\tINIT %s (%s) TO %s (%s)", item->name, item->key, item->labels[item->value], item->values[item->value]);
 		}
 	}
+	LOG_debug("PlayerOptionList_init: done");
 	// fflush(stdout);
 }
 static void PlayerOptionList_vars(const struct retro_variable* vars) {
@@ -2619,8 +3025,10 @@ static struct retro_perf_callback perf_cb = {
 };
 
 static bool environment_callback(unsigned cmd, void* data) { // copied from picoarch initially
-	// LOG_info("environment_callback: %i", cmd);
 	EnvResult result;
+
+	// Log all environment callbacks to help debug core crashes
+	LOG_debug("ENV cmd=%u data=%p", cmd, data);
 
 	switch (cmd) {
 	case RETRO_ENVIRONMENT_SET_ROTATION: { /* 1 */
@@ -2972,7 +3380,6 @@ static bool environment_callback(unsigned cmd, void* data) { // copied from pico
 		// };
 
 	default:
-		// LOG_debug("Unsupported environment cmd: %u", cmd);
 		return false;
 	}
 	return true;
@@ -3341,6 +3748,15 @@ static const char* bitmap_font[] = {
             "    1"
             "1   1"
             " 111 ",
+    ['T'] = "11111"
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  "
+            "  1  ",
     ['A'] = "  1  "
             " 1 1 "
             "1   1"
@@ -3359,6 +3775,24 @@ static const char* bitmap_font[] = {
             "1    "
             "1   1"
             " 111 ",
+    ['V'] = "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            "1   1"
+            " 1 1 "
+            " 1 1 "
+            "  1  ",
+    ['+'] = "     "
+            "     "
+            "  1  "
+            "  1  "
+            "11111"
+            "  1  "
+            "  1  "
+            "     "
+            "     ",
 };
 static void blitBitmapText(char* text, int ox, int oy, uint16_t* data, int stride, int width,
                            int height) {
@@ -3476,6 +3910,193 @@ static void blitBitmapTextRGBA(char* text, int ox, int oy, uint32_t* data, int s
 	}
 }
 
+/**
+ * Render bitmap text to an RGBA buffer with DP-based scaling.
+ *
+ * Similar to blitBitmapTextScaled but for RGBA format used by HW rendering.
+ * White text with black outline, transparent background, scaled for consistent sizing.
+ *
+ * @param text Text to render
+ * @param ox X position in pixels (negative = right-align from edge)
+ * @param oy Y position in pixels (negative = bottom-align from edge)
+ * @param data RGBA8888 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width in pixels
+ * @param height Total buffer height in pixels
+ * @param scale Scale factor (e.g., 2 = double size)
+ */
+static void blitBitmapTextRGBAScaled(char* text, int ox, int oy, uint32_t* data, int stride,
+                                     int width, int height, int scale) {
+	if (scale < 1)
+		scale = 1;
+
+	const uint32_t RGBA_WHITE = 0xFFFFFFFF;
+	const uint32_t RGBA_BLACK = 0xFF000000;
+
+	int len = strlen(text);
+	int base_w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int base_h = CHAR_HEIGHT;
+	int w = base_w * scale;
+	int h = base_h * scale;
+
+	// Handle negative offsets (right/bottom alignment)
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need scale px margin for outline
+	if (ox < scale || oy < scale || ox + w + scale > width || oy + h + scale > height)
+		return;
+
+	data += oy * stride + ox;
+
+	// Top outline rows
+	for (int outline_y = -scale; outline_y < 0; outline_y++) {
+		uint32_t* row = data + (ptrdiff_t)outline_y * stride;
+		for (int x = -scale; x < w + scale; x++) {
+			row[x] = RGBA_BLACK;
+		}
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < base_h; y++) {
+		for (int sy = 0; sy < scale; sy++) {
+			uint32_t* row = data + (ptrdiff_t)(y * scale + sy) * stride;
+
+			// Left outline
+			for (int x = -scale; x < 0; x++) {
+				row[x] = RGBA_BLACK;
+			}
+
+			// Character pixels
+			int col = 0;
+			for (int i = 0; i < len; i++) {
+				const char* c = bitmap_font[(unsigned char)text[i]];
+				if (!c)
+					c = bitmap_font[' '];
+				for (int x = 0; x < CHAR_WIDTH; x++) {
+					int j = y * CHAR_WIDTH + x;
+					uint32_t color = (c[j] == '1') ? RGBA_WHITE : RGBA_BLACK;
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = color;
+					}
+					col++;
+				}
+				// Letter spacing
+				for (int s = 0; s < LETTERSPACING; s++) {
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = RGBA_BLACK;
+					}
+					col++;
+				}
+			}
+
+			// Right outline
+			for (int x = 0; x < scale; x++) {
+				row[w + x] = RGBA_BLACK;
+			}
+		}
+	}
+
+	// Bottom outline rows
+	for (int outline_y = 0; outline_y < scale; outline_y++) {
+		uint32_t* row = data + (ptrdiff_t)(h + outline_y) * stride;
+		for (int x = -scale; x < w + scale; x++) {
+			row[x] = RGBA_BLACK;
+		}
+	}
+}
+
+/**
+ * Render bitmap text to an RGB565 buffer with DP-based scaling.
+ *
+ * Renders text at a scale factor determined by display points, ensuring
+ * consistent visual size across different screen resolutions. Each character
+ * is upscaled by repeating pixels.
+ *
+ * @param text Text to render
+ * @param ox X position in pixels (negative = right-align from edge)
+ * @param oy Y position in pixels (negative = bottom-align from edge)
+ * @param data RGB565 pixel buffer
+ * @param stride Buffer width in pixels (not bytes)
+ * @param width Total buffer width in pixels
+ * @param height Total buffer height in pixels
+ * @param scale Scale factor (e.g., 2 = double size)
+ */
+static void blitBitmapTextScaled(char* text, int ox, int oy, uint16_t* data, int stride, int width,
+                                 int height, int scale) {
+	if (scale < 1)
+		scale = 1;
+
+	int len = strlen(text);
+	int base_w = ((CHAR_WIDTH + LETTERSPACING) * len) - 1;
+	int base_h = CHAR_HEIGHT;
+	int w = base_w * scale;
+	int h = base_h * scale;
+
+	// Handle negative offsets (right/bottom alignment)
+	if (ox < 0)
+		ox = width - w + ox;
+	if (oy < 0)
+		oy = height - h + oy;
+
+	// Bounds check - need scale px margin for outline
+	if (ox < scale || oy < scale || ox + w + scale > width || oy + h + scale > height)
+		return;
+
+	// Draw black outline (scale pixels around text)
+	data += oy * stride + ox;
+
+	// Top outline rows
+	for (int outline_y = -scale; outline_y < 0; outline_y++) {
+		uint16_t* row = data + (ptrdiff_t)outline_y * stride;
+		memset(row - scale, 0, (size_t)(w + 2 * scale) * 2);
+	}
+
+	// Main text rows with side outlines
+	for (int y = 0; y < base_h; y++) {
+		for (int sy = 0; sy < scale; sy++) {
+			uint16_t* row = data + (ptrdiff_t)(y * scale + sy) * stride;
+
+			// Left outline
+			memset(row - scale, 0, (size_t)scale * 2);
+
+			// Character pixels
+			int col = 0;
+			for (int i = 0; i < len; i++) {
+				const char* c = bitmap_font[(unsigned char)text[i]];
+				if (!c)
+					c = bitmap_font[' '];
+				for (int x = 0; x < CHAR_WIDTH; x++) {
+					int j = y * CHAR_WIDTH + x;
+					uint16_t color = (c[j] == '1') ? 0xffff : 0x0000;
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = color;
+					}
+					col++;
+				}
+				// Letter spacing
+				for (int s = 0; s < LETTERSPACING; s++) {
+					for (int sx = 0; sx < scale; sx++) {
+						row[col * scale + sx] = 0x0000;
+					}
+					col++;
+				}
+			}
+
+			// Right outline
+			memset(row + w, 0, (size_t)scale * 2);
+		}
+	}
+
+	// Bottom outline rows
+	for (int outline_y = 0; outline_y < scale; outline_y++) {
+		uint16_t* row = data + (ptrdiff_t)(h + outline_y) * stride;
+		memset(row - scale, 0, (size_t)(w + 2 * scale) * 2);
+	}
+}
+
 ///////////////////////////////////////
 // Performance Counters (needed by HW HUD before video processing section)
 ///////////////////////////////////////
@@ -3490,81 +4111,66 @@ static double use_double = 0; // System CPU usage percentage
 static uint32_t sec_start = 0;
 
 ///////////////////////////////////////
-// HW Debug HUD
+// Shared Debug HUD Logic
 ///////////////////////////////////////
 
-// HUD buffer for HW rendering (allocated once, reused)
-static uint32_t* hw_hud_buffer = NULL;
-static int hw_hud_width = 0;
-static int hw_hud_height = 0;
+/**
+ * Debug text strings for HUD display.
+ * Generated once per frame, used by both SW and HW rendering paths.
+ */
+typedef struct DebugHUDText {
+	char top_left[128]; // FPS and CPU %
+	char top_right[128]; // Source/output resolution
+	char bottom_left[128]; // CPU mode and buffer fill
+	char bottom_right[128]; // Output/source resolution
+} DebugHUDText;
 
 /**
- * Render debug HUD overlay for hardware-rendered frames.
+ * Generate debug HUD text strings.
  *
- * Creates an RGBA surface with the same debug info as the software path
- * (FPS, CPU usage, resolution, etc.) and passes it to the HW render module
- * for compositing over the game frame.
+ * Consolidates all debug metric formatting logic used by both software
+ * and hardware rendering paths. Samples audio buffer fill every 15 frames.
  *
+ * @param text Output structure for formatted debug strings
  * @param src_w Source (game) width in pixels
  * @param src_h Source (game) height in pixels
  * @param screen_w Screen width in pixels
  * @param screen_h Screen height in pixels
  */
-static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
-	// Allocate or resize HUD buffer if needed
-	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
-		free(hw_hud_buffer);
-		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
-		if (!hw_hud_buffer) {
-			LOG_error("Failed to allocate HW HUD buffer");
-			return;
-		}
-		hw_hud_width = screen_w;
-		hw_hud_height = screen_h;
-	}
-
-	// Clear to fully transparent
-	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
-
-	int x = 2;
-	int y = 2;
-	char debug_text[128];
-
-	// Calculate scale factor for HW rendering (approximate)
-	int scale = 1;
-	if (src_w > 0 && src_h > 0) {
-		int scale_x = screen_w / src_w;
-		int scale_y = screen_h / src_h;
-		scale = (scale_x < scale_y) ? scale_x : scale_y;
-		if (scale < 1)
-			scale = 1;
-	}
-
-	// Get buffer fill (sampled every 15 frames for readability)
+static void generateDebugHUDText(DebugHUDText* text, int src_w, int src_h, int screen_w,
+                                 int screen_h) {
+	// Get buffer fill and rate adjustment (sampled every 15 frames for readability)
 	static unsigned fill_display = 0;
+	static float rate_adj_display = 1.0f;
 	static int sample_count = 0;
 	if (++sample_count >= 15) {
 		sample_count = 0;
-		fill_display = SND_getBufferOccupancy();
+		SND_Snapshot snap = SND_getSnapshot();
+		fill_display = snap.fill_pct;
+		rate_adj_display = snap.rate_adjust;
 	}
 
-	// Top-left: FPS and system CPU %
-#ifdef SYNC_MODE_AUDIOCLOCK
-	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double, (int)use_double);
-#else
-	(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double, (int)use_double);
-#endif
-	blitBitmapTextRGBA(debug_text, x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+	// Top-left: FPS, sync mode, and rate control adjustment
+	// Modes: AC = audio clock, VS = vsync with rate control
+	// Rate adjustment shows audio stretch: >1.0 = running fast, <1.0 = running slow
+	float rate_pct = (rate_adj_display - 1.0f) * 100.0f;
+	SyncMode current_mode = SyncManager_getMode(&sync_manager);
+	if (current_mode == SYNC_MODE_AUDIO_CLOCK) {
+		(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f AC", fps_double);
+	} else {
+		(void)snprintf(text->top_left, sizeof(text->top_left), "%.1f VS %+.1f%%", fps_double,
+		               rate_pct);
+	}
 
-	// Top-right: Source resolution and scale factor
-	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", src_w, src_h, scale);
-	blitBitmapTextRGBA(debug_text, -x, y, hw_hud_buffer, screen_w, screen_w, screen_h);
+	// Top-right: Source resolution
+	(void)snprintf(text->top_right, sizeof(text->top_right), "%ix%i", src_w, src_h);
 
 	// Bottom-left: CPU info + buffer fill
 	if (overclock == 3) {
-		// Auto CPU mode: show frequency/level, utilization, and buffer fill
+		// Auto CPU mode: show mode-specific info, utilization, and buffer fill
 		pthread_mutex_lock(&auto_cpu_mutex);
 		int current_idx = auto_cpu_state.current_index;
+		int current_state = auto_cpu_state.current_state;
 		int level = auto_cpu_state.current_level;
 		pthread_mutex_unlock(&auto_cpu_mutex);
 
@@ -3580,29 +4186,124 @@ static void renderHWDebugHUD(int src_w, int src_h, int screen_w, int screen_h) {
 				util = 200;
 		}
 
-		if (auto_cpu_state.use_granular && current_idx >= 0 &&
-		    current_idx < auto_cpu_state.freq_count) {
+		if (auto_cpu_state.use_topology) {
+			// Topology mode: show state/max and performance %
+			int perf_pct = CPU_getPerformancePercent(&auto_cpu_state);
+			int max_state = auto_cpu_state.topology.state_count - 1;
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left),
+			               "T%i/%i %i%% u:%u%% b:%u%%", current_state, max_state, perf_pct, util,
+			               fill_display);
+		} else if (auto_cpu_state.use_granular && current_idx >= 0 &&
+		           current_idx < auto_cpu_state.freq_count) {
 			// Granular mode: show frequency in MHz
 			int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-			(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
-			               fill_display);
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "%i u:%u%% b:%u%%",
+			               freq_mhz, util, fill_display);
 		} else {
 			// Fallback mode: show level
-			(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
-			               fill_display);
+			(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "L%i u:%u%% b:%u%%", level,
+			               util, fill_display);
 		}
 	} else {
 		// Manual mode: show level and buffer fill
-		(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
+		(void)snprintf(text->bottom_left, sizeof(text->bottom_left), "L%i b:%u%%", overclock,
+		               fill_display);
 	}
-	blitBitmapTextRGBA(debug_text, x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
 
 	// Bottom-right: Output resolution
-	(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", screen_w, screen_h);
-	blitBitmapTextRGBA(debug_text, -x, -y, hw_hud_buffer, screen_w, screen_w, screen_h);
+	(void)snprintf(text->bottom_right, sizeof(text->bottom_right), "%ix%i", screen_w, screen_h);
+}
 
-	// Pass HUD to HW renderer for compositing
-	GLVideo_renderHUD(hw_hud_buffer, screen_w, screen_h, screen_w, screen_h);
+///////////////////////////////////////
+// HW Debug HUD
+///////////////////////////////////////
+
+// HUD buffer for HW rendering (allocated once, reused)
+static uint32_t* hw_hud_buffer = NULL;
+static int hw_hud_width = 0;
+static int hw_hud_height = 0;
+
+/**
+ * Build debug HUD into RGBA buffer for GL compositing.
+ *
+ * Allocates/resizes buffer as needed and renders debug text.
+ * Does NOT call GLVideo_renderHUD - caller handles compositing.
+ *
+ * @param src_w Source (game) width in pixels
+ * @param src_h Source (game) height in pixels
+ * @param screen_w Screen width in pixels
+ * @param screen_h Screen height in pixels
+ * @return RGBA8888 buffer or NULL on allocation failure
+ */
+static uint32_t* buildDebugHUDBuffer(int src_w, int src_h, int screen_w, int screen_h) {
+	// Allocate or resize HUD buffer if needed
+	if (!hw_hud_buffer || hw_hud_width != screen_w || hw_hud_height != screen_h) {
+		free(hw_hud_buffer);
+		hw_hud_buffer = malloc((size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+		if (!hw_hud_buffer) {
+			LOG_error("Failed to allocate HW HUD buffer");
+			hw_hud_width = 0;
+			hw_hud_height = 0;
+			return NULL;
+		}
+		hw_hud_width = screen_w;
+		hw_hud_height = screen_h;
+	}
+
+	// Clear to fully transparent
+	memset(hw_hud_buffer, 0, (size_t)screen_w * (size_t)screen_h * sizeof(uint32_t));
+
+	// Generate debug text using shared logic
+	DebugHUDText text;
+	generateDebugHUDText(&text, src_w, src_h, screen_w, screen_h);
+
+	// Calculate text scale based on screen height for consistent proportions
+	// Using screen_h/180 gives ~3-4% of screen height across devices:
+	// - 480px: 2x (16px = 3.3%)
+	// - 560px: 3x (24px = 4.3%)
+	// - 720px: 4x (32px = 4.4%)
+	// This avoids integer quantization issues with DP-based calculation
+	int text_scale = screen_h / 180;
+	if (text_scale < 1)
+		text_scale = 1;
+	if (text_scale > 6)
+		text_scale = 6;
+
+	// Debug: log HUD rendering parameters (GL path, once)
+	static int logged_gl = 0;
+	if (!logged_gl) {
+		LOG_info("Debug HUD GL: buffer=%dx%d, text_scale=%dx (%dpx, %.1f%% of screen)\n", screen_w,
+		         screen_h, text_scale, text_scale * CHAR_HEIGHT,
+		         100.0f * text_scale * CHAR_HEIGHT / screen_h);
+		logged_gl = 1;
+	}
+
+	// Offset from screen edges (proportional to text size)
+	int margin = text_scale * 2;
+
+	// Render all four corners
+	blitBitmapTextRGBAScaled(text.top_left, margin, margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.top_right, -margin, margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.bottom_left, margin, -margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+	blitBitmapTextRGBAScaled(text.bottom_right, -margin, -margin, hw_hud_buffer, screen_w, screen_w,
+	                         screen_h, text_scale);
+
+	return hw_hud_buffer;
+}
+
+/**
+ * Get debug HUD buffer for GL compositing (PLAT hook implementation).
+ *
+ * Called by SDL2_present() GLES path. Returns RGBA buffer to be
+ * composited over the game frame via GLVideo_renderHUD().
+ */
+uint32_t* PLAT_getDebugHUDBuffer(int src_w, int src_h, int screen_w, int screen_h) {
+	if (!show_debug)
+		return NULL;
+	return buildDebugHUDBuffer(src_w, src_h, screen_w, screen_h);
 }
 
 /**
@@ -3613,6 +4314,66 @@ static void cleanupHWDebugHUD(void) {
 	hw_hud_buffer = NULL;
 	hw_hud_width = 0;
 	hw_hud_height = 0;
+}
+
+///////////////////////////////////////
+// SW Debug HUD
+///////////////////////////////////////
+
+/**
+ * Render debug HUD to an RGB565 surface (PLAT hook implementation).
+ *
+ * Called by PLAT_present() implementations before buffer flip.
+ * Uses screen-proportional scaling for consistent sizing across platforms.
+ *
+ * @param surface SDL surface to render to (must be RGB565 format)
+ */
+void PLAT_renderDebugHUD(SDL_Surface* surface) {
+	if (!show_debug || !surface || !surface->pixels)
+		return;
+
+	int screen_w = surface->w;
+	int screen_h = surface->h;
+	int pitch_in_pixels = surface->pitch / sizeof(uint16_t);
+	uint16_t* pixels = (uint16_t*)surface->pixels;
+
+	// Generate debug text using shared logic
+	DebugHUDText text;
+	generateDebugHUDText(&text, renderer.src_w, renderer.src_h, screen_w, screen_h);
+
+	// Calculate text scale based on screen height for consistent proportions
+	// Using screen_h/180 gives ~3-4% of screen height across devices:
+	// - 480px: 2x (16px = 3.3%)
+	// - 560px: 3x (24px = 4.3%)
+	// - 720px: 4x (32px = 4.4%)
+	// This avoids integer quantization issues with DP-based calculation
+	int text_scale = screen_h / 180;
+	if (text_scale < 1)
+		text_scale = 1;
+	if (text_scale > 6)
+		text_scale = 6;
+
+	// Debug: log HUD rendering parameters (SW path, once)
+	static int logged_sw = 0;
+	if (!logged_sw) {
+		LOG_info("Debug HUD SW: surface=%dx%d, text_scale=%dx (%dpx, %.1f%% of screen)\n", screen_w,
+		         screen_h, text_scale, text_scale * CHAR_HEIGHT,
+		         100.0f * text_scale * CHAR_HEIGHT / screen_h);
+		logged_sw = 1;
+	}
+
+	// Offset from screen edges (proportional to text size)
+	int margin = text_scale * 2;
+
+	// Render all four corners
+	blitBitmapTextScaled(text.top_left, margin, margin, pixels, pitch_in_pixels, screen_w, screen_h,
+	                     text_scale);
+	blitBitmapTextScaled(text.top_right, -margin, margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
+	blitBitmapTextScaled(text.bottom_left, margin, -margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
+	blitBitmapTextScaled(text.bottom_right, -margin, -margin, pixels, pitch_in_pixels, screen_w,
+	                     screen_h, text_scale);
 }
 
 ///////////////////////////////////////
@@ -3813,110 +4574,6 @@ static void video_refresh_callback_main(const void* data, unsigned width, unsign
 	}
 
 	renderer.src = rotated_data;
-
-	// debug - render after pixel conversion so we write to RGB565 buffer
-	if (show_debug) {
-		int x = 2 + renderer.src_x;
-		int y = 2 + renderer.src_y;
-		char debug_text[128];
-		int scale = renderer.scale;
-		if (scale == -1)
-			scale = 1; // nearest neighbor flag
-
-		// Debug text rendering needs correct buffer dimensions and pitch.
-		// blitBitmapText expects pitch in pixels (uint16_t), not bytes.
-		//
-		// After 90°/270° rotation, the buffer dimensions are swapped (width becomes height
-		// and vice versa) because the image has been rotated. We detect this by checking if
-		// rotated_data != frame_data (indicating rotation was actually applied).
-		//
-		// blitBitmapText needs the post-rotation dimensions to correctly bounds-check text
-		// rendering, and the rotation buffer's pitch instead of the original pitch.
-		int pitch_in_pixels;
-		int debug_width = width;
-		int debug_height = height;
-
-		if (rotated_data != frame_data) {
-			// Use rotation buffer pitch when rotation was applied
-			pitch_in_pixels = PlayerRotation_getBuffer()->pitch / sizeof(uint16_t);
-			if (video_state.rotation == ROTATION_90 || video_state.rotation == ROTATION_270) {
-				// Swap dimensions for 90°/270° rotations
-				debug_width = height;
-				debug_height = width;
-			}
-		} else {
-			// Use original pitch when rotation was skipped
-			pitch_in_pixels = rgb565_pitch / sizeof(uint16_t);
-		}
-
-		// Get buffer fill (sampled every 15 frames for readability)
-		static unsigned fill_display = 0;
-		static int sample_count = 0;
-		if (++sample_count >= 15) {
-			sample_count = 0;
-			fill_display = SND_getBufferOccupancy();
-		}
-
-		// Top-left: FPS and system CPU %
-#ifdef SYNC_MODE_AUDIOCLOCK
-		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%% AC", fps_double,
-		               (int)use_double);
-#else
-		(void)snprintf(debug_text, sizeof(debug_text), "%.0f FPS %i%%", fps_double,
-		               (int)use_double);
-#endif
-		blitBitmapText(debug_text, x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Top-right: Source resolution and scale factor
-		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i %ix", renderer.src_w, renderer.src_h,
-		               scale);
-		blitBitmapText(debug_text, -x, y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Bottom-left: CPU info + buffer fill (always), plus utilization when auto
-		if (overclock == 3) {
-			// Auto CPU mode: show frequency/level, utilization, and buffer fill
-			pthread_mutex_lock(&auto_cpu_mutex);
-			int current_idx = auto_cpu_state.current_index;
-			int level = auto_cpu_state.current_level;
-			pthread_mutex_unlock(&auto_cpu_mutex);
-
-			// Calculate current utilization from most recent frame times
-			unsigned util = 0;
-			int samples = (auto_cpu_state.frame_time_index < auto_cpu_config.window_frames)
-			                  ? auto_cpu_state.frame_time_index
-			                  : auto_cpu_config.window_frames;
-			if (samples >= 5 && auto_cpu_state.frame_budget_us > 0) {
-				uint64_t p90 = percentileUint64(auto_cpu_state.frame_times, samples, 0.90f);
-				util = (unsigned)((p90 * 100) / auto_cpu_state.frame_budget_us);
-				if (util > 200)
-					util = 200;
-			}
-
-			if (auto_cpu_state.use_granular && current_idx >= 0 &&
-			    current_idx < auto_cpu_state.freq_count) {
-				// Granular mode: show frequency in MHz (e.g., "1200" for 1200 MHz)
-				int freq_mhz = auto_cpu_state.frequencies[current_idx] / 1000;
-				(void)snprintf(debug_text, sizeof(debug_text), "%i u:%u%% b:%u%%", freq_mhz, util,
-				               fill_display);
-			} else {
-				// Fallback mode: show level
-				(void)snprintf(debug_text, sizeof(debug_text), "L%i u:%u%% b:%u%%", level, util,
-				               fill_display);
-			}
-		} else {
-			// Manual mode: show level and buffer fill (overclock 0/1/2 maps to L0/L1/L2)
-			(void)snprintf(debug_text, sizeof(debug_text), "L%i b:%u%%", overclock, fill_display);
-		}
-		blitBitmapText(debug_text, x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-
-		// Bottom-right: Output resolution
-		(void)snprintf(debug_text, sizeof(debug_text), "%ix%i", renderer.dst_w, renderer.dst_h);
-		blitBitmapText(debug_text, -x, -y, (uint16_t*)renderer.src, pitch_in_pixels, debug_width,
-		               debug_height);
-	}
 	renderer.dst = screen->pixels;
 	// LOG_info("video_refresh_callback: %ix%i@%i %ix%i@%i",width,height,pitch,screen->w,screen->h,screen->pitch);
 
@@ -3951,8 +4608,10 @@ void video_refresh_callback(const void* data, unsigned width, unsigned height, s
 			                core.aspect_ratio, renderer.visual_scale);
 
 			// Render debug HUD overlay if enabled
-			if (show_debug) {
-				renderHWDebugHUD((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			uint32_t* hud =
+			    PLAT_getDebugHUDBuffer((int)width, (int)height, DEVICE_WIDTH, DEVICE_HEIGHT);
+			if (hud) {
+				GLVideo_renderHUD(hud, DEVICE_WIDTH, DEVICE_HEIGHT, DEVICE_WIDTH, DEVICE_HEIGHT);
 			}
 
 			// Swap buffers to display the frame
@@ -4075,7 +4734,10 @@ void Player_selectBiosPath(const char* tag, char* bios_dir) {
  */
 void Core_open(const char* core_path, const char* tag_name) {
 	LOG_info("Core_open");
+
+	LOG_debug("Core_open: dlopen start");
 	core.handle = dlopen(core_path, RTLD_LAZY);
+	LOG_debug("Core_open: dlopen done");
 
 	if (!core.handle) {
 		const char* error = dlerror();
@@ -4084,6 +4746,7 @@ void Core_open(const char* core_path, const char* tag_name) {
 		return;
 	}
 
+	LOG_debug("Core_open: dlsym start");
 	core.init = dlsym(core.handle, "retro_init");
 	core.deinit = dlsym(core.handle, "retro_deinit");
 	core.get_system_info = dlsym(core.handle, "retro_get_system_info");
@@ -4114,9 +4777,12 @@ void Core_open(const char* core_path, const char* tag_name) {
 	set_audio_sample_batch_callback = dlsym(core.handle, "retro_set_audio_sample_batch");
 	set_input_poll_callback = dlsym(core.handle, "retro_set_input_poll");
 	set_input_state_callback = dlsym(core.handle, "retro_set_input_state");
+	LOG_debug("Core_open: dlsym done");
 
+	LOG_debug("Core_open: get_system_info start");
 	struct retro_system_info info = {};
 	core.get_system_info(&info);
+	LOG_debug("Core_open: get_system_info done");
 
 	Core_getName((char*)core_path, (char*)core.name);
 	(void)snprintf((char*)core.version, sizeof(core.version), "%s (%s)", info.library_name,
@@ -4137,21 +4803,30 @@ void Core_open(const char* core_path, const char* tag_name) {
 	               core.tag);
 	Player_selectBiosPath(core.tag, (char*)core.bios_dir);
 
+	LOG_debug("Core_open: mkdir start");
 	char cmd[512];
 	(void)snprintf(cmd, sizeof(cmd), "mkdir -p \"%s\"; mkdir -p \"%s\"", core.config_dir,
 	               core.states_dir);
 	system(cmd);
+	LOG_debug("Core_open: mkdir done");
 
+	LOG_debug("Core_open: set_environment_callback start");
 	set_environment_callback(environment_callback);
+	LOG_debug("Core_open: set_environment_callback done");
+
+	LOG_debug("Core_open: set other callbacks start");
 	set_video_refresh_callback(video_refresh_callback);
 	set_audio_sample_callback(audio_sample_callback);
 	set_audio_sample_batch_callback(audio_sample_batch_callback);
 	set_input_poll_callback(input_poll_callback);
 	set_input_state_callback(input_state_callback);
+	LOG_debug("Core_open: set other callbacks done");
 }
 void Core_init(void) {
 	LOG_info("Core_init");
+	LOG_debug("Core_init: calling core.init()");
 	core.init();
+	LOG_debug("Core_init: core.init() done");
 	core.initialized = 1;
 }
 
@@ -4216,8 +4891,12 @@ bool Core_load(void) {
 		return false;
 	}
 
+	LOG_debug("Core_load: calling SRAM_read");
 	SRAM_read();
+	LOG_debug("Core_load: SRAM_read done");
+	LOG_debug("Core_load: calling RTC_read");
 	RTC_read();
+	LOG_debug("Core_load: RTC_read done");
 
 	// NOTE: must be called after core.load_game!
 	struct retro_system_av_info av_info = {};
@@ -5426,7 +6105,7 @@ static void Menu_saveState(void) {
 
 static void Menu_loadState(void) {
 	PlayerMenu_loadState(PlayerContext_get());
-	FramePacer_reset(&frame_pacer); // Reset accumulator after state load
+	// Note: Sync manager doesn't need reset after state load (no persistent accumulator)
 }
 
 static void Menu_scale(SDL_Surface* src, SDL_Surface* dst) {
@@ -5699,12 +6378,135 @@ static void showFatalError(void) {
 	}
 }
 
-// Main loop implementation selected at compile-time based on sync mode
-#ifdef SYNC_MODE_AUDIOCLOCK
-#include "player_loop_audioclock.inc"
-#else
-#include "player_loop_vsync.inc"
-#endif
+// Sync mode callbacks for audio system
+static bool sync_shouldUseRateControl(void) {
+	return SyncManager_shouldUseRateControl(&sync_manager);
+}
+
+static bool sync_shouldBlockAudio(void) {
+	return SyncManager_shouldBlockAudio(&sync_manager);
+}
+
+/**
+ * Unified main loop with runtime-adaptive sync mode.
+ */
+static void run_main_loop(void) {
+	double display_hz = PLAT_getDisplayHz();
+	SyncManager_init(&sync_manager, core.fps, display_hz);
+	SND_setSyncCallbacks(sync_shouldUseRateControl, sync_shouldBlockAudio);
+
+	// Set vsync based on sync mode:
+	// - Audio-clock mode: disable vsync so audio blocking is the sole timing source
+	// - Vsync mode: enable vsync for tear-free rendering with display-driven timing
+	bool use_vsync = (SyncManager_getMode(&sync_manager) != SYNC_MODE_AUDIO_CLOCK);
+	GLVideo_setVsync(use_vsync ? 1 : 0);
+
+	LOG_info("Starting main loop: %.2ffps @ %.1fHz (mode: %s, vsync=%s)\n", core.fps, display_hz,
+	         SyncManager_getModeName(SyncManager_getMode(&sync_manager)), use_vsync ? "on" : "off");
+
+	PWR_warn(1);
+	PWR_disableAutosleep();
+
+	GFX_clearAll();
+	GFX_present(NULL);
+
+	LOG_debug("Special_init");
+	Special_init();
+
+	LOG_debug("Entering main loop");
+	sec_start = SDL_GetTicks();
+
+	while (!quit) {
+		GFX_startFrame();
+		input_polled_this_frame = 0;
+
+		int runs_this_vsync = fast_forward ? (max_ff_speed + 2) : 1;
+
+		for (int run = 0; run < runs_this_vsync; run++) {
+			bool should_run_core =
+			    !show_menu &&
+			    ((run == 0) ? (fast_forward || SyncManager_shouldRunCore(&sync_manager))
+			                : fast_forward);
+
+			if (should_run_core) {
+				if (video_state.frame_time_cb) {
+					retro_usec_t frame_now = getMicroseconds();
+					retro_usec_t delta;
+					if (fast_forward) {
+						delta = video_state.frame_time_ref;
+					} else {
+						if (video_state.frame_time_last == 0) {
+							delta = video_state.frame_time_ref;
+						} else {
+							delta = frame_now - video_state.frame_time_last;
+						}
+						video_state.frame_time_last = frame_now;
+					}
+					video_state.frame_time_cb(delta);
+				}
+
+				if (core.audio_buffer_status) {
+					if (fast_forward) {
+						core.audio_buffer_status(false, 0, false);
+					} else {
+						unsigned occupancy = SND_getBufferOccupancy();
+						core.audio_buffer_status(true, occupancy, occupancy < 25);
+					}
+				}
+
+				if (!fast_forward) {
+					SND_newFrame();
+				}
+
+				uint64_t frame_start = getMicroseconds();
+				GLVideo_bindFBO();
+				core.run();
+				uint64_t frame_time = getMicroseconds() - frame_start;
+
+				if (overclock == 3 && !fast_forward && !show_menu) {
+					auto_cpu_state
+					    .frame_times[auto_cpu_state.frame_time_index % CPU_FRAME_BUFFER_SIZE] =
+					    frame_time;
+					auto_cpu_state.frame_time_index++;
+				}
+			}
+		}
+
+		if (!GLVideo_isEnabled()) {
+			GFX_present(&renderer);
+			frame_ready_for_flip = 0;
+		}
+
+		SyncManager_recordVsync(&sync_manager);
+
+		// Update vsync if sync mode changed (e.g., audio-clock → vsync transition)
+		{
+			static SyncMode prev_mode = SYNC_MODE_AUDIO_CLOCK;
+			SyncMode curr_mode = SyncManager_getMode(&sync_manager);
+			if (curr_mode != prev_mode) {
+				int vsync_enabled = (curr_mode != SYNC_MODE_AUDIO_CLOCK) ? 1 : 0;
+				GLVideo_setVsync(vsync_enabled);
+				prev_mode = curr_mode;
+			}
+		}
+
+		limitFF();
+		trackFPS();
+		updateAutoCPU();
+
+		input_poll_callback();
+
+		if (show_menu) {
+			Menu_loop();
+
+			if (GLVideo_isEnabled()) {
+				GLVideo_bindFBO();
+			}
+		}
+
+		hdmimon();
+	}
+}
 
 int main(int argc, char* argv[]) {
 	// Initialize logging early (reads LOG_FILE and LOG_SYNC from environment)
@@ -5712,6 +6514,9 @@ int main(int argc, char* argv[]) {
 
 	// Initialize runtime paths (reads LESSOS_STORAGE from environment)
 	Paths_init();
+
+	// Detect platform variant early (before any code that may need variant info)
+	PLAT_detectVariant(&platform_variant);
 
 	LOG_info("Player");
 
@@ -5770,8 +6575,8 @@ int main(int argc, char* argv[]) {
 	PlayerContext_initCallbacks(ctx, &callbacks);
 
 	// Initialize auto CPU scaling config with defaults
-	PlayerCPU_initConfig(&auto_cpu_config);
-	PlayerCPU_initState(&auto_cpu_state);
+	CPU_initConfig(&auto_cpu_config);
+	CPU_initState(&auto_cpu_state);
 
 	setOverclock(overclock); // default to normal
 	// force a stack overflow to ensure asan is linked and actually working

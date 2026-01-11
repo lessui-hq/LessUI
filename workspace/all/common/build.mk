@@ -67,7 +67,7 @@ include $(COMMON_DIR)/cflags.mk
 ###########################################################
 # Paths and sources
 
-INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -I$(PLATFORM_DEPTH)all/player/libretro-common/include -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
+INCDIR = -I. -I$(COMMON_DIR)/ -I$(PLATFORM_DIR)/ -I$(PLATFORM_DEPTH)all/player/ -I$(PLATFORM_DEPTH)all/player/libretro-common/include -isystem $(PLATFORM_DEPTH)all/vendor/stb $(EXTRA_INCDIR)
 
 COMMON_SOURCE = \
 	$(COMMON_DIR)/utils.c \
@@ -81,6 +81,7 @@ COMMON_SOURCE = \
 	$(COMMON_DIR)/scaler.c \
 	$(COMMON_DIR)/platform_variant.c \
 	$(COMMON_DIR)/paths.c \
+	$(COMMON_DIR)/cpu.c \
 	$(PLATFORM_DIR)/platform.c
 
 # Add shared rendering modules
@@ -108,12 +109,12 @@ HEADERS = $(wildcard $(COMMON_DIR)/*.h) $(wildcard $(PLATFORM_DIR)/*.h)
 CC = $(CROSS_COMPILE)gcc
 # OPT_FLAGS from parent makefile (-O3 for release, -O0 -g for debug)
 OPT_FLAGS ?= -O3
-CFLAGS  = $(ARCH) -fomit-frame-pointer
+CFLAGS += $(ARCH) -fomit-frame-pointer
 CFLAGS += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DUSE_$(SDL) $(LOG_FLAGS) $(OPT_FLAGS)
 CFLAGS += $(WARN_FLAGS)
 CFLAGS += $(EXTRA_CFLAGS)
 
-LDFLAGS  = -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
+LDFLAGS += -ldl $(LIBS) -l$(SDL) -l$(SDL)_image -l$(SDL)_ttf -lpthread -lm -lz
 LDFLAGS += -lmsettings
 LDFLAGS += $(EXTRA_LDFLAGS)
 

@@ -13,6 +13,9 @@
     "retroid": {
       "platform": "linux/amd64",
       "toolchain": "sm8250"
+    },
+    "tg5050": {
+      "platform": "linux/arm64"
     }
   }
 }

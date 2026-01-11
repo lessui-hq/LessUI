@@ -146,10 +146,10 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	// Read device from LessOS environment variable
 	char* device = getenv("LESSOS_DEVICE");
 	if (!device) {
-		LOG_debug("LESSOS_DEVICE not set, defaulting to Pocket 5\n");
+		LOG_debug("LESSOS_DEVICE not set, defaulting to Pocket 5");
 		device = "Retroid Pocket 5"; // Fallback to default
 	} else {
-		LOG_debug("LESSOS_DEVICE=%s\n", device);
+		LOG_debug("LESSOS_DEVICE=%s", device);
 	}
 
 	// Look up device in mapping table (substring match)
@@ -165,7 +165,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Fallback to default if not found
 	if (!map) {
-		LOG_warn("Unknown device '%s', defaulting to Pocket 5\n", device);
+		LOG_warn("Unknown device '%s', defaulting to Pocket 5", device);
 		map = &retroid_device_map[0];
 	}
 
@@ -360,7 +360,7 @@ static void disableStickLEDs(void) {
 		putInt(led_paths[i], 0);
 	}
 
-	LOG_debug("Disabled analog stick RGB LEDs\n");
+	LOG_debug("Disabled analog stick RGB LEDs");
 }
 
 void PLAT_initInput(void) {
@@ -372,9 +372,9 @@ void PLAT_initInput(void) {
 	// devices appearing in any order during boot.
 	input_count = udev_open_all_inputs(inputs);
 	if (input_count == 0) {
-		LOG_warn("No input devices found via udev\n");
+		LOG_warn("No input devices found via udev");
 	} else {
-		LOG_info("Opened %d input devices via udev\n", input_count);
+		LOG_info("Opened %d input devices via udev", input_count);
 	}
 }
 

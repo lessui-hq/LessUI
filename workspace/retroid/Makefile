@@ -16,7 +16,7 @@ endif
 # LessOS doesn't need DinguxCommander (file manager for stock firmware)
 all: readmes show
 
-.PHONY: show
+.PHONY: all early clean show
 show:
 	@$(MAKE) -C show
 

@@ -35,28 +35,39 @@ int PlayerConfig_getValue(const char* cfg, const char* key, char* out_value, int
 		return 0;
 	}
 
+	// Find the LAST match (for cascade: later configs override earlier ones)
 	const char* tmp = cfg;
+	const char* last_match = NULL;
+	int last_lock = 0;
+
 	while ((tmp = strstr(tmp, key))) {
 		// Check for lock prefix (-key = value)
-		if (lock != NULL && tmp > cfg && *(tmp - 1) == '-') {
-			*lock = 1;
+		int is_locked = (tmp > cfg && *(tmp - 1) == '-');
+
+		// Verify key is at line boundary (start of string, after newline, or after '-' prefix)
+		if (tmp > cfg && *(tmp - 1) != '\n' && *(tmp - 1) != '-') {
+			tmp++; // Not at line boundary, skip this match
+			continue;
 		}
+
 		tmp += strlen(key);
 		// Must match " = " pattern exactly
 		if (strncmp(tmp, " = ", 3) == 0) {
-			break; // Found valid match
+			last_match = tmp + 3; // Point past " = "
+			last_lock = is_locked; // Always update lock status from last match
 		}
 	}
 
-	if (!tmp) {
+	if (!last_match) {
 		return 0;
 	}
 
-	// Skip past " = "
-	tmp += 3;
+	if (lock != NULL && last_lock) {
+		*lock = 1;
+	}
 
 	// Copy value up to newline (max 255 chars + null)
-	strncpy(out_value, tmp, 256);
+	strncpy(out_value, last_match, 256);
 	out_value[255] = '\0';
 
 	// Trim at newline or carriage return (handle both \r\n and \n)

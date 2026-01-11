@@ -292,6 +292,76 @@ void test_getConfigValue_numeric_value(void) {
 	TEST_ASSERT_EQUAL(75, atoi(value));
 }
 
+void test_getConfigValue_cascade_last_value_wins(void) {
+	// Simulates cascaded configs: default.cfg + device.cfg concatenated
+	// Later value (device.cfg) should override earlier value (default.cfg)
+	const char* cfg = "scaling = native\nvolume = 50\nscaling = fullscreen\n";
+	char value[256];
+
+	int result = PlayerConfig_getValue(cfg, "scaling", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("fullscreen", value); // Last value wins
+}
+
+void test_getConfigValue_cascade_lock_from_last(void) {
+	// Lock status should come from the last occurrence
+	const char* cfg = "vsync = off\n-vsync = on\n"; // First unlocked, second locked
+	char value[256];
+	int lock = 0;
+
+	int result = PlayerConfig_getValue(cfg, "vsync", value, &lock);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("on", value);
+	TEST_ASSERT_EQUAL(1, lock);
+}
+
+void test_getConfigValue_cascade_unlock_overrides_lock(void) {
+	// Unlocked value should override locked value
+	const char* cfg = "-vsync = on\nvsync = off\n"; // First locked, second unlocked
+	char value[256];
+	int lock = 0;
+
+	int result = PlayerConfig_getValue(cfg, "vsync", value, &lock);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("off", value);
+	TEST_ASSERT_EQUAL(0, lock); // Lock should be cleared by later unlocked value
+}
+
+void test_getConfigValue_cascade_multiple_overrides(void) {
+	// Three layers of config
+	const char* cfg = "option = first\noption = second\noption = third\n";
+	char value[256];
+
+	int result = PlayerConfig_getValue(cfg, "option", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("third", value);
+}
+
+void test_getConfigValue_key_not_substring_of_other_key(void) {
+	// Key "a" should not match "aa = 2"
+	const char* cfg = "aa = wrong\na = correct\n";
+	char value[256];
+
+	int result = PlayerConfig_getValue(cfg, "a", value, NULL);
+	TEST_ASSERT_EQUAL(1, result);
+	TEST_ASSERT_EQUAL_STRING("correct", value);
+}
+
+void test_getConfigValue_similar_keys_distinguished(void) {
+	// Keys that are prefixes of each other should be distinguished
+	const char* cfg = "scale = 2\nscaling = native\nscale_factor = 3\n";
+	char value[256];
+
+	TEST_ASSERT_EQUAL(1, PlayerConfig_getValue(cfg, "scale", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("2", value);
+
+	TEST_ASSERT_EQUAL(1, PlayerConfig_getValue(cfg, "scaling", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("native", value);
+
+	TEST_ASSERT_EQUAL(1, PlayerConfig_getValue(cfg, "scale_factor", value, NULL));
+	TEST_ASSERT_EQUAL_STRING("3", value);
+}
+
 ///////////////////////////////
 // PlayerConfig_getStateDesc tests
 ///////////////////////////////
@@ -364,6 +434,12 @@ int main(void) {
 	RUN_TEST(test_getConfigValue_null_key_returns_zero);
 	RUN_TEST(test_getConfigValue_empty_value);
 	RUN_TEST(test_getConfigValue_numeric_value);
+	RUN_TEST(test_getConfigValue_cascade_last_value_wins);
+	RUN_TEST(test_getConfigValue_cascade_lock_from_last);
+	RUN_TEST(test_getConfigValue_cascade_unlock_overrides_lock);
+	RUN_TEST(test_getConfigValue_cascade_multiple_overrides);
+	RUN_TEST(test_getConfigValue_key_not_substring_of_other_key);
+	RUN_TEST(test_getConfigValue_similar_keys_distinguished);
 
 	// PlayerConfig_getStateDesc
 	RUN_TEST(test_getConfigStateDesc_none);

@@ -139,10 +139,10 @@ void PLAT_detectVariant(PlatformVariant* v) {
 	// Read model string from environment
 	char* model = getenv("RGXX_MODEL");
 	if (!model) {
-		LOG_debug("RGXX_MODEL not set, defaulting to RG35xxPlus\n");
+		LOG_debug("RGXX_MODEL not set, defaulting to RG35xxPlus");
 		model = "RG35xxPlus"; // Fallback to default
 	} else {
-		LOG_debug("RGXX_MODEL=%s\n", model);
+		LOG_debug("RGXX_MODEL=%s", model);
 	}
 
 	// Look up device in mapping table
@@ -158,7 +158,7 @@ void PLAT_detectVariant(PlatformVariant* v) {
 
 	// Fallback to default if not found
 	if (!map) {
-		LOG_warn("Unknown device model '%s', defaulting to RG35XX Plus\n", model);
+		LOG_warn("Unknown device model '%s', defaulting to RG35XX Plus", model);
 		map = &rg35xxplus_device_map[0];
 	}
 
@@ -420,18 +420,18 @@ static void checkForGamepad(void) {
 			char pad_name[256];
 			getFile("/sys/class/input/event3/device/name", pad_name, 256);
 			if (containsString(pad_name, "Anbernic")) {
-				LOG_info("P01\n");
+				LOG_info("P01");
 				pad_type = kGamepadTypeRGP01;
 			} else if (containsString(pad_name, "Microsoft")) {
-				LOG_info("Xbox\n");
+				LOG_info("Xbox");
 				pad_type = kGamepadTypeXbox;
 			} else {
-				LOG_info("Unknown\n");
+				LOG_info("Unknown");
 				pad_type = kGamepadTypeUnknown;
 			}
 			inputs[kPadIndex] = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 		} else if (inputs[kPadIndex] >= 0 && !connected) {
-			LOG_info("Gamepad disconnected\n");
+			LOG_info("Gamepad disconnected");
 			close(inputs[kPadIndex]);
 			inputs[kPadIndex] = -1;
 			pad_type = kGamepadTypeUnknown;

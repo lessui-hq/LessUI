@@ -25,6 +25,72 @@
 #include "render_common.h"
 #include "utils.h"
 
+/**
+ * Check if a kernel module is loaded by searching /proc/modules.
+ */
+static int isModuleLoaded(const char* module_name) {
+	char buf[4096];
+	buf[0] = '\0';
+	getFile("/proc/modules", buf, sizeof(buf));
+	return buf[0] && strstr(buf, module_name) != NULL;
+}
+
+/**
+ * Log diagnostic information when display initialization fails.
+ * Captures system state to help debug EGL/framebuffer issues.
+ */
+static void logDisplayDiagnostics(void) {
+	LOG_error("=== Display Diagnostics ===");
+
+	char buf[512];
+
+	// Platform identification
+	const char* lessui_device = getenv("LESSUI_DEVICE");
+	const char* lessui_variant = getenv("LESSUI_VARIANT");
+	LOG_error("Device: %s (%s)", lessui_device ? lessui_device : "unknown",
+	          lessui_variant ? lessui_variant : "unknown");
+
+	// Framebuffer info
+	buf[0] = '\0';
+	getFile("/sys/class/graphics/fb0/modes", buf, sizeof(buf));
+	LOG_error("fb0/modes: %s", buf[0] ? buf : "(unable to read)");
+
+	buf[0] = '\0';
+	getFile("/sys/class/graphics/fb0/virtual_size", buf, sizeof(buf));
+	if (buf[0]) {
+		LOG_error("fb0/virtual_size: %s", buf);
+	}
+
+	// GPU device nodes
+	int has_mali = exists("/dev/mali") || exists("/dev/mali0");
+	int has_dri = exists("/dev/dri/card0");
+	LOG_error("GPU devices: mali=%s dri=%s", has_mali ? "yes" : "NO", has_dri ? "yes" : "no");
+
+	// GPU kernel modules - critical for diagnosing "module exists but not loaded"
+	int mali_loaded = isModuleLoaded("mali");
+	int mali_kbase_loaded = isModuleLoaded("mali_kbase");
+	LOG_error("GPU modules loaded: mali=%s mali_kbase=%s", mali_loaded ? "yes" : "no",
+	          mali_kbase_loaded ? "yes" : "no");
+
+	// Check if module file exists but isn't loaded (the CubeXX issue)
+	if (!mali_kbase_loaded && exists("/lib/modules/mali_kbase.ko")) {
+		LOG_error("NOTE: /lib/modules/mali_kbase.ko exists but module not loaded!");
+	}
+
+	// Environment that affects graphics
+	const char* sdl_videodriver = getenv("SDL_VIDEODRIVER");
+	if (sdl_videodriver) {
+		LOG_error("SDL_VIDEODRIVER=%s", sdl_videodriver);
+	}
+
+	const char* ld_lib_path = getenv("LD_LIBRARY_PATH");
+	if (ld_lib_path) {
+		LOG_error("LD_LIBRARY_PATH=%s", ld_lib_path);
+	}
+
+	LOG_error("=== End Diagnostics ===");
+}
+
 // Internal helper to resize video resources
 static void resizeVideoInternal(SDL2_RenderContext* ctx, int w, int h, int p) {
 	if (w == ctx->width && h == ctx->height && p == ctx->pitch)
@@ -89,7 +155,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 	int scale = fx->scale > 0 ? fx->scale : 1;
 	int opacity = EFFECT_getOpacity(scale);
 
-	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d\n", fx->type, fx->scale,
+	LOG_debug("Effect: generating type=%d scale=%d color=0x%04x opacity=%d", fx->type, fx->scale,
 	          fx->color, opacity);
 
 #if !HAS_OPENGLES
@@ -114,7 +180,7 @@ static void updateEffectInternal(SDL2_RenderContext* ctx) {
 		// Mark as live
 		EFFECT_markLive(fx);
 
-		LOG_debug("Effect: created %dx%d texture\n", target_w, target_h);
+		LOG_debug("Effect: created %dx%d texture", target_w, target_h);
 	}
 #else
 	EFFECT_markLive(fx);
@@ -144,6 +210,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	LOG_debug("SDL2_initVideo: Calling SDL_InitSubSystem(VIDEO)");
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
 		LOG_error("SDL2_initVideo: SDL_InitSubSystem failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		return NULL;
 	}
 	LOG_debug("SDL2_initVideo: SDL video subsystem initialized");
@@ -165,6 +232,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	    SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, window_flags);
 	if (!ctx->window) {
 		LOG_error("SDL2_initVideo: SDL_CreateWindow failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		return NULL;
 	}
 	LOG_debug("SDL2_initVideo: Window created successfully");
@@ -174,6 +242,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 	ctx->renderer = SDL_CreateRenderer(ctx->window, -1, renderer_flags);
 	if (!ctx->renderer) {
 		LOG_error("SDL2_initVideo: SDL_CreateRenderer failed: %s", SDL_GetError());
+		logDisplayDiagnostics();
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
@@ -193,7 +262,7 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		if (SDL_GetCurrentDisplayMode(0, &mode) < 0) {
 			LOG_error("SDL2_initVideo: SDL_GetCurrentDisplayMode failed: %s", SDL_GetError());
 		} else {
-			LOG_info("Display mode: %ix%i\n", mode.w, mode.h);
+			LOG_info("Display mode: %ix%i", mode.w, mode.h);
 			if (mode.h > mode.w) {
 				// rotate_cw: 0=270° CCW (default), 1=90° CW (zero28)
 				ctx->rotate = ctx->config.rotate_cw ? 1 : 3;
@@ -243,6 +312,20 @@ SDL_Surface* SDL2_initVideo(SDL2_RenderContext* ctx, int width, int height,
 		SDL_DestroyWindow(ctx->window);
 		return NULL;
 	}
+
+#if !HAS_OPENGLES
+	// Create HUD texture for debug overlay (RGBA for alpha blending)
+	ctx->hud_texture = SDL_CreateTexture(ctx->renderer, SDL_PIXELFORMAT_RGBA8888,
+	                                     SDL_TEXTUREACCESS_STREAMING, w, h);
+	if (!ctx->hud_texture) {
+		LOG_warn("SDL2_initVideo: Failed to create HUD texture: %s", SDL_GetError());
+		// Non-fatal, continue without HUD support
+	} else {
+		SDL_SetTextureBlendMode(ctx->hud_texture, SDL_BLENDMODE_BLEND);
+	}
+	ctx->hud_surface = NULL; // Not used - PLAT_getDebugHUDBuffer provides RGBA buffer
+#endif
+
 	LOG_debug("SDL2_initVideo: Surfaces created successfully");
 
 	// Store dimensions
@@ -298,6 +381,9 @@ void SDL2_quitVideo(SDL2_RenderContext* ctx) {
 		SDL_DestroyTexture(ctx->target);
 	if (ctx->effect)
 		SDL_DestroyTexture(ctx->effect);
+	if (ctx->hud_texture)
+		SDL_DestroyTexture(ctx->hud_texture);
+	// Note: hud_surface is unused (set to NULL) - PLAT_getDebugHUDBuffer provides RGBA buffer
 	SDL_DestroyTexture(ctx->texture);
 
 	// Destroy renderer and window
@@ -392,6 +478,15 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 
 	// Draw software frame (with effect support)
 	GLVideo_drawSoftwareFrame(&src_rect, &dst_rect, rotation, sharpness, renderer->visual_scale);
+
+	// Render debug HUD overlay if available (player provides implementation)
+	uint32_t* hud_buf = PLAT_getDebugHUDBuffer(renderer->src_w, renderer->src_h, ctx->device_width,
+	                                           ctx->device_height);
+	if (hud_buf) {
+		GLVideo_renderHUD(hud_buf, ctx->device_width, ctx->device_height, ctx->device_width,
+		                  ctx->device_height);
+	}
+
 	GLVideo_swapBuffers();
 
 #else
@@ -474,6 +569,19 @@ void SDL2_present(SDL2_RenderContext* ctx, GFX_Renderer* renderer) {
 		}
 	}
 
+	// Render debug HUD overlay if available (player provides implementation)
+	if (ctx->hud_texture) {
+		uint32_t* hud_buf = PLAT_getDebugHUDBuffer(renderer->src_w, renderer->src_h,
+		                                           ctx->device_width, ctx->device_height);
+		if (hud_buf) {
+			// Upload RGBA buffer to texture
+			SDL_UpdateTexture(ctx->hud_texture, NULL, hud_buf,
+			                  ctx->device_width * (int)sizeof(uint32_t));
+			// Composite HUD texture over game (fullscreen, no rotation)
+			SDL_RenderCopy(ctx->renderer, ctx->hud_texture, NULL, NULL);
+		}
+	}
+
 	SDL_RenderPresent(ctx->renderer);
 #endif
 }
@@ -494,12 +602,12 @@ int SDL2_hdmiChanged(SDL2_RenderContext* ctx) {
 double SDL2_getDisplayHz(void) {
 	SDL_DisplayMode mode;
 	if (SDL_GetCurrentDisplayMode(0, &mode) == 0) {
-		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz\n", mode.w, mode.h, mode.refresh_rate);
+		LOG_info("SDL_GetCurrentDisplayMode: %dx%d @ %dHz", mode.w, mode.h, mode.refresh_rate);
 		if (mode.refresh_rate > 0) {
 			return (double)mode.refresh_rate;
 		}
 	}
-	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback\n");
+	LOG_info("SDL_GetCurrentDisplayMode: failed or returned 0Hz, using fallback");
 	return 0.0; // Return 0 to indicate no data, caller should use PLAT_getDisplayHz
 }
 
