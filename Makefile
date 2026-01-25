@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major common system .DEFAULT
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos lessos-docker-pull special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major common system .DEFAULT
 
 export MAKEFLAGS=--no-print-directory
 
@@ -124,6 +124,11 @@ help:
 	@echo "  make package          Stage + compress (full release)"
 	@echo "  make all              Full build: setup + platforms + package"
 	@echo "  make shell PLATFORM=X Enter Docker build environment"
+	@echo ""
+	@echo "LessOS Image Build:"
+	@echo "  make lessos           Fetch LessOS images and inject LessUI"
+	@echo "  make lessos DEVICE=X  Build specific device (RK3566, SM8250)"
+	@echo "  make lessos TAG=X     Use specific LessOS release tag"
 	@echo ""
 	@echo "Deployment:"
 	@echo "  make dev-deploy       Deploy to SD card (requires LESSUI_DEV volume)"
@@ -187,6 +192,42 @@ format:
 
 format-check:
 	@$(MAKE) -f Makefile.qa format-check
+
+###########################################################
+# LessOS image build
+#
+# Fetches LessOS release images from GitHub and injects LessUI.zip
+# Runs in Docker to ensure required tools (debugfs, sfdisk, pigz) are available
+#
+# Usage:
+#   make lessos                   - Build all devices (latest LessOS, latest LessUI)
+#   make lessos DEVICE=RK3566     - Build specific device
+#   make lessos TAG=20260124      - Use specific LessOS release
+#   make lessos ZIP=path/to.zip   - Use specific LessUI zip
+#
+# Output: build/LESSOS/*.img.gz
+
+# Docker configuration for LessOS builds (uses same image as QA)
+LESSOS_DEV_IMAGE = lessui-dev
+LESSOS_GHCR_IMAGE = ghcr.io/lessui-hq/lessui-dev:latest
+LESSOS_DOCKER_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(LESSOS_DEV_IMAGE)
+
+lessos-docker-pull:
+	@echo "Pulling dev image from GHCR..."
+	@docker pull $(LESSOS_GHCR_IMAGE)
+	@docker tag $(LESSOS_GHCR_IMAGE) $(LESSOS_DEV_IMAGE)
+
+lessos: lessos-docker-pull
+	@echo "# ----------------------------------------------------"
+	@echo "# Building LessOS images with LessUI injection"
+	@echo "# ----------------------------------------------------"
+	@ARGS=""; \
+	if [ -n "$(DEVICE)" ]; then ARGS="$$ARGS --device $(DEVICE)"; fi; \
+	if [ -n "$(TAG)" ]; then ARGS="$$ARGS --tag $(TAG)"; fi; \
+	if [ -n "$(VARIANT)" ]; then ARGS="$$ARGS --variant $(VARIANT)"; fi; \
+	if [ -n "$(ZIP)" ]; then ARGS="$$ARGS --zip $(ZIP)"; fi; \
+	if [ "$(DRY_RUN)" = "1" ]; then ARGS="$$ARGS --dry-run"; fi; \
+	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh $$ARGS
 
 # macOS development targets (forward to Makefile.dev)
 dev:
