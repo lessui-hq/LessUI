@@ -121,7 +121,7 @@ download_asset() {
 }
 
 # Contents to include in LessOS builds (excludes platform-specific boot folders)
-LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.txt Roms Saves Tools em_ui.sh)
+LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.txt Roms Saves Tools)
 
 # Create LessOS-specific zip from build/BASE
 prepare_lessui_zip() {
