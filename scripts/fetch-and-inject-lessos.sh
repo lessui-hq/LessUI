@@ -132,7 +132,7 @@ github_api() {
     local endpoint="$1"
     local response http_code body
 
-    response=$(curl -sL -w '\n%{http_code}' "https://api.github.com/${endpoint}")
+    response=$(curl -sL --connect-timeout 30 -w '\n%{http_code}' "https://api.github.com/${endpoint}")
     http_code=$(echo "$response" | tail -1)
     body=$(echo "$response" | head -n -1)
 
@@ -181,7 +181,7 @@ download_asset() {
 
     local download_url="https://github.com/${REPO}/releases/download/${TAG}/${asset_name}"
     local http_code
-    http_code=$(curl -sL -w '%{http_code}' -o "$output_path" "$download_url")
+    http_code=$(curl -sL --connect-timeout 30 --max-time 1800 -w '%{http_code}' -o "$output_path" "$download_url")
 
     if [[ "$http_code" != "200" ]]; then
         log_error "Failed to download ${asset_name}: HTTP ${http_code}"
