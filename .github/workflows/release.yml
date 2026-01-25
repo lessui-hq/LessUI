@@ -48,20 +48,38 @@ jobs:
         env:
           CI_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') }}
 
-      - name: Verify build artifacts
+      - name: Verify LessUI build
         run: |
           if ! ls releases/*.zip 1>/dev/null 2>&1; then
-            echo "Error: No release artifacts found in releases/"
+            echo "Error: No LessUI artifacts found in releases/"
             exit 1
           fi
-          echo "Found artifacts:"
+          echo "LessUI artifacts:"
           ls -la releases/*.zip
+
+      - name: Build LessOS images
+        run: make lessos DEVICE=all
+
+      - name: Verify LessOS build
+        run: |
+          count=$(ls build/LESSOS/*.img.gz 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "Error: No LessOS images were built"
+            exit 1
+          fi
+          echo "Built $count LessOS images:"
+          ls -la build/LESSOS/*.img.gz
 
       - name: Generate checksums
         run: |
           cd releases
           sha256sum *.zip > SHA256SUMS
           cat SHA256SUMS
+          if ls ../build/LESSOS/*.img.gz 1>/dev/null 2>&1; then
+            echo ""
+            echo "LessOS checksums:"
+            cat ../build/LESSOS/*.sha256
+          fi
 
       - name: Get version
         id: version
@@ -76,14 +94,19 @@ jobs:
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: releases/*.zip
+          subject-path: |
+            releases/*.zip
+            build/LESSOS/*.img.gz
 
       - name: Upload build artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ steps.version.outputs.version }}
-          path: releases/*.zip
+          path: |
+            releases/*.zip
+            build/LESSOS/*.img.gz
+            build/LESSOS/*.sha256
           retention-days: 7
 
       - name: Create GitHub Release
@@ -94,5 +117,7 @@ jobs:
           files: |
             releases/*.zip
             releases/SHA256SUMS
+            build/LESSOS/*.img.gz
+            build/LESSOS/*.sha256
           generate_release_notes: true
           make_latest: "true"

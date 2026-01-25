@@ -125,6 +125,11 @@ help:
 	@echo "  make all              Full build: setup + platforms + package"
 	@echo "  make shell PLATFORM=X Enter Docker build environment"
 	@echo ""
+	@echo "LessOS Image Build:"
+	@echo "  make lessos           Fetch LessOS images and inject LessUI"
+	@echo "  make lessos DEVICE=X  Build specific device (RK3566, SM8250)"
+	@echo "  make lessos TAG=X     Use specific LessOS release tag"
+	@echo ""
 	@echo "Deployment:"
 	@echo "  make dev-deploy       Deploy to SD card (requires LESSUI_DEV volume)"
 	@echo "  make dev-build-deploy Build and deploy (no compression)"
@@ -187,6 +192,40 @@ format:
 
 format-check:
 	@$(MAKE) -f Makefile.qa format-check
+
+###########################################################
+# LessOS image build
+#
+# Fetches LessOS release images from GitHub and injects LessUI.zip
+# Runs in Docker to ensure required tools (debugfs, sfdisk, pigz) are available
+#
+# Usage:
+#   make lessos                   - Build all devices (latest LessOS)
+#   make lessos DEVICE=RK3566     - Build specific device
+#   make lessos TAG=20260124      - Use specific LessOS release
+#
+# Output: build/LESSOS/*.img.gz
+
+# Docker configuration for LessOS builds (uses same image as QA)
+LESSOS_DEV_IMAGE = lessui-dev
+LESSOS_GHCR_IMAGE = ghcr.io/lessui-hq/lessui-dev:latest
+LESSOS_DOCKER_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(LESSOS_DEV_IMAGE)
+
+lessos: all
+	@if ! docker image inspect $(LESSOS_DEV_IMAGE) >/dev/null 2>&1; then \
+		echo "Pulling dev image from GHCR..."; \
+		docker pull $(LESSOS_GHCR_IMAGE); \
+		docker tag $(LESSOS_GHCR_IMAGE) $(LESSOS_DEV_IMAGE); \
+	fi
+	@echo "# ----------------------------------------------------"
+	@echo "# Building LessOS images with LessUI injection"
+	@echo "# ----------------------------------------------------"
+	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh \
+		--version '$(RELEASE_VERSION)' \
+		$(if $(DEVICE),--device '$(DEVICE)') \
+		$(if $(TAG),--tag '$(TAG)') \
+		$(if $(VARIANT),--variant '$(VARIANT)') \
+		$(if $(filter 1,$(DRY_RUN)),--dry-run)
 
 # macOS development targets (forward to Makefile.dev)
 dev:
