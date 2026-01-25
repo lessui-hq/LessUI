@@ -211,7 +211,7 @@ LESSOS_DEV_IMAGE = lessui-dev
 LESSOS_GHCR_IMAGE = ghcr.io/lessui-hq/lessui-dev:latest
 LESSOS_DOCKER_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(LESSOS_DEV_IMAGE)
 
-lessos:
+lessos: all
 	@if ! docker image inspect $(LESSOS_DEV_IMAGE) >/dev/null 2>&1; then \
 		echo "Pulling dev image from GHCR..."; \
 		docker pull $(LESSOS_GHCR_IMAGE); \
@@ -220,20 +220,11 @@ lessos:
 	@echo "# ----------------------------------------------------"
 	@echo "# Building LessOS images with LessUI injection"
 	@echo "# ----------------------------------------------------"
-	@ARGS=""; \
-	if [ -n "$(DEVICE)" ]; then \
-		ARGS="$$ARGS --device $(DEVICE)"; \
-	fi; \
-	if [ -n "$(TAG)" ]; then \
-		ARGS="$$ARGS --tag $(TAG)"; \
-	fi; \
-	if [ -n "$(VARIANT)" ]; then \
-		ARGS="$$ARGS --variant $(VARIANT)"; \
-	fi; \
-	if [ "$(DRY_RUN)" = "1" ]; then \
-		ARGS="$$ARGS --dry-run"; \
-	fi; \
-	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh $$ARGS
+	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh \
+		$(if $(DEVICE),--device '$(DEVICE)') \
+		$(if $(TAG),--tag '$(TAG)') \
+		$(if $(VARIANT),--variant '$(VARIANT)') \
+		$(if $(filter 1,$(DRY_RUN)),--dry-run)
 
 # macOS development targets (forward to Makefile.dev)
 dev:

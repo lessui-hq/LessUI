@@ -79,6 +79,10 @@ github_api() {
 resolve_tag() {
     if [[ "$TAG" == "latest" ]]; then
         TAG=$(github_api "repos/${REPO}/releases/latest" | jq -r '.tag_name')
+        if [[ -z "$TAG" || "$TAG" == "null" ]]; then
+            echo "Error: Could not resolve latest release tag" >&2
+            exit 1
+        fi
         echo "Resolved latest tag: ${TAG}"
     fi
 }
@@ -117,7 +121,7 @@ download_asset() {
 }
 
 # Contents to include in LessOS builds (excludes platform-specific boot folders)
-LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.md README.txt Roms Saves Tools em_ui.sh)
+LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.txt Roms Saves Tools em_ui.sh)
 
 # Create LessOS-specific zip from build/BASE
 prepare_lessui_zip() {
@@ -263,7 +267,12 @@ main() {
     [[ "$DRY_RUN" != true ]] && mkdir -p "$OUTPUT_DIR"
 
     resolve_tag
-    prepare_lessui_zip
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[DRY-RUN] Would create LessOS zip from build/BASE"
+    else
+        prepare_lessui_zip
+    fi
 
     # Get and filter assets
     local assets
