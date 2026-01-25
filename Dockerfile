@@ -28,10 +28,12 @@ RUN apt-get update && apt-get install -y \
     # - e2fsprogs: debugfs for ext4 injection
     # - fdisk: sfdisk for partition info
     # - pigz: parallel gzip
+    # - zip: create LessOS-specific zip
     curl \
     e2fsprogs \
     fdisk \
     pigz \
+    zip \
     && rm -rf /var/lib/apt/lists/* \
     && pipx install mbake \
     && pipx ensurepath \

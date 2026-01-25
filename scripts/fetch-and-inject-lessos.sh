@@ -12,7 +12,6 @@
 #   -t, --tag TAG        LessOS release tag (default: latest)
 #   -d, --device DEVICE  Device to fetch (RK3566, SM8250, or "all")
 #   -v, --variant VAR    Variant for RK3566 (Generic, Specific, or "all")
-#   -z, --zip PATH       Path to LessUI.zip (default: build from releases/)
 #   -o, --output DIR     Output directory (default: ./build/LESSOS)
 #   -n, --dry-run        Show what would be done without doing it
 #   -h, --help           Show this help
@@ -44,8 +43,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TAG="latest"
 DEVICE=""
 VARIANT=""
-LESSUI_ZIP=""
 OUTPUT_DIR="${PROJECT_ROOT}/build/LESSOS"
+LESSUI_ZIP=""  # Set by prepare_lessui_zip
 DRY_RUN=false
 REPO="lessui-hq/LessOS"
 
@@ -64,7 +63,6 @@ Options:
   -t, --tag TAG        LessOS release tag (default: latest)
   -d, --device DEVICE  Device to fetch (RK3566, SM8250, or "all")
   -v, --variant VAR    Variant for RK3566 (Generic, Specific, or "all")
-  -z, --zip PATH       Path to LessUI.zip (default: build from releases/)
   -o, --output DIR     Output directory (default: ./build/LESSOS)
   -n, --dry-run        Show what would be done without doing it
   -h, --help           Show this help
@@ -92,7 +90,6 @@ while [[ $# -gt 0 ]]; do
         -t|--tag) require_arg "$1" "${2:-}"; TAG="$2"; shift 2 ;;
         -d|--device) require_arg "$1" "${2:-}"; DEVICE="$2"; shift 2 ;;
         -v|--variant) require_arg "$1" "${2:-}"; VARIANT="$2"; shift 2 ;;
-        -z|--zip) require_arg "$1" "${2:-}"; LESSUI_ZIP="$2"; shift 2 ;;
         -o|--output) require_arg "$1" "${2:-}"; OUTPUT_DIR="$2"; shift 2 ;;
         -n|--dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage ;;
@@ -104,7 +101,7 @@ done
 check_tools() {
     local missing=()
 
-    for tool in curl gunzip sfdisk; do
+    for tool in curl gunzip sfdisk zip; do
         if ! command -v "$tool" &>/dev/null; then
             missing+=("$tool")
         fi
@@ -122,7 +119,7 @@ check_tools() {
 
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing[*]}"
-        log_error "Install with: apt-get install curl e2fsprogs fdisk pigz"
+        log_error "Install with: apt-get install curl e2fsprogs fdisk pigz zip"
         exit 1
     fi
 }
@@ -199,29 +196,48 @@ download_asset() {
     log_success "Downloaded: ${output_path}"
 }
 
-# Find LessUI.zip to inject
-find_lessui_zip() {
-    if [[ -n "$LESSUI_ZIP" ]]; then
-        if [[ ! -f "$LESSUI_ZIP" ]]; then
-            log_error "Specified LessUI.zip not found: ${LESSUI_ZIP}"
-            exit 1
-        fi
+# Contents to include in LessOS builds (everything else is platform-specific boot stuff)
+LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.md README.txt Roms Saves Tools em_ui.sh)
+
+# Create a LessOS-specific zip from build/BASE with only the needed contents
+create_lessos_zip() {
+    local base_dir="${PROJECT_ROOT}/build/BASE"
+    local output_zip="${PROJECT_ROOT}/build/LESSOS/LessUI-lessos.zip"
+
+    if [[ ! -d "$base_dir" ]]; then
+        return 1
+    fi
+
+    log_info "Creating LessOS-specific zip from build/BASE..."
+
+    mkdir -p "$(dirname "$output_zip")"
+    rm -f "$output_zip"
+
+    # Create zip with only the items we need
+    (cd "$base_dir" && zip -rq "$output_zip" "${LESSOS_INCLUDE[@]}")
+
+    if [[ -f "$output_zip" ]]; then
+        log_success "Created: ${output_zip}"
+        LESSUI_ZIP="$output_zip"
         return 0
     fi
 
-    # Look for latest release in releases/
-    local releases_dir="${PROJECT_ROOT}/releases"
-    if [[ -d "$releases_dir" ]]; then
-        # Find most recent LessUI zip
-        LESSUI_ZIP=$(find "$releases_dir" -name "LessUI-*.zip" -type f | sort -r | head -1)
-    fi
+    return 1
+}
 
-    if [[ -z "$LESSUI_ZIP" || ! -f "$LESSUI_ZIP" ]]; then
-        log_error "No LessUI.zip found. Build with 'make package' first or specify with --zip"
+# Create LessUI.zip for injection
+prepare_lessui_zip() {
+    local base_dir="${PROJECT_ROOT}/build/BASE"
+
+    if [[ ! -d "$base_dir" ]]; then
+        log_error "build/BASE not found. Run 'make all' first."
         exit 1
     fi
 
-    log_info "Using LessUI zip: ${LESSUI_ZIP}"
+    if ! create_lessos_zip; then
+        log_error "Failed to create LessOS zip from build/BASE"
+        exit 1
+    fi
 }
 
 # Get partition 2 offset and size from disk image
@@ -380,7 +396,7 @@ main() {
     fi
 
     get_release_tag
-    find_lessui_zip
+    prepare_lessui_zip
 
     # Get available assets
     local assets

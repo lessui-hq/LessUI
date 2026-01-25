@@ -200,10 +200,9 @@ format-check:
 # Runs in Docker to ensure required tools (debugfs, sfdisk, pigz) are available
 #
 # Usage:
-#   make lessos                   - Build all devices (latest LessOS, latest LessUI)
+#   make lessos                   - Build all devices (latest LessOS)
 #   make lessos DEVICE=RK3566     - Build specific device
 #   make lessos TAG=20260124      - Use specific LessOS release
-#   make lessos ZIP=path/to.zip   - Use specific LessUI zip
 #
 # Output: build/LESSOS/*.img.gz
 
@@ -225,7 +224,6 @@ lessos: lessos-docker-pull
 	if [ -n "$(DEVICE)" ]; then ARGS="$$ARGS --device $(DEVICE)"; fi; \
 	if [ -n "$(TAG)" ]; then ARGS="$$ARGS --tag $(TAG)"; fi; \
 	if [ -n "$(VARIANT)" ]; then ARGS="$$ARGS --variant $(VARIANT)"; fi; \
-	if [ -n "$(ZIP)" ]; then ARGS="$$ARGS --zip $(ZIP)"; fi; \
 	if [ "$(DRY_RUN)" = "1" ]; then ARGS="$$ARGS --dry-run"; fi; \
 	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh $$ARGS
 
