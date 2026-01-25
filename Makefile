@@ -221,6 +221,7 @@ lessos: all
 	@echo "# Building LessOS images with LessUI injection"
 	@echo "# ----------------------------------------------------"
 	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh \
+		--version '$(RELEASE_VERSION)' \
 		$(if $(DEVICE),--device '$(DEVICE)') \
 		$(if $(TAG),--tag '$(TAG)') \
 		$(if $(VARIANT),--variant '$(VARIANT)') \

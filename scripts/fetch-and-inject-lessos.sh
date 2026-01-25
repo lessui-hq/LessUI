@@ -8,6 +8,7 @@
 #   ./scripts/fetch-and-inject-lessos.sh [options]
 #
 # Options:
+#   --version VER        LessUI version for output naming (required)
 #   -t, --tag TAG        LessOS release tag (default: latest)
 #   -d, --device DEVICE  Device to fetch (RK3566, SM8250, or "all")
 #   -v, --variant VAR    Variant for RK3566 (Generic, Specific, or "all")
@@ -15,9 +16,11 @@
 #   -n, --dry-run        Show what would be done without doing it
 #   -h, --help           Show this help
 #
+# Output naming: LessUI-<version>-LessOS-<device>-<variant>.img.gz
+#
 # Example:
-#   ./scripts/fetch-and-inject-lessos.sh --device RK3566 --variant Generic
-#   ./scripts/fetch-and-inject-lessos.sh --device all --tag 20260124
+#   ./scripts/fetch-and-inject-lessos.sh --version v0.4.1 --device RK3566
+#   ./scripts/fetch-and-inject-lessos.sh --version dev-20260125 --device all
 
 set -euo pipefail
 
@@ -25,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Defaults
+VERSION=""
 TAG="latest"
 DEVICE=""
 VARIANT=""
@@ -41,23 +45,32 @@ usage() {
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --version)
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value" >&2; exit 1; }
+            VERSION="$2"; shift 2 ;;
         -t|--tag)
-            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value" >&2; exit 1; }
             TAG="$2"; shift 2 ;;
         -d|--device)
-            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value" >&2; exit 1; }
             DEVICE="$2"; shift 2 ;;
         -v|--variant)
-            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value" >&2; exit 1; }
             VARIANT="$2"; shift 2 ;;
         -o|--output)
-            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value" >&2; exit 1; }
             OUTPUT_DIR="$2"; shift 2 ;;
         -n|--dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage ;;
-        *) echo "Error: Unknown option: $1"; exit 1 ;;
+        *) echo "Error: Unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+# Validate required arguments
+if [[ -z "$VERSION" ]]; then
+    echo "Error: --version is required" >&2
+    exit 1
+fi
 
 # GitHub API helper
 github_api() {
@@ -117,6 +130,32 @@ download_asset() {
         echo "Error: Downloaded file is empty: ${asset_name}" >&2
         rm -f "$output_path"
         return 1
+    fi
+}
+
+# Generate output filename from LessOS asset name
+# Input:  LessOS-RK3566.aarch64-20260125-Generic.img.gz
+# Output: LessUI-v0.4.1-LessOS-RK3566-Generic.img.gz
+# Input:  LessOS-SM8250.aarch64-20260125.img.gz
+# Output: LessUI-v0.4.1-LessOS-SM8250.img.gz
+generate_output_name() {
+    local asset_name="$1"
+    local device variant
+
+    # Extract device (RK3566, SM8250, etc.)
+    if [[ "$asset_name" =~ ^LessOS-([^.]+)\. ]]; then
+        device="${BASH_REMATCH[1]}"
+    else
+        echo "Error: Could not extract device from: ${asset_name}" >&2
+        return 1
+    fi
+
+    # Extract variant (Generic, Specific) if present - it's after the date
+    if [[ "$asset_name" =~ -[0-9]{8}-([^.]+)\.img ]]; then
+        variant="${BASH_REMATCH[1]}"
+        echo "LessUI-${VERSION}-LessOS-${device}-${variant}.img.gz"
+    else
+        echo "LessUI-${VERSION}-LessOS-${device}.img.gz"
     fi
 }
 
@@ -233,12 +272,14 @@ process_image() {
 
     local gz_path="${download_dir}/${asset_name}"
     local img_path="${gz_path%.gz}"
-    local output_gz="${OUTPUT_DIR}/${asset_name}"
+    local output_name
+    output_name=$(generate_output_name "$asset_name")
+    local output_gz="${OUTPUT_DIR}/${output_name}"
 
     download_asset "$asset_name" "$gz_path"
 
     if [[ "$DRY_RUN" == true ]]; then
-        echo "[DRY-RUN] Would decompress, inject, and recompress"
+        echo "[DRY-RUN] Would create: ${output_name}"
         return 0
     fi
 
