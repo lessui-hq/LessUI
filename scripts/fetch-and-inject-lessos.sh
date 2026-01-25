@@ -1,9 +1,8 @@
 #!/bin/bash
 # fetch-and-inject-lessos.sh - Download LessOS images and inject LessUI
 #
-# This script fetches LessOS release images from GitHub and injects LessUI.zip
-# into the storage partition (partition 2, ext4). The injection is done without
-# mounting the filesystem, using debugfs.
+# Fetches LessOS release images from GitHub and injects LessUI.zip into the
+# storage partition (partition 2, ext4) using debugfs (no mount required).
 #
 # Usage:
 #   ./scripts/fetch-and-inject-lessos.sh [options]
@@ -16,26 +15,12 @@
 #   -n, --dry-run        Show what would be done without doing it
 #   -h, --help           Show this help
 #
-# Requirements:
-#   - curl
-#   - gunzip, pigz (for compression)
-#   - debugfs (from e2fsprogs, for ext4 injection)
-#   - sfdisk (for partition info)
-#
 # Example:
 #   ./scripts/fetch-and-inject-lessos.sh --device RK3566 --variant Generic
 #   ./scripts/fetch-and-inject-lessos.sh --device all --tag 20260124
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -44,124 +29,63 @@ TAG="latest"
 DEVICE=""
 VARIANT=""
 OUTPUT_DIR="${PROJECT_ROOT}/build/LESSOS"
-LESSUI_ZIP=""  # Set by prepare_lessui_zip
+LESSUI_ZIP=""
 DRY_RUN=false
 REPO="lessui-hq/LessOS"
 
-# Logging functions
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-
 usage() {
-    cat << 'EOF'
-Usage:
-  ./scripts/fetch-and-inject-lessos.sh [options]
-
-Options:
-  -t, --tag TAG        LessOS release tag (default: latest)
-  -d, --device DEVICE  Device to fetch (RK3566, SM8250, or "all")
-  -v, --variant VAR    Variant for RK3566 (Generic, Specific, or "all")
-  -o, --output DIR     Output directory (default: ./build/LESSOS)
-  -n, --dry-run        Show what would be done without doing it
-  -h, --help           Show this help
-
-Example:
-  ./scripts/fetch-and-inject-lessos.sh --device RK3566 --variant Generic
-  ./scripts/fetch-and-inject-lessos.sh --device all --tag 20260124
-EOF
+    sed -n '2,/^[^#]/p' "$0" | grep '^#' | cut -c3-
     exit 0
-}
-
-# Validate option argument (not empty and not another flag)
-require_arg() {
-    local opt="$1"
-    local val="${2:-}"
-    if [[ -z "$val" || "$val" == -* ]]; then
-        log_error "$opt requires a value"
-        exit 1
-    fi
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -t|--tag) require_arg "$1" "${2:-}"; TAG="$2"; shift 2 ;;
-        -d|--device) require_arg "$1" "${2:-}"; DEVICE="$2"; shift 2 ;;
-        -v|--variant) require_arg "$1" "${2:-}"; VARIANT="$2"; shift 2 ;;
-        -o|--output) require_arg "$1" "${2:-}"; OUTPUT_DIR="$2"; shift 2 ;;
+        -t|--tag)
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            TAG="$2"; shift 2 ;;
+        -d|--device)
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            DEVICE="$2"; shift 2 ;;
+        -v|--variant)
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            VARIANT="$2"; shift 2 ;;
+        -o|--output)
+            [[ -z "${2:-}" || "$2" == -* ]] && { echo "Error: $1 requires a value"; exit 1; }
+            OUTPUT_DIR="$2"; shift 2 ;;
         -n|--dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage ;;
-        *) log_error "Unknown option: $1"; usage ;;
+        *) echo "Error: Unknown option: $1"; exit 1 ;;
     esac
 done
 
-# Check required tools
-check_tools() {
-    local missing=()
-
-    for tool in curl gunzip sfdisk zip; do
-        if ! command -v "$tool" &>/dev/null; then
-            missing+=("$tool")
-        fi
-    done
-
-    # Check for debugfs (required for ext4 injection)
-    if ! command -v debugfs &>/dev/null; then
-        missing+=("debugfs (from e2fsprogs)")
-    fi
-
-    # Check for pigz or gzip
-    if ! command -v pigz &>/dev/null && ! command -v gzip &>/dev/null; then
-        missing+=("pigz or gzip")
-    fi
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        log_error "Missing required tools: ${missing[*]}"
-        log_error "Install with: apt-get install curl e2fsprogs fdisk pigz zip"
-        exit 1
-    fi
-}
-
-# Fetch JSON from GitHub API with error handling
+# GitHub API helper
 github_api() {
     local endpoint="$1"
-    local response http_code body
+    local response http_code
 
     response=$(curl -sL --connect-timeout 30 -w '\n%{http_code}' "https://api.github.com/${endpoint}")
     http_code=$(echo "$response" | tail -1)
-    body=$(echo "$response" | head -n -1)
 
     if [[ "$http_code" != "200" ]]; then
-        log_error "GitHub API returned HTTP ${http_code} for ${endpoint}"
+        echo "Error: GitHub API returned HTTP ${http_code} for ${endpoint}" >&2
         exit 1
     fi
 
-    echo "$body"
+    echo "$response" | head -n -1
 }
 
-# Get release tag (resolve "latest" to actual tag)
-get_release_tag() {
+# Resolve "latest" to actual tag
+resolve_tag() {
     if [[ "$TAG" == "latest" ]]; then
-        local response result
-        response=$(github_api "repos/${REPO}/releases/latest")
-        result=$(echo "$response" | grep '"tag_name"' | sed 's/.*: "\([^"]*\)".*/\1/')
-
-        if [[ -z "$result" ]]; then
-            log_error "Could not parse release tag from GitHub API response"
-            exit 1
-        fi
-        TAG="$result"
-        log_info "Resolved latest tag: ${TAG}"
+        TAG=$(github_api "repos/${REPO}/releases/latest" | jq -r '.tag_name')
+        echo "Resolved latest tag: ${TAG}"
     fi
 }
 
-# Get list of assets for the release
+# Get image assets for the release
 get_release_assets() {
-    local response
-    response=$(github_api "repos/${REPO}/releases/tags/${TAG}")
-    echo "$response" | grep '"name"' | sed 's/.*: "\([^"]*\)".*/\1/'
+    github_api "repos/${REPO}/releases/tags/${TAG}" | jq -r '.assets[].name' | grep '\.img\.gz$'
 }
 
 # Download a release asset
@@ -170,103 +94,76 @@ download_asset() {
     local output_path="$2"
 
     if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY-RUN] Would download: ${asset_name}"
+        echo "[DRY-RUN] Would download: ${asset_name}"
         return 0
     fi
 
-    log_info "Downloading: ${asset_name}"
-
-    local download_url="https://github.com/${REPO}/releases/download/${TAG}/${asset_name}"
+    echo "Downloading: ${asset_name}"
+    local url="https://github.com/${REPO}/releases/download/${TAG}/${asset_name}"
     local http_code
-    http_code=$(curl -sL --connect-timeout 30 --max-time 1800 -w '%{http_code}' -o "$output_path" "$download_url")
+    http_code=$(curl -sL --connect-timeout 30 --max-time 1800 -w '%{http_code}' -o "$output_path" "$url")
 
     if [[ "$http_code" != "200" ]]; then
-        log_error "Failed to download ${asset_name}: HTTP ${http_code}"
+        echo "Error: Failed to download ${asset_name}: HTTP ${http_code}" >&2
         rm -f "$output_path"
         return 1
     fi
 
-    # Verify file is non-empty (catches truncated downloads)
     if [[ ! -s "$output_path" ]]; then
-        log_error "Downloaded file is empty: ${asset_name}"
+        echo "Error: Downloaded file is empty: ${asset_name}" >&2
         rm -f "$output_path"
         return 1
     fi
-
-    log_success "Downloaded: ${output_path}"
 }
 
-# Contents to include in LessOS builds (everything else is platform-specific boot stuff)
+# Contents to include in LessOS builds (excludes platform-specific boot folders)
 LESSOS_INCLUDE=(bin Bios lessos LessUI.7z README.md README.txt Roms Saves Tools em_ui.sh)
 
-# Create a LessOS-specific zip from build/BASE with only the needed contents
-create_lessos_zip() {
-    local base_dir="${PROJECT_ROOT}/build/BASE"
-    local output_zip="${PROJECT_ROOT}/build/LESSOS/LessUI-lessos.zip"
-
-    if [[ ! -d "$base_dir" ]]; then
-        return 1
-    fi
-
-    log_info "Creating LessOS-specific zip from build/BASE..."
-
-    mkdir -p "$(dirname "$output_zip")"
-    rm -f "$output_zip"
-
-    # Create zip with only the items we need
-    (cd "$base_dir" && zip -rq "$output_zip" "${LESSOS_INCLUDE[@]}")
-
-    if [[ -f "$output_zip" ]]; then
-        log_success "Created: ${output_zip}"
-        LESSUI_ZIP="$output_zip"
-        return 0
-    fi
-
-    return 1
-}
-
-# Create LessUI.zip for injection
+# Create LessOS-specific zip from build/BASE
 prepare_lessui_zip() {
     local base_dir="${PROJECT_ROOT}/build/BASE"
 
     if [[ ! -d "$base_dir" ]]; then
-        log_error "build/BASE not found. Run 'make all' first."
+        echo "Error: build/BASE not found. Run 'make all' first." >&2
         exit 1
     fi
 
-    if ! create_lessos_zip; then
-        log_error "Failed to create LessOS zip from build/BASE"
+    echo "Creating LessOS-specific zip from build/BASE..."
+    mkdir -p "$OUTPUT_DIR"
+    LESSUI_ZIP="${OUTPUT_DIR}/LessUI-lessos.zip"
+    rm -f "$LESSUI_ZIP"
+
+    if ! (cd "$base_dir" && zip -rq "$LESSUI_ZIP" "${LESSOS_INCLUDE[@]}"); then
+        echo "Error: Failed to create LessOS zip" >&2
         exit 1
     fi
+
+    if [[ ! -s "$LESSUI_ZIP" ]]; then
+        echo "Error: LessOS zip is empty" >&2
+        exit 1
+    fi
+
+    echo "Created: ${LESSUI_ZIP}"
 }
 
 # Get partition 2 offset and size from disk image
-# Returns: start_sector size_sectors
 get_partition2_info() {
     local img_path="$1"
-
-    # Use sfdisk to get partition info in sectors
     local part_info
+
     part_info=$(sfdisk -d "$img_path" 2>/dev/null | grep "^${img_path}2" | head -1)
 
     if [[ -z "$part_info" ]]; then
-        log_error "Could not find partition 2 in image: ${img_path}"
+        echo "Error: Could not find partition 2 in image" >&2
         return 1
     fi
 
-    # Extract using regex matching (more robust than sed)
     local start size
-    if [[ "$part_info" =~ start=\ *([0-9]+) ]]; then
-        start="${BASH_REMATCH[1]}"
-    else
-        log_error "Could not parse start sector from: ${part_info}"
-        return 1
-    fi
+    [[ "$part_info" =~ start=\ *([0-9]+) ]] && start="${BASH_REMATCH[1]}"
+    [[ "$part_info" =~ size=\ *([0-9]+) ]] && size="${BASH_REMATCH[1]}"
 
-    if [[ "$part_info" =~ size=\ *([0-9]+) ]]; then
-        size="${BASH_REMATCH[1]}"
-    else
-        log_error "Could not parse partition size from: ${part_info}"
+    if [[ -z "$start" || -z "$size" ]]; then
+        echo "Error: Could not parse partition info" >&2
         return 1
     fi
 
@@ -278,64 +175,51 @@ inject_lessui() {
     local img_path="$1"
     local zip_path="$2"
 
-    log_info "Injecting LessUI.zip into: ${img_path}"
+    echo "Injecting LessUI.zip into image..."
 
-    # Get partition 2 info
-    local part_info
+    local part_info start_sector size_sectors
     part_info=$(get_partition2_info "$img_path")
-    local start_sector size_sectors
     read -r start_sector size_sectors <<< "$part_info"
 
-    local start_bytes=$((start_sector * 512))
-
-    log_info "Partition 2: start=${start_sector} sectors (${start_bytes} bytes), size=${size_sectors} sectors"
-
     if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY-RUN] Would inject ${zip_path} into partition 2"
+        echo "[DRY-RUN] Would inject into partition 2 at sector ${start_sector}"
         return 0
     fi
 
-    # Extract partition 2 to a temp file
-    local tmp_dir
+    local tmp_dir part2_img
     tmp_dir=$(mktemp -d)
-    local part2_img="${tmp_dir}/part2.ext4"
+    part2_img="${tmp_dir}/part2.ext4"
 
-    log_info "Extracting partition 2..."
+    # Extract partition
     if ! dd if="$img_path" of="$part2_img" bs=512 skip="$start_sector" count="$size_sectors" status=none; then
-        log_error "Failed to extract partition 2"
+        echo "Error: Failed to extract partition 2" >&2
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    # Use debugfs to inject the file
-    # debugfs -w -R "write <local_file> <path_in_fs>" <fs_image>
-    log_info "Injecting LessUI.zip using debugfs..."
-    if ! debugfs -w -R "write ${zip_path} /LessUI.zip" "$part2_img"; then
-        log_error "debugfs injection failed"
+    # Inject file using debugfs
+    if ! debugfs -w -R "write ${zip_path} /LessUI.zip" "$part2_img" 2>/dev/null; then
+        echo "Error: debugfs injection failed" >&2
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    # Verify the file was written
-    log_info "Verifying injection..."
+    # Verify injection
     if ! debugfs -R "stat /LessUI.zip" "$part2_img" &>/dev/null; then
-        log_error "Failed to verify LessUI.zip in partition"
+        echo "Error: Injection verification failed" >&2
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    # Write partition back to image
-    log_info "Writing partition back to image..."
+    # Write partition back
     if ! dd if="$part2_img" of="$img_path" bs=512 seek="$start_sector" conv=notrunc status=none; then
-        log_error "Failed to write partition back to image"
+        echo "Error: Failed to write partition back to image" >&2
         rm -rf "$tmp_dir"
         return 1
     fi
 
-    # Cleanup
     rm -rf "$tmp_dir"
-
-    log_success "Successfully injected LessUI.zip"
+    echo "Injection complete"
 }
 
 # Process a single image file
@@ -347,102 +231,76 @@ process_image() {
     local img_path="${gz_path%.gz}"
     local output_gz="${OUTPUT_DIR}/${asset_name}"
 
-    # Download
     download_asset "$asset_name" "$gz_path"
 
     if [[ "$DRY_RUN" == true ]]; then
-        log_info "[DRY-RUN] Would decompress, inject, and recompress"
+        echo "[DRY-RUN] Would decompress, inject, and recompress"
         return 0
     fi
 
-    # Decompress
-    log_info "Decompressing..."
+    echo "Decompressing..."
     gunzip -k "$gz_path"
 
-    # Inject
     inject_lessui "$img_path" "$LESSUI_ZIP"
 
-    # Recompress
-    log_info "Recompressing..."
-    if command -v pigz &>/dev/null; then
-        pigz --best --force "$img_path"
-    else
-        gzip --best --force "$img_path"
-    fi
+    echo "Recompressing..."
+    pigz --best --force "$img_path"
 
-    # Move to output directory (already validated in main)
     mv "${img_path}.gz" "$output_gz"
     rm -f "$gz_path"
 
-    # Create sha256
+    # Create checksum
     (cd "$OUTPUT_DIR" && sha256sum "$(basename "$output_gz")" > "$(basename "$output_gz").sha256")
 
-    log_success "Output: ${output_gz}"
+    echo "Output: ${output_gz}"
 }
 
 # Main
 main() {
-    log_info "LessOS Image Fetch and Inject"
-    log_info "=============================="
+    echo "LessOS Image Fetch and Inject"
+    echo "=============================="
 
-    check_tools
+    [[ "$DRY_RUN" != true ]] && mkdir -p "$OUTPUT_DIR"
 
-    # Validate output directory early (before expensive downloads)
-    if [[ "$DRY_RUN" != true ]]; then
-        if ! mkdir -p "$OUTPUT_DIR"; then
-            log_error "Cannot create output directory: ${OUTPUT_DIR}"
-            exit 1
-        fi
-    fi
-
-    get_release_tag
+    resolve_tag
     prepare_lessui_zip
 
-    # Get available assets
+    # Get and filter assets
     local assets
-    assets=$(get_release_assets | grep '\.img\.gz$' | grep -v '\.sha256$' || true)
+    assets=$(get_release_assets || true)
 
     if [[ -z "$assets" ]]; then
-        log_error "No image assets found for tag: ${TAG}"
+        echo "Error: No image assets found for tag: ${TAG}" >&2
         exit 1
     fi
 
-    # Filter by device if specified
-    if [[ -n "$DEVICE" && "$DEVICE" != "all" ]]; then
-        assets=$(echo "$assets" | grep -i "$DEVICE" || true)
-    fi
-
-    # Filter by variant if specified
-    if [[ -n "$VARIANT" && "$VARIANT" != "all" ]]; then
-        assets=$(echo "$assets" | grep -i "$VARIANT" || true)
-    fi
+    [[ -n "$DEVICE" && "$DEVICE" != "all" ]] && assets=$(echo "$assets" | grep -i "$DEVICE" || true)
+    [[ -n "$VARIANT" && "$VARIANT" != "all" ]] && assets=$(echo "$assets" | grep -i "$VARIANT" || true)
 
     if [[ -z "$assets" ]]; then
-        log_error "No matching assets found for device=${DEVICE:-any} variant=${VARIANT:-any}"
+        echo "Error: No matching assets for device=${DEVICE:-any} variant=${VARIANT:-any}" >&2
         exit 1
     fi
 
-    log_info "Assets to process:"
-    while IFS= read -r asset; do
-        echo "  - $asset"
-    done <<< "$assets"
+    echo "Assets to process:"
+    while IFS= read -r a; do echo "  - $a"; done <<< "$assets"
 
-    # Create temp download directory (global for trap access)
+    # Setup temp directory with cleanup
     DOWNLOAD_DIR=$(mktemp -d)
     trap 'rm -rf "$DOWNLOAD_DIR"' EXIT
 
-    # Process each asset (using here-string to avoid subshell)
+    # Process each asset
     while IFS= read -r asset; do
         [[ -z "$asset" ]] && continue
-        log_info ""
-        log_info "Processing: ${asset}"
-        log_info "----------------------------------------"
+        echo ""
+        echo "Processing: ${asset}"
+        echo "----------------------------------------"
         process_image "$asset" "$DOWNLOAD_DIR"
     done <<< "$assets"
 
-    log_info ""
-    log_success "All images processed!"
-    log_info "Output directory: ${OUTPUT_DIR}"
+    echo ""
+    echo "All images processed!"
+    echo "Output: ${OUTPUT_DIR}"
 }
 
 main "$@"

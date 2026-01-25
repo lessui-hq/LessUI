@@ -92,7 +92,7 @@ endif
 export OPT_FLAGS
 export LOG_FLAGS
 
-.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos lessos-docker-pull special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major common system .DEFAULT
+.PHONY: help build test coverage lint format dev dev-run dev-run-4x3 dev-run-16x9 dev-clean all shell name clean setup lessos special stage compress package dev-deploy dev-build-deploy release release-patch release-minor release-major common system .DEFAULT
 
 export MAKEFLAGS=--no-print-directory
 
@@ -211,20 +211,28 @@ LESSOS_DEV_IMAGE = lessui-dev
 LESSOS_GHCR_IMAGE = ghcr.io/lessui-hq/lessui-dev:latest
 LESSOS_DOCKER_RUN = docker run --rm -v $(shell pwd):/lessui -w /lessui $(LESSOS_DEV_IMAGE)
 
-lessos-docker-pull:
-	@echo "Pulling dev image from GHCR..."
-	@docker pull $(LESSOS_GHCR_IMAGE)
-	@docker tag $(LESSOS_GHCR_IMAGE) $(LESSOS_DEV_IMAGE)
-
-lessos: lessos-docker-pull
+lessos:
+	@if ! docker image inspect $(LESSOS_DEV_IMAGE) >/dev/null 2>&1; then \
+		echo "Pulling dev image from GHCR..."; \
+		docker pull $(LESSOS_GHCR_IMAGE); \
+		docker tag $(LESSOS_GHCR_IMAGE) $(LESSOS_DEV_IMAGE); \
+	fi
 	@echo "# ----------------------------------------------------"
 	@echo "# Building LessOS images with LessUI injection"
 	@echo "# ----------------------------------------------------"
 	@ARGS=""; \
-	if [ -n "$(DEVICE)" ]; then ARGS="$$ARGS --device $(DEVICE)"; fi; \
-	if [ -n "$(TAG)" ]; then ARGS="$$ARGS --tag $(TAG)"; fi; \
-	if [ -n "$(VARIANT)" ]; then ARGS="$$ARGS --variant $(VARIANT)"; fi; \
-	if [ "$(DRY_RUN)" = "1" ]; then ARGS="$$ARGS --dry-run"; fi; \
+	if [ -n "$(DEVICE)" ]; then \
+		ARGS="$$ARGS --device $(DEVICE)"; \
+	fi; \
+	if [ -n "$(TAG)" ]; then \
+		ARGS="$$ARGS --tag $(TAG)"; \
+	fi; \
+	if [ -n "$(VARIANT)" ]; then \
+		ARGS="$$ARGS --variant $(VARIANT)"; \
+	fi; \
+	if [ "$(DRY_RUN)" = "1" ]; then \
+		ARGS="$$ARGS --dry-run"; \
+	fi; \
 	$(LESSOS_DOCKER_RUN) ./scripts/fetch-and-inject-lessos.sh $$ARGS
 
 # macOS development targets (forward to Makefile.dev)

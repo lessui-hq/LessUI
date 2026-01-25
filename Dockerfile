@@ -25,11 +25,13 @@ RUN apt-get update && apt-get install -y \
     libsdl2-ttf-dev \
     # LessOS image tools (for fetch-and-inject-lessos.sh)
     # - curl: download from GitHub
+    # - jq: parse GitHub API JSON
     # - e2fsprogs: debugfs for ext4 injection
     # - fdisk: sfdisk for partition info
     # - pigz: parallel gzip
     # - zip: create LessOS-specific zip
     curl \
+    jq \
     e2fsprogs \
     fdisk \
     pigz \
