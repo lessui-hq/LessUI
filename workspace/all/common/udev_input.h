@@ -61,4 +61,15 @@ const char* udev_find_device_by_name(const char* device_name);
  */
 void udev_close_all(int* fds, int count);
 
+/**
+ * Open an input device by name.
+ *
+ * Finds and opens a specific input device matching the given name.
+ * Useful for opening dedicated hardware like lid switches.
+ *
+ * @param device_name Exact device name to search for (e.g., "gpio-keys-lid")
+ * @return File descriptor on success, -1 if device not found or open failed
+ */
+int udev_open_device_by_name(const char* device_name);
+
 #endif // UDEV_INPUT_H

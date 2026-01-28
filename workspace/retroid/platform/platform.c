@@ -111,9 +111,9 @@ static const DeviceVariantMap retroid_device_map[] = {
     {"Pocket 5", VARIANT_RETROID_FHD, &retroid_devices[0], 5.5f},
     {"RP5", VARIANT_RETROID_FHD, &retroid_devices[0], 5.5f},
 
-    {"Retroid Pocket Flip 2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
-    {"Pocket Flip 2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
-    {"Flip 2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
+    {"Retroid Pocket Flip2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
+    {"Pocket Flip2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
+    {"Flip2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
     {"RPF2", VARIANT_RETROID_FHD, &retroid_devices[1], 5.5f},
 
     // 1280x960 (4:3 aspect) - Mini V1
@@ -336,6 +336,9 @@ int PLAT_supportsOverscan(void) {
 static int inputs[UDEV_MAX_DEVICES];
 static int input_count = 0;
 
+// Lid detection (gpio-keys-lid on Pocket Flip 2)
+#define LID_DEVICE_NAME "gpio-keys-lid"
+
 /**
  * Disable RGB LEDs on analog sticks.
  * Retroid devices have HTR3212 LED controllers for stick lighting.
@@ -391,7 +394,10 @@ struct input_event {
 	__s32 value;
 };
 #define EV_KEY 0x01
+#define EV_SW 0x05
 #define EV_ABS 0x03
+#define SW_LID 0x00
+#define EVIOCGSW(len) _IOC(_IOC_READ, 'E', 0x1b, len)
 
 void PLAT_pollInput(void) {
 	uint32_t tick = SDL_GetTicks();
@@ -403,6 +409,21 @@ void PLAT_pollInput(void) {
 	for (int i = 0; i < input_count; i++) {
 		input = inputs[i];
 		while (read(input, &event, sizeof(event)) == sizeof(event)) {
+			// Handle lid switch events (EV_SW)
+			if (event.type == EV_SW && event.code == SW_LID) {
+				// SW_LID: 0 = open, 1 = closed (inverted from our convention)
+				int new_is_open = (event.value == 0);
+				if (new_is_open != lid.is_open) {
+					lid.is_open = new_is_open;
+					LOG_info("PLAT_pollInput: Lid %s", lid.is_open ? "opened" : "closed");
+					if (!lid.is_open) {
+						// Lid closed - trigger sleep
+						pad.just_released |= BTN_SLEEP;
+					}
+				}
+				continue;
+			}
+
 			if (event.type != EV_KEY && event.type != EV_ABS)
 				continue;
 
@@ -490,16 +511,72 @@ void PLAT_pollInput(void) {
 }
 
 int PLAT_shouldWake(void) {
-	int input;
 	static struct input_event event;
+
 	for (int i = 0; i < input_count; i++) {
-		input = inputs[i];
-		while (read(input, &event, sizeof(event)) == sizeof(event)) {
-			if (event.type == EV_KEY && event.code == RAW_POWER && event.value == 0)
+		while (read(inputs[i], &event, sizeof(event)) == sizeof(event)) {
+			// Check for lid opening
+			if (event.type == EV_SW && event.code == SW_LID) {
+				int new_is_open = (event.value == 0);
+				int was_closed = !lid.is_open;
+				lid.is_open = new_is_open;
+				if (new_is_open && was_closed) {
+					LOG_info("PLAT_shouldWake: Lid opened");
+					return 1;
+				}
+			}
+			// Check for power button release
+			if (event.type == EV_KEY && event.code == RAW_POWER && event.value == 0) {
 				return 1;
+			}
 		}
 	}
 	return 0;
+}
+
+///////////////////////////////
+// Lid Detection (Hall Sensor via input events)
+///////////////////////////////
+
+/**
+ * Initializes lid detection for Retroid Pocket Flip 2.
+ *
+ * The Flip 2 has a Hall effect sensor exposed as a gpio-keys-lid input device.
+ * Unlike sysfs-based sensors (Miyoo Mini, MY355), this uses Linux input events
+ * with SW_LID switch type. The device is already opened by udev_open_all_inputs(),
+ * so we just check if it exists and read the initial state.
+ *
+ * SW_LID values: 0 = open, 1 = closed (inverted to match LessUI convention)
+ */
+void PLAT_initLid(void) {
+	// Check if lid device exists
+	const char* lid_path = udev_find_device_by_name(LID_DEVICE_NAME);
+	if (!lid_path) {
+		lid.has_lid = 0;
+		LOG_info("PLAT_initLid: No lid sensor found");
+		return;
+	}
+
+	lid.has_lid = 1;
+
+	// Temporarily open to read initial state via ioctl
+	// (the device is also opened by udev_open_all_inputs for event handling)
+	int fd = open(lid_path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (fd >= 0) {
+		unsigned long sw_state = 0;
+		if (ioctl(fd, EVIOCGSW(sizeof(sw_state)), &sw_state) >= 0) {
+			lid.is_open = !(sw_state & (1 << SW_LID));
+			LOG_info("PLAT_initLid: Lid sensor found, initial state: %s",
+			         lid.is_open ? "open" : "closed");
+		} else {
+			lid.is_open = 1;
+			LOG_warn("PLAT_initLid: Could not read initial state, assuming open");
+		}
+		close(fd);
+	} else {
+		lid.is_open = 1;
+		LOG_warn("PLAT_initLid: Could not open for initial state, assuming open");
+	}
 }
 
 ///////////////////////////////

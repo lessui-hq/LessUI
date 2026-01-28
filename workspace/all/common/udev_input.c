@@ -7,6 +7,7 @@
 
 #include "udev_input.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <libudev.h>
 #include <stdio.h>
@@ -194,6 +195,9 @@ const char* udev_find_device_by_name(const char* device_name) {
 	struct udev_list_entry* devices = NULL;
 	struct udev_list_entry* entry = NULL;
 	const char* found = NULL;
+	int device_count = 0;
+
+	LOG_debug("udev_find_device_by_name: Searching for '%s'", device_name ? device_name : "(null)");
 
 	if (!device_name) {
 		return NULL;
@@ -201,13 +205,13 @@ const char* udev_find_device_by_name(const char* device_name) {
 
 	udev = udev_new();
 	if (!udev) {
-		LOG_error("Failed to create udev context");
+		LOG_error("udev_find_device_by_name: Failed to create udev context");
 		return NULL;
 	}
 
 	enumerate = udev_enumerate_new(udev);
 	if (!enumerate) {
-		LOG_error("Failed to create udev enumerate");
+		LOG_error("udev_find_device_by_name: Failed to create udev enumerate");
 		udev_unref(udev);
 		return NULL;
 	}
@@ -216,6 +220,8 @@ const char* udev_find_device_by_name(const char* device_name) {
 	udev_enumerate_scan_devices(enumerate);
 
 	devices = udev_enumerate_get_list_entry(enumerate);
+
+	LOG_debug("udev_find_device_by_name: Enumerating input devices...");
 
 	udev_list_entry_foreach(entry, devices) {
 		const char* syspath = udev_list_entry_get_name(entry);
@@ -229,12 +235,22 @@ const char* udev_find_device_by_name(const char* device_name) {
 			continue;
 		}
 
-		// Get the device name from sysattr
-		const char* name = udev_device_get_sysattr_value(dev, "name");
+		// Get the device name from the parent input device
+		// The "name" sysattr is at /sys/class/input/eventX/device/name, not on eventX itself
+		const char* name = NULL;
+		struct udev_device* parent = udev_device_get_parent(dev);
+		if (parent) {
+			name = udev_device_get_sysattr_value(parent, "name");
+		}
+
+		device_count++;
+		LOG_debug("udev_find_device_by_name: [%d] %s -> name='%s'", device_count, devnode,
+		          name ? name : "(null)");
+
 		if (name && strcmp(name, device_name) == 0) {
 			(void)snprintf(result_path, sizeof(result_path), "%s", devnode);
 			found = result_path;
-			LOG_debug("Found '%s' at %s", device_name, result_path);
+			LOG_debug("udev_find_device_by_name: Found '%s' at %s", device_name, result_path);
 			udev_device_unref(dev);
 			break;
 		}
@@ -245,9 +261,8 @@ const char* udev_find_device_by_name(const char* device_name) {
 	udev_enumerate_unref(enumerate);
 	udev_unref(udev);
 
-	if (!found) {
-		LOG_warn("Device '%s' not found", device_name);
-	}
+	LOG_debug("udev_find_device_by_name: Scanned %d devices, found=%s", device_count,
+	          found ? found : "(none)");
 
 	return found;
 }
@@ -259,4 +274,21 @@ void udev_close_all(int* fds, int count) {
 			fds[i] = -1;
 		}
 	}
+}
+
+int udev_open_device_by_name(const char* device_name) {
+	const char* path = udev_find_device_by_name(device_name);
+	if (!path) {
+		LOG_debug("udev_open_device_by_name: Device '%s' not found", device_name);
+		return -1;
+	}
+
+	int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (fd < 0) {
+		LOG_warn("udev_open_device_by_name: Failed to open %s: %s", path, strerror(errno));
+	} else {
+		LOG_debug("udev_open_device_by_name: Opened '%s' (fd=%d)", path, fd);
+	}
+
+	return fd;
 }
